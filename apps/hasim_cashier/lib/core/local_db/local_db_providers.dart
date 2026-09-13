@@ -1,0 +1,137 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../api/cashier_api.dart';
+import '../auth/cashier_cloud_link_service.dart';
+import '../device/device_identity.dart';
+import '../device/device_registration_service.dart';
+import '../local_db/app_database.dart';
+import '../local_db/initial_sync_service.dart';
+import '../local_db/workspace_scope.dart';
+import '../pos/application/local_auth_service.dart';
+import '../repositories/catalog_repository.dart';
+import '../repositories/customers_repository.dart';
+import '../repositories/local_finance_repository.dart';
+import '../repositories/orders_repository.dart';
+import '../repositories/sync_conflict_repository.dart';
+import '../repositories/sync_queue_repository.dart';
+import '../repositories/tables_repository.dart';
+import '../sync/sync_pull_applier.dart';
+
+final appDatabaseProvider = Provider<AppDatabase>((ref) {
+  final db = AppDatabase.open();
+  ref.onDispose(db.close);
+  return db;
+});
+
+final deviceIdentityProvider = Provider<DeviceIdentity>((ref) {
+  return DeviceIdentity(ref.watch(secureStorageProvider));
+});
+
+final deviceIdProvider = FutureProvider<String>((ref) async {
+  return ref.watch(deviceIdentityProvider).getOrCreateDeviceId();
+});
+
+final deviceRegistrationServiceProvider = Provider<DeviceRegistrationService>((
+  ref,
+) {
+  return DeviceRegistrationService(ref.watch(cashierApiProvider));
+});
+
+final cashierCloudLinkServiceProvider = Provider<CashierCloudLinkService>((
+  ref,
+) {
+  return CashierCloudLinkService(
+    api: ref.watch(cashierApiProvider),
+    store: ref.watch(cloudLinkStoreProvider),
+    devices: ref.watch(deviceRegistrationServiceProvider),
+    db: ref.watch(appDatabaseProvider),
+    localAuth: LocalAuthService(ref.watch(appDatabaseProvider)),
+    deviceId: () => ref.read(deviceIdentityProvider).getOrCreateDeviceId(),
+    initialSync: ref.watch(initialSyncServiceProvider),
+  );
+});
+
+final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
+  return CatalogRepository(ref.watch(appDatabaseProvider));
+});
+
+final tablesRepositoryProvider = Provider<TablesRepository>((ref) {
+  return TablesRepository(
+    ref.watch(appDatabaseProvider),
+    ref.watch(syncQueueRepositoryProvider),
+    api: ref.watch(cashierApiProvider),
+  );
+});
+
+final localTablesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
+  ref.watch(tablesRevisionProvider);
+  final workspaceId = ref.watch(workspaceIdProvider);
+  if (workspaceId == null || workspaceId <= 0) return const [];
+  return ref.watch(tablesRepositoryProvider).listTables(workspaceId);
+});
+
+final syncQueueRepositoryProvider = Provider<SyncQueueRepository>((ref) {
+  return SyncQueueRepository(ref.watch(appDatabaseProvider));
+});
+
+final syncConflictRepositoryProvider = Provider<SyncConflictRepository>((ref) {
+  return SyncConflictRepository(ref.watch(appDatabaseProvider));
+});
+
+final customersRepositoryProvider = Provider<CustomersRepository>((ref) {
+  return CustomersRepository(
+    ref.watch(appDatabaseProvider),
+    ref.watch(syncQueueRepositoryProvider),
+  );
+});
+
+final ordersRepositoryProvider = Provider<OrdersRepository>((ref) {
+  return OrdersRepository(
+    ref.watch(appDatabaseProvider),
+    ref.watch(syncQueueRepositoryProvider),
+  );
+});
+
+final localFinanceRepositoryProvider = Provider<LocalFinanceRepository>((ref) {
+  return LocalFinanceRepository(ref.watch(appDatabaseProvider));
+});
+
+/// Bumped after a local sale so the invoices tab reloads without sync.
+final invoicesRevisionProvider = StateProvider<int>((ref) => 0);
+
+/// Bumped after table occupy / close so the board updates without a pull-to-refresh.
+final tablesRevisionProvider = StateProvider<int>((ref) => 0);
+
+/// Bumped after local order wipes so the running-orders tab reloads.
+final ordersRevisionProvider = StateProvider<int>((ref) => 0);
+
+/// Bumped after catalog wipes so cashier/menu grids reload.
+final catalogRevisionProvider = StateProvider<int>((ref) => 0);
+
+final syncPullApplierProvider = Provider<SyncPullApplier>((ref) {
+  return SyncPullApplier(
+    ref.watch(appDatabaseProvider),
+    conflicts: ref.watch(syncConflictRepositoryProvider),
+  );
+});
+
+final initialSyncServiceProvider = Provider<InitialSyncService>((ref) {
+  final deviceId = ref.watch(deviceIdProvider).valueOrNull;
+  return InitialSyncService(
+    ref.watch(appDatabaseProvider),
+    ref.watch(cashierApiProvider),
+    deviceId: deviceId,
+  );
+});
+
+/// True when this workspace completed Initial Sync (or already has local products).
+final localPosReadyProvider = FutureProvider.family<bool, int?>((
+  ref,
+  workspaceId,
+) async {
+  if (workspaceId == null || workspaceId <= 0) return false;
+  final db = ref.watch(appDatabaseProvider);
+  return db.isOfflinePosReady(workspaceId);
+});

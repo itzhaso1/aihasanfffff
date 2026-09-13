@@ -1,0 +1,910 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/api/cashier_api.dart';
+import '../../core/auth/auth_controller.dart';
+import '../../core/local_db/local_db_providers.dart';
+import '../../core/permissions/cashier_permissions.dart';
+import '../../core/permissions/permissions_provider.dart';
+import '../../core/pos/application/pos_providers.dart';
+import '../../core/pos/application/product_image_store.dart';
+import '../../core/pos/pos_mode.dart';
+import '../../core/theme/hasim_colors.dart';
+import '../../core/util/json_numbers.dart';
+import '../../core/widgets/hasim_widgets.dart';
+import '../../core/widgets/pos_tap.dart';
+import '../cart/cart_controller.dart';
+
+/// Catalog admin — CRUD via `/api/cashier/v1/catalog/*` when `menu.manage`.
+class ItemsAdminPanel extends ConsumerStatefulWidget {
+  const ItemsAdminPanel({super.key});
+
+  @override
+  ConsumerState<ItemsAdminPanel> createState() => _ItemsAdminPanelState();
+}
+
+class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
+  List<Map<String, dynamic>> _items = const [];
+  List<Map<String, dynamic>> _categories = const [];
+  var _loading = true;
+  String? _error;
+  final _search = TextEditingController();
+
+  Map<String, dynamic> get _perms => CashierPermissions.resolve(
+    ref.read(cashierPermissionsProvider),
+    ref.read(authControllerProvider).valueOrNull?.permissions,
+  );
+
+  bool get _canManage => CashierPermissions.canManageMenu(_perms);
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final session = ref.read(authControllerProvider).valueOrNull;
+      final standalone = PosMode.isStandaloneRuntime(
+        isLocalMode: session?.isLocalMode == true,
+        token: session?.token,
+      );
+      final workspaceId = ref.read(workspaceIdProvider);
+      if (standalone && workspaceId != null) {
+        final items = await ref
+            .read(catalogRepositoryProvider)
+            .products(workspaceId);
+        final cats = await ref
+            .read(catalogRepositoryProvider)
+            .categories(workspaceId);
+        if (!mounted) return;
+        setState(() {
+          _items = items;
+          _categories = cats;
+          _loading = false;
+        });
+        ref.invalidate(catalogItemsProvider);
+        ref.invalidate(categoriesProvider);
+        return;
+      }
+      final api = ref.read(cashierApiProvider);
+      final itemsData = await api.get(
+        '/catalog/items',
+        query: {
+          'active_only': false,
+          'per_page': 100,
+          'q': _search.text.trim(),
+        },
+      );
+      final catsData = await api.get('/catalog/categories');
+      final items = <Map<String, dynamic>>[];
+      final cats = <Map<String, dynamic>>[];
+      if (itemsData['items'] is List) {
+        for (final item in itemsData['items'] as List) {
+          if (item is Map) items.add(Map<String, dynamic>.from(item));
+        }
+      }
+      if (catsData['categories'] is List) {
+        for (final c in catsData['categories'] as List) {
+          if (c is Map) cats.add(Map<String, dynamic>.from(c));
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _categories = cats;
+        _loading = false;
+      });
+      ref.invalidate(catalogItemsProvider);
+      ref.invalidate(categoriesProvider);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _editItem({Map<String, dynamic>? existing}) async {
+    if (!_canManage) return;
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) =>
+          _ItemFormDialog(categories: _categories, existing: existing),
+    );
+    if (result == null) return;
+    try {
+      final session = ref.read(authControllerProvider).valueOrNull;
+      final workspaceId = ref.read(workspaceIdProvider);
+      if (PosMode.isStandaloneRuntime(
+            isLocalMode: session?.isLocalMode == true,
+            token: session?.token,
+          ) &&
+          workspaceId != null) {
+        final admin = ref.read(catalogAdminServiceProvider);
+        late final String localId;
+        if (existing == null) {
+          localId = await admin.createProduct(
+            workspaceId: workspaceId,
+            name: '${result['name']}',
+            price: asDoubleOr(result['price']),
+            sku: result['sku'] as String?,
+            barcode: result['barcode'] as String?,
+            cost: asDoubleOr(result['cost']),
+            taxRate: asDoubleOr(result['tax_rate']),
+            stock: asInt(result['stock']),
+            trackStock: result['track_stock'] == true,
+            categoryLocalId: result['category_local_id'] as String?,
+            permissions: session?.permissions ?? _perms,
+          );
+        } else {
+          localId = '${existing['local_id'] ?? existing['id']}';
+          await admin.updateProduct(
+            workspaceId: workspaceId,
+            localId: localId,
+            name: '${result['name']}',
+            price: asDouble(result['price']),
+            sku: result['sku'] as String?,
+            barcode: result['barcode'] as String?,
+            cost: asDouble(result['cost']),
+            stock: asInt(result['stock']),
+            permissions: session?.permissions ?? _perms,
+            categoryLocalId: result['category_local_id'] as String?,
+          );
+        }
+        await _persistProductImage(
+          workspaceId: workspaceId,
+          productLocalId: localId,
+          sourcePath: result['image_source_path'] as String?,
+          clearImage: result['clear_image'] == true,
+          permissions: session?.permissions ?? _perms,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              existing == null
+                  ? 'تمت إضافة الصنف محلياً.'
+                  : 'تم تحديث الصنف محلياً.',
+            ),
+          ),
+        );
+        await _load();
+        return;
+      }
+      final api = ref.read(cashierApiProvider);
+      if (existing == null) {
+        await api.post('/catalog/items', data: result);
+      } else {
+        await api.put('/catalog/items/${existing['id']}', data: result);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            existing == null ? 'تمت إضافة الصنف.' : 'تم تحديث الصنف.',
+          ),
+        ),
+      );
+      await _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _persistProductImage({
+    required int workspaceId,
+    required String productLocalId,
+    required String? sourcePath,
+    required bool clearImage,
+    required Map<String, dynamic> permissions,
+  }) async {
+    final admin = ref.read(catalogAdminServiceProvider);
+    if (clearImage) {
+      await admin.updateProduct(
+        workspaceId: workspaceId,
+        localId: productLocalId,
+        imagePath: null,
+        clearImage: true,
+        permissions: permissions,
+      );
+      return;
+    }
+    final source = sourcePath?.trim() ?? '';
+    if (source.isEmpty || !File(source).existsSync()) return;
+    final stored = await ProductImageStore().persist(
+      sourcePath: source,
+      workspaceId: workspaceId,
+      productLocalId: productLocalId,
+    );
+    await admin.updateProduct(
+      workspaceId: workspaceId,
+      localId: productLocalId,
+      imagePath: stored,
+      permissions: permissions,
+    );
+  }
+
+  Future<void> _deleteItem(Map<String, dynamic> item) async {
+    if (!_canManage) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف الصنف؟'),
+        content: Text('${item['name']}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: HasimColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final session = ref.read(authControllerProvider).valueOrNull;
+      final workspaceId = ref.read(workspaceIdProvider);
+      final localId = '${item['local_id'] ?? ''}';
+      if (PosMode.isStandaloneRuntime(
+            isLocalMode: session?.isLocalMode == true,
+            token: session?.token,
+          ) &&
+          workspaceId != null &&
+          localId.isNotEmpty) {
+        await ref
+            .read(catalogAdminServiceProvider)
+            .deleteProduct(
+              workspaceId: workspaceId,
+              localId: localId,
+              permissions: session?.permissions ?? _perms,
+            );
+        await _load();
+        return;
+      }
+      await ref.read(cashierApiProvider).delete('/catalog/items/${item['id']}');
+      await _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _editCategory({Map<String, dynamic>? existing}) async {
+    if (!_canManage) return;
+    final name = TextEditingController(text: '${existing?['name'] ?? ''}');
+    final active = ValueNotifier<bool>(existing?['is_active'] != false);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(existing == null ? 'تصنيف جديد' : 'تعديل التصنيف'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: name,
+              decoration: const InputDecoration(labelText: 'الاسم'),
+            ),
+            ValueListenableBuilder<bool>(
+              valueListenable: active,
+              builder: (_, v, __) => SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('نشط'),
+                value: v,
+                onChanged: (nv) => active.value = nv,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final payload = {
+      'name': name.text.trim(),
+      'is_active': active.value,
+      'sort_order': existing?['sort_order'] ?? 0,
+    };
+    try {
+      final session = ref.read(authControllerProvider).valueOrNull;
+      final workspaceId = ref.read(workspaceIdProvider);
+      if (PosMode.isStandaloneRuntime(
+            isLocalMode: session?.isLocalMode == true,
+            token: session?.token,
+          ) &&
+          workspaceId != null) {
+        if (existing == null) {
+          await ref
+              .read(catalogAdminServiceProvider)
+              .createCategory(
+                workspaceId: workspaceId,
+                name: payload['name'] as String,
+                sortOrder: asIntOr(payload['sort_order']),
+                isActive: payload['is_active'] != false,
+                permissions: session?.permissions ?? _perms,
+              );
+        } else {
+          final localId = '${existing['local_id'] ?? ''}';
+          if (localId.isEmpty) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تعذر تحديد التصنيف المحلي.')),
+            );
+            return;
+          }
+          await ref
+              .read(catalogAdminServiceProvider)
+              .updateCategory(
+                workspaceId: workspaceId,
+                localId: localId,
+                name: payload['name'] as String,
+                sortOrder: asIntOr(payload['sort_order']),
+                isActive: payload['is_active'] != false,
+                permissions: session?.permissions ?? _perms,
+              );
+        }
+        await _load();
+        return;
+      }
+      final api = ref.read(cashierApiProvider);
+      if (existing == null) {
+        await api.post('/catalog/categories', data: payload);
+      } else {
+        await api.put('/catalog/categories/${existing['id']}', data: payload);
+      }
+      await _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _deleteCategory(Map<String, dynamic> category) async {
+    if (!_canManage) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف التصنيف؟'),
+        content: Text('${category['name']}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: HasimColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final session = ref.read(authControllerProvider).valueOrNull;
+      final workspaceId = ref.read(workspaceIdProvider);
+      final localId = '${category['local_id'] ?? ''}';
+      if (workspaceId != null && localId.isNotEmpty) {
+        await ref
+            .read(catalogAdminServiceProvider)
+            .deleteCategory(
+              workspaceId: workspaceId,
+              localId: localId,
+              permissions: session?.permissions ?? _perms,
+            );
+        await _load();
+        return;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديد التصنيف المحلي للحذف.')),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen<int>(catalogRevisionProvider, (prev, next) {
+      if (prev != next) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_load());
+        });
+      }
+    });
+    final perms = CashierPermissions.resolve(
+      ref.watch(cashierPermissionsProvider),
+      ref.watch(authControllerProvider).valueOrNull?.permissions,
+    );
+    final canManage = CashierPermissions.canManageMenu(perms);
+
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: HsEmpty(
+          title: 'تعذر تحميل الأصناف',
+          subtitle: _error,
+          actionLabel: 'إعادة المحاولة',
+          onAction: _load,
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          HsPageHeader(
+            icon: Icons.category_outlined,
+            title: 'التصنيفات',
+            subtitle: canManage
+                ? 'إدارة التصنيفات والمنتجات المعروضة في الكاشير.'
+                : 'عرض فقط — تحتاج صلاحية menu.manage للتعديل.',
+          ),
+          if (canManage) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                HsActionChip(
+                  label: '+ إضافة تصنيف',
+                  icon: Icons.create_new_folder_outlined,
+                  onTap: () => _editCategory(),
+                ),
+                HsActionChip(
+                  label: '+ إضافة منتج',
+                  icon: Icons.add,
+                  selected: true,
+                  onTap: () => _editItem(),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          TextField(
+            controller: _search,
+            onSubmitted: (_) => _load(),
+            decoration: InputDecoration(
+              hintText: 'بحث…',
+              isDense: true,
+              suffixIcon: PosTap(
+                onTap: _load,
+                child: const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(Icons.search),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'التصنيفات',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          if (_categories.isEmpty)
+            const HsEmpty(title: 'لا توجد تصنيفات.')
+          else
+            HsSoftGrid(
+              minTileWidth: 260,
+              maxColumns: 3,
+              children: [
+                for (final c in _categories)
+                  HsCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${c['name']}${c['is_active'] == false ? ' (معطّل)' : ''}',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        if (canManage) ...[
+                          PosTap(
+                            onTap: () => _editCategory(existing: c),
+                            child: const Padding(
+                              padding: EdgeInsets.all(8),
+                              child: Icon(Icons.edit_outlined, size: 20),
+                            ),
+                          ),
+                          PosTap(
+                            onTap: () => _deleteCategory(c),
+                            child: const Padding(
+                              padding: EdgeInsets.all(8),
+                              child: Icon(
+                                Icons.delete_outline,
+                                size: 20,
+                                color: HasimColors.danger,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          const SizedBox(height: 16),
+          const Text('الأصناف', style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          if (_items.isEmpty)
+            const HsEmpty(title: 'لا توجد أصناف.')
+          else
+            HsSoftGrid(
+              minTileWidth: 280,
+              maxColumns: 3,
+              children: [
+                for (final item in _items)
+                  HsCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        LocalProductImage(
+                          path: '${item['image_path'] ?? ''}'.trim().isEmpty
+                              ? null
+                              : '${item['image_path']}',
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${item['name']}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                [
+                                  if (item['sku'] != null)
+                                    'SKU: ${item['sku']}',
+                                  if (item['barcode'] != null)
+                                    'BC: ${item['barcode']}',
+                                  item['is_active'] == false ? 'معطّل' : 'نشط',
+                                ].where((e) => e.isNotEmpty).join(' · '),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: HasimColors.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          asDoubleOr(item['price']).toStringAsFixed(2),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: HasimColors.ctaDark,
+                          ),
+                        ),
+                        if (canManage) ...[
+                          PosTap(
+                            onTap: () => _editItem(existing: item),
+                            child: const Padding(
+                              padding: EdgeInsets.all(8),
+                              child: Icon(Icons.edit_outlined, size: 20),
+                            ),
+                          ),
+                          PosTap(
+                            onTap: () => _deleteItem(item),
+                            child: const Padding(
+                              padding: EdgeInsets.all(8),
+                              child: Icon(
+                                Icons.delete_outline,
+                                size: 20,
+                                color: HasimColors.danger,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ItemFormDialog extends StatefulWidget {
+  const _ItemFormDialog({required this.categories, this.existing});
+
+  final List<Map<String, dynamic>> categories;
+  final Map<String, dynamic>? existing;
+
+  @override
+  State<_ItemFormDialog> createState() => _ItemFormDialogState();
+}
+
+class _ItemFormDialogState extends State<_ItemFormDialog> {
+  late final TextEditingController _name;
+  late final TextEditingController _sku;
+  late final TextEditingController _barcode;
+  late final TextEditingController _type;
+  late final TextEditingController _size;
+  late final TextEditingController _desc;
+  late final TextEditingController _price;
+  late final TextEditingController _currency;
+  String? _categoryLocalId;
+  var _active = true;
+  String? _existingImagePath;
+  String? _pickedSourcePath;
+  var _clearImage = false;
+
+  String? _existingCategoryKey(Map<String, dynamic>? e) {
+    if (e == null) return null;
+    final local = '${e['category_local_id'] ?? ''}'.trim();
+    if (local.isNotEmpty) return local;
+    final sid = '${e['pos_item_category_id'] ?? ''}'.trim();
+    for (final c in widget.categories) {
+      final key = entityKey(c);
+      if (key.isEmpty) continue;
+      if (key == sid || '${c['id']}' == sid || '${c['local_id']}' == sid) {
+        return key;
+      }
+    }
+    if (e['category'] is Map) {
+      final fromNested = entityKey(e['category'] as Map);
+      if (fromNested.isNotEmpty) return fromNested;
+    }
+    return sid.isEmpty ? null : sid;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _name = TextEditingController(text: '${e?['name'] ?? ''}');
+    _sku = TextEditingController(text: '${e?['sku'] ?? ''}');
+    _barcode = TextEditingController(text: '${e?['barcode'] ?? ''}');
+    _type = TextEditingController(text: '${e?['item_type'] ?? 'عام'}');
+    _size = TextEditingController(text: '${e?['size_label'] ?? ''}');
+    _desc = TextEditingController(text: '${e?['description'] ?? ''}');
+    _price = TextEditingController(
+      text: asDoubleOr(e?['price']).toStringAsFixed(2),
+    );
+    _currency = TextEditingController(text: '${e?['currency'] ?? 'SAR'}');
+    _categoryLocalId = _existingCategoryKey(e);
+    _active = e?['is_active'] != false;
+    final stored = '${e?['image_path'] ?? ''}'.trim();
+    _existingImagePath = stored.isEmpty ? null : stored;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _sku.dispose();
+    _barcode.dispose();
+    _type.dispose();
+    _size.dispose();
+    _desc.dispose();
+    _price.dispose();
+    _currency.dispose();
+    super.dispose();
+  }
+
+  String? get _previewPath {
+    if (_pickedSourcePath != null) return _pickedSourcePath;
+    if (_clearImage) return null;
+    return _existingImagePath;
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      final path = result?.files.single.path;
+      if (path == null || path.trim().isEmpty) return;
+      if (!mounted) return;
+      setState(() {
+        _pickedSourcePath = path;
+        _clearImage = false;
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'صنف جديد' : 'تعديل الصنف'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _name,
+                decoration: const InputDecoration(labelText: 'الاسم'),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  LocalProductImage(path: _previewPath, size: 56),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _pickImage,
+                          icon: const Icon(Icons.image_outlined),
+                          label: const Text('اختيار صورة'),
+                        ),
+                        if (_previewPath != null)
+                          TextButton(
+                            onPressed: () => setState(() {
+                              _pickedSourcePath = null;
+                              _clearImage = true;
+                            }),
+                            child: const Text('إزالة الصورة'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              TextField(
+                controller: _price,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(labelText: 'السعر'),
+              ),
+              TextField(
+                controller: _currency,
+                decoration: const InputDecoration(labelText: 'العملة'),
+              ),
+              DropdownButtonFormField<String?>(
+                value: _categoryLocalId,
+                decoration: const InputDecoration(labelText: 'التصنيف'),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('— بدون —'),
+                  ),
+                  for (final c in widget.categories)
+                    if (c['is_active'] != false && entityKey(c).isNotEmpty)
+                      DropdownMenuItem<String?>(
+                        value: entityKey(c),
+                        child: Text('${c['name']}'),
+                      ),
+                ],
+                onChanged: (v) => setState(() => _categoryLocalId = v),
+              ),
+              TextField(
+                controller: _sku,
+                decoration: const InputDecoration(labelText: 'SKU'),
+              ),
+              TextField(
+                controller: _barcode,
+                decoration: const InputDecoration(labelText: 'Barcode'),
+              ),
+              TextField(
+                controller: _type,
+                decoration: const InputDecoration(labelText: 'النوع'),
+              ),
+              TextField(
+                controller: _size,
+                decoration: const InputDecoration(labelText: 'الحجم'),
+              ),
+              TextField(
+                controller: _desc,
+                maxLines: 2,
+                decoration: const InputDecoration(labelText: 'الوصف'),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('نشط / متاح'),
+                value: _active,
+                onChanged: (v) => setState(() => _active = v),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final price = double.tryParse(_price.text.trim());
+            if (_name.text.trim().isEmpty || price == null || price < 0) {
+              return;
+            }
+            Navigator.pop(context, {
+              'name': _name.text.trim(),
+              'sku': _sku.text.trim().isEmpty ? null : _sku.text.trim(),
+              'barcode': _barcode.text.trim().isEmpty
+                  ? null
+                  : _barcode.text.trim(),
+              'item_type': _type.text.trim().isEmpty
+                  ? 'عام'
+                  : _type.text.trim(),
+              'pos_item_category_id': _categoryLocalId,
+              'category_local_id': _categoryLocalId,
+              'size_label': _size.text.trim().isEmpty
+                  ? null
+                  : _size.text.trim(),
+              'description': _desc.text.trim().isEmpty
+                  ? null
+                  : _desc.text.trim(),
+              'price': price,
+              'currency': _currency.text.trim().isEmpty
+                  ? 'SAR'
+                  : _currency.text.trim().toUpperCase(),
+              'is_active': _active,
+              'sort_order': widget.existing?['sort_order'] ?? 0,
+              'image_source_path': _pickedSourcePath,
+              'clear_image': _clearImage,
+            });
+          },
+          child: const Text('حفظ'),
+        ),
+      ],
+    );
+  }
+}

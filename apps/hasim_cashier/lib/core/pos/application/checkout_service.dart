@@ -1,0 +1,676 @@
+import 'dart:convert';
+
+import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../local_db/app_database.dart';
+import '../../local_db/workspace_scope.dart';
+import '../../repositories/sync_queue_repository.dart';
+import '../../repositories/tables_repository.dart';
+import '../domain/pricing_service.dart';
+import '../pos_errors.dart';
+import '../pos_mode.dart';
+import '../pos_permissions.dart';
+import 'document_numbers.dart';
+import 'draft_cart_store.dart';
+import 'stock_engine.dart';
+
+enum CheckoutFaultPoint {
+  none,
+  afterOrder,
+  afterInvoice,
+  afterPayment,
+  afterStock,
+  afterCash,
+}
+
+class PaymentTender {
+  const PaymentTender({
+    required this.method,
+    required this.amount,
+    this.tendered,
+  });
+
+  final String method;
+  final double amount;
+  final double? tendered;
+}
+
+class CheckoutCommand {
+  const CheckoutCommand({
+    required this.workspaceId,
+    required this.deviceId,
+    required this.storeId,
+    required this.clientReference,
+    required this.orderType,
+    required this.lines,
+    required this.payments,
+    this.tableLocalId,
+    this.tableServerId,
+    this.sessionLocalId,
+    this.customerLocalId,
+    this.notes,
+    this.orderDiscountAmount = 0,
+    this.orderDiscountPercent = 0,
+    this.taxRate = 0,
+    this.createdByUserId,
+    this.shiftLocalId,
+    this.allowNegativeStock = false,
+    this.connected = false,
+    this.invoicePrefix = 'INV-',
+    this.permissions = const {},
+    this.clearDraftChannel,
+    this.clearDraftTableLocalId,
+  });
+
+  final int workspaceId;
+  final String deviceId;
+  final String storeId;
+  final String clientReference;
+  final String orderType;
+  final List<PricedLine> lines;
+  final List<PaymentTender> payments;
+  final String? tableLocalId;
+  final int? tableServerId;
+  final String? sessionLocalId;
+  final String? customerLocalId;
+  final String? notes;
+  final double orderDiscountAmount;
+  final double orderDiscountPercent;
+  final double taxRate;
+  final String? createdByUserId;
+  final String? shiftLocalId;
+  final bool allowNegativeStock;
+  final bool connected;
+  final String invoicePrefix;
+  final Map<String, dynamic> permissions;
+  final String? clearDraftChannel;
+  final String? clearDraftTableLocalId;
+}
+
+class CheckoutResult {
+  const CheckoutResult({
+    required this.orderLocalId,
+    required this.invoiceLocalId,
+    required this.invoiceNumber,
+    required this.total,
+    required this.changeDue,
+  });
+
+  final String orderLocalId;
+  final String invoiceLocalId;
+  final String invoiceNumber;
+  final double total;
+  final double changeDue;
+}
+
+/// Completes a sale in one SQLite transaction. Never calls the network.
+class CheckoutService {
+  CheckoutService(
+    this._db,
+    this._stock,
+    this._numbers,
+    this._queue, {
+    this.pricing = const PricingService(),
+    String Function()? newId,
+    this.faultForTest = CheckoutFaultPoint.none,
+    TablesRepository? tables,
+  }) : _newId = newId ?? (() => const Uuid().v4()),
+       _tables = tables;
+
+  final AppDatabase _db;
+  final StockEngine _stock;
+  final DocumentNumberService _numbers;
+  final SyncQueueRepository _queue;
+  final PricingService pricing;
+  final String Function() _newId;
+  final CheckoutFaultPoint faultForTest;
+  final TablesRepository? _tables;
+
+  Future<CheckoutResult> execute(CheckoutCommand cmd) {
+    if (cmd.lines.isEmpty) {
+      throw const EmptyCart();
+    }
+    PosPermissions.require(cmd.permissions, PosPermissions.pay);
+    if (cmd.orderDiscountAmount > 0 || cmd.orderDiscountPercent > 0) {
+      PosPermissions.require(cmd.permissions, PosPermissions.discount);
+    }
+    for (final line in cmd.lines) {
+      if (line.itemDiscount > 0) {
+        PosPermissions.require(cmd.permissions, PosPermissions.discount);
+        break;
+      }
+    }
+    return _db.transaction(() async {
+      await _db.writeMeta(
+        cmd.workspaceId,
+        'checkout_lock',
+        DateTime.now().toIso8601String(),
+        deviceId: cmd.deviceId,
+      );
+
+      final existing = await _paidOrder(cmd);
+      if (existing != null) return existing;
+
+      if (cmd.shiftLocalId == null || cmd.shiftLocalId!.isEmpty) {
+        throw const ShiftNotOpen();
+      }
+      final shift =
+          await (_db.select(_db.localShifts)..where(
+                (t) =>
+                    t.localId.equals(cmd.shiftLocalId!) &
+                    t.workspaceId.equals(cmd.workspaceId),
+              ))
+              .getSingleOrNull();
+      if (shift == null || shift.status != 'open') {
+        throw const ShiftNotOpen();
+      }
+
+      final quote = pricing.quote(
+        lines: cmd.lines,
+        orderDiscountAmount: cmd.orderDiscountAmount,
+        orderDiscountPercent: cmd.orderDiscountPercent,
+        fallbackTaxRate: cmd.taxRate,
+      );
+
+      var paidCents = 0;
+      var changeDueCents = 0;
+      var hasCredit = false;
+      for (final p in cmd.payments) {
+        if (p.amount < 0) throw const PaymentMismatch();
+        if (p.method == 'credit') hasCredit = true;
+        paidCents += Money.toCents(p.amount);
+        if (p.method == 'cash' && p.tendered != null) {
+          if (Money.toCents(p.tendered!) < Money.toCents(p.amount)) {
+            throw const PaymentMismatch();
+          }
+          changeDueCents +=
+              Money.toCents(p.tendered!) - Money.toCents(p.amount);
+        }
+      }
+      if (!hasCredit && paidCents < quote.totalCents) {
+        throw const PaymentMismatch();
+      }
+
+      final now = DateTime.now();
+      final orderId = cmd.clientReference;
+      final invoiceId = _newId();
+      final orderNumber = await _numbers.nextOrderNumber(storeId: cmd.storeId);
+      final invoiceNumber = await _numbers.nextInvoiceNumber(
+        storeId: cmd.storeId,
+        prefix: cmd.invoicePrefix,
+      );
+      final tableInfo = await _tableSnapshot(cmd);
+
+      await _db
+          .into(_db.localOrders)
+          .insert(
+            LocalOrdersCompanion.insert(
+              localId: orderId,
+              workspaceId: cmd.workspaceId,
+              deviceId: cmd.deviceId,
+              clientReference: cmd.clientReference,
+              orderNumber: Value(orderNumber),
+              orderType: cmd.orderType,
+              tableServerId: Value(cmd.tableServerId),
+              tableLocalId: Value(cmd.tableLocalId),
+              sessionLocalId: Value(cmd.sessionLocalId),
+              customerLocalId: Value(cmd.customerLocalId),
+              createdByUserId: Value(cmd.createdByUserId),
+              notes: Value(cmd.notes),
+              subtotal: Value(quote.subtotalCents),
+              taxAmount: Value(quote.taxCents),
+              discountAmount: Value(
+                Money.toCents(quote.itemDiscountTotal) +
+                    Money.toCents(quote.orderDiscount),
+              ),
+              discountPercent: Value(cmd.orderDiscountPercent),
+              totalAmount: Value(quote.totalCents),
+              posStatus: const Value('new'),
+              paymentStatus: const Value('paid'),
+              fulfillmentStatus: const Value('unfulfilled'),
+              syncStatus: Value(
+                _shouldEnqueueConnectedSale(cmd) ? 'pending' : 'local',
+              ),
+              createdAt: now,
+              updatedAt: now,
+              completedAt: Value(now),
+            ),
+          );
+      await _fault(CheckoutFaultPoint.afterOrder);
+
+      for (final line in quote.lineResults) {
+        await _db
+            .into(_db.localOrderItems)
+            .insert(
+              LocalOrderItemsCompanion.insert(
+                localId: _newId(),
+                workspaceId: cmd.workspaceId,
+                orderLocalId: orderId,
+                productServerId: Value(line.line.productServerId),
+                productLocalId: Value(line.line.productLocalId),
+                name: line.line.name,
+                skuSnapshot: Value(line.line.sku),
+                barcodeSnapshot: Value(line.line.barcode),
+                quantity: line.line.quantity,
+                unitPrice: line.line.unitPriceCents,
+                costSnapshot: Value(Money.toCents(line.line.cost)),
+                discountAmount: Value(line.discountCents),
+                taxRate: Value(
+                  line.line.taxRate > 0 ? line.line.taxRate : cmd.taxRate,
+                ),
+                taxAmount: Value(line.taxCents),
+                totalAmount: line.totalCents,
+                createdAt: Value(now),
+                updatedAt: now,
+              ),
+            );
+        await _stock.apply(
+          workspaceId: cmd.workspaceId,
+          productLocalId: line.line.productLocalId,
+          type: 'sale',
+          quantity: line.line.quantity,
+          allowNegative: cmd.allowNegativeStock,
+          referenceType: 'order',
+          referenceId: orderId,
+          userId: cmd.createdByUserId,
+          deviceId: cmd.deviceId,
+        );
+        await _fault(CheckoutFaultPoint.afterStock);
+      }
+
+      final invoicePayload = {
+        'local_id': invoiceId,
+        'invoice_number': invoiceNumber,
+        'order_local_id': orderId,
+        'subtotal': quote.subtotal,
+        'discount_amount': Money.fromCents(
+          Money.toCents(quote.itemDiscountTotal) +
+              Money.toCents(quote.orderDiscount),
+        ),
+        'tax_amount': quote.taxAmount,
+        'total_amount': quote.total,
+        'payment_method': cmd.payments.map((p) => p.method).join('+'),
+        'closed_at': now.toUtc().toIso8601String(),
+        if (tableInfo != null) 'table': tableInfo,
+        'items': [
+          for (final line in quote.lineResults)
+            {
+              'product_local_id': line.line.productLocalId,
+              'item_name': line.line.name,
+              'quantity': line.line.quantity,
+              'unit_price': line.line.unitPrice,
+              'tax_amount': line.taxAmount,
+              'total_amount': line.total,
+            },
+        ],
+      };
+
+      await _db
+          .into(_db.localInvoices)
+          .insert(
+            LocalInvoicesCompanion.insert(
+              localId: invoiceId,
+              workspaceId: cmd.workspaceId,
+              deviceId: cmd.deviceId,
+              invoiceNumber: Value(invoiceNumber),
+              localInvoiceNumber: Value(invoiceNumber),
+              orderLocalId: Value(orderId),
+              status: const Value('closed'),
+              subtotal: Value(quote.subtotalCents),
+              discountAmount: Value(
+                Money.toCents(quote.itemDiscountTotal) +
+                    Money.toCents(quote.orderDiscount),
+              ),
+              taxAmount: Value(quote.taxCents),
+              totalAmount: Value(quote.totalCents),
+              createdByUserId: Value(cmd.createdByUserId),
+              syncStatus: Value(
+                _shouldEnqueueConnectedSale(cmd)
+                    ? 'pending'
+                    : (cmd.connected ? 'pending' : 'local'),
+              ),
+              payloadJson: Value(jsonEncode(invoicePayload)),
+              createdAt: now,
+            ),
+          );
+      await _fault(CheckoutFaultPoint.afterInvoice);
+
+      for (final p in cmd.payments) {
+        await _db
+            .into(_db.localPayments)
+            .insert(
+              LocalPaymentsCompanion.insert(
+                localId: _newId(),
+                workspaceId: cmd.workspaceId,
+                deviceId: cmd.deviceId,
+                orderLocalId: Value(orderId),
+                invoiceLocalId: Value(invoiceId),
+                method: p.method,
+                amount: Money.toCents(p.amount),
+                tendered: Value(
+                  p.tendered == null ? null : Money.toCents(p.tendered!),
+                ),
+                changeDue: Value(
+                  p.method == 'cash' && p.tendered != null
+                      ? Money.toCents(p.tendered!) - Money.toCents(p.amount)
+                      : 0,
+                ),
+                shiftLocalId: Value(cmd.shiftLocalId),
+                syncStatus: Value(cmd.connected ? 'pending' : 'local'),
+                clientReference: '${cmd.clientReference}:${p.method}',
+                createdAt: now,
+              ),
+            );
+        await _fault(CheckoutFaultPoint.afterPayment);
+        if (p.method == 'cash') {
+          await _db
+              .into(_db.localCashMovements)
+              .insert(
+                LocalCashMovementsCompanion.insert(
+                  localId: _newId(),
+                  workspaceId: cmd.workspaceId,
+                  shiftLocalId: cmd.shiftLocalId!,
+                  type: 'sale',
+                  amount: Money.toCents(p.amount),
+                  reason: const Value('بيع نقدي'),
+                  referenceId: Value(invoiceId),
+                  createdByUserId: Value(cmd.createdByUserId),
+                  createdAt: now,
+                ),
+              );
+          await _fault(CheckoutFaultPoint.afterCash);
+        }
+      }
+
+      await _enqueueSaleOrderCreated(
+        cmd: cmd,
+        quote: quote,
+        orderLocalId: orderId,
+        soldAt: now,
+      );
+      await _enqueueSaleInvoiceCreated(
+        cmd: cmd,
+        quote: quote,
+        orderLocalId: orderId,
+        invoiceLocalId: invoiceId,
+        invoiceNumber: invoiceNumber,
+        soldAt: now,
+      );
+
+      if (cmd.clearDraftChannel != null) {
+        await DraftCartStore(_db).clear(
+          workspaceId: cmd.workspaceId,
+          channel: cmd.clearDraftChannel!,
+          tableLocalId: cmd.clearDraftTableLocalId,
+        );
+      }
+
+      final tables = _tables;
+      if (tables != null &&
+          ((cmd.tableLocalId != null && cmd.tableLocalId!.trim().isNotEmpty) ||
+              cmd.tableServerId != null)) {
+        await tables.occupyFromCheckout(
+          workspaceId: cmd.workspaceId,
+          deviceId: cmd.deviceId,
+          tableLocalId: cmd.tableLocalId,
+          tableServerId: cmd.tableServerId,
+          invoiceLocalId: invoiceId,
+          invoiceNumber: invoiceNumber,
+          orderLocalId: orderId,
+          total: quote.total,
+          items: [
+            for (final line in quote.lineResults)
+              {
+                'product_local_id': line.line.productLocalId,
+                'item_name': line.line.name,
+                'product_name': line.line.name,
+                'name': line.line.name,
+                'quantity': line.line.quantity,
+                'unit_price': line.line.unitPrice,
+                'total_amount': line.total,
+              },
+          ],
+        );
+      }
+
+      return CheckoutResult(
+        orderLocalId: orderId,
+        invoiceLocalId: invoiceId,
+        invoiceNumber: invoiceNumber,
+        total: quote.total,
+        changeDue: Money.fromCents(changeDueCents),
+      );
+    });
+  }
+
+  bool _shouldEnqueueConnectedSale(CheckoutCommand cmd) {
+    if (PosMode.isReservedStandaloneWorkspace(cmd.workspaceId)) return false;
+    final type = cmd.orderType.trim().toLowerCase();
+    if (type != 'takeaway' && type != 'table' && type != 'delivery') {
+      return false;
+    }
+    if (type == 'table' &&
+        (cmd.tableServerId == null || cmd.tableServerId! <= 0) &&
+        (cmd.tableLocalId == null || cmd.tableLocalId!.trim().isEmpty)) {
+      return false;
+    }
+    if (cmd.clientReference.trim().isEmpty) return false;
+    if (cmd.lines.isEmpty) return false;
+    for (final line in cmd.lines) {
+      final serverId = line.productServerId;
+      if (serverId == null || serverId <= 0 || line.quantity < 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _enqueueSaleOrderCreated({
+    required CheckoutCommand cmd,
+    required PriceBreakdown quote,
+    required String orderLocalId,
+    required DateTime soldAt,
+  }) async {
+    if (!_shouldEnqueueConnectedSale(cmd)) return;
+
+    final existing = await _queue.findOpenOp(
+      workspaceId: cmd.workspaceId,
+      entityType: 'order',
+      entityId: orderLocalId,
+      operation: 'create',
+    );
+    if (existing != null) return;
+
+    int? customerServerId;
+    final customerLocalId = cmd.customerLocalId?.trim();
+    if (customerLocalId != null && customerLocalId.isNotEmpty) {
+      final customer =
+          await (_db.select(_db.localCustomers)..where(
+                (t) =>
+                    t.workspaceId.equals(cmd.workspaceId) &
+                    t.localId.equals(customerLocalId),
+              ))
+              .getSingleOrNull();
+      customerServerId = customer?.serverId;
+    }
+
+    final currency = await _storeCurrency(cmd.workspaceId);
+    final itemDiscountCents = Money.toCents(quote.itemDiscountTotal);
+    final subtotalAfterItemDiscount = Money.fromCents(
+      quote.subtotalCents - itemDiscountCents,
+    );
+    final tableInfo = await _tableSnapshot(cmd);
+    final tableServerId =
+        cmd.tableServerId ?? (tableInfo?['id'] is int ? tableInfo!['id'] as int : null);
+
+    await _queue.enqueue(
+      workspaceId: cmd.workspaceId,
+      deviceId: cmd.deviceId,
+      entityType: 'order',
+      entityId: orderLocalId,
+      operation: 'create',
+      payload: {
+        'order_type': cmd.orderType.trim().toLowerCase(),
+        'offline_sale': true,
+        if (tableServerId != null && tableServerId > 0)
+          'dining_table_id': tableServerId,
+        if (cmd.tableLocalId != null && cmd.tableLocalId!.trim().isNotEmpty)
+          'table_local_id': cmd.tableLocalId!.trim(),
+        if (cmd.sessionLocalId != null && cmd.sessionLocalId!.trim().isNotEmpty)
+          'session_local_id': cmd.sessionLocalId!.trim(),
+        if ('${tableInfo?['name'] ?? ''}'.trim().isNotEmpty)
+          'table_name': '${tableInfo!['name']}'.trim(),
+        'client_reference': cmd.clientReference,
+        'placed_at': soldAt.toUtc().toIso8601String(),
+        'currency': currency,
+        'subtotal_amount': subtotalAfterItemDiscount,
+        'discount_amount': quote.orderDiscount,
+        'tax_amount': quote.taxAmount,
+        'total_amount': quote.total,
+        if (cmd.notes != null && cmd.notes!.trim().isNotEmpty)
+          'notes': cmd.notes!.trim(),
+        if (customerServerId != null && customerServerId > 0)
+          'customer_id': customerServerId,
+        if (customerLocalId != null && customerLocalId.isNotEmpty)
+          'customer_local_id': customerLocalId,
+        'items': [
+          for (final line in quote.lineResults)
+            {
+              'pos_menu_item_id': line.line.productServerId,
+              'quantity': line.line.quantity,
+              'unit_price': Money.fromCents(line.line.unitPriceCents),
+              'discount_amount': Money.fromCents(
+                Money.toCents(line.line.itemDiscount),
+              ),
+              'tax_amount': Money.fromCents(line.taxCents),
+              'name': line.line.name,
+              'product_name': line.line.name,
+            },
+        ],
+      },
+      clientReference: cmd.clientReference,
+    );
+  }
+
+  Future<void> _enqueueSaleInvoiceCreated({
+    required CheckoutCommand cmd,
+    required PriceBreakdown quote,
+    required String orderLocalId,
+    required String invoiceLocalId,
+    required String invoiceNumber,
+    required DateTime soldAt,
+  }) async {
+    if (!_shouldEnqueueConnectedSale(cmd)) return;
+
+    final existing = await _queue.findOpenOp(
+      workspaceId: cmd.workspaceId,
+      entityType: 'invoice',
+      entityId: invoiceLocalId,
+      operation: 'create',
+    );
+    if (existing != null) return;
+
+    final currency = await _storeCurrency(cmd.workspaceId);
+    final itemDiscountCents = Money.toCents(quote.itemDiscountTotal);
+    final subtotalAfterItemDiscount = Money.fromCents(
+      quote.subtotalCents - itemDiscountCents,
+    );
+
+    await _queue.enqueue(
+      workspaceId: cmd.workspaceId,
+      deviceId: cmd.deviceId,
+      entityType: 'invoice',
+      entityId: invoiceLocalId,
+      operation: 'create',
+      payload: {
+        'order_type': cmd.orderType.trim().toLowerCase(),
+        'order_local_id': orderLocalId,
+        'local_invoice_number': invoiceNumber,
+        'closed_at': soldAt.toUtc().toIso8601String(),
+        'currency': currency,
+        'subtotal_amount': subtotalAfterItemDiscount,
+        'discount_amount': quote.orderDiscount,
+        'tax_amount': quote.taxAmount,
+        'total_amount': quote.total,
+        'payment_method': cmd.payments.map((p) => p.method).join('+'),
+      },
+      clientReference: invoiceLocalId,
+    );
+  }
+
+  Future<String> _storeCurrency(int workspaceId) async {
+    final store = await (_db.select(
+      _db.localStores,
+    )..where((t) => t.workspaceId.equals(workspaceId))).getSingleOrNull();
+    final currency = store?.currency.trim().toUpperCase() ?? '';
+    if (RegExp(r'^[A-Z]{3}$').hasMatch(currency)) return currency;
+    return 'SAR';
+  }
+
+  Future<Map<String, dynamic>?> _tableSnapshot(CheckoutCommand cmd) async {
+    final localId = cmd.tableLocalId?.trim();
+    if (localId != null && localId.isNotEmpty) {
+      final byLocal = await (_db.select(
+        _db.localTables,
+      )..where((t) => t.localId.equals(localId))).getSingleOrNull();
+      if (byLocal != null) {
+        return {
+          'id': byLocal.serverId ?? cmd.tableServerId,
+          'name': byLocal.name,
+          'local_id': byLocal.localId,
+        };
+      }
+    }
+    final serverId = cmd.tableServerId;
+    if (serverId == null || serverId <= 0) return null;
+    final byServer =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.workspaceId.equals(cmd.workspaceId) &
+                  t.serverId.equals(serverId),
+            ))
+            .getSingleOrNull();
+    if (byServer == null) return null;
+    return {
+      'id': byServer.serverId ?? serverId,
+      'name': byServer.name,
+      'local_id': byServer.localId,
+    };
+  }
+
+  Future<CheckoutResult?> _paidOrder(CheckoutCommand cmd) async {
+    final existing =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(cmd.workspaceId) &
+                  t.clientReference.equals(cmd.clientReference),
+            ))
+            .getSingleOrNull();
+    if (existing == null || existing.paymentStatus != 'paid') return null;
+    final invoice =
+        await (_db.select(_db.localInvoices)..where(
+              (t) =>
+                  t.workspaceId.equals(cmd.workspaceId) &
+                  t.orderLocalId.equals(existing.localId),
+            ))
+            .getSingleOrNull();
+    return CheckoutResult(
+      orderLocalId: existing.localId,
+      invoiceLocalId: invoice?.localId ?? existing.localId,
+      invoiceNumber:
+          invoice?.localInvoiceNumber ??
+          invoice?.invoiceNumber ??
+          existing.orderNumber ??
+          existing.localId,
+      total: Money.fromCents(existing.totalAmount),
+      changeDue: 0,
+    );
+  }
+
+  Future<void> _fault(CheckoutFaultPoint point) async {
+    if (faultForTest == point) {
+      throw DatabaseFailure('injected:$point');
+    }
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="hasim_splash_bg">#FFFFFFFF</color>
+    <color name="hasim_brand">#FF06C2A4</color>
+    <color name="hasim_brand_dark">#FF067E6B</color>
+    <color name="hasim_icon_bg">#FF0C3231</color>
+</resources>
