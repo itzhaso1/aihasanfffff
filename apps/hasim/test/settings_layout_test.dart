@@ -1,0 +1,198 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:hasim/core/config/app_config.dart';
+import 'package:hasim/core/di/providers.dart';
+import 'package:hasim/core/network/api_client.dart';
+import 'package:hasim/core/storage/prefs_store.dart';
+import 'package:hasim/core/storage/secure_store.dart';
+import 'package:hasim/core/theme/app_theme.dart';
+import 'package:hasim/core/widgets/hasim_bottom_nav.dart';
+import 'package:hasim/core/widgets/hasim_nav_rail.dart';
+import 'package:hasim/core/models/models.dart';
+import 'package:hasim/features/settings/presentation/settings_screen.dart';
+import 'package:hasim/features/stories/data/story_repository.dart';
+import 'package:hasim/realtime/realtime_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/isolated_api_client.dart';
+
+class _FakeStoryRepository extends StoryRepository {
+  _FakeStoryRepository(super.api);
+
+  @override
+  Future<List<StoryModel>> list() async => const [];
+}
+
+class _MemorySecureStore extends SecureStore {
+  String? _token;
+  @override
+  Future<void> saveToken(String token) async => _token = token;
+  @override
+  Future<String?> readToken() async => _token;
+  @override
+  Future<void> clearToken() async => _token = null;
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  GoogleFonts.config.allowRuntimeFetching = false;
+
+  late SharedPreferences prefs;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    prefs = await SharedPreferences.getInstance();
+  });
+
+  Widget app() {
+    final router = GoRouter(
+      initialLocation: '/settings',
+      routes: [
+        GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
+        GoRoute(path: '/profile', builder: (_, _) => const Scaffold(body: Text('شاشة الحساب'))),
+        GoRoute(path: '/more/security', builder: (_, _) => const Scaffold(body: Text('شاشة الأمان'))),
+        GoRoute(
+          path: '/notification-preferences',
+          builder: (_, _) => const Scaffold(body: Text('شاشة التفضيلات')),
+        ),
+        GoRoute(path: '/chat-catalog-settings', builder: (_, _) => const Scaffold(body: Text('شاشة الكتالوج'))),
+        GoRoute(path: '/chat-themes', builder: (_, _) => const Scaffold(body: Text('شاشة المظهر والسمات'))),
+        GoRoute(path: '/ai-settings', builder: (_, _) => const Scaffold(body: Text('شاشة الذكاء'))),
+        GoRoute(path: '/conversations', builder: (_, _) => const Scaffold(body: Text('المحادثات'))),
+        GoRoute(path: '/email', builder: (_, _) => const Scaffold(body: Text('البريد'))),
+        GoRoute(path: '/updates', builder: (_, _) => const Scaffold(body: Text('التحديثات'))),
+        GoRoute(path: '/more', builder: (_, _) => const Scaffold(body: Text('المزيد'))),
+        GoRoute(path: '/login', builder: (_, _) => const Scaffold(body: Text('تسجيل الدخول'))),
+      ],
+    );
+
+    final secure = _MemorySecureStore();
+    final prefsStore = PrefsStore(prefs);
+    final api = isolatedTestApiClient(secureStore: secure, prefsStore: prefsStore);
+    return ProviderScope(
+      overrides: [
+        sharedPrefsProvider.overrideWithValue(prefs),
+        secureStoreProvider.overrideWithValue(secure),
+        apiClientProvider.overrideWithValue(api),
+        realtimeServiceProvider.overrideWithValue(NoopRealtimeService()),
+        storyRepositoryProvider.overrideWithValue(_FakeStoryRepository(api)),
+      ],
+      child: MaterialApp.router(
+        theme: AppTheme.light(),
+        locale: const Locale('ar'),
+        builder: (context, child) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: child ?? const SizedBox.shrink(),
+        ),
+        routerConfig: router,
+      ),
+    );
+  }
+
+  Finder settingsItem(String label) => find.text(label);
+
+  testWidgets('mobile settings keep the stacked list without a nav rail', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(app());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HasimBottomNav), findsNothing);
+    expect(find.byType(HasimNavRail), findsNothing);
+    expect(find.text('ابحث في الإعدادات'), findsNothing);
+    expect(settingsItem('حسابي'), findsOneWidget);
+    expect(settingsItem('الأمان والجلسات'), findsOneWidget);
+    expect(settingsItem('تفضيلات الإشعارات'), findsOneWidget);
+    expect(settingsItem('المظهر والسمات'), findsOneWidget);
+    expect(settingsItem('عنوان API'), findsOneWidget);
+    expect(find.text(AppConfig.apiBase), findsOneWidget);
+    expect(settingsItem('الإشعارات الفورية (Push)'), findsOneWidget);
+    expect(settingsItem('تسجيل الخروج'), findsOneWidget);
+    expect(find.byType(SegmentedButton<ThemeMode>), findsNothing);
+    await tester.tap(settingsItem('المظهر والسمات'));
+    await tester.pumpAndSettle();
+    expect(find.text('شاشة المظهر والسمات'), findsOneWidget);
+    expect(find.text('المساعدة'), findsNothing);
+    expect(find.text('حول التطبيق'), findsNothing);
+    expect(find.text('البيانات والتخزين'), findsNothing);
+
+    GoRouter.of(tester.element(find.text('شاشة المظهر والسمات'))).go('/settings');
+    await tester.pumpAndSettle();
+    await tester.tap(settingsItem('حسابي'));
+    await tester.pumpAndSettle();
+    expect(find.text('شاشة الحساب'), findsOneWidget);
+  });
+
+  testWidgets('desktop settings use a rail, searchable panel, and detail pane', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(app());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HasimNavRail), findsOneWidget);
+    expect(find.byType(HasimBottomNav), findsNothing);
+    expect(find.byKey(const Key('hasim-settings-panel')), findsOneWidget);
+    expect(find.byKey(const Key('hasim-settings-detail')), findsOneWidget);
+    expect(find.text('ابحث في الإعدادات'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byKey(const Key('hasim-settings-detail')), matching: find.byType(TextField)),
+      findsNWidgets(6),
+    );
+    expect(find.text('اختر أحد الإعدادات من القائمة لعرض التفاصيل هنا.'), findsNothing);
+    expect(
+      find.descendant(of: find.byKey(const Key('hasim-settings-panel')), matching: find.text('حسابي')),
+      findsOneWidget,
+    );
+    expect(settingsItem('الأمان والجلسات'), findsOneWidget);
+    expect(settingsItem('تفضيلات الإشعارات'), findsOneWidget);
+    expect(settingsItem('المظهر والسمات'), findsOneWidget);
+    expect(settingsItem('عنوان API'), findsOneWidget);
+    expect(settingsItem('الإشعارات الفورية (Push)'), findsOneWidget);
+    expect(settingsItem('تسجيل الخروج'), findsOneWidget);
+    expect(find.text('المساعدة'), findsNothing);
+    expect(find.text('حول التطبيق'), findsNothing);
+    expect(find.text('البيانات والتخزين'), findsNothing);
+
+    final rail = tester.getRect(find.byType(HasimNavRail));
+    final panel = tester.getRect(find.byKey(const Key('hasim-settings-panel')));
+    final detail = tester.getRect(find.byKey(const Key('hasim-settings-detail')));
+    expect(rail.center.dx, greaterThan(panel.center.dx));
+    expect(panel.center.dx, greaterThan(detail.center.dx));
+    expect(detail.width, greaterThan(panel.width));
+
+    await tester.tap(
+      find.descendant(of: find.byKey(const Key('hasim-settings-panel')), matching: find.text('حسابي')),
+    );
+    await tester.pump();
+    expect(find.text('اختر أحد الإعدادات من القائمة لعرض التفاصيل هنا.'), findsNothing);
+    expect(
+      find.descendant(of: find.byKey(const Key('hasim-settings-detail')), matching: find.byType(TextField)),
+      findsNWidgets(6),
+    );
+    expect(find.text('شاشة الحساب'), findsNothing);
+
+    await tester.enterText(find.widgetWithText(TextField, 'ابحث في الإعدادات'), 'API');
+    await tester.pump();
+    expect(find.descendant(of: find.byKey(const Key('hasim-settings-panel')), matching: find.text('حسابي')), findsNothing);
+    expect(find.descendant(of: find.byKey(const Key('hasim-settings-panel')), matching: find.text('عنوان API')), findsOneWidget);
+
+    await tester.tap(settingsItem('عنوان API'));
+    await tester.pump();
+    expect(find.text('اختر أحد الإعدادات من القائمة لعرض التفاصيل هنا.'), findsNothing);
+    expect(find.text(AppConfig.apiBase), findsWidgets);
+    expect(find.text('شاشة الحساب'), findsNothing);
+  });
+}

@@ -2,9 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * Device tokens are workspace-bound. Queries must always include workspace_id
+ * (or run inside WorkspaceContext). This model is intentionally not globally
+ * scoped so logout/revoke can target a user's tokens with an explicit workspace filter.
+ */
 class DevicePushToken extends Model
 {
     protected $fillable = [
@@ -42,5 +48,10 @@ class DevicePushToken extends Model
     public function isActive(): bool
     {
         return $this->revoked_at === null;
+    }
+
+    public static function queryForWorkspace(int $workspaceId): Builder
+    {
+        return static::query()->where('workspace_id', $workspaceId);
     }
 }

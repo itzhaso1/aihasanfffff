@@ -7,11 +7,10 @@ abstract final class HasimNav {
     'المحادثات',
     'البريد',
     'التحديثات',
-    'المزيد',
   ];
 
   static const conversationsIndex = 0;
   static const emailIndex = 1;
   static const updatesIndex = 2;
-  static const moreIndex = 3;
+  static const tabCount = 3;
 }

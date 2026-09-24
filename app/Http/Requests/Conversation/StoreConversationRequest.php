@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests\Conversation;
 
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreConversationRequest extends FormRequest
 {
@@ -22,9 +24,17 @@ class StoreConversationRequest extends FormRequest
      */
     public function rules(): array
     {
+        $workspaceId = app(WorkspaceContext::class)->workspaceId();
+
         return [
-            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
-            'channel' => ['required', 'in:whatsapp,web,manual,instagram,facebook_messenger,email'],
+            'customer_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('customers', 'id')->where(
+                    fn ($query) => $query->where('workspace_id', $workspaceId)
+                ),
+            ],
+            'channel' => ['required', 'in:whatsapp,web,manual,instagram,facebook_messenger,email,tiktok,telegram'],
             'external_id' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'in:open,closed,archived'],
             'ai_enabled' => ['nullable', 'boolean'],

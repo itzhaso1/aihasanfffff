@@ -33,6 +33,8 @@ server {
 
 Preserve `Host` and `X-Forwarded-*` when the app sits behind a reverse proxy.
 
+Set `TRUSTED_PROXIES` in the host `.env` so Laravel trusts forwarded headers only from the edge (see `.env.example`). Same-host Nginx + PHP-FPM: `127.0.0.1,::1,REMOTE_ADDR`. If an external load balancer or CDN sits in front of Nginx, add its private IP/CIDR — do not use `*` unless that edge strips client-supplied forwarded headers.
+
 ## TLS / Certbot
 
 Issue TLS for the platform hostname with Certbot (or CDN/ACME) on Linux against Nginx.
@@ -49,9 +51,13 @@ Workers should process payment, WhatsApp, and other application jobs. Scheduler 
 
 Production runtime (Redis queue/cache/session, Supervisor, cron): `docs/operations/production-runtime-runbook.md`.
 
+When `QUEUE_CONNECTION=redis`, set `REDIS_QUEUE_AFTER_COMMIT=true` in production `.env` so queued jobs are pushed only after DB transactions commit. Restart workers after changing queue config (`php artisan queue:restart`).
+
 ## Environment
 
 Configure app URL, DB, cache, queue, mail, WhatsApp, AI keys, and payment webhook secrets before go-live.
+
+Global security headers (`X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, HSTS on HTTPS in production) are applied via `App\Http\Middleware\SecurityHeaders` on web + API responses. CSP is intentionally deferred until Vite/Alpine nonce support exists. See `config/security-headers.php` and `.env.example` (`SECURITY_HEADERS_*`).
 
 HyperPay (merchant settlement — optional until contract ready):
 

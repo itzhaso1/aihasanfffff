@@ -3,10 +3,10 @@
 namespace App\EInvoicing\Security;
 
 /**
- * Future secret/key-management boundary.
+ * Legacy marker for future key-management boundaries.
  *
- * Implementations must not persist private keys in normal application tables.
- * Phase 9 does not provide a production implementation.
+ * @see PrivateKeyStore Production and test signing must use {@see PrivateKeyStore} with a
+ *      {@see \App\Models\EInvoicing\PrivateKeyReference} row — never PEM in DB.
  */
 interface PrivateKeyMaterial
 {

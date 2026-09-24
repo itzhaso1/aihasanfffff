@@ -20,6 +20,8 @@ import 'package:hasim/features/workspace/data/workspace_repository.dart';
 import 'package:hasim/realtime/realtime_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/isolated_api_client.dart';
+
 const _workspaceA = WorkspaceModel(id: 1, name: 'Workspace A');
 const _workspaceB = WorkspaceModel(id: 2, name: 'Workspace B');
 const _user = UserModel(id: 9, name: 'Tester');
@@ -228,7 +230,7 @@ Future<_Harness> _openHarness() async {
   final rawPrefs = await SharedPreferences.getInstance();
   final prefs = PrefsStore(rawPrefs);
   final secure = _MemorySecureStore();
-  final api = ApiClient(secureStore: secure, prefsStore: prefs);
+  final api = isolatedTestApiClient(secureStore: secure, prefsStore: prefs);
   final db = InboxDatabase.memory();
   final store = InboxLocalStore(db);
   final authRepo = _FakeAuthRepository(api);
@@ -238,6 +240,7 @@ Future<_Harness> _openHarness() async {
     overrides: [
       sharedPrefsProvider.overrideWithValue(rawPrefs),
       secureStoreProvider.overrideWithValue(secure),
+      apiClientProvider.overrideWithValue(api),
       inboxDatabaseProvider.overrideWithValue(db),
       inboxLocalStoreProvider.overrideWithValue(store),
       authRepositoryProvider.overrideWithValue(authRepo),

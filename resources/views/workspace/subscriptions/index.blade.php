@@ -3,7 +3,7 @@
         $upgradeRequired = session('upgrade_required');
     @endphp
 
-    <div class="mx-auto max-w-7xl space-y-8" dir="rtl">
+    <div class="hs-plan-page mx-auto space-y-8" dir="rtl">
         @include('partials.flash')
 
         @if($upgradeRequired)
@@ -34,7 +34,7 @@
                     :text="__('الأسعار والميزات من الباقات الرسمية في النظام. الدفع يمر عبر صفحة الدفع الآمنة.')"
                 />
             @else
-                <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                <div class="hs-plan-grid grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                     @foreach($planCards as $card)
                         <x-workspace.plan-card :card="$card" :can-manage-billing="$canManageBilling" />
                     @endforeach
@@ -60,7 +60,7 @@
                 </a>
             </div>
 
-            <div class="overflow-x-auto">
+            <div class="min-w-0 overflow-x-auto">
                 <table class="min-w-full text-sm">
                     <thead class="text-xs font-semibold text-gray-500">
                         <tr>
@@ -116,7 +116,7 @@
             <div class="mt-6 space-y-8">
                 <section id="compare" aria-labelledby="compare-heading">
                     <h2 id="compare-heading" class="mb-2 font-semibold text-gray-900">{{ __('مقارنة الباقات') }}</h2>
-                    <div class="overflow-x-auto">
+                    <div class="min-w-0 overflow-x-auto">
                         <table class="min-w-full text-sm">
                             <thead class="bg-gray-50">
                                 <tr>
@@ -147,7 +147,7 @@
 
                 <section aria-labelledby="history-heading">
                     <h2 id="history-heading" class="mb-3 font-semibold">{{ __('سجل الاشتراكات') }}</h2>
-                    <div class="overflow-x-auto">
+                    <div class="min-w-0 overflow-x-auto">
                         <table class="min-w-full text-sm">
                             <thead class="bg-gray-50">
                                 <tr>

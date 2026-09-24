@@ -191,6 +191,39 @@ return [
         ['key' => 'advanced_customers', 'label' => 'إدارة العملاء المتقدمة'],
     ],
 
+    /*
+    | Public subscription-card copy. A row is shown only when the plan
+    | actually has the listed feature keys in plans.features.
+    */
+    'card_highlights' => [
+        'starter' => [
+            ['label' => 'إدارة العملاء', 'any' => ['customers']],
+            ['label' => 'المحادثات', 'any' => ['conversations', 'messages']],
+            ['label' => 'لوحة تحكم أساسية', 'any' => ['dashboard']],
+            ['label' => 'استخدام محدود للمزايا', 'any' => ['usage']],
+        ],
+        'pro' => [
+            ['label' => 'كل مميزات المبتدئة', 'any' => ['customers', 'dashboard']],
+            ['label' => 'تقارير متقدمة', 'any' => ['analytics']],
+            ['label' => 'إدارة المخزون', 'any' => ['inventory']],
+            ['label' => 'إدارة المصروفات', 'any' => ['finance']],
+            ['label' => 'مزايا الذكاء الاصطناعي', 'any' => ['ai']],
+            ['label' => 'استخدام أعلى', 'any' => ['usage']],
+        ],
+        'business' => [
+            ['label' => 'كل مميزات الاحترافية', 'any' => ['finance', 'analytics', 'inventory']],
+            ['label' => 'صلاحيات الموظفين', 'any' => ['employees', 'roles_permissions']],
+            ['label' => 'تقارير مالية متقدمة', 'all' => ['finance', 'analytics']],
+            ['label' => 'إدارة العملاء المتقدمة', 'any' => ['advanced_customers', 'crm']],
+            ['label' => 'استخدام أعلى', 'any' => ['usage']],
+        ],
+        'enterprise' => [
+            ['label' => 'كل مميزات الأعمال', 'any' => ['roles_permissions', 'advanced_customers']],
+            ['label' => 'صلاحيات متقدمة', 'any' => ['roles_permissions']],
+            ['label' => 'استخدام مرن حسب الاحتياج', 'any' => ['usage']],
+        ],
+    ],
+
     'legacy_code_tier_map' => [
         'individual_free' => 'starter',
         'individual_pro' => 'pro',

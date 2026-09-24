@@ -77,22 +77,30 @@ class WorkspaceModel extends Equatable {
 }
 
 class CustomerModel extends Equatable {
-  const CustomerModel({required this.id, required this.name, this.phone, this.email});
+  const CustomerModel({
+    required this.id,
+    required this.name,
+    this.phone,
+    this.email,
+    this.whatsapp,
+  });
 
   final int id;
   final String name;
   final String? phone;
   final String? email;
+  final String? whatsapp;
 
   factory CustomerModel.fromJson(Map<String, dynamic> json) => CustomerModel(
         id: (json['id'] as num).toInt(),
         name: json['name']?.toString() ?? '',
         phone: json['phone']?.toString(),
         email: json['email']?.toString(),
+        whatsapp: json['whatsapp']?.toString(),
       );
 
   @override
-  List<Object?> get props => [id, name];
+  List<Object?> get props => [id, name, phone, email, whatsapp];
 }
 
 class MessageAttachmentModel extends Equatable {
@@ -102,7 +110,10 @@ class MessageAttachmentModel extends Equatable {
     required this.originalName,
     this.mimeType,
     this.sizeBytes,
+    this.durationMs,
+    this.status,
     this.downloadUrl,
+    this.previewUrl,
   });
 
   final int id;
@@ -110,7 +121,18 @@ class MessageAttachmentModel extends Equatable {
   final String originalName;
   final String? mimeType;
   final int? sizeBytes;
+  final int? durationMs;
+  final String? status;
   final String? downloadUrl;
+  final String? previewUrl;
+
+  String? get displayUrl {
+    final preview = previewUrl;
+    if (preview != null && preview.isNotEmpty) return preview;
+    final download = downloadUrl;
+    if (download != null && download.isNotEmpty) return download;
+    return null;
+  }
 
   factory MessageAttachmentModel.fromJson(Map<String, dynamic> json) =>
       MessageAttachmentModel(
@@ -119,11 +141,32 @@ class MessageAttachmentModel extends Equatable {
         originalName: json['original_name']?.toString() ?? 'ملف',
         mimeType: json['mime_type']?.toString(),
         sizeBytes: (json['size_bytes'] as num?)?.toInt(),
+        durationMs: (json['duration_ms'] as num?)?.toInt(),
+        status: json['status']?.toString(),
         downloadUrl: json['download_url']?.toString(),
+        previewUrl: json['preview_url']?.toString(),
       );
 
+  MessageAttachmentModel copyWith({
+    String? downloadUrl,
+    String? previewUrl,
+    String? status,
+  }) {
+    return MessageAttachmentModel(
+      id: id,
+      kind: kind,
+      originalName: originalName,
+      mimeType: mimeType,
+      sizeBytes: sizeBytes,
+      durationMs: durationMs,
+      status: status ?? this.status,
+      downloadUrl: downloadUrl ?? this.downloadUrl,
+      previewUrl: previewUrl ?? this.previewUrl,
+    );
+  }
+
   @override
-  List<Object?> get props => [id];
+  List<Object?> get props => [id, kind, downloadUrl, previewUrl];
 }
 
 class MessageModel extends Equatable {
@@ -140,6 +183,8 @@ class MessageModel extends Equatable {
     this.attachments = const [],
     this.localPending = false,
     this.localFailed = false,
+    this.localUploading = false,
+    this.localAttachmentPath,
     this.clientId,
   });
 
@@ -155,6 +200,8 @@ class MessageModel extends Equatable {
   final List<MessageAttachmentModel> attachments;
   final bool localPending;
   final bool localFailed;
+  final bool localUploading;
+  final String? localAttachmentPath;
   final String? clientId;
 
   bool get isOutbound => direction == 'outbound';
@@ -189,10 +236,13 @@ class MessageModel extends Equatable {
     int? id,
     bool? localPending,
     bool? localFailed,
+    bool? localUploading,
     String? content,
     List<MessageAttachmentModel>? attachments,
     String? clientId,
     DateTime? createdAt,
+    String? localAttachmentPath,
+    bool clearLocalAttachmentPath = false,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -207,6 +257,8 @@ class MessageModel extends Equatable {
       attachments: attachments ?? this.attachments,
       localPending: localPending ?? this.localPending,
       localFailed: localFailed ?? this.localFailed,
+      localUploading: localUploading ?? this.localUploading,
+      localAttachmentPath: clearLocalAttachmentPath ? null : (localAttachmentPath ?? this.localAttachmentPath),
       clientId: clientId ?? this.clientId,
     );
   }
@@ -226,7 +278,10 @@ class MessageModel extends Equatable {
                   'original_name': a.originalName,
                   'mime_type': a.mimeType,
                   'size_bytes': a.sizeBytes,
+                  'duration_ms': a.durationMs,
+                  'status': a.status,
                   'download_url': a.downloadUrl,
+                  'preview_url': a.previewUrl,
                 })
             .toList(),
       };
@@ -274,6 +329,14 @@ class ConversationModel extends Equatable {
     switch (channel) {
       case 'whatsapp':
         return 'واتساب';
+      case 'instagram':
+        return 'إنستغرام';
+      case 'facebook_messenger':
+        return 'ماسنجر';
+      case 'telegram':
+        return 'تلغرام';
+      case 'tiktok':
+        return 'تيك توك';
       case 'email':
         return 'بريد';
       case 'web':
@@ -431,6 +494,20 @@ class EmailMessageModel extends Equatable {
         isStarred: json['is_starred'] == true,
         createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
         emailAccountId: (json['email_account_id'] as num?)?.toInt(),
+      );
+
+  EmailMessageModel copyWith({bool? isRead, bool? isStarred}) => EmailMessageModel(
+        id: id,
+        sender: sender,
+        recipient: recipient,
+        subject: subject,
+        type: type,
+        preview: preview,
+        body: body,
+        isRead: isRead ?? this.isRead,
+        isStarred: isStarred ?? this.isStarred,
+        createdAt: createdAt,
+        emailAccountId: emailAccountId,
       );
 
   @override
@@ -626,6 +703,8 @@ class ChannelModel extends Equatable {
     this.hint,
     this.manageUrl,
     this.canConnectInApp = false,
+    this.displayName,
+    this.phoneNumber,
   });
 
   final String key;
@@ -637,6 +716,8 @@ class ChannelModel extends Equatable {
   final String? hint;
   final String? manageUrl;
   final bool canConnectInApp;
+  final String? displayName;
+  final String? phoneNumber;
 
   factory ChannelModel.fromJson(Map<String, dynamic> json) => ChannelModel(
         key: json['key']?.toString() ?? '',
@@ -648,10 +729,12 @@ class ChannelModel extends Equatable {
         hint: json['hint']?.toString(),
         manageUrl: json['manage_url']?.toString(),
         canConnectInApp: json['can_connect_in_app'] == true,
+        displayName: json['display_name']?.toString(),
+        phoneNumber: json['phone_number']?.toString(),
       );
 
   @override
-  List<Object?> get props => [key, status, connected];
+  List<Object?> get props => [key, status, connected, displayName, phoneNumber];
 }
 
 class PlanCatalogItem extends Equatable {

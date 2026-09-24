@@ -87,4 +87,14 @@ abstract class TestCase extends BaseTestCase
             ['workspace_id' => $workspace->id, 'feature_key' => $feature, 'enabled' => $enabled, 'source' => 'manual']
         );
     }
+
+    /**
+     * @param  list<string>  $features
+     */
+    protected function enableWorkspaceFeatures(Workspace $workspace, array $features, bool $enabled = true): void
+    {
+        foreach ($features as $feature) {
+            $this->enableWorkspaceFeature($workspace, $feature, $enabled);
+        }
+    }
 }

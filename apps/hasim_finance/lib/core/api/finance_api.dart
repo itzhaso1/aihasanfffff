@@ -491,6 +491,42 @@ class FinanceApi {
     return null;
   }
 
+  Future<ContractRecord> renewContract(int id, Map<String, dynamic> body) async {
+    final res = await _client.post(
+      'contracts/$id/renew',
+      body: body,
+      mapData: (raw) => ContractRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<ContractRecord> signContract(int id, Map<String, dynamic> body) async {
+    final res = await _client.post(
+      'contracts/$id/sign',
+      body: body,
+      mapData: (raw) => ContractRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<List<InvoiceRecord>> contractInvoices(int id) async {
+    final res = await _client.get('contracts/$id/invoices');
+    final rows = res.data is List ? res.data as List : const [];
+    return rows
+        .whereType<Map>()
+        .map((row) => InvoiceRecord.fromJson(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  Future<List<PaymentRecord>> contractPayments(int id) async {
+    final res = await _client.get('contracts/$id/payments');
+    final rows = res.data is List ? res.data as List : const [];
+    return rows
+        .whereType<Map>()
+        .map((row) => PaymentRecord.fromJson(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
   Future<Map<String, dynamic>> reversePayment(int paymentId, {String? reason}) async {
     final res = await _client.post('payments/$paymentId/reverse', body: {'reversal_reason': reason});
     return Map<String, dynamic>.from(res.data as Map? ?? {});
@@ -857,9 +893,56 @@ class FinanceApi {
     return res.data!;
   }
 
-  Future<Map<String, dynamic>> askCopilot(String question) async {
-    final res = await _client.post('copilot/ask', body: {'question': question});
-    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  Future<FinanceAssistantResponse> askAssistant({
+    required String question,
+    String locale = 'ar',
+    int? conversationId,
+    String? idempotencyKey,
+  }) async {
+    final res = await _client.post(
+      'assistant/ask',
+      body: {
+        'question': question,
+        'locale': locale,
+        if (conversationId != null) 'conversation_id': conversationId,
+      },
+      idempotent: true,
+      idempotencyKey: idempotencyKey,
+      mapData: (raw) => FinanceAssistantResponse.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<PagedResult<FinanceAssistantConversation>> assistantConversations({
+    String status = 'active',
+    int page = 1,
+  }) {
+    return _paged(
+      'assistant/conversations',
+      FinanceAssistantConversation.fromJson,
+      page: page,
+      extra: {'status': status},
+    );
+  }
+
+  Future<FinanceAssistantConversationDetail> assistantConversation(int id) async {
+    final res = await _client.get(
+      'assistant/conversations/$id',
+      mapData: (raw) => FinanceAssistantConversationDetail.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<FinanceAssistantConversation> archiveAssistantConversation(int id) async {
+    final res = await _client.post(
+      'assistant/conversations/$id/archive',
+      mapData: (raw) => FinanceAssistantConversation.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<void> deleteAssistantConversation(int id) async {
+    await _client.delete('assistant/conversations/$id');
   }
 
   Future<SupplierRecord> supplier(int id) async {

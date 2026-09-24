@@ -15,6 +15,20 @@ class MessageCreated implements ShouldBroadcast
 
     public function __construct(public Message $message) {}
 
+    public function broadcastConnection(): ?string
+    {
+        $connection = config('inbox.realtime.broadcast_connection');
+
+        return is_string($connection) && $connection !== '' && $connection !== 'null'
+            ? $connection
+            : null;
+    }
+
+    public function broadcastQueue(): string
+    {
+        return (string) config('inbox.queues.realtime', 'realtime');
+    }
+
     /**
      * @return array<int, PrivateChannel>
      */

@@ -40,6 +40,17 @@ class MessageAttachmentService
             throw new InvalidArgumentException('نوع الملف غير مدعوم.');
         }
 
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf', 'mp3', 'mpeg', 'mp4', 'wav', 'webm'];
+        $guessedExtension = strtolower((string) $file->guessExtension());
+        if ($guessedExtension === '' || ! in_array($guessedExtension, $allowedExtensions, true)) {
+            throw new InvalidArgumentException('نوع الملف غير مدعوم.');
+        }
+
+        $clientExtension = strtolower((string) $file->getClientOriginalExtension());
+        if (in_array($clientExtension, ['php', 'phtml', 'phar', 'exe', 'js', 'sh', 'bat', 'cmd', 'com'], true)) {
+            throw new InvalidArgumentException('نوع الملف غير مدعوم.');
+        }
+
         if ($file->getSize() > self::MAX_BYTES) {
             throw new InvalidArgumentException('حجم الملف يتجاوز الحد المسموح (10 ميجابايت).');
         }
@@ -47,8 +58,9 @@ class MessageAttachmentService
         $workspaceId = (int) $message->workspace_id;
         $messageId = (int) $message->id;
         $filename = Str::uuid()->toString().'.'.$file->guessExtension();
-        $directory = "mobile-attachments/{$workspaceId}/{$messageId}";
-        $path = $file->storeAs($directory, $filename, 'local');
+        $directory = "inbox/{$workspaceId}/{$messageId}";
+        $diskName = (string) config('media.disk', 'local');
+        $path = $file->storeAs($directory, $filename, $diskName);
 
         if (! is_string($path) || $path === '') {
             throw new RuntimeException('تعذر حفظ المرفق.');
@@ -57,13 +69,22 @@ class MessageAttachmentService
         return MessageAttachment::query()->create([
             'workspace_id' => $workspaceId,
             'message_id' => $messageId,
-            'disk' => 'local',
+            'provider' => 'mobile',
+            'provider_media_id' => Str::uuid()->toString(),
+            'disk' => $diskName,
             'path' => $path,
             'original_name' => $file->getClientOriginalName(),
             'mime_type' => $mime,
             'size_bytes' => (int) $file->getSize(),
             'kind' => $this->kindFromMime($mime),
+            'status' => MessageAttachment::STATUS_STORED,
+            'checksum' => hash('sha256', (string) file_get_contents($file->getRealPath())),
         ]);
+    }
+
+    public function workspaceDownloadUrl(MessageAttachment $attachment): string
+    {
+        return route('workspace.message-attachments.download', ['attachment' => $attachment->id]);
     }
 
     public function downloadUrl(MessageAttachment $attachment, int $ttlMinutes = 30): string

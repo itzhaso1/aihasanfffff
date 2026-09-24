@@ -45,47 +45,47 @@
                 </div>
             </div>
 
-            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <section class="hs-inv-card">
+                <div class="flex items-center justify-between border-b border-slate-100 px-0 pb-3">
                     <h3 class="text-sm font-bold">البنود</h3>
-                    <button type="button" @click="addItem()" class="text-xs font-semibold text-[#06C2A4]">إضافة بند</button>
+                    <button type="button" @click="addItem()" class="hs-inv-add">+ إضافة بند</button>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full text-sm">
-                        <thead class="bg-slate-50 text-slate-600">
+                <div class="hs-inv-table-wrap">
+                    <table class="hs-inv-table">
+                        <thead>
                             <tr>
-                                <th class="px-3 py-2 text-right">الوصف</th>
-                                <th class="px-3 py-2 text-right">الكمية</th>
-                                <th class="px-3 py-2 text-right">السعر</th>
-                                <th class="px-3 py-2 text-right">الخصم</th>
-                                <th class="px-3 py-2 text-right">التصنيف</th>
-                                <th class="px-3 py-2 text-right">الضريبة %</th>
-                                <th class="px-3 py-2"></th>
+                                <th>الوصف</th>
+                                <th>الكمية</th>
+                                <th>السعر</th>
+                                <th>الخصم</th>
+                                <th>التصنيف</th>
+                                <th>الضريبة %</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             <template x-for="(item, idx) in items" :key="idx">
-                                <tr class="border-t border-slate-100">
-                                    <td class="px-3 py-2"><input type="text" x-model="item.product_name" class="w-full rounded-md border-slate-300 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="number" step="0.001" x-model.number="item.quantity" @input="recalculate()" class="w-24 rounded-md border-slate-300 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="number" step="0.01" x-model.number="item.unit_price" @input="recalculate()" class="w-24 rounded-md border-slate-300 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="number" step="0.01" x-model.number="item.discount" @input="recalculate()" class="w-24 rounded-md border-slate-300 text-xs"></td>
-                                    <td class="px-3 py-2">
-                                        <select x-model="item.tax_type" @change="recalculate()" class="w-28 rounded-md border-slate-300 text-xs">
+                                <tr>
+                                    <td data-label="الوصف" data-span="all"><input type="text" x-model="item.product_name" class="hs-inv-input"></td>
+                                    <td data-label="الكمية"><input type="number" step="0.001" x-model.number="item.quantity" @input="recalculate()" class="hs-inv-input"></td>
+                                    <td data-label="السعر"><input type="number" step="0.01" x-model.number="item.unit_price" @input="recalculate()" class="hs-inv-input"></td>
+                                    <td data-label="الخصم"><input type="number" step="0.01" x-model.number="item.discount" @input="recalculate()" class="hs-inv-input"></td>
+                                    <td data-label="التصنيف">
+                                        <select x-model="item.tax_type" @change="recalculate()" class="hs-inv-input">
                                             <option value="standard">قياسية</option>
                                             <option value="zero_rated">صفرية</option>
                                             <option value="exempt">معفاة</option>
                                             <option value="out_of_scope">خارج النطاق</option>
                                         </select>
                                     </td>
-                                    <td class="px-3 py-2"><input type="number" step="0.01" x-model.number="item.tax_rate" @input="recalculate()" class="w-20 rounded-md border-slate-300 text-xs"></td>
-                                    <td class="px-3 py-2"><button type="button" @click="removeItem(idx)" class="text-xs text-rose-600">حذف</button></td>
+                                    <td data-label="الضريبة %"><input type="number" step="0.01" x-model.number="item.tax_rate" @input="recalculate()" class="hs-inv-input"></td>
+                                    <td data-label="إجراءات"><button type="button" @click="removeItem(idx)" class="hs-inv-icon-btn is-danger">حذف</button></td>
                                 </tr>
                             </template>
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </section>
 
             <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div class="space-y-1 text-sm">

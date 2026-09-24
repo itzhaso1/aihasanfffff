@@ -8,8 +8,11 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
+use App\Services\Customer\CustomerAggregateService;
 use App\Services\Inventory\InventoryService;
+use App\Support\Money\Money;
 use App\Support\Tenancy\WorkspaceContext;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -18,6 +21,8 @@ class OrderService
     public function __construct(
         private readonly InventoryService $inventoryService,
         private readonly WorkspaceContext $workspaceContext,
+        private readonly WorkspaceOrderNumberGenerator $orderNumberGenerator,
+        private readonly CustomerAggregateService $customerAggregateService,
     ) {}
 
     /**
@@ -25,7 +30,30 @@ class OrderService
      */
     public function create(array $data, ?User $actor = null): Order
     {
-        return DB::transaction(function () use ($data, $actor): Order {
+        $attempt = 0;
+
+        while (true) {
+            try {
+                return DB::transaction(function () use ($data, $actor): Order {
+                    return $this->createWithinTransaction($data, $actor);
+                });
+            } catch (QueryException $exception) {
+                if (! $this->isRetryableConcurrencyFailure($exception) || $attempt >= 4) {
+                    throw $exception;
+                }
+
+                $attempt++;
+                usleep(random_int(10_000, 80_000));
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function createWithinTransaction(array $data, ?User $actor): Order
+    {
+        return (function () use ($data, $actor): Order {
             $items = $data['items'] ?? [];
             if (! is_array($items) || $items === []) {
                 throw new \InvalidArgumentException('Order requires at least one item.');
@@ -48,13 +76,64 @@ class OrderService
                 }
             }
 
+            $lineDrafts = [];
+            $subtotal = '0.00';
+
+            foreach ($items as $item) {
+                $product = Product::withoutGlobalScopes()
+                    ->where('workspace_id', $workspaceId)
+                    ->whereKey((int) $item['product_id'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($product->status !== 'active') {
+                    throw new RuntimeException('Only active products can be added to orders.');
+                }
+
+                $variant = null;
+                $unitPrice = $product->sale_price ?: $product->price;
+
+                if (! empty($item['product_variant_id'])) {
+                    $variant = ProductVariant::withoutGlobalScopes()
+                        ->where('workspace_id', $workspaceId)
+                        ->where('product_id', $product->id)
+                        ->whereKey((int) $item['product_variant_id'])
+                        ->lockForUpdate()
+                        ->firstOrFail();
+                    $unitPrice = $variant->sale_price ?: $variant->price ?: $unitPrice;
+                }
+
+                $quantity = (int) $item['quantity'];
+                if ($quantity <= 0) {
+                    throw new RuntimeException('Quantity must be at least 1.');
+                }
+                $lineDiscount = Money::round(max(0, (string) ($item['discount_amount'] ?? 0)));
+                $lineTotal = Money::sub(
+                    Money::quantityTimesUnitPrice($quantity, $unitPrice),
+                    $lineDiscount,
+                );
+                if (Money::cmp($lineTotal, '0') < 0) {
+                    $lineTotal = '0.00';
+                }
+                $subtotal = Money::add($subtotal, $lineTotal);
+
+                $lineDrafts[] = [
+                    'product' => $product,
+                    'variant' => $variant,
+                    'quantity' => $quantity,
+                    'unit_price' => Money::round($unitPrice),
+                    'discount_amount' => $lineDiscount,
+                    'total_amount' => $lineTotal,
+                ];
+            }
+
             $order = Order::query()->create([
                 'workspace_id' => $workspaceId,
                 'customer_id' => $customerId,
                 'dining_table_id' => $data['dining_table_id'] ?? null,
                 'table_session_id' => $data['table_session_id'] ?? null,
                 'finance_invoice_id' => $data['finance_invoice_id'] ?? null,
-                'order_number' => $this->nextOrderNumber(),
+                'order_number' => $this->orderNumberGenerator->nextCommerceNumber($workspaceId),
                 'source' => $data['source'] ?? 'manual',
                 'status' => $data['status'] ?? 'confirmed',
                 'pos_status' => $data['pos_status'] ?? 'new',
@@ -69,39 +148,9 @@ class OrderService
                 'placed_at' => now(),
             ]);
 
-            $subtotal = 0.0;
-
-            foreach ($items as $item) {
-                $product = Product::withoutGlobalScopes()
-                    ->where('workspace_id', $workspaceId)
-                    ->whereKey((int) $item['product_id'])
-                    ->lockForUpdate()
-                    ->firstOrFail();
-
-                if ($product->status !== 'active') {
-                    throw new RuntimeException('Only active products can be added to orders.');
-                }
-
-                $variant = null;
-                $unitPrice = (float) ($product->sale_price ?: $product->price);
-
-                if (! empty($item['product_variant_id'])) {
-                    $variant = ProductVariant::withoutGlobalScopes()
-                        ->where('workspace_id', $workspaceId)
-                        ->where('product_id', $product->id)
-                        ->whereKey((int) $item['product_variant_id'])
-                        ->lockForUpdate()
-                        ->firstOrFail();
-                    $unitPrice = (float) ($variant->sale_price ?: $variant->price ?: $unitPrice);
-                }
-
-                $quantity = (int) $item['quantity'];
-                if ($quantity <= 0) {
-                    throw new RuntimeException('Quantity must be at least 1.');
-                }
-                $lineDiscount = max(0, (float) ($item['discount_amount'] ?? 0));
-                $lineTotal = max(0, ($unitPrice * $quantity) - $lineDiscount);
-                $subtotal += $lineTotal;
+            foreach ($lineDrafts as $lineDraft) {
+                $product = $lineDraft['product'];
+                $variant = $lineDraft['variant'];
 
                 $order->items()->create([
                     'workspace_id' => $workspaceId,
@@ -110,17 +159,17 @@ class OrderService
                     'product_name' => $product->name,
                     'variant_name' => $variant?->name,
                     'sku' => $variant?->sku ?? $product->sku,
-                    'quantity' => $quantity,
-                    'unit_price' => $unitPrice,
-                    'discount_amount' => $lineDiscount,
-                    'total_amount' => $lineTotal,
+                    'quantity' => $lineDraft['quantity'],
+                    'unit_price' => $lineDraft['unit_price'],
+                    'discount_amount' => $lineDraft['discount_amount'],
+                    'total_amount' => $lineDraft['total_amount'],
                 ]);
 
                 $this->inventoryService->adjustStock(
                     productId: $product->id,
                     variantId: $variant?->id,
                     type: 'reserve',
-                    quantity: $quantity,
+                    quantity: $lineDraft['quantity'],
                     actor: $actor,
                     referenceType: 'order',
                     referenceId: $order->id,
@@ -128,24 +177,40 @@ class OrderService
                 );
             }
 
-            $total = $subtotal - (float) $order->discount_amount + (float) $order->shipping_amount;
+            $total = Money::add(
+                Money::sub($subtotal, Money::round((string) $order->discount_amount)),
+                Money::round((string) $order->shipping_amount),
+            );
+            if (Money::cmp($total, '0') < 0) {
+                $total = '0.00';
+            }
             $order->update([
                 'subtotal' => $subtotal,
-                'total_amount' => max(0, $total),
+                'total_amount' => $total,
             ]);
 
-            if ($order->customer) {
-                $order->customer->update([
-                    'orders_count' => $order->customer->orders()->count(),
-                    'total_purchases' => $order->customer->orders()->sum('total_amount'),
-                    'last_order_at' => now(),
-                ]);
+            if ($customerId && $order->placed_at) {
+                $this->customerAggregateService->incrementOrderAggregates(
+                    $workspaceId,
+                    $customerId,
+                    (string) $order->total_amount,
+                    $order->placed_at,
+                );
             }
 
             event(new OrderCreated($order));
 
             return $order->fresh(['items', 'customer', 'table', 'tableSession']);
-        });
+        })();
+    }
+
+    private function isRetryableConcurrencyFailure(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? '');
+        $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+
+        return in_array($sqlState, ['40001', 'HY000'], true)
+            || in_array($driverCode, [1213, 1205], true);
     }
 
     public function cancel(Order $order, ?User $actor = null): Order
@@ -178,15 +243,15 @@ class OrderService
                 'fulfillment_status' => 'cancelled',
                 'cancelled_at' => now(),
             ]);
+
+            if ($order->customer_id) {
+                $this->customerAggregateService->refreshOrderAggregates(
+                    (int) $order->workspace_id,
+                    (int) $order->customer_id,
+                );
+            }
         });
 
         return $order->fresh(['items', 'customer']);
-    }
-
-    private function nextOrderNumber(): string
-    {
-        $lastId = (Order::withoutGlobalScopes()->max('id') ?? 0) + 1;
-
-        return 'ORD-'.str_pad((string) $lastId, 8, '0', STR_PAD_LEFT);
     }
 }

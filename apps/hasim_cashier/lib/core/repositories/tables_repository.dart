@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../api/cashier_api.dart';
 import '../config/app_config.dart';
 import '../local_db/app_database.dart';
+import '../pos/application/document_numbers.dart';
 import '../pos/domain/pricing_service.dart';
 import '../pos/pos_mode.dart';
 import '../pos/table_session_orders.dart';
@@ -406,7 +407,8 @@ class TablesRepository {
         entityId: localId,
         operation: 'open',
         payload: {
-          'table_server_id': tableServerId,
+          if (existing.serverId != null && existing.serverId! > 0)
+            'table_server_id': existing.serverId,
           'table_local_id': localId,
           'session_client_id': sessionClientId,
         },
@@ -704,7 +706,9 @@ class TablesRepository {
     }
 
     final method = (paymentMethod ?? 'cash').trim();
-    final invoiceNumber = 'LOCAL-$invoiceLocalId';
+    final invoiceNumber = await DocumentNumberService(
+      _db,
+    ).nextInvoiceNumberForWorkspace(workspaceId: workspaceId);
     final invoicePayload = {
       'local_id': invoiceLocalId,
       'invoice_number': invoiceNumber,
@@ -807,7 +811,8 @@ class TablesRepository {
         entityId: localId,
         operation: 'close',
         payload: {
-          'table_server_id': tableServerId,
+          if (table.serverId != null && table.serverId! > 0)
+            'table_server_id': table.serverId,
           'table_local_id': localId,
           'session_server_id': table.sessionServerId,
           'session_client_id': sessionClientId,
@@ -842,10 +847,6 @@ class TablesRepository {
             ))
             .get();
     if (items.isEmpty) return;
-    for (final item in items) {
-      final serverId = item.productServerId;
-      if (serverId == null || serverId <= 0 || item.quantity < 1) return;
-    }
     String? tableName;
     if (order.tableLocalId != null && order.tableLocalId!.trim().isNotEmpty) {
       final named = await (_db.select(_db.localTables)
@@ -874,7 +875,11 @@ class TablesRepository {
       'items': [
         for (final item in items)
           {
-            'pos_menu_item_id': item.productServerId,
+            if (item.productServerId != null && item.productServerId! > 0)
+              'pos_menu_item_id': item.productServerId,
+            if (item.productLocalId != null &&
+                item.productLocalId!.trim().isNotEmpty)
+              'product_local_id': item.productLocalId!.trim(),
             'quantity': item.quantity,
             'unit_price': Money.fromCents(item.unitPrice),
             'tax_amount': Money.fromCents(item.taxAmount),

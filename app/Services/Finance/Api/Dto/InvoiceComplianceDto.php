@@ -4,6 +4,10 @@ namespace App\Services\Finance\Api\Dto;
 
 final readonly class InvoiceComplianceDto
 {
+    /**
+     * @param  list<array<string, string>>|null  $dataErrors
+     * @param  list<string|array<string, string>>|null  $dataWarnings
+     */
     public function __construct(
         public ?string $businessStatus,
         public ?string $paymentStatus,
@@ -15,6 +19,12 @@ final readonly class InvoiceComplianceDto
         public bool $qrAvailable,
         public ?string $securityStatus,
         public bool $productionStampingAvailable = false,
+        public ?array $seller = null,
+        public ?array $buyer = null,
+        public ?array $dataErrors = null,
+        public ?array $dataWarnings = null,
+        public ?string $dataSource = null,
+        public ?array $validation = null,
     ) {}
 
     /**
@@ -22,7 +32,7 @@ final readonly class InvoiceComplianceDto
      */
     public function toArray(): array
     {
-        return [
+        $payload = [
             'business_status' => $this->businessStatus,
             'payment_status' => $this->paymentStatus,
             'compliance_status' => $this->complianceStatus,
@@ -34,5 +44,26 @@ final readonly class InvoiceComplianceDto
             'security_status' => $this->securityStatus,
             'production_stamping_available' => false,
         ];
+
+        if ($this->seller !== null) {
+            $payload['seller'] = $this->seller;
+        }
+        if ($this->buyer !== null) {
+            $payload['buyer'] = $this->buyer;
+        }
+        if ($this->dataErrors !== null) {
+            $payload['errors'] = $this->dataErrors;
+        }
+        if ($this->dataWarnings !== null) {
+            $payload['warnings'] = $this->dataWarnings;
+        }
+        if ($this->dataSource !== null) {
+            $payload['data_source'] = $this->dataSource;
+        }
+        if ($this->validation !== null) {
+            $payload['validation'] = $this->validation;
+        }
+
+        return $payload;
     }
 }

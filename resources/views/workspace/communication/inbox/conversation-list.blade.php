@@ -35,7 +35,7 @@
         </a>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto">
+    <div class="min-h-0 flex-1 overflow-y-auto" data-inbox-conversation-list>
         @forelse($conversations as $conversation)
             @php
                 $isActive = $activeConversation && $activeConversation->id === $conversation->id;
@@ -48,6 +48,7 @@
             @endphp
             <a
                 href="{{ route('workspace.conversations.index', $listQuery($conversation->id)) }}"
+                data-conversation-id="{{ $conversation->id }}"
                 class="{{ $isActive ? 'border-[#C9F0E8] bg-[#E8FAF6]' : 'border-transparent hover:bg-slate-50' }} block border-b border-slate-100 px-4 py-3 transition"
             >
                 <div class="flex items-start gap-3">

@@ -14,6 +14,21 @@
                 <div><label class="mb-1 block text-sm">المنطقة الزمنية</label><input name="timezone" value="{{ old('timezone', $user->timezone) }}" class="w-full rounded-lg border-gray-300" /></div>
                 <button class="rounded-lg bg-blue-600 px-4 py-2 text-white">حفظ</button>
             </form>
+
+            <div class="mt-6 rounded-xl border bg-white p-6">
+                <h3 class="mb-3 text-sm font-semibold">مساحات العمل</h3>
+                @forelse($user->workspaces as $workspace)
+                    <div class="flex items-center justify-between border-b py-2 text-sm last:border-b-0">
+                        <div>
+                            <p class="font-medium">{{ $workspace->name }}</p>
+                            <p class="text-gray-500">{{ $workspace->type }} — {{ $workspace->status }}</p>
+                        </div>
+                        <a href="{{ route('platform.subscriptions.create', ['workspace_id' => $workspace->id]) }}" class="text-blue-600">منح اشتراك</a>
+                    </div>
+                @empty
+                    <p class="text-sm text-gray-500">لا توجد مساحات عمل لهذا المستخدم.</p>
+                @endforelse
+            </div>
         </div>
     </div>
 @endsection

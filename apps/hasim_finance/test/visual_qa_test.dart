@@ -11,6 +11,7 @@ import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/routing/finance_shell.dart';
 import 'package:hasim_finance/core/theme/finance_tokens.dart';
 import 'package:hasim_finance/features/dashboard/dashboard_screen.dart';
+import 'package:hasim_finance/features/invoices/invoice_form_screen.dart';
 import 'package:hasim_finance/features/invoices/invoices_screens.dart';
 import 'package:hasim_finance/features/people/people_screens.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';

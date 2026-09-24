@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api\Cashier\V1;
 use App\Http\Controllers\Api\Cashier\CashierController;
 use App\Http\Controllers\Api\Cashier\Concerns\AuthorizesCashier;
 use App\Http\Controllers\Api\Cashier\Concerns\ResolvesCashierWorkspace;
+use App\Models\Workspace;
+use App\Services\Feature\FeatureAccessService;
 use App\Services\Pos\PosSyncPullService;
 use App\Services\Pos\PosSyncPushService;
 use App\Support\Tenancy\WorkspaceContext;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -19,6 +22,7 @@ class SyncController extends CashierController
 
     public function __construct(
         private readonly WorkspaceContext $workspaceContext,
+        private readonly FeatureAccessService $featureAccessService,
         private readonly PosSyncPullService $pull,
         private readonly PosSyncPushService $push,
     ) {}
@@ -27,6 +31,7 @@ class SyncController extends CashierController
     {
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $this->authorizeCashier($request, $workspace);
+        $this->ensurePos($workspace);
 
         $since = (int) $request->query('since', 0);
         $limit = (int) $request->query('limit', 200);
@@ -47,6 +52,7 @@ class SyncController extends CashierController
     {
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $user = $this->authorizeCashier($request, $workspace);
+        $this->ensurePos($workspace);
 
         $validated = $request->validate([
             'device_id' => ['required', 'string', 'max:64'],
@@ -83,6 +89,7 @@ class SyncController extends CashierController
     {
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $this->authorizeCashier($request, $workspace);
+        $this->ensurePos($workspace);
 
         $validated = $request->validate([
             'device_id' => ['required', 'string', 'max:64'],
@@ -117,5 +124,17 @@ class SyncController extends CashierController
         }
 
         return $bodyDeviceId;
+    }
+
+    private function ensurePos(Workspace $workspace): void
+    {
+        if (! $this->featureAccessService->workspaceHasFeature($workspace, 'pos')) {
+            throw new HttpResponseException(
+                $this->fail('الكاشير غير متاح في باقتك الحالية', 403, meta: [
+                    'pos_enabled' => false,
+                    'plans_url' => url('/workspace/billing'),
+                ])
+            );
+        }
     }
 }

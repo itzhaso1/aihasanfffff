@@ -3,11 +3,15 @@
 namespace Tests\Feature\Feature\Cashier;
 
 use App\Models\AuthIdentity;
+use App\Models\Plan;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Models\WorkspaceFeatureFlag;
 use Database\Seeders\FoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Hash;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
@@ -40,6 +44,78 @@ class CashierGoogleSocialAuthTest extends TestCase
 
         $this->assertNotEmpty($login->json('data.token'));
         $this->assertSame(1, AuthIdentity::query()->where('provider', 'google')->count());
+    }
+
+    public function test_new_google_user_is_provisioned_with_unusable_password(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        $this->fakeGoogleUser('new-oauth@hasim.test', 'New OAuth User', 'google-new-cashier-1');
+
+        $login = $this->postJson('/api/cashier/v1/auth/social', [
+            'provider' => 'google',
+            'access_token' => 'ya29.google-token',
+            'device_name' => 'كاشير حاسم',
+            'device_type' => 'cashier',
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.user.email', 'new-oauth@hasim.test');
+
+        $user = User::query()->where('email', 'new-oauth@hasim.test')->first();
+        $this->assertNotNull($user);
+        $this->assertNotNull($user->password);
+        $this->assertNotSame('', $user->password);
+        $this->assertFalse(Hash::needsRehash($user->password));
+        $this->assertFalse(Hash::check('password', $user->password));
+        $this->assertFalse(Hash::check('new-oauth@hasim.test', $user->password));
+        $this->assertFalse(Hash::check('google-new-cashier-1', $user->password));
+        $this->assertFalse(Hash::check('ya29.google-token', $user->password));
+        $this->assertNotEmpty($login->json('data.token'));
+        $this->assertSame($user->id, $login->json('data.user.id'));
+        $this->assertSame($user->id, Workspace::query()->find($login->json('data.workspace.id'))?->owner_user_id);
+        $this->assertSame(1, AuthIdentity::query()->where('provider', 'google')->where('provider_user_id', 'google-new-cashier-1')->count());
+    }
+
+    public function test_repeat_google_social_login_does_not_duplicate_user(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        $this->fakeGoogleUser('repeat-oauth@hasim.test', 'Repeat OAuth User', 'google-repeat-cashier-1');
+
+        $first = $this->postJson('/api/cashier/v1/auth/social', [
+            'provider' => 'google',
+            'access_token' => 'ya29.google-token',
+            'device_type' => 'cashier',
+        ])->assertOk();
+
+        $second = $this->postJson('/api/cashier/v1/auth/social', [
+            'provider' => 'google',
+            'access_token' => 'ya29.google-token',
+            'device_type' => 'cashier',
+        ])->assertOk();
+
+        $this->assertSame($first->json('data.user.id'), $second->json('data.user.id'));
+        $this->assertSame(1, User::query()->where('email', 'repeat-oauth@hasim.test')->count());
+        $this->assertSame(1, AuthIdentity::query()->where('provider', 'google')->where('provider_user_id', 'google-repeat-cashier-1')->count());
+    }
+
+    public function test_oauth_user_cannot_login_with_guessable_password_secrets(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        $this->fakeGoogleUser('oauth-only-cashier@hasim.test', 'OAuth Only Cashier', 'google-cashier-no-bypass');
+
+        $this->postJson('/api/cashier/v1/auth/social', [
+            'provider' => 'google',
+            'access_token' => 'ya29.google-token',
+            'device_type' => 'cashier',
+        ])->assertOk();
+
+        foreach (['password', 'oauth-only-cashier@hasim.test', 'google-cashier-no-bypass', 'ya29.google-token'] as $guess) {
+            $this->postJson('/api/cashier/v1/auth/login', [
+                'email' => 'oauth-only-cashier@hasim.test',
+                'password' => $guess,
+                'device_type' => 'cashier',
+            ])->assertStatus(401);
+        }
     }
 
     public function test_google_social_login_rejects_missing_token(): void
@@ -204,6 +280,13 @@ class CashierGoogleSocialAuthTest extends TestCase
             ->assertRedirect(route('workspace.choose'));
 
         $this->assertAuthenticated();
+        $user = User::query()->where('email', 'owner@hasim.test')->first();
+        $this->assertNotNull($user);
+        $this->assertNotNull($user->password);
+        $this->assertFalse(Hash::needsRehash($user->password));
+        $this->assertFalse(Hash::check('password', $user->password));
+        $this->assertFalse(Hash::check('owner@hasim.test', $user->password));
+        $this->assertSame(1, AuthIdentity::query()->where('provider', 'google')->where('provider_user_id', 'web-google-1')->count());
     }
 
     /**
@@ -226,20 +309,20 @@ class CashierGoogleSocialAuthTest extends TestCase
         ]);
 
         foreach (['pos', 'qr_menu', 'products', 'orders'] as $feature) {
-            \App\Models\WorkspaceFeatureFlag::withoutGlobalScopes()->updateOrCreate(
+            WorkspaceFeatureFlag::withoutGlobalScopes()->updateOrCreate(
                 ['workspace_id' => $workspace->id, 'feature_key' => $feature],
                 ['workspace_id' => $workspace->id, 'feature_key' => $feature, 'enabled' => true, 'source' => 'manual']
             );
         }
 
-        $plan = \App\Models\Plan::query()
+        $plan = Plan::query()
             ->where('workspace_type', $workspaceType)
             ->where('is_active', true)
             ->orderByDesc('price')
             ->first();
 
         if ($plan) {
-            \App\Models\Subscription::withoutGlobalScopes()->updateOrCreate(
+            Subscription::withoutGlobalScopes()->updateOrCreate(
                 ['workspace_id' => $workspace->id],
                 [
                     'workspace_id' => $workspace->id,

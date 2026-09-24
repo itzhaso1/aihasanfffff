@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password as PasswordRule;
+use Laravel\Sanctum\PersonalAccessToken;
 use RuntimeException;
 
 class AuthController extends MobileController
@@ -245,9 +246,20 @@ class AuthController extends MobileController
             'password' => ['required', PasswordRule::defaults(), 'confirmed'],
         ]);
 
+        $currentToken = $user->currentAccessToken();
+        $currentTokenId = $currentToken instanceof PersonalAccessToken
+            ? $currentToken->id
+            : null;
+
         $user->update([
             'password' => Hash::make($validated['password']),
         ]);
+
+        $otherTokens = $user->tokens();
+        if ($currentTokenId !== null) {
+            $otherTokens->whereKeyNot($currentTokenId);
+        }
+        $otherTokens->delete();
 
         return $this->ok(message: 'تم تحديث كلمة المرور بنجاح.');
     }

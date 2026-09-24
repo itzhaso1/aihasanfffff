@@ -27,6 +27,22 @@ class ProductionRuntimeTest extends TestCase
         $this->assertLessThan($retryAfter, $worker);
     }
 
+    public function test_runtime_documents_supervisor_worker_profiles_for_p0(): void
+    {
+        $workers = config('runtime.workers');
+
+        $this->assertIsArray($workers);
+        $this->assertSame('emails', $workers['emails']['queue']);
+        $this->assertSame('inbound', $workers['inbound']['queue']);
+        $this->assertSame('realtime', $workers['realtime']['queue']);
+        $this->assertSame('ai', $workers['ai']['queue']);
+    }
+
+    public function test_redis_queue_supports_after_commit_for_production_safety(): void
+    {
+        $this->assertArrayHasKey('after_commit', config('queue.connections.redis'));
+    }
+
     public function test_production_like_config_uses_redis_not_database_or_failover(): void
     {
         config([

@@ -1604,6 +1604,12 @@ abstract class AppLocalizations {
   /// **'التنبيهات'**
   String get alerts;
 
+  /// No description provided for @assistant.
+  ///
+  /// In ar, this message translates to:
+  /// **'المساعد المالي'**
+  String get assistant;
+
   /// No description provided for @copilot.
   ///
   /// In ar, this message translates to:
@@ -1831,6 +1837,54 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'اسأل عن المبيعات، الأرباح، المتأخرات، أو ما يحتاج انتباهاً. المساعد لا يخترع مبالغ.'**
   String get copilotHint;
+
+  /// No description provided for @assistantHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'اسأل عن المبيعات، الأرباح، المتأخرات، أو ما يحتاج انتباهاً. المساعد لا يخترع مبالغ.'**
+  String get assistantHint;
+
+  /// No description provided for @assistantEmptyState.
+  ///
+  /// In ar, this message translates to:
+  /// **'مساعد HASEM المالي'**
+  String get assistantEmptyState;
+
+  /// No description provided for @newConversation.
+  ///
+  /// In ar, this message translates to:
+  /// **'محادثة جديدة'**
+  String get newConversation;
+
+  /// No description provided for @conversationHistory.
+  ///
+  /// In ar, this message translates to:
+  /// **'سجل المحادثات'**
+  String get conversationHistory;
+
+  /// No description provided for @noConversations.
+  ///
+  /// In ar, this message translates to:
+  /// **'لا توجد محادثات سابقة'**
+  String get noConversations;
+
+  /// No description provided for @deleteConversation.
+  ///
+  /// In ar, this message translates to:
+  /// **'حذف المحادثة'**
+  String get deleteConversation;
+
+  /// No description provided for @periodNotSupported.
+  ///
+  /// In ar, this message translates to:
+  /// **'فترة غير مدعومة'**
+  String get periodNotSupported;
+
+  /// No description provided for @unavailable.
+  ///
+  /// In ar, this message translates to:
+  /// **'غير متاح'**
+  String get unavailable;
 
   /// No description provided for @transfer.
   ///
@@ -3073,6 +3127,150 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'لا يمكن تعديل مصروف مرحّل من التطبيق.'**
   String get expenseLockedHint;
+
+  /// No description provided for @settingsManageSubtitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'إدارة إعدادات النظام والشركة'**
+  String get settingsManageSubtitle;
+
+  /// No description provided for @settingsSections.
+  ///
+  /// In ar, this message translates to:
+  /// **'أقسام الإعدادات'**
+  String get settingsSections;
+
+  /// No description provided for @settingsGeneral.
+  ///
+  /// In ar, this message translates to:
+  /// **'عام'**
+  String get settingsGeneral;
+
+  /// No description provided for @settingsGeneralHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'بيانات الشركة والشعار'**
+  String get settingsGeneralHint;
+
+  /// No description provided for @settingsInvoices.
+  ///
+  /// In ar, this message translates to:
+  /// **'الفواتير'**
+  String get settingsInvoices;
+
+  /// No description provided for @settingsInvoicesHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'إعدادات الفاتورة والترقيم'**
+  String get settingsInvoicesHint;
+
+  /// No description provided for @settingsTaxes.
+  ///
+  /// In ar, this message translates to:
+  /// **'الضرائب'**
+  String get settingsTaxes;
+
+  /// No description provided for @settingsTaxesHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'إعدادات الضرائب والأسعار'**
+  String get settingsTaxesHint;
+
+  /// No description provided for @settingsAddress.
+  ///
+  /// In ar, this message translates to:
+  /// **'العنوان'**
+  String get settingsAddress;
+
+  /// No description provided for @settingsAddressHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'عنوان الشركة'**
+  String get settingsAddressHint;
+
+  /// No description provided for @settingsAppearance.
+  ///
+  /// In ar, this message translates to:
+  /// **'اللغة والمظهر'**
+  String get settingsAppearance;
+
+  /// No description provided for @settingsAppearanceHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'اختر لغة النظام والمظهر المناسب لك'**
+  String get settingsAppearanceHint;
+
+  /// No description provided for @settingsSystem.
+  ///
+  /// In ar, this message translates to:
+  /// **'النظام'**
+  String get settingsSystem;
+
+  /// No description provided for @settingsSystemHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'خيارات النظام'**
+  String get settingsSystemHint;
+
+  /// No description provided for @companyProfile.
+  ///
+  /// In ar, this message translates to:
+  /// **'بيانات الشركة'**
+  String get companyProfile;
+
+  /// No description provided for @companyProfileHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'هذه البيانات ستظهر في الفواتير والتقارير والمستندات الرسمية'**
+  String get companyProfileHint;
+
+  /// No description provided for @companyNameEn.
+  ///
+  /// In ar, this message translates to:
+  /// **'اسم الشركة بالإنجليزية'**
+  String get companyNameEn;
+
+  /// No description provided for @additionalInfo.
+  ///
+  /// In ar, this message translates to:
+  /// **'معلومات إضافية'**
+  String get additionalInfo;
+
+  /// No description provided for @additionalInfoHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'يمكن إضافة معلومات إضافية تعرضونها في الفواتير'**
+  String get additionalInfoHint;
+
+  /// No description provided for @saveChanges.
+  ///
+  /// In ar, this message translates to:
+  /// **'حفظ التغييرات'**
+  String get saveChanges;
+
+  /// No description provided for @resetForm.
+  ///
+  /// In ar, this message translates to:
+  /// **'إعادة التعيين'**
+  String get resetForm;
+
+  /// No description provided for @themeLight.
+  ///
+  /// In ar, this message translates to:
+  /// **'فاتح'**
+  String get themeLight;
+
+  /// No description provided for @themeDark.
+  ///
+  /// In ar, this message translates to:
+  /// **'داكن'**
+  String get themeDark;
+
+  /// No description provided for @themeSystem.
+  ///
+  /// In ar, this message translates to:
+  /// **'النظام'**
+  String get themeSystem;
 }
 
 class _AppLocalizationsDelegate

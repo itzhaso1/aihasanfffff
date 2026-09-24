@@ -28,7 +28,10 @@ class PaymentController extends Controller
     public function create(): View
     {
         return view('workspace.payments.create', [
-            'orders' => Order::query()->orderByDesc('id')->get(['id', 'order_number', 'total_amount', 'payment_status']),
+            'orders' => Order::query()
+                ->where('source', '!=', 'commerce')
+                ->orderByDesc('id')
+                ->get(['id', 'order_number', 'total_amount', 'payment_status']),
             'gateways' => PaymentGateway::query()->orderBy('provider')->get(['id', 'provider', 'status']),
         ]);
     }

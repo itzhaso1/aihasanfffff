@@ -37,17 +37,17 @@
         </nav>
 
         <div class="ms-auto flex items-center gap-1.5 sm:gap-2">
-            <a href="{{ route('profile.edit') }}" class="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600 transition hover:border-[#06C2A4] hover:text-[#06C2A4] sm:inline-flex">اللغة</a>
+            <a href="{{ route('profile.edit') }}" class="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600 transition hover:border-[#06C2A4] hover:text-[#06C2A4] sm:inline-flex">الإعدادات</a>
             <a href="{{ route('workspace.choose') }}" class="hidden rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600 transition hover:border-[#06C2A4] hover:text-[#06C2A4] md:inline-flex">المساحات</a>
             <a href="{{ route('notifications.index') }}" class="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0a3 3 0 1 1-6 0m6 0H9" />
                 </svg>
                 @if(Auth::user()?->unreadNotifications()->exists())
-                    <span class="absolute top-1.5 left-1.5 h-2 w-2 rounded-full bg-red-500"></span>
+                    <span class="absolute top-1.5 end-1.5 h-2 w-2 rounded-full bg-red-500"></span>
                 @endif
             </a>
-            <x-dropdown align="left" width="56">
+            <x-dropdown align="right" width="56">
                 <x-slot name="trigger">
                     <button class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">
                         <span class="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500">
@@ -74,7 +74,7 @@
 
 <div x-cloak x-show="mobileNav" class="fixed inset-0 z-50 lg:hidden">
     <button @click="mobileNav = false" type="button" class="absolute inset-0 bg-slate-900/40"></button>
-    <aside x-transition class="absolute inset-y-0 right-0 flex w-72 flex-col border-l border-slate-200 bg-white">
+    <aside x-transition class="absolute inset-y-0 start-0 flex w-72 flex-col border-e border-slate-200 bg-white">
         <div class="flex items-center justify-between border-b border-slate-100 px-4 py-4">
             <x-hasim-logo variant="mark" size="sm" />
             <button @click="mobileNav = false" type="button" class="rounded-md p-2 text-slate-500 hover:bg-slate-100">

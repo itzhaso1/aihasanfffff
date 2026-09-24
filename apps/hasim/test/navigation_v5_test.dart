@@ -12,16 +12,15 @@ void main() {
         'المحادثات',
         'البريد',
         'التحديثات',
-        'المزيد',
       ]);
-      expect(HasimNav.bottomLabels.length, 4);
+      expect(HasimNav.bottomLabels.length, HasimNav.tabCount);
     });
 
     test('conversations is initial shell route', () {
       expect(HasimNav.initialShellRoute, '/conversations');
       expect(HasimNav.conversationsIndex, 0);
       expect(HasimNav.updatesIndex, 2);
-      expect(HasimNav.moreIndex, 3);
+      expect(HasimNav.tabCount, 3);
     });
   });
 

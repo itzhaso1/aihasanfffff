@@ -15,7 +15,7 @@ class PdfInvoiceService
 {
     public function download(FinanceInvoice $invoice): Response|Responsable
     {
-        $fileName = 'invoice-'.$invoice->invoice_number.'.pdf';
+        $fileName = app(InvoicePdfAccessService::class)->downloadFileName($invoice);
 
         return $this->buildPdf($invoice)->download($fileName);
     }

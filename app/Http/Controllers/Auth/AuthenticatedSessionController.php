@@ -43,7 +43,7 @@ class AuthenticatedSessionController extends Controller
             'last_login_ip' => $request->ip(),
         ])->save();
 
-        return redirect()->intended(route('workspace.subscriptions.index', absolute: false));
+        return redirect()->intended(route('workspace.dashboard', absolute: false));
     }
 
     /**

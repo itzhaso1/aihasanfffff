@@ -92,6 +92,11 @@ class Customer extends WorkspaceScopedModel
         return $this->hasMany(Conversation::class);
     }
 
+    public function channelIdentities(): HasMany
+    {
+        return $this->hasMany(CustomerChannelIdentity::class);
+    }
+
     public function financeInvoices(): HasMany
     {
         return $this->hasMany(FinanceInvoice::class);

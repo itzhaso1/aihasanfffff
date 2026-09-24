@@ -232,12 +232,24 @@ class ConversationRepository {
     );
   }
 
-  Future<void> archive(int conversationId, {bool archived = true}) async {
+  Future<void> archive(int conversationId, {bool archived = true, int? workspaceId}) async {
     await _api.post('/conversations/$conversationId/archive', body: {'archived': archived});
+    if (workspaceId != null) {
+      final existing = await cachedConversation(workspaceId, conversationId);
+      if (existing != null) {
+        await _local?.upsertConversations(workspaceId, [existing.copyWith(archived: archived)]);
+      }
+    }
   }
 
-  Future<void> mute(int conversationId, {bool muted = true}) async {
+  Future<void> mute(int conversationId, {bool muted = true, int? workspaceId}) async {
     await _api.post('/conversations/$conversationId/mute', body: {'muted': muted});
+    if (workspaceId != null) {
+      final existing = await cachedConversation(workspaceId, conversationId);
+      if (existing != null) {
+        await _local?.upsertConversations(workspaceId, [existing.copyWith(muted: muted)]);
+      }
+    }
   }
 
   Future<MessageAttachmentModel> uploadAttachment(int messageId, File file) async {

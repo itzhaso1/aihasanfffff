@@ -173,6 +173,30 @@ class Phase6UblXmlFoundationTest extends TestCase
         $this->assertSame('VATEX-SA-OOS', $this->value($oos['xpath'], '//cbc:TaxExemptionReasonCode'));
     }
 
+    public function test_tax_breakdown_projects_one_tax_subtotal_per_category_row(): void
+    {
+        $breakdown = [
+            ['tax_profile_type' => 'standard', 'tax_rate' => '15.00', 'taxable_amount' => '100.00', 'tax_amount' => '15.00'],
+            ['tax_profile_type' => 'zero_rated', 'tax_rate' => '0.00', 'taxable_amount' => '40.00', 'tax_amount' => '0.00'],
+            ['tax_profile_type' => 'exempt', 'tax_rate' => '0.00', 'taxable_amount' => '20.00', 'tax_amount' => '0.00'],
+            ['tax_profile_type' => 'out_of_scope', 'tax_rate' => '0.00', 'taxable_amount' => '20.00', 'tax_amount' => '0.00'],
+        ];
+        $document = $this->document(
+            tax: new EInvoiceTax(ElectronicTaxClassification::Standard, '15.00', '15.00', 'exclusive', $breakdown),
+            totals: new EInvoiceTotals('180.00', '0.00', '180.00', '15.00', '195.00', '0.00', '195.00'),
+            lines: [
+                $this->line('A', '1.000', '100.00', '0.00', '100.00', '15.00', '115.00'),
+                $this->line('B', '1.000', '40.00', '0.00', '40.00', '0.00', '40.00', ElectronicTaxClassification::ZeroRated, '0.00'),
+                $this->line('C', '1.000', '20.00', '0.00', '20.00', '0.00', '20.00', ElectronicTaxClassification::Exempt, '0.00', 'Education', 'VATEX-SA-EDU'),
+                $this->line('D', '1.000', '20.00', '0.00', '20.00', '0.00', '20.00', ElectronicTaxClassification::OutOfScope, '0.00', 'Out of scope', 'VATEX-SA-OOS'),
+            ],
+        );
+        $xml = $this->generate($document);
+        $this->assertSame(4, $xml['xpath']->query('//cac:TaxTotal/cac:TaxSubtotal')->length);
+        $this->assertSame('180.00', $this->value($xml['xpath'], '//cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount'));
+        $this->assertSame('15.00', $this->value($xml['xpath'], '//cac:TaxTotal/cbc:TaxAmount'));
+    }
+
     public function test_rounding_values_are_copied_not_recalculated(): void
     {
         $document = $this->document(
@@ -299,11 +323,14 @@ XML;
 
     public function test_schematron_infrastructure_reports_failures(): void
     {
+        $path = SchematronValidator::localHarnessRulesFile();
+        $this->assertNotNull($path);
+        $validator = new SchematronValidator(rulesPath: $path);
         $valid = $this->generate($this->document());
-        $this->assertSame([], app(SchematronValidator::class)->validate($valid['xml']));
+        $this->assertSame([], $validator->validate($valid['xml']));
 
         $invalid = '<?xml version="1.0"?><WrongRoot xmlns="urn:example:invalid"/>';
-        $errors = app(SchematronValidator::class)->validate($invalid);
+        $errors = $validator->validate($invalid);
         $this->assertNotSame([], $errors);
     }
 

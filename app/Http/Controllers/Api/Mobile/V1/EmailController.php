@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Mobile\V1;
 
 use App\Exceptions\FeatureNotAvailableException;
 use App\Exceptions\UsageLimitExceededException;
+use App\Http\Controllers\Api\Mobile\Concerns\AuthorizesMobileEmail;
 use App\Http\Controllers\Api\Mobile\Concerns\ResolvesMobileWorkspace;
 use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Http\Resources\Mobile\EmailMessageResource;
@@ -20,6 +21,7 @@ use RuntimeException;
 
 class EmailController extends MobileController
 {
+    use AuthorizesMobileEmail;
     use ResolvesMobileWorkspace;
 
     public function __construct(
@@ -29,21 +31,28 @@ class EmailController extends MobileController
 
     public function inbox(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
+
         return $this->listFolder($request, 'inbox');
     }
 
     public function sent(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
+
         return $this->listFolder($request, 'sent');
     }
 
     public function drafts(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
+
         return $this->listFolder($request, 'drafts');
     }
 
-    public function show(EmailMessage $emailMessage): JsonResponse
+    public function show(Request $request, EmailMessage $emailMessage): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $message = $this->mobileEmailService->show($emailMessage);
 
         return $this->ok(new EmailMessageResource($message, detailed: true));
@@ -51,6 +60,7 @@ class EmailController extends MobileController
 
     public function send(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
 
         $validated = $request->validate([
@@ -80,22 +90,25 @@ class EmailController extends MobileController
         return $this->ok(new EmailMessageResource($message, detailed: true), message: 'تم إرسال البريد بنجاح.', status: 201);
     }
 
-    public function read(EmailMessage $emailMessage): JsonResponse
+    public function read(Request $request, EmailMessage $emailMessage): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $message = $this->mobileEmailService->markRead($emailMessage);
 
         return $this->ok(new EmailMessageResource($message));
     }
 
-    public function star(EmailMessage $emailMessage): JsonResponse
+    public function star(Request $request, EmailMessage $emailMessage): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $message = $this->mobileEmailService->toggleStar($emailMessage);
 
         return $this->ok(new EmailMessageResource($message));
     }
 
-    public function downloadAttachment(EmailAttachment $emailAttachment)
+    public function downloadAttachment(Request $request, EmailAttachment $emailAttachment)
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
         abort_unless((int) $emailAttachment->workspace_id === (int) $workspace->id, 404);
         try {
@@ -109,8 +122,9 @@ class EmailController extends MobileController
         return $disk->download($path, basename($path));
     }
 
-    public function accounts(): JsonResponse
+    public function accounts(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $this->requireWorkspace($this->workspaceContext);
 
         $accounts = EmailAccount::query()

@@ -289,6 +289,61 @@ class WorkspaceAccess
             || $this->hasAnyMembershipRole($actor, $workspace, [self::ROLE_ADMIN]);
     }
 
+    public function canUseEmail(User $user, Workspace $workspace): bool
+    {
+        if (! $this->isActiveMember($user, $workspace)) {
+            return false;
+        }
+
+        return $this->isElevated($user, $workspace)
+            || $user->can('conversations.manage')
+            || $user->can('email.manage');
+    }
+
+    public function canManageEmailAccounts(User $user, Workspace $workspace): bool
+    {
+        if (! $this->isActiveMember($user, $workspace)) {
+            return false;
+        }
+
+        return $this->hasAnyMembershipRole($user, $workspace, [
+            self::ROLE_OWNER,
+            self::ROLE_ADMIN,
+            self::ROLE_MANAGER,
+        ]) || $user->can('email.manage');
+    }
+
+    public function canManageWhatsAppChannels(User $user, Workspace $workspace): bool
+    {
+        if (! $this->isActiveMember($user, $workspace)) {
+            return false;
+        }
+
+        return $this->hasAnyMembershipRole($user, $workspace, [
+            self::ROLE_OWNER,
+            self::ROLE_ADMIN,
+            self::ROLE_MANAGER,
+        ]) || $user->can('whatsapp.manage');
+    }
+
+    public function canManageChannels(User $user, Workspace $workspace): bool
+    {
+        return $this->canManageWhatsAppChannels($user, $workspace);
+    }
+
+    public function canManageAiSettings(User $user, Workspace $workspace): bool
+    {
+        if (! $this->isActiveMember($user, $workspace)) {
+            return false;
+        }
+
+        return $this->hasAnyMembershipRole($user, $workspace, [
+            self::ROLE_OWNER,
+            self::ROLE_ADMIN,
+            self::ROLE_MANAGER,
+        ]) || $user->can('ai.manage');
+    }
+
     public function currentWorkspace(): ?Workspace
     {
         return app(WorkspaceContext::class)->workspace();

@@ -13,6 +13,8 @@ import 'package:hasim/core/widgets/hasim_shell_header.dart';
 import 'package:hasim/realtime/realtime_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/isolated_api_client.dart';
+
 class _MemorySecureStore extends SecureStore {
   String? _token;
   @override
@@ -63,7 +65,10 @@ void main() {
         secureStoreProvider.overrideWithValue(_MemorySecureStore()),
         realtimeServiceProvider.overrideWithValue(NoopRealtimeService()),
         apiClientProvider.overrideWithValue(
-          ApiClient(secureStore: _MemorySecureStore(), prefsStore: PrefsStore(prefs)),
+          isolatedTestApiClient(
+            secureStore: _MemorySecureStore(),
+            prefsStore: PrefsStore(prefs),
+          ),
         ),
       ],
       child: MaterialApp.router(

@@ -5,6 +5,8 @@ namespace App\Policies;
 use App\Models\Order;
 use App\Models\User;
 use App\Policies\Concerns\ChecksWorkspaceMembership;
+use App\Support\Commerce\CommerceOrderAccess;
+use App\Support\Tenancy\WorkspaceContext;
 
 class OrderPolicy
 {
@@ -20,6 +22,12 @@ class OrderPolicy
      */
     public function view(User $user, Order $order): bool
     {
+        if ($order->source === 'commerce') {
+            // Commerce orders have their own explicit policy abilities and
+            // must not be exposed by legacy Orders/Payments endpoints.
+            return false;
+        }
+
         return $this->hasMembership($user, $order->workspace);
     }
 
@@ -28,7 +36,16 @@ class OrderPolicy
      */
     public function create(User $user): bool
     {
-        return true;
+        $workspace = app(WorkspaceContext::class)->workspace();
+        if (! $workspace || ! $this->hasMembership($user, $workspace)) {
+            return false;
+        }
+
+        if ($user->can('orders.manage') || $user->can('workspace.manage')) {
+            return true;
+        }
+
+        return $this->hasAnyWorkspaceRole($user, $workspace, ['owner', 'admin', 'manager']);
     }
 
     /**
@@ -36,6 +53,10 @@ class OrderPolicy
      */
     public function update(User $user, Order $order): bool
     {
+        if ($order->source === 'commerce') {
+            return false;
+        }
+
         return $this->hasAnyWorkspaceRole($user, $order->workspace, ['owner', 'admin', 'manager']);
     }
 
@@ -44,6 +65,10 @@ class OrderPolicy
      */
     public function delete(User $user, Order $order): bool
     {
+        if ($order->source === 'commerce') {
+            return false;
+        }
+
         return $this->hasAnyWorkspaceRole($user, $order->workspace, ['owner', 'admin']);
     }
 
@@ -61,5 +86,23 @@ class OrderPolicy
     public function forceDelete(User $user, Order $order): bool
     {
         return false;
+    }
+
+    public function viewCommerce(User $user, Order $order): bool
+    {
+        return $order->source === 'commerce'
+            && app(CommerceOrderAccess::class)->canViewOrders($user, $order->workspace);
+    }
+
+    public function manageCommerce(User $user, Order $order): bool
+    {
+        return $order->source === 'commerce'
+            && app(CommerceOrderAccess::class)->canManageOrders($user, $order->workspace);
+    }
+
+    public function cancelCommerce(User $user, Order $order): bool
+    {
+        return $order->source === 'commerce'
+            && app(CommerceOrderAccess::class)->canCancelOrders($user, $order->workspace);
     }
 }

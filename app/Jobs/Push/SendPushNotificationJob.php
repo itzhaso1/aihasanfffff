@@ -16,6 +16,13 @@ class SendPushNotificationJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $tries = 3;
+
+    public int $timeout = 60;
+
+    /** @var array<int, int> */
+    public array $backoff = [30, 120, 300];
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -83,12 +90,11 @@ class SendPushNotificationJob implements ShouldQueue
             return;
         }
 
-        Log::info('Push notification dispatch requested', [
+        Log::warning('Push notification not delivered: FCM HTTP client is not implemented', [
             'user_id' => $this->userId,
             'category' => $this->category,
             'workspace_id' => $this->workspaceId,
             'device_count' => $tokens->count(),
-            'title' => $this->title,
         ]);
     }
 }

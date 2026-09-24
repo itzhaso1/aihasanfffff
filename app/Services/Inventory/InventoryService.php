@@ -20,15 +20,19 @@ class InventoryService
         ?string $referenceType = null,
         ?int $referenceId = null,
         ?string $notes = null,
-    ): InventoryMovement {
+    ): ?InventoryMovement {
         if ($quantity <= 0) {
             throw new \InvalidArgumentException('Quantity must be greater than 0.');
         }
 
-        return DB::transaction(function () use ($productId, $variantId, $type, $quantity, $actor, $referenceType, $referenceId, $notes): InventoryMovement {
+        return DB::transaction(function () use ($productId, $variantId, $type, $quantity, $actor, $referenceType, $referenceId, $notes): ?InventoryMovement {
             $product = Product::query()->whereKey($productId)->lockForUpdate()->first();
             if (! $product) {
                 throw new ModelNotFoundException('Product not found.');
+            }
+
+            if (! $product->inventory_tracking) {
+                return null;
             }
 
             $variant = null;

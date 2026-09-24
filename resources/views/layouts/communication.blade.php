@@ -33,5 +33,6 @@
             </main>
         </div>
         @include('partials.ai-assistant-widget')
+        @stack('scripts')
     </body>
 </html>

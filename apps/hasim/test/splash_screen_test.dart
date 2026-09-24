@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hasim/app.dart';
 import 'package:hasim/core/di/providers.dart';
+import 'package:hasim/core/storage/prefs_store.dart';
 import 'package:hasim/core/storage/secure_store.dart';
 import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/features/auth/presentation/splash_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/isolated_api_client.dart';
 
 class _MemorySecureStore extends SecureStore {
   String? _token;
@@ -31,11 +34,18 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    final secure = _MemorySecureStore();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          secureStoreProvider.overrideWithValue(_MemorySecureStore()),
+          secureStoreProvider.overrideWithValue(secure),
           sharedPrefsProvider.overrideWithValue(prefs),
+          apiClientProvider.overrideWithValue(
+            isolatedTestApiClient(
+              secureStore: secure,
+              prefsStore: PrefsStore(prefs),
+            ),
+          ),
         ],
         child: const HasimApp(),
       ),
@@ -53,7 +63,7 @@ void main() {
 
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
     expect(scaffold.backgroundColor, Colors.white);
-    expect(AppTheme.brand, const Color(0xFF06C2A4));
+    expect(AppTheme.brand, const Color(0xFF00BFA6));
     expect(
       find.byWidgetPredicate(
         (widget) =>

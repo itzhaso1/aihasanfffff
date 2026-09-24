@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\MerchantDocumentType;
 use App\Models\Plan;
 use App\Models\PlatformAdmin;
+use App\Support\Auth\PlatformAdminSeedPassword;
 use App\Support\Authorization\FoundationRolePermissions;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -20,6 +21,8 @@ class FoundationSeeder extends Seeder
      */
     public function run(): void
     {
+        $platformAdminPassword = PlatformAdminSeedPassword::fromEnvironment();
+
         $registrar = app(PermissionRegistrar::class);
         $registrar->setPermissionsTeamId(null);
         $registrar->forgetCachedPermissions();
@@ -35,7 +38,27 @@ class FoundationSeeder extends Seeder
             'tables.manage',
             'menu.manage',
             'conversations.manage',
+            'chat.catalog.view',
+            'chat.catalog.manage',
+            'commerce.catalog.view',
+            'commerce.catalog.manage',
+            'commerce.catalog.settings.manage',
+            'commerce.catalog.items.manage',
+            'commerce.catalog.categories.manage',
+            'commerce.catalog.inventory.view',
+            'commerce.catalog.inventory.manage',
+            'commerce.catalog.digital_inventory.view',
+            'commerce.catalog.digital_inventory.manage',
+            'commerce.cart.view',
+            'commerce.cart.manage',
+            'commerce.orders.view',
+            'commerce.orders.manage',
+            'commerce.orders.cancel',
+            'commerce.intelligence.view',
+            'commerce.intelligence.manage',
+            'commerce.intelligence.evaluate',
             'ai.manage',
+            'email.manage',
             'whatsapp.manage',
             'payments.manage',
             'employees.manage',
@@ -95,6 +118,15 @@ class FoundationSeeder extends Seeder
             'projects.manage',
             'contracts.view',
             'contracts.manage',
+            'contracts.create',
+            'contracts.update',
+            'contracts.activate',
+            'contracts.cancel',
+            'contracts.renew',
+            'contracts.delete',
+            'contracts.attachments',
+            'contracts.invoice',
+            'contracts.payments',
         ];
 
         foreach (array_values(array_unique($permissions)) as $permission) {
@@ -128,19 +160,8 @@ class FoundationSeeder extends Seeder
             'tables.manage',
             'menu.manage',
             'conversations.manage',
-            'finance.view',
-            'finance.sales.view',
-            'finance.price_lists.view',
-            'finance.adjustments.view',
-            'finance.salary_advances.view',
-            'finance.fiscal_years.view',
-            'invoices.view',
-            'quotes.view',
-            'payments.view',
-            'receipts.view',
-            'expenses.view',
-            'reports.view',
-            'contracts.view',
+            'chat.catalog.view',
+            'chat.catalog.manage',
         ]);
         $receptionistRole->syncPermissions([
             'workspace.view',
@@ -149,10 +170,8 @@ class FoundationSeeder extends Seeder
             'tables.manage',
             'menu.manage',
             'conversations.manage',
-            'invoices.view',
             'payments.view',
             'payments.manage',
-            'receipts.view',
         ]);
         $staffDoctorRole->syncPermissions([
             'workspace.view',
@@ -186,7 +205,7 @@ class FoundationSeeder extends Seeder
             ['email' => env('PLATFORM_ADMIN_EMAIL', 'admin@hasem.local')],
             [
                 'name' => env('PLATFORM_ADMIN_NAME', 'Platform Admin'),
-                'password' => Hash::make(env('PLATFORM_ADMIN_PASSWORD', 'password')),
+                'password' => Hash::make($platformAdminPassword),
                 'email_verified_at' => now(),
             ]
         );
@@ -489,6 +508,7 @@ class FoundationSeeder extends Seeder
             'tables.manage',
             'menu.manage',
             'whatsapp.manage',
+            'email.manage',
             'employees.manage',
             'finance.view',
             'finance.manage',
@@ -543,6 +563,15 @@ class FoundationSeeder extends Seeder
             'projects.manage',
             'contracts.view',
             'contracts.manage',
+            'contracts.create',
+            'contracts.update',
+            'contracts.activate',
+            'contracts.cancel',
+            'contracts.renew',
+            'contracts.delete',
+            'contracts.attachments',
+            'contracts.invoice',
+            'contracts.payments',
         ])));
 
         return match ($tier) {

@@ -458,10 +458,10 @@ class CheckoutService {
     if (cmd.clientReference.trim().isEmpty) return false;
     if (cmd.lines.isEmpty) return false;
     for (final line in cmd.lines) {
+      if (line.quantity < 1) return false;
       final serverId = line.productServerId;
-      if (serverId == null || serverId <= 0 || line.quantity < 1) {
-        return false;
-      }
+      final hasServer = serverId != null && serverId > 0;
+      if (!hasServer && line.productLocalId.trim().isEmpty) return false;
     }
     return true;
   }
@@ -537,7 +537,10 @@ class CheckoutService {
         'items': [
           for (final line in quote.lineResults)
             {
-              'pos_menu_item_id': line.line.productServerId,
+              'product_local_id': line.line.productLocalId,
+              if (line.line.productServerId != null &&
+                  line.line.productServerId! > 0)
+                'pos_menu_item_id': line.line.productServerId,
               'quantity': line.line.quantity,
               'unit_price': Money.fromCents(line.line.unitPriceCents),
               'discount_amount': Money.fromCents(

@@ -1,6 +1,8 @@
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_client.dart';
 import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/features/settings/data/agent_persona_model.dart';
+import 'package:hasim/features/settings/data/ai_setting_model.dart';
 
 class PlanRepository {
   PlanRepository(this._api);
@@ -61,6 +63,36 @@ class CustomerRepository {
 class AiRepository {
   AiRepository(this._api);
   final ApiClient _api;
+
+  Future<AiSettingsPayload> fetchSettings() async {
+    final res = await _api.get('/ai/settings');
+    final map = asMap(res.data);
+    if (map == null) throw ApiException(res.message ?? 'تعذر تحميل إعدادات الذكاء الاصطناعي.');
+    final meta = res.meta ?? {};
+    return AiSettingsPayload(
+      settings: AiSettingModel.fromJson(map),
+      catalog: AgentPersonaCatalog.fromJson(
+        meta['persona_catalog'] is Map ? Map<String, dynamic>.from(meta['persona_catalog'] as Map) : null,
+      ),
+      aiRoles: meta['ai_roles'] is List
+          ? (meta['ai_roles'] as List).map((e) => e.toString()).toList()
+          : const [
+              'sales_agent',
+              'customer_support',
+              'booking_agent',
+              'receptionist',
+              'product_advisor',
+              'general_business_assistant',
+            ],
+    );
+  }
+
+  Future<AiSettingModel> updateSettings(Map<String, dynamic> body) async {
+    final res = await _api.put('/ai/settings', body: body);
+    final map = asMap(res.data);
+    if (map == null) throw ApiException(res.message ?? 'تعذر حفظ إعدادات الذكاء الاصطناعي.');
+    return AiSettingModel.fromJson(map);
+  }
 
   Future<String> suggestReply(int conversationId, {String? content}) async {
     final res = await _api.post('/ai/suggest-reply', body: {

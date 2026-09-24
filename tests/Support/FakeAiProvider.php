@@ -24,7 +24,12 @@ class FakeAiProvider implements AiProviderInterface
 
     public bool $throw = false;
 
-    public function generate(array $messages, string $model, float $temperature, int $maxTokens): array
+    public function supportsNativeToolCalling(): bool
+    {
+        return false;
+    }
+
+    public function generate(array $messages, string $model, float $temperature, int $maxTokens, array $toolDefinitions = []): array
     {
         $this->calls++;
         $this->lastMessages = $messages;

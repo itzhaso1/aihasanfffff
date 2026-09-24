@@ -3,7 +3,9 @@
 use App\Http\Controllers\Platform\AuthController;
 use App\Http\Controllers\Platform\DashboardController;
 use App\Http\Controllers\Platform\MerchantVerificationController;
+use App\Http\Controllers\Platform\OpsController;
 use App\Http\Controllers\Platform\PlanController;
+use App\Http\Controllers\Platform\SiteSettingsController;
 use App\Http\Controllers\Platform\SubscriptionController;
 use App\Http\Controllers\Platform\UserController;
 use App\Http\Controllers\Platform\WorkspaceController;
@@ -17,6 +19,11 @@ Route::middleware('guest:platform_admin')->group(function (): void {
 Route::middleware('platform.admin')->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout'])->name('platform.logout');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('platform.dashboard');
+    Route::get('/ops/health', [OpsController::class, 'health'])->name('platform.ops.health');
+    Route::get('/ops/metrics', [OpsController::class, 'metrics'])->name('platform.ops.metrics');
+
+    Route::get('/site', [SiteSettingsController::class, 'edit'])->name('platform.site.edit');
+    Route::put('/site', [SiteSettingsController::class, 'update'])->name('platform.site.update');
 
     Route::get('/users', [UserController::class, 'index'])->name('platform.users.index');
     Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('platform.users.edit');
@@ -31,6 +38,8 @@ Route::middleware('platform.admin')->group(function (): void {
     ])->except(['show']);
 
     Route::get('/subscriptions', [SubscriptionController::class, 'index'])->name('platform.subscriptions.index');
+    Route::get('/subscriptions/create', [SubscriptionController::class, 'create'])->name('platform.subscriptions.create');
+    Route::post('/subscriptions', [SubscriptionController::class, 'store'])->name('platform.subscriptions.store');
     Route::get('/subscriptions/{subscription}/edit', [SubscriptionController::class, 'edit'])->name('platform.subscriptions.edit');
     Route::put('/subscriptions/{subscription}', [SubscriptionController::class, 'update'])->name('platform.subscriptions.update');
 

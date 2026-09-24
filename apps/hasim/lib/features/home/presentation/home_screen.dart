@@ -7,6 +7,7 @@ import 'package:hasim/core/widgets/skeleton_list.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
 import 'package:hasim/features/home/providers/home_controller.dart';
 import 'package:hasim/features/stories/providers/stories_controller.dart';
+import 'package:hasim/l10n/app_localizations.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -17,6 +18,7 @@ class HomeScreen extends ConsumerWidget {
     final home = ref.watch(homeControllerProvider);
     final snap = home.snapshot;
     final greeting = greetingFor();
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -78,6 +80,7 @@ class HomeScreen extends ConsumerWidget {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
+                        _QuickAction(label: l10n.globalSearchTitle, icon: Icons.manage_search_rounded, onTap: () => context.push('/search')),
                         _QuickAction(label: 'محادثات', icon: Icons.forum_outlined, onTap: () => context.go('/conversations')),
                         _QuickAction(label: 'بريد جديد', icon: Icons.edit_outlined, onTap: () => context.push('/email/compose')),
                         _QuickAction(label: 'جهات الاتصال', icon: Icons.contacts_outlined, onTap: () => context.push('/contacts')),

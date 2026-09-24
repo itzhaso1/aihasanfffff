@@ -23,8 +23,8 @@ class ApiClient {
   })  : _secureStore = secureStore,
         _prefsStore = prefsStore,
         _onUnauthorized = onUnauthorized {
-    final base = AppConfig.normalizeHostBase(
-      prefsStore.apiBaseOverride ?? AppConfig.apiBase,
+    final base = AppConfig.resolveApiBase(
+      override: prefsStore.apiBaseOverride,
     );
     _dio = dio ??
         Dio(
@@ -76,7 +76,8 @@ class ApiClient {
   }
 
   void updateBaseUrl(String apiBase) {
-    _dio.options.baseUrl = AppConfig.financeApiBase(apiBase);
+    final host = AppConfig.resolveApiBase(override: apiBase);
+    _dio.options.baseUrl = AppConfig.financeApiBase(host);
   }
 
   void _emitUnauthorized() {
@@ -126,12 +127,13 @@ class ApiClient {
     String path, {
     Object? body,
     bool idempotent = false,
+    String? idempotencyKey,
     T Function(dynamic raw)? mapData,
   }) async {
     try {
       final headers = <String, dynamic>{};
       if (idempotent) {
-        headers['Idempotency-Key'] = const Uuid().v4();
+        headers['Idempotency-Key'] = idempotencyKey ?? const Uuid().v4();
       }
       final res = await _dio.post<dynamic>(
         _rel(path),

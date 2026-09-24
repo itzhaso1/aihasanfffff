@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/core/theme/hasim_layout.dart';
+import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
 import 'package:hasim/core/widgets/skeleton_list.dart';
 
 class PlansScreen extends ConsumerStatefulWidget {
@@ -53,9 +55,8 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('الباقات والاستخدام')),
-      body: _loading
+    final compact = HasimLayout.isCompact(context);
+    final content = _loading
           ? const SkeletonList()
           : _error != null
               ? Center(
@@ -115,7 +116,15 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
                       ),
                     ],
                   ),
-                ),
+                );
+
+    if (compact) {
+      return HasimMobileScaffold(title: 'الباقات والاستخدام', body: content);
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('الباقات والاستخدام')),
+      body: content,
     );
   }
 }

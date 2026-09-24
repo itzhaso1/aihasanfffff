@@ -11,6 +11,7 @@
         "guzzlehttp/guzzle": "^7.9",
         "khaled.alshamaa/ar-php": "^7.0",
         "laravel/framework": "^13.17",
+        "laravel/reverb": "^1.12",
         "laravel/sanctum": "^4.3",
         "laravel/socialite": "^5.29",
         "laravel/tinker": "^3.0",

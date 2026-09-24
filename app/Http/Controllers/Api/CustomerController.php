@@ -18,6 +18,8 @@ class CustomerController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', Customer::class);
+
         $customers = Customer::query()
             ->when($request->string('search')->toString(), function ($query, $search): void {
                 $query->where(fn ($q) => $q
@@ -33,6 +35,8 @@ class CustomerController extends Controller
 
     public function store(StoreCustomerRequest $request): JsonResponse
     {
+        $this->authorize('create', Customer::class);
+
         $customer = $this->customerService->create($request->validated());
 
         return response()->json(['data' => $customer], 201);

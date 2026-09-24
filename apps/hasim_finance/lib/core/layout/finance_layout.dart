@@ -181,12 +181,6 @@ String fieldError(Object error, String key) {
 }
 
 void showFormError(BuildContext context, Object error) {
-  if (error is ApiException && error.errors != null && error.errors!.isNotEmpty) {
-    final first = error.errors!.values.first;
-    final text = first is List && first.isNotEmpty ? first.first.toString() : first.toString();
-    showSnack(context, text);
-    return;
-  }
   showApiError(context, error);
 }
 

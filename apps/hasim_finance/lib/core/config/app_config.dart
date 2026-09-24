@@ -1,11 +1,79 @@
+import 'package:flutter/foundation.dart';
+
 /// حاسم للمالية — إعدادات التطبيق
 class AppConfig {
   AppConfig._();
 
-  static const String apiBase = String.fromEnvironment(
-    'API_BASE',
-    defaultValue: 'http://127.0.0.1:8000',
+  static const String apiBaseDefineName = 'API_BASE';
+
+  static const String _apiBaseFromEnvironment = String.fromEnvironment(
+    apiBaseDefineName,
+    defaultValue: '',
   );
+
+  static const String debugFallbackApiBase = 'http://127.0.0.1:8000';
+
+  static String get apiBase => resolveApiBase();
+
+  static String resolveApiBase({String? override}) {
+    return resolveConfiguredHost(_apiBaseFromEnvironment, override: override);
+  }
+
+  static String resolveConfiguredHost(
+    String rawFromEnvironment, {
+    String? override,
+  }) {
+    if (override != null && override.trim().isNotEmpty) {
+      final resolved = normalizeHostBase(override);
+      if (kReleaseMode) {
+        return assertProductionApiHost(resolved, defineName: apiBaseDefineName);
+      }
+      return resolved;
+    }
+
+    if (kReleaseMode) {
+      return assertProductionApiHost(
+        normalizeHostBase(rawFromEnvironment),
+        defineName: apiBaseDefineName,
+      );
+    }
+
+    final raw = rawFromEnvironment.trim().isNotEmpty
+        ? rawFromEnvironment
+        : debugFallbackApiBase;
+
+    return normalizeHostBase(raw);
+  }
+
+  static String assertProductionApiHost(
+    String normalizedHost, {
+    required String defineName,
+  }) {
+    if (normalizedHost.isEmpty) {
+      throw StateError(
+        'Missing production API URL. Pass --dart-define=$defineName=https://your-domain.com at build time.',
+      );
+    }
+
+    final uri = Uri.tryParse(normalizedHost);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      throw StateError('Invalid production API URL: $normalizedHost');
+    }
+
+    if (uri.scheme.toLowerCase() != 'https') {
+      throw StateError('Production API URL must use HTTPS: $normalizedHost');
+    }
+
+    final host = uri.host.toLowerCase();
+    const blockedHosts = {'localhost', '127.0.0.1', '10.0.2.2', '0.0.0.0'};
+    if (blockedHosts.contains(host)) {
+      throw StateError(
+        'Production API URL cannot use development host "$host".',
+      );
+    }
+
+    return normalizedHost;
+  }
 
   static String normalizeHostBase(String raw) {
     var value = raw.trim();

@@ -52,7 +52,6 @@ class TableGuestSessionService
         }
 
         $guest = PosCustomerSession::withoutGlobalScopes()
-            ->with('tableSession')
             ->where('workspace_id', $table->workspace_id)
             ->where('dining_table_id', $table->id)
             ->where('token', $token)
@@ -62,7 +61,9 @@ class TableGuestSessionService
             throw new RuntimeException('انتهت جلسة هذه الطاولة. يرجى بدء جلسة جديدة.');
         }
 
-        $session = $guest->tableSession;
+        $session = TableSession::withoutGlobalScopes()
+            ->whereKey($guest->table_session_id)
+            ->first();
         if (! $session || $session->status !== 'open') {
             throw new RuntimeException('انتهت جلسة هذه الطاولة. يرجى بدء جلسة جديدة.');
         }
@@ -103,7 +104,6 @@ class TableGuestSessionService
     private function findActiveGuest(DiningTable $table, string $token): ?PosCustomerSession
     {
         $guest = PosCustomerSession::withoutGlobalScopes()
-            ->with('tableSession')
             ->where('workspace_id', $table->workspace_id)
             ->where('dining_table_id', $table->id)
             ->where('token', $token)
@@ -114,7 +114,9 @@ class TableGuestSessionService
             return null;
         }
 
-        $session = $guest->tableSession;
+        $session = TableSession::withoutGlobalScopes()
+            ->whereKey($guest->table_session_id)
+            ->first();
         if (! $session || $session->status !== 'open') {
             return null;
         }

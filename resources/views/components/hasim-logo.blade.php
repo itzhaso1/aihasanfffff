@@ -25,6 +25,6 @@
 
 <img
     src="{{ $url }}"
-    alt="حاسم الذكي HASIM SMART"
+    alt="{{ ($publicSite ?? \App\Support\Site\PublicSite::current())->nameAr() }} {{ ($publicSite ?? \App\Support\Site\PublicSite::current())->nameEn() }}"
     {{ $attributes->class($classes) }}
 >

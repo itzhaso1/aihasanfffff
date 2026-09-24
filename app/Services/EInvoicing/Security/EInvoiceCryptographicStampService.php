@@ -263,7 +263,7 @@ final class EInvoiceCryptographicStampService
 
     private function assertNoPrivateKeyColumns(): void
     {
-        foreach (['e_invoice_certificates', 'e_invoice_cryptographic_stamps'] as $table) {
+        foreach (['e_invoice_certificates', 'e_invoice_cryptographic_stamps', 'egs_private_key_references', 'egs_onboarding'] as $table) {
             foreach (['private_key', 'private_key_pem', 'private_key_password', 'secret_key'] as $column) {
                 if (Schema::hasColumn($table, $column)) {
                     throw new CryptographicStampException(

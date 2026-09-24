@@ -8,6 +8,19 @@ use App\EInvoicing\Security\CryptographicStampSigner;
 use App\EInvoicing\Security\Harness\CryptographicProfile;
 use App\EInvoicing\Security\Harness\UnresolvedProductionZatcaCryptographicProfile;
 use App\Models\Category;
+use App\Models\ChatCatalog;
+use App\Models\ChatCatalogCategory;
+use App\Models\ChatCatalogCommunicationProfile;
+use App\Models\ChatCatalogDigitalInventoryPool;
+use App\Models\ChatCatalogDigitalInventoryUnit;
+use App\Models\ChatCatalogItem;
+use App\Models\ChatCatalogItemDigitalProfile;
+use App\Models\ChatCatalogItemMedia;
+use App\Models\Commerce\CommerceCart;
+use App\Models\Commerce\CommerceIntelligenceProfile;
+use App\Models\Commerce\Seller;
+use App\Models\Commerce\SellerAllocation;
+use App\Models\Commerce\SellerPaymentAccount;
 use App\Models\Contract\Contract;
 use App\Models\Contract\ContractAttachment;
 use App\Models\Contract\ContractItem;
@@ -16,8 +29,10 @@ use App\Models\Crm\CrmLead;
 use App\Models\Customer;
 use App\Models\DiningTable;
 use App\Models\EmailAccount;
+use App\Models\EmailBranding;
 use App\Models\EmailContact;
 use App\Models\EmailMessage;
+use App\Models\EmailTemplatePreference;
 use App\Models\EmployeeInvitation;
 use App\Models\Finance\FinanceBankStatement;
 use App\Models\Finance\FinanceBillingSchedule;
@@ -63,13 +78,27 @@ use App\Models\TableSession;
 use App\Models\WhatsAppAccount;
 use App\Models\Workspace;
 use App\Notifications\Channels\CentralMailChannel;
+use App\Observers\ChatCatalogAuditObserver;
+use App\Observers\ChatCatalogSensitiveAuditObserver;
+use App\Observers\CommerceSensitiveAuditObserver;
 use App\Observers\FinanceInvoicePaymentObserver;
 use App\Observers\PosSyncChangeObserver;
 use App\Observers\WorkspaceAuditObserver;
 use App\Policies\CategoryPolicy;
+use App\Policies\ChatCatalogCategoryPolicy;
+use App\Policies\ChatCatalogDigitalInventoryPoolPolicy;
+use App\Policies\ChatCatalogDigitalInventoryUnitPolicy;
+use App\Policies\ChatCatalogItemPolicy;
+use App\Policies\ChatCatalogPolicy;
+use App\Policies\Commerce\CommerceCartPolicy;
+use App\Policies\Commerce\CommerceIntelligencePolicy;
+use App\Policies\Commerce\SellerPaymentAccountPolicy;
+use App\Policies\Commerce\SellerPolicy;
 use App\Policies\ConversationPolicy;
 use App\Policies\CustomerPolicy;
 use App\Policies\DiningTablePolicy;
+use App\Policies\EmailBrandingPolicy;
+use App\Policies\EmailTemplatePreferencePolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\PaymentPolicy;
 use App\Policies\PosCashierInvoicePolicy;
@@ -78,12 +107,27 @@ use App\Policies\PosMenuItemPolicy;
 use App\Policies\ProductPolicy;
 use App\Policies\SubscriptionPolicy;
 use App\Policies\WorkspacePolicy;
+use App\Services\AI\Contracts\GeminiInteractionsClient;
+use App\Services\AI\Gemini\GeminiInteractionsHttpClient;
+use App\Services\AI\Inbox\Memory\Contracts\InboxAgentMemoryExtractor;
+use App\Services\AI\Inbox\Memory\LlmInboxAgentMemoryExtractor;
+use App\Services\AI\Inbox\Tools\EvaluateProductSuitabilityTool;
+use App\Services\AI\Inbox\Tools\GetProductIntelligenceTool;
+use App\Services\AI\Inbox\Tools\InboxAgentToolRegistry;
+use App\Services\AI\Inbox\Tools\SaveCustomerCommerceContextTool;
+use App\Services\AI\Inbox\Tools\SearchProductsTool;
+use App\EInvoicing\Security\Csr\CsrGenerator;
+use App\EInvoicing\Security\Csr\DevTestCsrGenerator;
+use App\EInvoicing\Security\PrivateKeyStore;
 use App\Services\EInvoicing\Security\DeferredCryptographicStampSigner;
+use App\Services\EInvoicing\Security\DevMemoryPrivateKeyStore;
 use App\Services\Payment\Contracts\BillableCheckoutPort;
 use App\Services\Payment\Contracts\MerchantSettlementProviderInterface;
 use App\Services\Payment\Providers\HyperPayMerchantSettlementProvider;
 use App\Services\Payment\SharedBillableCheckout;
 use App\Services\Subscription\Contracts\SubscriptionBillingProviderInterface;
+use App\Support\Email\EmailLibraryBrandingComposer;
+use App\Support\Site\PublicSite;
 use App\Support\Subscription\SubscriptionBillingGuard;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -94,6 +138,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -103,6 +148,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(InboxAgentToolRegistry::class, static fn (): InboxAgentToolRegistry => new InboxAgentToolRegistry);
+        $this->app->bind(InboxAgentMemoryExtractor::class, LlmInboxAgentMemoryExtractor::class);
         $this->app->singleton(WorkspaceContext::class);
         $this->app->bind(
             SubscriptionBillingProviderInterface::class,
@@ -114,8 +161,14 @@ class AppServiceProvider extends ServiceProvider
             HyperPayMerchantSettlementProvider::class
         );
         $this->app->bind(CryptographicStampSigner::class, DeferredCryptographicStampSigner::class);
+        $this->app->singleton(PrivateKeyStore::class, DevMemoryPrivateKeyStore::class);
+        $this->app->bind(CsrGenerator::class, DevTestCsrGenerator::class);
         $this->app->bind(CryptographicProfile::class, UnresolvedProductionZatcaCryptographicProfile::class);
         $this->app->bind(QrTag9Provider::class, UnresolvedProductionQrTag9Provider::class);
+        $this->app->bind(
+            GeminiInteractionsClient::class,
+            GeminiInteractionsHttpClient::class,
+        );
     }
 
     /**
@@ -124,6 +177,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Notification::extend('central_mail', fn ($app) => $app->make(CentralMailChannel::class));
+        View::composer('emails.library.*', EmailLibraryBrandingComposer::class);
+        View::composer('*', function ($view): void {
+            if (! $view->offsetExists('publicSite')) {
+                $view->with('publicSite', PublicSite::current());
+            }
+        });
 
         Queue::failing(function (JobFailed $event): void {
             Log::error('queue.job.failed', [
@@ -134,11 +193,18 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->configureMobileRateLimiting();
+        $this->configureLegacyRateLimiting();
+        $this->registerInboxAgentTools();
         $this->configureAuthRateLimiting();
         $this->configureSubscriptionRateLimiting();
 
         Gate::policy(Workspace::class, WorkspacePolicy::class);
         Gate::policy(Category::class, CategoryPolicy::class);
+        Gate::policy(ChatCatalogCategory::class, ChatCatalogCategoryPolicy::class);
+        Gate::policy(ChatCatalog::class, ChatCatalogPolicy::class);
+        Gate::policy(ChatCatalogDigitalInventoryPool::class, ChatCatalogDigitalInventoryPoolPolicy::class);
+        Gate::policy(ChatCatalogDigitalInventoryUnit::class, ChatCatalogDigitalInventoryUnitPolicy::class);
+        Gate::policy(ChatCatalogItem::class, ChatCatalogItemPolicy::class);
         Gate::policy(Product::class, ProductPolicy::class);
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(DiningTable::class, DiningTablePolicy::class);
@@ -149,7 +215,25 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Conversation::class, ConversationPolicy::class);
         Gate::policy(Payment::class, PaymentPolicy::class);
         Gate::policy(Subscription::class, SubscriptionPolicy::class);
+        Gate::policy(EmailBranding::class, EmailBrandingPolicy::class);
+        Gate::policy(EmailTemplatePreference::class, EmailTemplatePreferencePolicy::class);
+        Gate::policy(Seller::class, SellerPolicy::class);
+        Gate::policy(SellerPaymentAccount::class, SellerPaymentAccountPolicy::class);
+        Gate::policy(CommerceCart::class, CommerceCartPolicy::class);
+        Gate::policy(CommerceIntelligenceProfile::class, CommerceIntelligencePolicy::class);
 
+        Seller::observe(CommerceSensitiveAuditObserver::class);
+        SellerPaymentAccount::observe(CommerceSensitiveAuditObserver::class);
+        SellerAllocation::observe(CommerceSensitiveAuditObserver::class);
+
+        ChatCatalogCategory::observe(ChatCatalogAuditObserver::class);
+        ChatCatalog::observe(ChatCatalogAuditObserver::class);
+        ChatCatalogCommunicationProfile::observe(ChatCatalogAuditObserver::class);
+        ChatCatalogItem::observe(ChatCatalogAuditObserver::class);
+        ChatCatalogItemMedia::observe(ChatCatalogAuditObserver::class);
+        ChatCatalogDigitalInventoryPool::observe(ChatCatalogSensitiveAuditObserver::class);
+        ChatCatalogDigitalInventoryUnit::observe(ChatCatalogSensitiveAuditObserver::class);
+        ChatCatalogItemDigitalProfile::observe(ChatCatalogSensitiveAuditObserver::class);
         Product::observe(WorkspaceAuditObserver::class);
         Category::observe(WorkspaceAuditObserver::class);
         Customer::observe(WorkspaceAuditObserver::class);
@@ -173,6 +257,8 @@ class AppServiceProvider extends ServiceProvider
         InventoryMovement::observe(PosSyncChangeObserver::class);
         Conversation::observe(WorkspaceAuditObserver::class);
         EmailAccount::observe(WorkspaceAuditObserver::class);
+        EmailBranding::observe(WorkspaceAuditObserver::class);
+        EmailTemplatePreference::observe(WorkspaceAuditObserver::class);
         EmailContact::observe(WorkspaceAuditObserver::class);
         EmailMessage::observe(WorkspaceAuditObserver::class);
         FinanceSetting::observe(WorkspaceAuditObserver::class);
@@ -254,6 +340,13 @@ class AppServiceProvider extends ServiceProvider
         });
     }
 
+    private function configureLegacyRateLimiting(): void
+    {
+        RateLimiter::for('legacy-api', function (Request $request) {
+            return Limit::perMinute(120)->by((string) ($request->user()?->id ?: $request->ip()));
+        });
+    }
+
     private function configureAuthRateLimiting(): void
     {
         RateLimiter::for('otp-request', function (Request $request) {
@@ -282,5 +375,22 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute(20)->by('subscription-billing:'.$userKey);
         });
+    }
+
+    private function registerInboxAgentTools(): void
+    {
+        if ($this->app->runningUnitTests()) {
+            return;
+        }
+
+        if (! (bool) config('ai.inbox_agent.tools_enabled', true)) {
+            return;
+        }
+
+        $registry = $this->app->make(InboxAgentToolRegistry::class);
+        $registry->register($this->app->make(SearchProductsTool::class));
+        $registry->register($this->app->make(EvaluateProductSuitabilityTool::class));
+        $registry->register($this->app->make(GetProductIntelligenceTool::class));
+        $registry->register($this->app->make(SaveCustomerCommerceContextTool::class));
     }
 }

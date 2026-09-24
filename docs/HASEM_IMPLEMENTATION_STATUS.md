@@ -28,7 +28,8 @@ This file reflects the platform-core increment plus the finance frontend ERP pha
 | Global finance search | New | New | `FinanceSearchService` | — | Web + JSON wantsJson | Cross-WS lead hidden | Permission + workspace | — | Projects in search; tighter permission per type |
 | Projects | New | New | `ProjectService`, `FinanceProject` | `finance_projects` + FKs | Web | List isolation | Customer must belong to WS | Profit from invoice/expense sums | Tasks, time, billing from timesheets |
 | Compliance profiles | New | New | `app/Support/Compliance/*`, bootstrap | Extra tax rate rows | — | Indirect bootstrap | Not in controllers | Default rates only | JoFotara, ZATCA XML, full GST schedules |
-| POS | Existing | Existing | Unchanged this phase | — | Cashier API | Existing POS tests | Existing | Sales via existing invoice/POS paths | Shifts, split tender UX audit |
+| POS | Existing | Existing | Cashier catalog remains `pos_menu_items`; Electronic Menu reads active POS items only | — | Cashier API | DomainCatalogSeparationTest + existing POS tests | Existing | Sales via existing invoice/POS paths | Shifts, split tender UX audit |
+| Chat Catalog | New | New | `chat_catalog_*` tables, mobile/web CRUD, Chat AI retrieval | Additive | `/api/mobile/v1/catalog` | DomainCatalogSeparationTest + ChatCatalogRetrievalServiceTest | Workspace + `chat.catalog.*` | None | Variants/media UX can deepen later |
 | Employees / payroll | Existing | Existing | Unchanged | — | Web | FinancialCore payroll | Existing | Existing payroll JEs | Commissions from payments |
 | Subscriptions / SaaS billing | Existing | Existing | Unchanged | — | Existing | BillingLifecycleTest | Existing | Existing | — |
 | Multi-currency FX | Partial | Accounts only | COA 4200/5400 | — | — | — | — | No auto FX JE | Historical rates, revaluation |

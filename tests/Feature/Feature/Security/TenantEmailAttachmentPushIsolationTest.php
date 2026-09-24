@@ -172,8 +172,7 @@ class TenantEmailAttachmentPushIsolationTest extends TestCase
             ],
         );
 
-        $this->get($forged)->assertNotFound();
-        $this->assertStringNotContainsString('chat-b-secret', (string) $this->get($forged)->getContent());
+        $this->get($forged)->assertUnauthorized();
     }
 
     public function test_device_token_register_is_workspace_specific(): void

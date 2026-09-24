@@ -5,8 +5,8 @@ namespace App\Services\Finance\Api;
 use App\EInvoicing\EInvoiceDocument;
 use App\EInvoicing\QR\QrTag;
 use App\EInvoicing\Xml\EInvoiceXmlMappingException;
-use App\Enums\EInvoicing\ElectronicDocumentKind;
 use App\Exceptions\Api\ComplianceUnavailableException;
+use App\Services\EInvoicing\ComplianceAssessment;
 use App\Exceptions\Api\ProductionCryptoUnavailableException;
 use App\Models\EInvoicing\EInvoiceDocumentRecord;
 use App\Models\EInvoicing\EInvoiceSecurityRecord;
@@ -15,6 +15,7 @@ use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\IssuedDocumentSnapshot;
 use App\Models\PosCashierInvoice;
 use App\Models\Workspace;
+use App\Services\EInvoicing\ComplianceReadinessService;
 use App\Services\EInvoicing\EInvoiceFactory;
 use App\Services\EInvoicing\EInvoiceXmlGenerator;
 use App\Services\EInvoicing\InvoiceIssueService;
@@ -36,6 +37,7 @@ final class InvoiceDocumentReadService
         private readonly EInvoiceXmlGenerator $xmlGenerator,
         private readonly EInvoiceQrService $qrService,
         private readonly InvoiceIssueService $invoiceIssueService,
+        private readonly ComplianceReadinessService $complianceReadiness,
         private readonly InvoiceApiAssembler $assembler,
         private readonly PdfInvoiceService $pdfInvoiceService,
     ) {}
@@ -120,13 +122,17 @@ final class InvoiceDocumentReadService
     {
         $snapshot = $this->snapshot(IssuedDocumentSnapshot::SOURCE_FINANCE_INVOICE, (int) $invoice->id);
         if ($snapshot === null) {
-            return $this->assembler->draftFinanceDetails($invoice);
+            return $this->assembler->draftFinanceDetails(
+                $invoice,
+                $this->complianceReadiness->assessFinanceInvoice($invoice),
+            );
         }
 
         return $this->detailsFromSnapshot(
             (int) $invoice->id,
             (string) $invoice->type,
             $snapshot,
+            $this->complianceReadiness->assessFinanceInvoice($invoice),
             $invoice->due_date?->toDateString(),
             is_string($invoice->payment_terms) ? $invoice->payment_terms : null,
         );
@@ -142,7 +148,12 @@ final class InvoiceDocumentReadService
             throw new ComplianceUnavailableException('The note has not been issued yet.');
         }
 
-        return $this->detailsFromSnapshot((int) $note->id, (string) $note->type, $snapshot);
+        return $this->detailsFromSnapshot(
+            (int) $note->id,
+            (string) $note->type,
+            $snapshot,
+            $this->complianceReadiness->assessFinanceCreditNote($note),
+        );
     }
 
     public function posDetails(PosCashierInvoice $invoice): InvoiceDetailsDto
@@ -163,6 +174,7 @@ final class InvoiceDocumentReadService
             (int) $invoice->id,
             'pos',
             $snapshot,
+            $this->complianceReadiness->assessPosCashierInvoice($invoice),
             paymentMethod: is_string($paymentMethod) ? $paymentMethod : null,
         );
     }
@@ -282,6 +294,7 @@ final class InvoiceDocumentReadService
         int $id,
         string $documentType,
         IssuedDocumentSnapshot $snapshot,
+        ComplianceAssessment $assessment,
         ?string $dueDate = null,
         ?string $paymentMethod = null,
     ): InvoiceDetailsDto {
@@ -291,25 +304,15 @@ final class InvoiceDocumentReadService
             ->where('e_invoice_document_id', $record->id)
             ->first();
 
-        $xmlAvailable = false;
-        if ($this->xmlEligible($document)) {
-            try {
-                $this->xmlGenerator->generate($document);
-                $xmlAvailable = true;
-            } catch (EInvoiceXmlMappingException) {
-                $xmlAvailable = false;
-            }
-        }
-        $qrAvailable = $xmlAvailable && $security !== null;
-
         return $this->assembler->detailsFromDocument(
             id: $id,
             fallbackType: $documentType,
             document: $document,
-            record: $record,
-            xmlAvailable: $xmlAvailable,
-            qrAvailable: $qrAvailable,
+            record: $record ?? $assessment->documentRecord,
+            xmlAvailable: $assessment->xmlAvailable,
+            qrAvailable: $assessment->qrAvailable,
             securityStatus: $this->assembler->securityStatus($security),
+            readiness: $assessment,
             dueDate: $dueDate,
             paymentMethod: $paymentMethod,
         );
@@ -378,21 +381,9 @@ final class InvoiceDocumentReadService
             ->first();
     }
 
-    private function xmlEligible(EInvoiceDocument $document): bool
-    {
-        $kind = $document->kind();
-
-        if ($kind === ElectronicDocumentKind::PurchaseInvoice
-            || $kind === ElectronicDocumentKind::PosCashierInvoice) {
-            return false;
-        }
-
-        return $document->typeCode() !== null && $document->transactionCode() !== null;
-    }
-
     private function assertXmlEligible(EInvoiceDocument $document): void
     {
-        if (! $this->xmlEligible($document)) {
+        if (! $this->complianceReadiness->isXmlEligible($document)) {
             throw new ComplianceUnavailableException(
                 'Electronic invoice XML is not available for this document kind.',
             );

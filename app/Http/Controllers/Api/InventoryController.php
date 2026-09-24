@@ -35,6 +35,8 @@ class InventoryController extends Controller
 
     public function adjust(AdjustInventoryRequest $request): JsonResponse
     {
+        $this->authorizeManage($request);
+
         $movement = $this->inventoryService->adjustStock(
             productId: $request->integer('product_id'),
             variantId: $request->filled('product_variant_id') ? $request->integer('product_variant_id') : null,
@@ -55,5 +57,13 @@ class InventoryController extends Controller
         $workspace = $this->workspaceContext->workspace();
         abort_unless($user && $workspace, 403);
         abort_unless($this->workspaceAccess->canViewInventory($user, $workspace), 403);
+    }
+
+    private function authorizeManage(Request $request): void
+    {
+        $user = $request->user();
+        $workspace = $this->workspaceContext->workspace();
+        abort_unless($user && $workspace, 403);
+        abort_unless($this->workspaceAccess->canManageInventory($user, $workspace), 403);
     }
 }

@@ -163,6 +163,7 @@ class MobileV2ExtensionsTest extends TestCase
             'status' => 'active',
             'joined_at' => now(),
         ]);
+        $this->enableWorkspaceFeature($workspace, 'email');
 
         return [$user, $workspace];
     }

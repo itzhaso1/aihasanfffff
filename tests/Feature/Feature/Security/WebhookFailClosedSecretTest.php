@@ -19,7 +19,6 @@ use App\Models\WhatsAppAccount;
 use App\Models\WhatsAppPhoneNumber;
 use App\Models\Workspace;
 use App\Services\Subscription\SubscriptionService;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
@@ -261,21 +260,16 @@ class WebhookFailClosedSecretTest extends TestCase
         $this->assertSame(1, WebhookEvent::withoutGlobalScopes()->where('provider', 'whatsapp')->count());
     }
 
-    public function test_whatsapp_duplicate_phone_number_id_cannot_bind_two_workspaces(): void
+    public function test_whatsapp_ambiguous_phone_number_id_does_not_route_webhook(): void
     {
         $this->workspaceWithWhatsAppPhone('pnid-ambig');
-
-        try {
-            $this->workspaceWithWhatsAppPhone('pnid-ambig');
-            $this->fail('phone_number_id must stay unique so a webhook cannot bind two workspaces');
-        } catch (UniqueConstraintViolationException) {
-            $this->assertTrue(true);
-        }
+        $this->workspaceWithWhatsAppPhone('pnid-ambig');
 
         config()->set('whatsapp.app_secret', 'meta_p07');
-        $this->postWhatsApp($this->whatsAppInboundPayload('pnid-unknown-ambig', 'wamid.ambig'), 'meta_p07')
+        $this->postWhatsApp($this->whatsAppInboundPayload('pnid-ambig', 'wamid.ambig'), 'meta_p07')
             ->assertAccepted();
         $this->assertSame(0, WebhookEvent::withoutGlobalScopes()->where('external_event_id', 'evt-wamid.ambig')->count());
+        $this->assertSame(0, Message::withoutGlobalScopes()->count());
     }
 
     public function test_resend_missing_empty_invalid_secret_does_not_mutate_log(): void

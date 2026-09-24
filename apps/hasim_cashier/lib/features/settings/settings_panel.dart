@@ -15,6 +15,8 @@ import '../../core/config/app_config.dart';
 import '../../core/local_db/app_database.dart';
 import '../../core/local_db/local_db_providers.dart';
 import '../../core/navigation/pos_shell_nav.dart';
+import '../../core/network/cashier_link.dart';
+import '../../core/network/link_policy.dart';
 import '../../core/permissions/cashier_permissions.dart';
 import '../../core/permissions/permissions_provider.dart';
 import '../../core/pos/application/local_auth_service.dart';
@@ -143,6 +145,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     final workspaceId = CashierRequestAuth.workspaceId(
       sessionWorkspaceId: ref.read(workspaceIdProvider),
       cloud: cloud,
+      sessionToken: ref.read(authTokenProvider),
     );
     var pending = 0;
     var failed = 0;
@@ -151,14 +154,12 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     String? failedHint;
     if (workspaceId != null && workspaceId > 0) {
       final classifier = SyncQueueClassifier(ref.read(appDatabaseProvider));
+      await classifier.settleAlreadyApplied(workspaceId);
       final counts = await classifier.counts(workspaceId);
       pending = counts.scopedPending;
       failed = counts.failed;
       unsupported =
-          counts.unsupported +
-          counts.standalone +
-          counts.blocked +
-          counts.alreadyApplied;
+          counts.unsupported + counts.standalone + counts.blocked;
       waitingParent = counts.waitingParent;
       failedHint = await classifier.firstFailedHint(workspaceId);
     }
@@ -242,6 +243,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       final workspaceId = CashierRequestAuth.workspaceId(
         sessionWorkspaceId: ref.read(workspaceIdProvider),
         cloud: cloud,
+        sessionToken: ref.read(authTokenProvider),
       );
       final deviceId =
           CashierRequestAuth.deviceId(
@@ -309,6 +311,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     final workspaceId = CashierRequestAuth.workspaceId(
       sessionWorkspaceId: ref.read(workspaceIdProvider),
       cloud: cloud,
+      sessionToken: ref.read(authTokenProvider),
     );
     if (workspaceId == null || workspaceId <= 0) {
       _showSyncMessage('لا توجد مساحة عمل للمزامنة.');
@@ -867,6 +870,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     final fromSession = CashierRequestAuth.workspaceId(
       sessionWorkspaceId: ref.read(workspaceIdProvider),
       cloud: cloud,
+      sessionToken: ref.read(authTokenProvider),
     );
     if (fromSession != null && fromSession > 0) return fromSession;
     return ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
@@ -1207,13 +1211,25 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
 
   Widget _syncCard({required CloudLinkSnapshot? cloud}) {
     final linked = cloud != null;
+    final link = ref.watch(cashierLinkProvider);
     final workspaceId = CashierRequestAuth.workspaceId(
       sessionWorkspaceId: ref.watch(workspaceIdProvider),
       cloud: cloud,
+      sessionToken: ref.watch(authTokenProvider),
     );
     final localWorkspace = PosMode.isReservedStandaloneWorkspace(
       workspaceId ?? 0,
     );
+    final serverLabel = switch (link.link) {
+      CashierLink.offline => 'لا توجد شبكة',
+      CashierLink.serverUnavailable => 'الخادم غير متاح',
+      CashierLink.online => 'الخادم متاح',
+    };
+    final banner = !linked
+        ? 'غير مرتبط بالسحابة. تشغيل السيرفر وتطبيق فلاتر معاً لا يكفي بدون ربط الحساب.'
+        : link.link == CashierLink.online
+            ? 'مرتبط بالسحابة · مساحة العمل ${cloud.workspaceId} · $serverLabel'
+            : 'الحساب مرتبط · مساحة العمل ${cloud.workspaceId} · ${LinkPolicy.bannerMessage(link.link, pendingCount: _pendingSync)}';
     return HsSectionCard(
       icon: Icons.cloud_sync_outlined,
       iconBackground: HasimColors.brandSoft,
@@ -1228,18 +1244,20 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
               label: 'بانتظار المزامنة',
               tone: HsStatusTone.warning,
             )
-          : linked
-          ? const HsStatusBadge(label: 'مرتبط', tone: HsStatusTone.success)
-          : const HsStatusBadge(label: 'غير متصل', tone: HsStatusTone.warning),
+          : !linked || link.link != CashierLink.online
+          ? HsStatusBadge(label: serverLabel, tone: HsStatusTone.warning)
+          : const HsStatusBadge(label: 'متزامن', tone: HsStatusTone.success),
       highlight: true,
       children: [
         _infoBanner(
-          icon: linked ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
-          text: linked
-              ? 'مرتبط بالسحابة · مساحة العمل ${cloud.workspaceId}'
-              : 'غير مرتبط بالسحابة. تشغيل السيرفر وتطبيق فلاتر معاً لا يكفي بدون ربط الحساب.',
+          icon: linked && link.link == CashierLink.online
+              ? Icons.cloud_done_outlined
+              : Icons.cloud_off_outlined,
+          text: banner,
           background: Colors.white,
-          foreground: linked ? HasimColors.ctaDark : HasimColors.warning,
+          foreground: linked && link.link == CashierLink.online
+              ? HasimColors.ctaDark
+              : HasimColors.warning,
         ),
         Text(
           'الخادم: ${AppConfig.apiBase}',

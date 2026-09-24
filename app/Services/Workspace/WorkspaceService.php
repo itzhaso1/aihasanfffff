@@ -2,11 +2,13 @@
 
 namespace App\Services\Workspace;
 
-use App\Models\User;
-use App\Models\Workspace;
 use App\Models\Plan;
 use App\Models\Subscription;
+use App\Models\User;
+use App\Models\Workspace;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -46,7 +48,7 @@ class WorkspaceService
                 ?? Plan::query()
                     ->where('is_active', true)
                     ->when(
-                        \Illuminate\Support\Facades\Schema::hasColumn('plans', 'is_official'),
+                        Schema::hasColumn('plans', 'is_official'),
                         fn ($q) => $q->where('is_official', true)
                     )
                     ->orderBy('price')
@@ -58,19 +60,21 @@ class WorkspaceService
                     ->first();
 
             if ($defaultPlan) {
-                Subscription::withoutGlobalScopes()->firstOrCreate(
-                    [
-                        'workspace_id' => $workspace->id,
-                        'plan_id' => $defaultPlan->id,
-                    ],
-                    [
-                        'status' => 'trialing',
-                        'starts_at' => now(),
-                        'trial_ends_at' => now()->addDays(14),
-                        'current_period_start' => now(),
-                        'current_period_end' => now()->addDays(14),
-                    ]
-                );
+                app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $defaultPlan): void {
+                    Subscription::withoutGlobalScopes()->firstOrCreate(
+                        [
+                            'workspace_id' => $workspace->id,
+                            'plan_id' => $defaultPlan->id,
+                        ],
+                        [
+                            'status' => 'trialing',
+                            'starts_at' => now(),
+                            'trial_ends_at' => now()->addDays(14),
+                            'current_period_start' => now(),
+                            'current_period_end' => now()->addDays(14),
+                        ]
+                    );
+                });
             }
 
             return $workspace->fresh();

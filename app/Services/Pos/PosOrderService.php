@@ -29,6 +29,7 @@ use App\Services\Inventory\InventoryService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentService;
 use App\Support\Money\Money;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -52,23 +53,23 @@ class PosOrderService
      */
     public function createPosOrder(Workspace $workspace, array $payload, ?User $actor): Order
     {
-        return app(\App\Support\Tenancy\WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $payload, $actor): Order {
-        return DB::transaction(function () use ($workspace, $payload, $actor): Order {
-            if ($existing = $this->findIdempotentOrder($workspace->id, $payload['client_reference'] ?? null)) {
-                return $existing;
-            }
-
-            try {
-                return $this->createPosOrderBody($workspace, $payload, $actor);
-            } catch (UniqueConstraintViolationException $exception) {
-                $existing = $this->findIdempotentOrder($workspace->id, $payload['client_reference'] ?? null);
-                if ($existing) {
+        return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $payload, $actor): Order {
+            return DB::transaction(function () use ($workspace, $payload, $actor): Order {
+                if ($existing = $this->findIdempotentOrder($workspace->id, $payload['client_reference'] ?? null)) {
                     return $existing;
                 }
 
-                throw $exception;
-            }
-        });
+                try {
+                    return $this->createPosOrderBody($workspace, $payload, $actor);
+                } catch (UniqueConstraintViolationException $exception) {
+                    $existing = $this->findIdempotentOrder($workspace->id, $payload['client_reference'] ?? null);
+                    if ($existing) {
+                        return $existing;
+                    }
+
+                    throw $exception;
+                }
+            });
         });
     }
 
@@ -77,99 +78,116 @@ class PosOrderService
      */
     private function createPosOrderBody(Workspace $workspace, array $payload, ?User $actor): Order
     {
-            $orderType = $this->resolveOrderType($payload, isset($payload['dining_table_id']));
-            $diningTableId = in_array($orderType, [Order::ORDER_TYPE_TAKEAWAY, Order::ORDER_TYPE_DELIVERY], true)
-                ? null
-                : ($payload['dining_table_id'] ?? $payload['table_server_id'] ?? null);
-            $offlineSale = $this->isOfflineCashierSale($payload);
+        $orderType = $this->resolveOrderType($payload, isset($payload['dining_table_id']));
+        $diningTableId = in_array($orderType, [Order::ORDER_TYPE_TAKEAWAY, Order::ORDER_TYPE_DELIVERY], true)
+            ? null
+            : ($payload['dining_table_id'] ?? $payload['table_server_id'] ?? null);
+        $offlineSale = $this->isOfflineCashierSale($payload);
 
-            if ($offlineSale) {
-                [$table, $session] = $this->resolveTableWithoutOpeningSession(
-                    $workspace->id,
-                    $diningTableId,
-                    attachOpenSession: $this->isLiveTableTicket($payload),
-                );
-            } else {
-                [$table, $session] = $this->resolveTableAndSession($workspace->id, $diningTableId);
-            }
-            if ($table) {
-                $orderType = Order::ORDER_TYPE_TABLE;
-            }
-
-            $items = $this->normalizePosItems(
-                workspaceId: $workspace->id,
-                items: $payload['items'] ?? [],
-                requireActive: true
+        if ($offlineSale) {
+            [$table, $session] = $this->resolveTableWithoutOpeningSession(
+                $workspace->id,
+                $diningTableId,
+                attachOpenSession: $this->isLiveTableTicket($payload),
             );
+        } else {
+            [$table, $session] = $this->resolveTableAndSession($workspace->id, $diningTableId);
+        }
+        if ($table) {
+            $orderType = Order::ORDER_TYPE_TABLE;
+        }
 
-            $discountAmount = $this->resolveDiscountAmount($payload, (float) $items->sum('total_amount'));
-            $financials = $this->resolveServerSaleFinancials($workspace, $payload, $items, $discountAmount);
+        $items = $this->normalizePosItems(
+            workspaceId: $workspace->id,
+            items: $payload['items'] ?? [],
+            requireActive: true
+        );
 
-            $metadata = [
-                'channel' => 'cashier',
-                'created_by_user_id' => $actor?->id,
-                'created_by_name' => $actor?->name,
-                'payment_method' => 'cashier',
-                'order_type' => $orderType,
+        $discountAmount = $this->resolveDiscountAmount($payload, (float) $items->sum('total_amount'));
+        $financials = $this->resolveServerSaleFinancials($workspace, $payload, $items, $discountAmount);
+
+        $metadata = [
+            'channel' => 'cashier',
+            'created_by_user_id' => $actor?->id,
+            'created_by_name' => $actor?->name,
+            'payment_method' => 'cashier',
+            'order_type' => $orderType,
+        ];
+        if ($financials['untrusted_client'] !== []) {
+            $metadata['untrusted_client_totals'] = $financials['untrusted_client'];
+        }
+        if ($offlineSale) {
+            $metadata['offline_sale'] = true;
+        }
+        $sessionLocalId = trim((string) ($payload['session_local_id'] ?? ''));
+        if ($sessionLocalId !== '') {
+            $metadata['cashier_session_local_id'] = $sessionLocalId;
+        }
+        $tableName = trim((string) ($payload['table_name'] ?? ''));
+        if ($tableName !== '') {
+            $metadata['table_name'] = $tableName;
+        }
+        $kitchenItemNotes = [];
+        foreach ($payload['items'] ?? [] as $rawItem) {
+            if (! is_array($rawItem)) {
+                continue;
+            }
+            $itemNote = trim((string) ($rawItem['notes'] ?? ''));
+            if ($itemNote === '') {
+                continue;
+            }
+            $kitchenItemNotes[] = [
+                'pos_menu_item_id' => isset($rawItem['pos_menu_item_id'])
+                    ? (int) $rawItem['pos_menu_item_id']
+                    : null,
+                'notes' => mb_substr($itemNote, 0, 500),
             ];
-            if ($financials['untrusted_client'] !== []) {
-                $metadata['untrusted_client_totals'] = $financials['untrusted_client'];
-            }
-            if ($offlineSale) {
-                $metadata['offline_sale'] = true;
-            }
-            $sessionLocalId = trim((string) ($payload['session_local_id'] ?? ''));
-            if ($sessionLocalId !== '') {
-                $metadata['cashier_session_local_id'] = $sessionLocalId;
-            }
-            $tableName = trim((string) ($payload['table_name'] ?? ''));
-            if ($tableName !== '') {
-                $metadata['table_name'] = $tableName;
-            }
-            $kitchenItemNotes = [];
-            foreach ($payload['items'] ?? [] as $rawItem) {
-                if (! is_array($rawItem)) {
-                    continue;
-                }
-                $itemNote = trim((string) ($rawItem['notes'] ?? ''));
-                if ($itemNote === '') {
-                    continue;
-                }
-                $kitchenItemNotes[] = [
-                    'pos_menu_item_id' => isset($rawItem['pos_menu_item_id'])
-                        ? (int) $rawItem['pos_menu_item_id']
-                        : null,
-                    'notes' => mb_substr($itemNote, 0, 500),
-                ];
-            }
-            if ($kitchenItemNotes !== []) {
-                $metadata['kitchen_item_notes'] = $kitchenItemNotes;
-            }
+        }
+        if ($kitchenItemNotes !== []) {
+            $metadata['kitchen_item_notes'] = $kitchenItemNotes;
+        }
 
-            $clientReference = $this->normalizeClientReference($payload['client_reference'] ?? null);
+        $clientReference = $this->normalizeClientReference($payload['client_reference'] ?? null);
 
-            if ($table && $session && ! $offlineSale) {
-                // A client_reference means the device owns this order as its
-                // own entity (offline SQLite row that will be reconciled by
-                // id). Folding its lines into another order would leave the
-                // device with two local orders mapped to one server order and
-                // double-counted quantities on the next pull. Only anonymous
-                // additions (no client_reference) merge into the sitting.
-                $order = $this->mergeOrCreateSessionOrder(
-                    workspace: $workspace,
-                    table: $table,
-                    session: $session,
-                    items: $items,
-                    customerId: isset($payload['customer_id']) ? (int) $payload['customer_id'] : null,
-                    source: 'pos',
-                    discountAmount: $discountAmount,
-                    notes: $payload['notes'] ?? null,
-                    metadata: $metadata,
-                    orderType: $orderType,
-                    clientReference: $clientReference,
-                    mergeLines: $clientReference === null,
-                );
-            } else {
+        if ($table && $session && ! $offlineSale) {
+            // A client_reference means the device owns this order as its
+            // own entity (offline SQLite row that will be reconciled by
+            // id). Folding its lines into another order would leave the
+            // device with two local orders mapped to one server order and
+            // double-counted quantities on the next pull. Only anonymous
+            // additions (no client_reference) merge into the sitting.
+            $order = $this->mergeOrCreateSessionOrder(
+                workspace: $workspace,
+                table: $table,
+                session: $session,
+                items: $items,
+                customerId: isset($payload['customer_id']) ? (int) $payload['customer_id'] : null,
+                source: 'pos',
+                discountAmount: $discountAmount,
+                notes: $payload['notes'] ?? null,
+                metadata: $metadata,
+                orderType: $orderType,
+                clientReference: $clientReference,
+                mergeLines: $clientReference === null,
+            );
+        } else {
+            $order = null;
+            if ($table && $session && $this->isLiveTableTicket($payload)) {
+                $active = $this->lockActiveSessionOrder((int) $workspace->id, (int) $session->id);
+                if ($active) {
+                    $order = $this->updateOrderItems($active, [
+                        'items' => $items->map(fn (array $item): array => [
+                            'pos_menu_item_id' => $item['pos_menu_item_id'],
+                            'quantity' => $item['quantity'],
+                            'unit_price' => $item['unit_price'],
+                        ])->values()->all(),
+                    ]);
+                    event(new OrderUpdated($order));
+                    $this->refreshTableStatus($table);
+                    event(new TableUpdated($table->fresh()));
+                }
+            }
+            if (! $order) {
                 $order = $this->createOrderWithSnapshots(
                     workspace: $workspace,
                     customerId: isset($payload['customer_id']) ? (int) $payload['customer_id'] : null,
@@ -187,14 +205,19 @@ class PosOrderService
                 );
 
                 event(new OrderCreated($order));
+                if ($table) {
+                    $this->refreshTableStatus($table);
+                    event(new TableUpdated($table->fresh()));
+                }
             }
+        }
 
-            $this->auditPosAction('pos.order.created', $order, $actor, [
-                'order_type' => $orderType,
-                'source' => 'pos',
-            ]);
+        $this->auditPosAction('pos.order.created', $order, $actor, [
+            'order_type' => $orderType,
+            'source' => 'pos',
+        ]);
 
-            return $order->fresh(['items', 'customer', 'table', 'tableSession']);
+        return $order->fresh(['items', 'customer', 'table', 'tableSession']);
     }
 
     /**
@@ -1529,6 +1552,25 @@ class PosOrderService
     }
 
     /**
+     * One open sitting has one unpaid ticket. The session row lock makes a
+     * second create wait and then append instead of inserting another order.
+     */
+    private function lockActiveSessionOrder(int $workspaceId, int $sessionId): ?Order
+    {
+        TableSession::query()->whereKey($sessionId)->lockForUpdate()->first();
+
+        return Order::query()
+            ->where('workspace_id', $workspaceId)
+            ->where('table_session_id', $sessionId)
+            ->where('payment_status', '!=', 'paid')
+            ->whereNotIn('pos_status', ['completed', 'cancelled'])
+            ->whereNull('pos_cashier_invoice_id')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->first();
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      */
     private function isLiveTableTicket(array $payload): bool
@@ -2024,13 +2066,9 @@ class PosOrderService
             ->when($ignoredSessionId, fn ($query) => $query->where('id', '!=', $ignoredSessionId))
             ->pluck('id');
 
-        $hasBillableOrders = $openSessionIds->isNotEmpty()
-            && Order::withoutGlobalScopes()
-                ->whereIn('table_session_id', $openSessionIds)
-                ->where('pos_status', '!=', 'cancelled')
-                ->exists();
-
-        if ($hasBillableOrders) {
+        // The web board paints red from dining_tables.status. An open sitting
+        // is occupied even before the first item is synced.
+        if ($openSessionIds->isNotEmpty()) {
             $table->update(['status' => 'occupied']);
 
             return;

@@ -167,7 +167,7 @@ void main() {
     final classified = await SyncQueueClassifier(db).counts(workspaceId);
     expect(classified.totalOpen, 18);
     expect(classified.failed, 6);
-    expect(classified.ready, 12);
+    expect(classified.ready, 4);
     expect(classified.unsupported, 0);
     expect(classified.invoicePending, 12);
     expect(classified.invoicePending, isNot(raw.waiting));
@@ -260,7 +260,8 @@ void main() {
       status: 'pending',
     );
     final counts = await SyncQueueClassifier(db).counts(workspaceId);
-    expect(counts.ready, 3);
+    expect(counts.ready, 2);
+    expect(counts.waitingParent, 1);
     expect(counts.unsupported, 0);
     expect(counts.scopedPending, 3);
   });
@@ -320,6 +321,16 @@ void main() {
   });
 
   test('table close waits for unsynced session open', () async {
+    final now = DateTime.now();
+    await db.into(db.localTables).insert(
+          LocalTablesCompanion.insert(
+            localId: 'w1_table_10',
+            workspaceId: workspaceId,
+            serverId: const Value(10),
+            name: '10',
+            updatedAt: now,
+          ),
+        );
     await queue.enqueue(
       workspaceId: workspaceId,
       deviceId: deviceId,
@@ -342,6 +353,91 @@ void main() {
     final close = items.firstWhere((i) => i.row.operation == 'close');
     expect(close.bucket, SyncQueueBucket.waitingParent);
     expect(close.reason, contains('فتح الجلسة'));
+  });
+
+  test('order create is ready once the local product has a server id', () async {
+    final now = DateTime.now();
+    await db.into(db.localProducts).insert(
+          LocalProductsCompanion.insert(
+            localId: 'prod-local',
+            workspaceId: workspaceId,
+            serverId: const Value(15),
+            name: 'Tea',
+            updatedAt: now,
+          ),
+        );
+    await insertOrder(localId: 'ord-menu');
+    await db.into(db.localOrderItems).insert(
+          LocalOrderItemsCompanion.insert(
+            localId: 'line-1',
+            workspaceId: workspaceId,
+            orderLocalId: 'ord-menu',
+            productLocalId: const Value('prod-local'),
+            name: 'Tea',
+            quantity: 2,
+            unitPrice: 500,
+            totalAmount: 1000,
+            updatedAt: now,
+          ),
+        );
+    await insertQueue(
+      entityType: 'order',
+      entityId: 'ord-menu',
+      operation: 'create',
+      status: 'pending',
+      payload: {
+        'order_type': 'takeaway',
+        'client_reference': 'ord-menu',
+        'items': [
+          {'pos_menu_item_id': null, 'quantity': 2, 'name': 'Tea'},
+        ],
+      },
+    );
+    final item = (await SyncQueueClassifier(db).classifyWorkspace(workspaceId))
+        .singleWhere((row) => row.row.entityType == 'order');
+    expect(item.bucket, SyncQueueBucket.ready);
+  });
+
+  test('table close waits while the sitting still has an unsynced order', () async {
+    final now = DateTime.now();
+    await db.into(db.localTables).insert(
+          LocalTablesCompanion.insert(
+            localId: 'table-a',
+            workspaceId: workspaceId,
+            serverId: const Value(4),
+            name: '1',
+            updatedAt: now,
+          ),
+        );
+    await db.into(db.localOrders).insert(
+          LocalOrdersCompanion.insert(
+            localId: 'ord-table',
+            workspaceId: workspaceId,
+            deviceId: deviceId,
+            clientReference: 'ord-table',
+            orderType: 'table',
+            tableLocalId: const Value('table-a'),
+            syncStatus: const Value('pending'),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    await queue.enqueue(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      entityType: 'table_session',
+      entityId: 'table-a',
+      operation: 'close',
+      payload: {
+        'table_local_id': 'table-a',
+        'session_client_id': 'sess-1',
+      },
+      clientReference: 'close-table',
+    );
+    final close = (await SyncQueueClassifier(db).classifyWorkspace(workspaceId))
+        .singleWhere((row) => row.row.operation == 'close');
+    expect(close.bucket, SyncQueueBucket.waitingParent);
+    expect(close.reason, contains('طلبات الجلسة'));
   });
 
   test('kitchen status update is ready after the order has a server id', () async {

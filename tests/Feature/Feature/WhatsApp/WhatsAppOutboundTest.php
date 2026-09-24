@@ -7,7 +7,6 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Models\WhatsAppAccount;
-use App\Models\WhatsAppOutboundMessage;
 use App\Models\WhatsAppPhoneNumber;
 use App\Models\Workspace;
 use App\Services\WhatsApp\WhatsAppOutboundService;
@@ -66,7 +65,8 @@ class WhatsAppOutboundTest extends TestCase
             return $job->phoneNumberId === 'pnid_123'
                 && $job->to === '966511111111'
                 && $job->message === 'مرحبا'
-                && $job->outboundMessageId === $outbound->id;
+                && $job->outboundMessageId === $outbound->id
+                && $job->queue === 'outbound';
         });
 
         Http::fake([

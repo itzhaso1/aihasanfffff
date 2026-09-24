@@ -916,7 +916,38 @@ class SyncPullApplier {
                 t.syncStatus.equals('pending')))
           .get();
       // If we have a divergent pending local invoice, record conflict — no LWW.
-      if (pendingLocal.isNotEmpty && existing == null) {
+      LocalInvoice? matched = existing;
+      if (matched == null) {
+        final localNumber = '${data['local_invoice_number'] ?? ''}'.trim();
+        final localRef = '${data['client_reference'] ?? data['local_id'] ?? ''}'
+            .trim();
+        if (localNumber.isNotEmpty) {
+          matched = await (_db.select(_db.localInvoices)
+                ..where(
+                  (t) =>
+                      t.workspaceId.equals(workspaceId) &
+                      t.localInvoiceNumber.equals(localNumber),
+                ))
+              .getSingleOrNull();
+          matched ??= await (_db.select(_db.localInvoices)
+                ..where(
+                  (t) =>
+                      t.workspaceId.equals(workspaceId) &
+                      t.invoiceNumber.equals(localNumber),
+                ))
+              .getSingleOrNull();
+        }
+        if (matched == null && localRef.isNotEmpty) {
+          matched = await (_db.select(_db.localInvoices)
+                ..where(
+                  (t) =>
+                      t.workspaceId.equals(workspaceId) &
+                      t.localId.equals(localRef),
+                ))
+              .getSingleOrNull();
+        }
+      }
+      if (pendingLocal.isNotEmpty && existing == null && matched == null) {
         await _conflicts.record(
           workspaceId: workspaceId,
           entityType: 'invoice',
@@ -934,20 +965,35 @@ class SyncPullApplier {
         );
       }
       final invoiceLocalId =
-          existing?.localId ?? 'w${workspaceId}_inv_$serverId';
+          matched?.localId ?? existing?.localId ?? 'w${workspaceId}_inv_$serverId';
+      final serverNumber = data['invoice_number']?.toString();
       await _db.into(_db.localInvoices).insertOnConflictUpdate(
             LocalInvoicesCompanion.insert(
               localId: invoiceLocalId,
               workspaceId: workspaceId,
-              deviceId: ourDeviceId ?? 'server',
+              deviceId: matched?.deviceId ?? existing?.deviceId ?? ourDeviceId ?? 'server',
               serverId: Value(serverId),
-              invoiceNumber: Value(data['invoice_number']?.toString()),
+              invoiceNumber: Value(
+                matched?.invoiceNumber ??
+                    existing?.invoiceNumber ??
+                    data['invoice_number']?.toString(),
+              ),
+              localInvoiceNumber: Value(
+                matched?.localInvoiceNumber ??
+                    existing?.localInvoiceNumber ??
+                    data['local_invoice_number']?.toString(),
+              ),
+              serverInvoiceNumber: Value(
+                (serverNumber != null && serverNumber.isNotEmpty)
+                    ? serverNumber
+                    : matched?.serverInvoiceNumber ?? existing?.serverInvoiceNumber,
+              ),
               totalAmount: Value(
                 Money.toCents((data['total_amount'] as num?) ?? 0),
               ),
               syncStatus: const Value('synced'),
               payloadJson: Value(jsonEncode({...data, 'id': serverId})),
-              createdAt: existing?.createdAt ?? DateTime.now(),
+              createdAt: matched?.createdAt ?? existing?.createdAt ?? DateTime.now(),
             ),
           );
       return;

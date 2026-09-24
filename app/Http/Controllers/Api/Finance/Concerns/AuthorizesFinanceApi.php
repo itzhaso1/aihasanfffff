@@ -6,6 +6,7 @@ use App\Exceptions\Api\ApiErrorCode;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\Authorization\FinanceAccess;
+use App\Support\Authorization\WorkspaceAccess;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
@@ -39,6 +40,31 @@ trait AuthorizesFinanceApi
         }
 
         if (! $this->financeAccess()->can($user, $workspace, $permission)) {
+            throw new HttpResponseException($this->fail(
+                'You are not allowed to access this financial resource.',
+                ApiErrorCode::Forbidden,
+                403,
+            ));
+        }
+
+        return $user;
+    }
+
+    protected function authorizeAssistantMember(Request $request, Workspace $workspace): User
+    {
+        /** @var User|null $user */
+        $user = $request->user();
+        if (! $user) {
+            throw new HttpResponseException($this->fail(
+                'Unauthenticated.',
+                ApiErrorCode::Unauthorized,
+                401,
+            ));
+        }
+
+        $workspaceAccess = app(WorkspaceAccess::class);
+        if (! $workspaceAccess->isActiveMember($user, $workspace)
+            && ! $workspaceAccess->isWorkspaceOwner($user, $workspace)) {
             throw new HttpResponseException($this->fail(
                 'You are not allowed to access this financial resource.',
                 ApiErrorCode::Forbidden,

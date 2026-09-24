@@ -24,12 +24,14 @@ class ProcessEmailCampaignJob implements ShouldQueue
 
     public function handle(EmailCampaignService $emailCampaignService): void
     {
-        $query = EmailCampaign::withoutGlobalScopes()->whereKey($this->campaignId);
-        if ($this->workspaceId !== null) {
-            $query->where('workspace_id', $this->workspaceId);
+        if ($this->workspaceId === null) {
+            return;
         }
 
-        $campaign = $query->first();
+        $campaign = EmailCampaign::withoutGlobalScopes()
+            ->whereKey($this->campaignId)
+            ->where('workspace_id', $this->workspaceId)
+            ->first();
 
         if (! $campaign) {
             return;

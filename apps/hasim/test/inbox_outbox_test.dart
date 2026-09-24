@@ -14,6 +14,8 @@ import 'package:hasim/core/storage/secure_store.dart';
 import 'package:hasim/features/conversations/data/conversation_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/isolated_api_client.dart';
+
 class _MemorySecureStore extends SecureStore {
   @override
   Future<void> saveToken(String token) async {}
@@ -87,7 +89,7 @@ MessageModel _optimistic(String clientId) {
 Future<ApiClient> _api() async {
   SharedPreferences.setMockInitialValues({});
   final prefs = PrefsStore(await SharedPreferences.getInstance());
-  return ApiClient(secureStore: _MemorySecureStore(), prefsStore: prefs);
+  return isolatedTestApiClient(secureStore: _MemorySecureStore(), prefsStore: prefs);
 }
 
 void main() {

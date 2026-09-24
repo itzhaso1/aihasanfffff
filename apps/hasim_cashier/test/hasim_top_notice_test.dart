@@ -22,8 +22,8 @@ void main() {
     final bar = tester.widget<SnackBar>(find.byType(SnackBar));
     expect(bar.behavior, SnackBarBehavior.floating);
     final margin = bar.margin! as EdgeInsets;
-    expect(margin.top, lessThan(40));
-    expect(margin.bottom, greaterThan(600));
+    expect(margin.top, lessThanOrEqualTo(24));
+    expect(margin.bottom, lessThan(100));
   });
 }
 

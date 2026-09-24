@@ -68,6 +68,24 @@ void main() {
     );
   });
 
+  test('fresh Hasim login token wins over a stored cloud token', () {
+    expect(
+      CashierRequestAuth.bearerToken(
+        sessionToken: '9|fresh-login',
+        cloud: linked,
+      ),
+      '9|fresh-login',
+    );
+    expect(
+      CashierRequestAuth.workspaceId(
+        sessionWorkspaceId: 4,
+        cloud: linked,
+        sessionToken: '9|fresh-login',
+      ),
+      4,
+    );
+  });
+
   test('PIN session without cloud link still cannot push', () {
     expect(
       CashierRequestAuth.canSync(

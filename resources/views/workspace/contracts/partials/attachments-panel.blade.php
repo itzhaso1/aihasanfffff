@@ -17,7 +17,7 @@
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             @foreach($contract->attachments as $attachment)
                 @php
-                    $exists = \Illuminate\Support\Facades\Storage::disk('public')->exists($attachment->file_path);
+                    $exists = \Illuminate\Support\Facades\Storage::disk($attachment->storageDisk())->exists($attachment->file_path);
                     $fileName = $attachment->file_name ?: basename((string) $attachment->file_path);
                     $mime = $attachment->file_type ?: 'unknown';
                     $sizeLabel = $attachment->file_size ? number_format(((int) $attachment->file_size) / 1024, 1).' KB' : '—';

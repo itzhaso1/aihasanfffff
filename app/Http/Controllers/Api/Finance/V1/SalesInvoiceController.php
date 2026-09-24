@@ -180,7 +180,11 @@ class SalesInvoiceController extends FinanceApiController
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $user = $this->clientActor($request, $workspace, 'invoices.issue');
         abort_unless((string) $invoice->type === 'sales', 404);
-        $issued = $this->runFinanceDomain(fn () => $this->invoiceService->issue($invoice, (int) $user->id));
+        try {
+            $issued = $this->runFinanceDomain(fn () => $this->invoiceService->issue($invoice, (int) $user->id));
+        } catch (\App\Exceptions\Finance\ZatcaRequiredIssueBlockedException $exception) {
+            return \App\Http\Api\FinanceApiErrorRenderer::application($exception);
+        }
 
         return $this->ok($this->detail($issued), message: 'تم إصدار الفاتورة.');
     }

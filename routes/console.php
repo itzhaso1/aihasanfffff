@@ -92,3 +92,6 @@ Schedule::command('subscriptions:expire-trials')->hourly()->withoutOverlapping(5
 Schedule::command('subscriptions:process-renewals')->hourly()->withoutOverlapping(50)->onOneServer();
 Schedule::command('subscriptions:process-dunning')->hourly()->withoutOverlapping(50)->onOneServer();
 Schedule::command('backup:database')->everySixHours()->withoutOverlapping(120)->onOneServer();
+Schedule::command('backup:verify-latest')->weeklyOn(1, '03:30')->withoutOverlapping(120)->onOneServer();
+Schedule::command('ops:alerts:evaluate')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();
+Schedule::command('ops:retention:webhook-events')->dailyAt('02:45')->withoutOverlapping(60)->onOneServer();

@@ -14,6 +14,8 @@ class CategoryController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', Category::class);
+
         $categories = Category::query()
             ->when($request->string('search')->toString(), function ($query, $search): void {
                 $query->where('name', 'like', '%'.$search.'%');
@@ -29,6 +31,8 @@ class CategoryController extends Controller
 
     public function store(StoreCategoryRequest $request): JsonResponse
     {
+        $this->authorize('create', Category::class);
+
         $category = Category::query()->create([
             ...$request->validated(),
             'slug' => $request->string('slug')->toString() ?: Str::slug($request->string('name')->toString()),

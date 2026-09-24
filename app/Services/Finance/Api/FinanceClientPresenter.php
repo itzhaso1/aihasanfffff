@@ -40,6 +40,7 @@ use App\Models\Product;
 use App\Models\Projects\FinanceProject;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\EInvoicing\ComplianceReadinessService;
 use App\Services\Finance\EInvoiceArtifactService;
 use App\Services\Payment\Contracts\BillableCheckoutResult;
 use App\Support\Money\Money;
@@ -52,6 +53,7 @@ class FinanceClientPresenter
 {
     public function __construct(
         private readonly EInvoiceArtifactService $eInvoiceArtifactService,
+        private readonly ComplianceReadinessService $complianceReadiness,
     ) {}
 
     public function money(mixed $value): string
@@ -777,6 +779,11 @@ class FinanceClientPresenter
                 ->map(fn (FinanceTreasuryAccount $account) => $this->treasuryAccount($account))
                 ->values()
                 ->all(),
+            'e_invoice_readiness' => [
+                'seller' => $this->complianceReadiness
+                    ->assessWorkspaceSeller((int) $setting->workspace_id)
+                    ->toArray(),
+            ],
             'finance_accounts' => FinanceAccount::query()
                 ->orderBy('code')
                 ->get(['id', 'code', 'name', 'type'])

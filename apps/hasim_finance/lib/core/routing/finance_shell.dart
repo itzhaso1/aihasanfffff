@@ -87,7 +87,7 @@ List<_Group> _navGroups(FinancePermissions _) => [
         _Dest('reports', '/reports', Icons.bar_chart_outlined, (l) => l.reports, (p) => p.reportsView),
         _Dest('exports', '/exports', Icons.file_download_outlined, (l) => l.exports, (p) => p.financeView),
         _Dest('alerts', '/alerts', Icons.notifications_outlined, (l) => l.alerts, (p) => p.financeView),
-        _Dest('copilot', '/copilot', Icons.psychology_outlined, (l) => l.copilot, (p) => p.financeView),
+        _Dest('assistant', '/assistant', Icons.psychology_outlined, (l) => l.assistant, (p) => p.assistantView),
       ]),
       _Group('accounting', Icons.account_tree_outlined, (l) => l.navAccounting, [
         _Dest('accounting', '/accounting', Icons.account_tree_outlined, (l) => l.accountingHub, (p) => p.accountingView || p.financeView),
@@ -567,16 +567,16 @@ class _HeaderIconButton extends StatelessWidget {
       message: tooltip,
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         child: Container(
-          width: 40,
-          height: 40,
+          width: 32,
+          height: 32,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: context.hs.border),
             color: context.hs.card,
           ),
-          child: Icon(icon, size: 18, color: context.hs.textMuted),
+          child: Icon(icon, size: 16, color: context.hs.textMuted),
         ),
       ),
     );
@@ -593,23 +593,30 @@ class _UserChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const radius = BorderRadius.all(Radius.circular(8));
     return InkWell(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: radius,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: radius,
           border: Border.all(color: context.hs.border),
         ),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 14,
-              backgroundColor: context.hs.brandSoft,
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: context.hs.brandSoft,
+                borderRadius: BorderRadius.circular(6),
+              ),
               child: Text(
                 name.isEmpty ? 'ح' : name.substring(0, 1),
-                style: TextStyle(fontWeight: FontWeight.w800, color: context.hs.brandAccent, fontSize: 12),
+                style: TextStyle(fontWeight: FontWeight.w800, color: context.hs.brandAccent, fontSize: 11),
               ),
             ),
             if (!compact) ...[

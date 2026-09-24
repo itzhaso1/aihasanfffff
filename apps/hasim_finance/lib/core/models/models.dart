@@ -329,6 +329,26 @@ class CheckoutInfo {
   }
 }
 
+class PdfDownloadGrant {
+  PdfDownloadGrant({
+    required this.token,
+    required this.expires,
+    required this.fileName,
+  });
+
+  final String token;
+  final int expires;
+  final String fileName;
+
+  factory PdfDownloadGrant.fromJson(Map<String, dynamic> json) {
+    return PdfDownloadGrant(
+      token: json['token']?.toString() ?? '',
+      expires: int.tryParse('${json['expires']}') ?? 0,
+      fileName: json['file_name']?.toString() ?? 'invoice.pdf',
+    );
+  }
+}
+
 class InvoiceRecord {
   InvoiceRecord({
     required this.id,
@@ -373,6 +393,10 @@ class InvoiceRecord {
     this.zatcaClearance = false,
     this.zatcaIntegration,
     this.zatcaReason,
+    this.zatcaSellerReady,
+    this.zatcaBuyerReady,
+    this.zatcaComplianceReady,
+    this.zatcaDataIssues = const [],
     this.taxBreakdown = const [],
     this.companySnapshot,
     this.recipientSnapshot,
@@ -385,6 +409,7 @@ class InvoiceRecord {
     this.audit = const [],
     this.attachments = const [],
     this.journalEntries = const [],
+    this.pdfDownload,
   });
 
   final int id;
@@ -429,6 +454,10 @@ class InvoiceRecord {
   final bool zatcaClearance;
   final String? zatcaIntegration;
   final String? zatcaReason;
+  final bool? zatcaSellerReady;
+  final bool? zatcaBuyerReady;
+  final bool? zatcaComplianceReady;
+  final List<Map<String, dynamic>> zatcaDataIssues;
   final List<Map<String, dynamic>> taxBreakdown;
   final Map<String, dynamic>? companySnapshot;
   final Map<String, dynamic>? recipientSnapshot;
@@ -441,9 +470,34 @@ class InvoiceRecord {
   final List<Map<String, dynamic>> audit;
   final List<Map<String, dynamic>> attachments;
   final List<Map<String, dynamic>> journalEntries;
+  final PdfDownloadGrant? pdfDownload;
+
+  Map<String, dynamic>? get pdfDownloadQuery {
+    final grant = pdfDownload;
+    if (grant == null) return null;
+    return {
+      'download_token': grant.token,
+      'expires': grant.expires,
+    };
+  }
+
+  String get pdfLocalFileName => pdfDownload?.fileName ?? 'invoice.pdf';
 
   factory InvoiceRecord.fromJson(Map<String, dynamic> json) {
     final zatca = json['zatca'] is Map ? Map<String, dynamic>.from(json['zatca'] as Map) : null;
+    final zatcaCompliance = zatca?['compliance'] is Map
+        ? Map<String, dynamic>.from(zatca!['compliance'] as Map)
+        : null;
+    final sellerBlock = zatcaCompliance?['seller'] is Map
+        ? Map<String, dynamic>.from(zatcaCompliance!['seller'] as Map)
+        : null;
+    final buyerBlock = zatcaCompliance?['buyer'] is Map
+        ? Map<String, dynamic>.from(zatcaCompliance!['buyer'] as Map)
+        : null;
+    final complianceErrors = (zatcaCompliance?['errors'] as List? ?? [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
     return InvoiceRecord(
       id: int.parse('${json['id']}'),
       invoiceNumber: json['invoice_number']?.toString(),
@@ -487,6 +541,12 @@ class InvoiceRecord {
       zatcaClearance: zatca?['clearance'] == true,
       zatcaIntegration: zatca?['integration']?.toString(),
       zatcaReason: zatca?['reason']?.toString(),
+      zatcaSellerReady: sellerBlock?['ready'] == true ? true : (sellerBlock?['ready'] == false ? false : null),
+      zatcaBuyerReady: buyerBlock?['ready'] == true ? true : (buyerBlock?['ready'] == false ? false : null),
+      zatcaComplianceReady: zatcaCompliance?['ready'] == true
+          ? true
+          : (zatcaCompliance?['ready'] == false ? false : null),
+      zatcaDataIssues: complianceErrors,
       taxBreakdown: (json['tax_breakdown'] as List? ?? [])
           .whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row))
@@ -517,6 +577,9 @@ class InvoiceRecord {
           .whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row))
           .toList(),
+      pdfDownload: json['pdf_download'] is Map
+          ? PdfDownloadGrant.fromJson(Map<String, dynamic>.from(json['pdf_download'] as Map))
+          : null,
     );
   }
 }
@@ -873,16 +936,30 @@ class ContractItemRecord {
     this.id,
     this.title,
     this.description,
+    this.itemKind,
+    this.unit,
     this.quantity,
     this.unitPrice,
+    this.discount,
+    this.discountType,
+    this.taxRate,
+    this.taxType,
+    this.taxAmount,
     this.total,
   });
 
   final int? id;
   final String? title;
   final String? description;
+  final String? itemKind;
+  final String? unit;
   final String? quantity;
   final String? unitPrice;
+  final String? discount;
+  final String? discountType;
+  final String? taxRate;
+  final String? taxType;
+  final String? taxAmount;
   final String? total;
 
   factory ContractItemRecord.fromJson(Map<String, dynamic> json) {
@@ -890,8 +967,15 @@ class ContractItemRecord {
       id: json['id'] == null ? null : int.tryParse('${json['id']}'),
       title: json['title']?.toString(),
       description: json['description']?.toString(),
+      itemKind: json['item_kind']?.toString(),
+      unit: json['unit']?.toString(),
       quantity: json['quantity']?.toString(),
       unitPrice: MoneyFields.asMoney(json['unit_price']),
+      discount: MoneyFields.asMoney(json['discount']),
+      discountType: json['discount_type']?.toString(),
+      taxRate: MoneyFields.asMoney(json['tax_rate']),
+      taxType: json['tax_type']?.toString(),
+      taxAmount: MoneyFields.asMoney(json['tax_amount']),
       total: MoneyFields.asMoney(json['total']),
     );
   }
@@ -975,6 +1059,11 @@ class ContractRecord {
     this.status,
     this.customerId,
     this.customerName,
+    this.projectId,
+    this.projectName,
+    this.description,
+    this.paymentTerms,
+    this.signatureStatus,
     this.startDate,
     this.endDate,
     this.value = '0.00',
@@ -994,6 +1083,11 @@ class ContractRecord {
   final String? status;
   final int? customerId;
   final String? customerName;
+  final int? projectId;
+  final String? projectName;
+  final String? description;
+  final String? paymentTerms;
+  final String? signatureStatus;
   final String? startDate;
   final String? endDate;
   final String value;
@@ -1016,6 +1110,11 @@ class ContractRecord {
       status: json['status']?.toString(),
       customerId: json['customer_id'] == null ? null : int.tryParse('${json['customer_id']}'),
       customerName: json['customer_name']?.toString(),
+      projectId: json['project_id'] == null ? null : int.tryParse('${json['project_id']}'),
+      projectName: json['project_name']?.toString(),
+      description: json['description']?.toString(),
+      paymentTerms: json['payment_terms']?.toString(),
+      signatureStatus: json['signature_status']?.toString(),
       startDate: json['start_date']?.toString(),
       endDate: json['end_date']?.toString(),
       value: MoneyFields.asMoney(json['value']),
@@ -1949,6 +2048,177 @@ class PayrollOverview {
       latestRecords: _mapList(json['latest_records'], PayrollRecord.fromJson),
     );
   }
+}
+
+class FinanceAssistantPeriod {
+  const FinanceAssistantPeriod({this.from, this.to});
+
+  final String? from;
+  final String? to;
+
+  factory FinanceAssistantPeriod.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const FinanceAssistantPeriod();
+    return FinanceAssistantPeriod(
+      from: json['from']?.toString(),
+      to: json['to']?.toString(),
+    );
+  }
+}
+
+class FinanceAssistantFact {
+  const FinanceAssistantFact({
+    required this.tool,
+    required this.available,
+    this.data = const {},
+    this.reason,
+  });
+
+  final String tool;
+  final bool available;
+  final Map<String, dynamic> data;
+  final String? reason;
+
+  factory FinanceAssistantFact.fromJson(Map<String, dynamic> json) {
+    return FinanceAssistantFact(
+      tool: json['tool']?.toString() ?? '',
+      available: json['available'] == true,
+      data: Map<String, dynamic>.from(json['data'] as Map? ?? {}),
+      reason: json['reason']?.toString(),
+    );
+  }
+
+  String? get displayValue {
+    final value = data['value'] ?? data['net_profit'] ?? data['revenue'];
+    if (value == null) return null;
+    final currency = data['currency']?.toString();
+    return currency == null || currency.isEmpty ? '$value' : '$value $currency';
+  }
+}
+
+class FinanceAssistantResponse {
+  const FinanceAssistantResponse({
+    required this.answer,
+    this.facts = const [],
+    this.toolsUsed = const [],
+    this.period,
+    this.conversationId,
+  });
+
+  final String answer;
+  final List<FinanceAssistantFact> facts;
+  final List<String> toolsUsed;
+  final FinanceAssistantPeriod? period;
+  final int? conversationId;
+
+  FinanceAssistantResponse copyWith({int? conversationId}) {
+    return FinanceAssistantResponse(
+      answer: answer,
+      facts: facts,
+      toolsUsed: toolsUsed,
+      period: period,
+      conversationId: conversationId ?? this.conversationId,
+    );
+  }
+
+  factory FinanceAssistantResponse.fromJson(Map<String, dynamic> json) {
+    return FinanceAssistantResponse(
+      answer: json['answer']?.toString() ?? '',
+      facts: _mapList(json['facts'], FinanceAssistantFact.fromJson),
+      toolsUsed: (json['tools_used'] as List? ?? []).map((e) => e.toString()).toList(),
+      period: json['period'] is Map
+          ? FinanceAssistantPeriod.fromJson(Map<String, dynamic>.from(json['period'] as Map))
+          : null,
+      conversationId: json['conversation_id'] == null ? null : int.tryParse('${json['conversation_id']}'),
+    );
+  }
+}
+
+class FinanceAssistantConversation {
+  const FinanceAssistantConversation({
+    required this.id,
+    this.title,
+    this.status = 'active',
+    this.createdAt,
+    this.updatedAt,
+    this.lastMessageAt,
+  });
+
+  final int id;
+  final String? title;
+  final String status;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime? lastMessageAt;
+
+  factory FinanceAssistantConversation.fromJson(Map<String, dynamic> json) {
+    return FinanceAssistantConversation(
+      id: int.tryParse('${json['id']}') ?? 0,
+      title: json['title']?.toString(),
+      status: json['status']?.toString() ?? 'active',
+      createdAt: _parseDateTime(json['created_at']),
+      updatedAt: _parseDateTime(json['updated_at']),
+      lastMessageAt: _parseDateTime(json['last_message_at']),
+    );
+  }
+}
+
+class FinanceAssistantMessage {
+  const FinanceAssistantMessage({
+    required this.id,
+    required this.role,
+    required this.body,
+    this.turnSeq,
+    this.createdAt,
+  });
+
+  final int id;
+  final String role;
+  final String body;
+  final int? turnSeq;
+  final DateTime? createdAt;
+
+  bool get isUser => role == 'user';
+
+  factory FinanceAssistantMessage.fromJson(Map<String, dynamic> json) {
+    return FinanceAssistantMessage(
+      id: int.tryParse('${json['id']}') ?? 0,
+      role: json['role']?.toString() ?? '',
+      body: json['body']?.toString() ?? '',
+      turnSeq: json['turn_seq'] == null ? null : int.tryParse('${json['turn_seq']}'),
+      createdAt: _parseDateTime(json['created_at']),
+    );
+  }
+}
+
+class FinanceAssistantConversationDetail extends FinanceAssistantConversation {
+  const FinanceAssistantConversationDetail({
+    required super.id,
+    super.title,
+    super.status,
+    super.createdAt,
+    super.updatedAt,
+    super.lastMessageAt,
+    this.messages = const [],
+  });
+
+  final List<FinanceAssistantMessage> messages;
+
+  factory FinanceAssistantConversationDetail.fromJson(Map<String, dynamic> json) {
+    return FinanceAssistantConversationDetail(
+      id: int.tryParse('${json['id']}') ?? 0,
+      title: json['title']?.toString(),
+      status: json['status']?.toString() ?? 'active',
+      createdAt: _parseDateTime(json['created_at']),
+      updatedAt: _parseDateTime(json['updated_at']),
+      lastMessageAt: _parseDateTime(json['last_message_at']),
+      messages: _mapList(json['messages'], FinanceAssistantMessage.fromJson),
+    );
+  }
+}
+
+DateTime? _parseDateTime(dynamic raw) {
+  if (raw == null) return null;
+  return DateTime.tryParse(raw.toString());
 }
 
 List<T> _mapList<T>(dynamic raw, T Function(Map<String, dynamic> json) map) {

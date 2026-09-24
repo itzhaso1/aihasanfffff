@@ -69,4 +69,15 @@ return [
             'subject' => 'رسالة جديدة',
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Industry template library
+    |--------------------------------------------------------------------------
+    |
+    | Design catalog only. CentralEmailService still reads `templates` above.
+    | Workspace outbound mail still renders emails.workspace-branded.
+    |
+    */
+    'library' => require __DIR__.'/email_template_library.php',
 ];

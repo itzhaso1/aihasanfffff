@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Site\PublicSite;
 use Illuminate\View\View;
 
 class LegalPageController extends Controller
@@ -38,7 +39,7 @@ class LegalPageController extends Controller
         abort_unless((bool) config('legal.pages.'.$view, true), 404);
 
         return view('legal.'.$view, [
-            'legal' => config('legal'),
+            'legal' => PublicSite::current()->legalFacts(),
         ]);
     }
 }

@@ -767,6 +767,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get alerts => 'التنبيهات';
 
   @override
+  String get assistant => 'المساعد المالي';
+
+  @override
   String get copilot => 'المساعد المالي';
 
   @override
@@ -880,6 +883,31 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get copilotHint =>
       'اسأل عن المبيعات، الأرباح، المتأخرات، أو ما يحتاج انتباهاً. المساعد لا يخترع مبالغ.';
+
+  @override
+  String get assistantHint =>
+      'اسأل عن المبيعات، الأرباح، المتأخرات، أو ما يحتاج انتباهاً. المساعد لا يخترع مبالغ.';
+
+  @override
+  String get assistantEmptyState => 'مساعد HASEM المالي';
+
+  @override
+  String get newConversation => 'محادثة جديدة';
+
+  @override
+  String get conversationHistory => 'سجل المحادثات';
+
+  @override
+  String get noConversations => 'لا توجد محادثات سابقة';
+
+  @override
+  String get deleteConversation => 'حذف المحادثة';
+
+  @override
+  String get periodNotSupported => 'فترة غير مدعومة';
+
+  @override
+  String get unavailable => 'غير متاح';
 
   @override
   String get transfer => 'تحويل';
@@ -1508,4 +1536,78 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get expenseLockedHint => 'لا يمكن تعديل مصروف مرحّل من التطبيق.';
+
+  @override
+  String get settingsManageSubtitle => 'إدارة إعدادات النظام والشركة';
+
+  @override
+  String get settingsSections => 'أقسام الإعدادات';
+
+  @override
+  String get settingsGeneral => 'عام';
+
+  @override
+  String get settingsGeneralHint => 'بيانات الشركة والشعار';
+
+  @override
+  String get settingsInvoices => 'الفواتير';
+
+  @override
+  String get settingsInvoicesHint => 'إعدادات الفاتورة والترقيم';
+
+  @override
+  String get settingsTaxes => 'الضرائب';
+
+  @override
+  String get settingsTaxesHint => 'إعدادات الضرائب والأسعار';
+
+  @override
+  String get settingsAddress => 'العنوان';
+
+  @override
+  String get settingsAddressHint => 'عنوان الشركة';
+
+  @override
+  String get settingsAppearance => 'اللغة والمظهر';
+
+  @override
+  String get settingsAppearanceHint => 'اختر لغة النظام والمظهر المناسب لك';
+
+  @override
+  String get settingsSystem => 'النظام';
+
+  @override
+  String get settingsSystemHint => 'خيارات النظام';
+
+  @override
+  String get companyProfile => 'بيانات الشركة';
+
+  @override
+  String get companyProfileHint =>
+      'هذه البيانات ستظهر في الفواتير والتقارير والمستندات الرسمية';
+
+  @override
+  String get companyNameEn => 'اسم الشركة بالإنجليزية';
+
+  @override
+  String get additionalInfo => 'معلومات إضافية';
+
+  @override
+  String get additionalInfoHint =>
+      'يمكن إضافة معلومات إضافية تعرضونها في الفواتير';
+
+  @override
+  String get saveChanges => 'حفظ التغييرات';
+
+  @override
+  String get resetForm => 'إعادة التعيين';
+
+  @override
+  String get themeLight => 'فاتح';
+
+  @override
+  String get themeDark => 'داكن';
+
+  @override
+  String get themeSystem => 'النظام';
 }

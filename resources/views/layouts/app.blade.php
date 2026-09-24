@@ -15,11 +15,12 @@
     <body class="bg-white font-sans text-gray-900 antialiased">
         @php
             $isWorkspaceShell = request()->is('workspace*');
+            $hsWorkspace = request()->attributes->get('workspace');
         @endphp
 
         @if($isWorkspaceShell)
-            <div x-data="{ sidebarOpen: false }" class="min-h-screen bg-[#F7FCFB]">
-                <aside class="fixed inset-y-0 right-0 z-40 hidden w-72 border-l border-gray-200 bg-white lg:flex lg:flex-col">
+            <div x-data="{ sidebarOpen: false }" class="hs-workspace-shell min-h-screen w-full bg-[#F7FCFB] lg:flex">
+                <aside class="hs-workspace-sidebar hidden w-72 shrink-0 border-e border-gray-200 bg-white lg:flex lg:flex-col">
                     <div class="border-b border-gray-100 px-6 py-6">
                         <a href="{{ route('workspace.dashboard') }}" class="flex items-center gap-2">
                             <x-hasim-logo variant="mark" size="lg" />
@@ -32,37 +33,37 @@
                     </nav>
                 </aside>
 
-                <div class="min-h-screen lg:pr-72">
+                <div class="hs-workspace-main flex min-h-0 w-full min-w-0 flex-1 flex-col">
                     <header class="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
-                        <div class="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
-                            <button @click="sidebarOpen = true" type="button" class="inline-flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:bg-gray-50 lg:hidden">
+                        <div class="flex h-16 min-w-0 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+                            <button @click="sidebarOpen = true" type="button" class="inline-flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:bg-gray-50 lg:hidden" aria-label="فتح القائمة">
                                 <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M4 6h16M4 12h16M4 18h16" />
                                 </svg>
                             </button>
-                            <a href="{{ route('workspace.dashboard') }}" class="hidden items-center gap-2 lg:flex">
-                                <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E8F8F4] text-[#06C2A4]">
+                            <a href="{{ route('workspace.dashboard') }}" class="hidden min-w-0 items-center gap-2 lg:flex">
+                                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E8F8F4] text-[#06C2A4]">
                                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 10.75 12 3l9 7.75V21a1 1 0 0 1-1 1h-5.5v-7h-5v7H4a1 1 0 0 1-1-1V10.75Z" />
                                     </svg>
                                 </span>
-                                <span class="text-sm text-gray-500">منصة SaaS عربية احترافية</span>
+                                <span class="truncate text-sm text-gray-500">{{ $hsWorkspace?->name ?: 'لوحة التحكم' }}</span>
                             </a>
-                            <div class="flex items-center gap-2 sm:gap-3">
-                                <a href="{{ route('profile.edit') }}" class="rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">اللغة</a>
-                                <a href="{{ route('workspace.choose') }}" class="rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">المساحات</a>
-                                <a href="{{ route('notifications.index') }}" class="relative inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">
-                                    الإشعارات
+                            <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+                                <a href="{{ route('profile.edit') }}" class="hidden rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4] sm:inline-flex">الإعدادات</a>
+                                <a href="{{ route('workspace.choose') }}" class="hidden rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4] md:inline-flex">المساحات</a>
+                                <a href="{{ route('notifications.index') }}" class="relative inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]" aria-label="الإشعارات">
+                                    <span class="hidden sm:inline">الإشعارات</span>
                                     <span class="relative text-gray-500">
                                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0a3 3 0 1 1-6 0m6 0H9" />
                                         </svg>
                                         @if(Auth::user()?->unreadNotifications()->exists())
-                                            <span class="absolute -top-1 -left-0.5 h-2 w-2 rounded-full bg-red-500"></span>
+                                            <span class="absolute -top-1 -end-0.5 h-2 w-2 rounded-full bg-red-500"></span>
                                         @endif
                                     </span>
                                 </a>
-                                <x-dropdown align="left" width="56">
+                                <x-dropdown align="right" width="56">
                                     <x-slot name="trigger">
                                         <button class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4] focus:outline-none">
                                             <span class="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500">
@@ -92,7 +93,7 @@
 
                     <div x-cloak x-show="sidebarOpen" class="fixed inset-0 z-50 lg:hidden">
                         <button @click="sidebarOpen = false" type="button" class="absolute inset-0 bg-gray-900/40"></button>
-                        <aside x-transition class="absolute inset-y-0 right-0 w-72 overflow-y-auto border-l border-gray-200 bg-white">
+                        <aside x-transition class="absolute inset-y-0 start-0 w-72 overflow-y-auto border-e border-gray-200 bg-white">
                             <div class="flex items-center justify-between border-b border-gray-100 px-5 py-5">
                                 <a href="{{ route('workspace.dashboard') }}" class="flex items-center gap-2">
                                     <x-hasim-logo variant="mark" size="sm" />
@@ -118,7 +119,7 @@
                         </section>
                     @endisset
 
-                    <main class="px-4 py-6 sm:px-6 lg:px-8">
+                    <main class="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
                         {{ $slot }}
                     </main>
 

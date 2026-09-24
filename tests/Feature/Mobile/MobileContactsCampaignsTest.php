@@ -175,7 +175,7 @@ class MobileContactsCampaignsTest extends TestCase
         $this->assertDatabaseCount('email_campaign_recipients', 2);
         $this->assertSame(
             2,
-            EmailCampaignRecipient::query()->where('email_campaign_id', $campaignId)->count(),
+            EmailCampaignRecipient::withoutGlobalScopes()->where('email_campaign_id', $campaignId)->count(),
         );
 
         Bus::assertDispatched(ProcessEmailCampaignJob::class, function (ProcessEmailCampaignJob $job) use ($campaignId): bool {
@@ -216,6 +216,7 @@ class MobileContactsCampaignsTest extends TestCase
             'status' => 'active',
             'joined_at' => now(),
         ]);
+        $this->enableWorkspaceFeature($workspace, 'email');
 
         return [$user, $workspace];
     }

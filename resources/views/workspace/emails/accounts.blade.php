@@ -32,7 +32,7 @@
                     <label class="mb-1 block text-sm font-semibold text-slate-700">
                         كلمة المرور {{ $editingAccount ? '(اتركها فارغة إذا لا تريد تغييرها)' : '' }}
                     </label>
-                    <input type="password" name="password" {{ $editingAccount ? '' : 'required' }} class="w-full rounded-lg border-slate-300 text-sm">
+                    <input type="password" name="password" autocomplete="new-password" {{ $editingAccount ? '' : 'required' }} class="w-full rounded-lg border-slate-300 text-sm">
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
@@ -48,12 +48,46 @@
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
+                        <label class="mb-1 block text-sm font-semibold text-slate-700">IMAP Username (اختياري)</label>
+                        <input type="text" name="imap_username" value="{{ old('imap_username', $editingAccount?->imap_username) }}" placeholder="افتراضي: عنوان البريد" class="w-full rounded-lg border-slate-300 text-sm">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm font-semibold text-slate-700">IMAP Encryption</label>
+                        <select name="imap_encryption" class="w-full rounded-lg border-slate-300 text-sm">
+                            @php($imapEncryption = old('imap_encryption', $editingAccount?->imap_encryption))
+                            <option value="" @selected($imapEncryption === null || $imapEncryption === '')>تلقائي حسب المنفذ</option>
+                            <option value="ssl" @selected($imapEncryption === 'ssl')>SSL</option>
+                            <option value="tls" @selected($imapEncryption === 'tls')>TLS</option>
+                            <option value="none" @selected($imapEncryption === 'none')>بدون</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
                         <label class="mb-1 block text-sm font-semibold text-slate-700">SMTP Host</label>
                         <input type="text" name="smtp_host" value="{{ old('smtp_host', $editingAccount?->smtp_host) }}" required class="w-full rounded-lg border-slate-300 text-sm">
                     </div>
                     <div>
                         <label class="mb-1 block text-sm font-semibold text-slate-700">SMTP Port</label>
                         <input type="number" name="smtp_port" value="{{ old('smtp_port', $editingAccount?->smtp_port ?? 587) }}" required class="w-full rounded-lg border-slate-300 text-sm">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="mb-1 block text-sm font-semibold text-slate-700">SMTP Username (اختياري)</label>
+                        <input type="text" name="smtp_username" value="{{ old('smtp_username', $editingAccount?->smtp_username) }}" placeholder="افتراضي: عنوان البريد" class="w-full rounded-lg border-slate-300 text-sm">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm font-semibold text-slate-700">SMTP Encryption</label>
+                        <select name="smtp_encryption" class="w-full rounded-lg border-slate-300 text-sm">
+                            @php($smtpEncryption = old('smtp_encryption', $editingAccount?->smtp_encryption))
+                            <option value="" @selected($smtpEncryption === null || $smtpEncryption === '')>تلقائي حسب المنفذ</option>
+                            <option value="ssl" @selected($smtpEncryption === 'ssl')>SSL</option>
+                            <option value="tls" @selected($smtpEncryption === 'tls')>TLS</option>
+                            <option value="none" @selected($smtpEncryption === 'none')>بدون</option>
+                        </select>
                     </div>
                 </div>
 
@@ -80,9 +114,12 @@
                     </label>
                 @endif
 
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <button class="rounded-lg bg-[#06C2A4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">
                         {{ $editingAccount ? 'حفظ التعديلات' : 'إضافة الشركة' }}
+                    </button>
+                    <button type="submit" name="intent" value="test_smtp" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+                        اختبار اتصال SMTP
                     </button>
                     @if($editingAccount)
                         <a href="{{ route('workspace.emails.accounts.index') }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
@@ -105,7 +142,16 @@
                         <div>
                             <h4 class="text-sm font-bold text-slate-900">{{ $account->name }}</h4>
                             <p class="text-xs text-slate-500">{{ $account->email }}</p>
-                            <p class="mt-1 text-xs text-slate-500">IMAP: {{ $account->imap_host }}:{{ $account->imap_port }} — SMTP: {{ $account->smtp_host }}:{{ $account->smtp_port }}</p>
+                            <p class="mt-1 text-xs text-slate-500">IMAP: {{ $account->imap_host }}:{{ $account->imap_port }} ({{ $account->resolvedImapEncryption() }}) — SMTP: {{ $account->smtp_host }}:{{ $account->smtp_port }} ({{ $account->resolvedSmtpEncryption() }})</p>
+                            @if($account->smtp_status)
+                                <p class="mt-1 text-xs text-slate-500">
+                                    آخر اختبار SMTP: {{ $account->smtp_status }}
+                                    @if($account->smtp_last_tested_at)
+                                        — {{ $account->smtp_last_tested_at->timezone(config('app.timezone'))->format('Y-m-d H:i') }}
+                                    @endif
+                                    <span class="block text-[11px] text-slate-400">هذه نتيجة آخر اختبار فقط وليست ضمان اتصال دائم.</span>
+                                </p>
+                            @endif
                         </div>
                         <span class="h-3 w-3 rounded-full border border-white shadow" style="background-color: {{ $account->brand_color }}"></span>
                     </div>
@@ -117,6 +163,12 @@
                         <a href="{{ route('workspace.emails.compose', ['account_id' => $account->id]) }}" class="rounded-lg border border-[#06C2A4] px-3 py-1.5 text-xs font-semibold text-[#0f7668] hover:bg-[#E8FAF6]">
                             استخدام في الإرسال
                         </a>
+                        <form method="POST" action="{{ route('workspace.emails.accounts.test-smtp', $account) }}">
+                            @csrf
+                            <button type="submit" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                اختبار SMTP
+                            </button>
+                        </form>
                         <form method="POST" action="{{ route('workspace.emails.accounts.sync', $account) }}">
                             @csrf
                             <button type="submit" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50">

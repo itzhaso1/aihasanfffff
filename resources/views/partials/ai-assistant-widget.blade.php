@@ -10,7 +10,8 @@
         x-cloak
         x-show="open"
         x-transition.opacity
-        class="absolute bottom-16 left-0 w-[330px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+        class="absolute bottom-16 w-[min(20.6rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+        :class="panelAlignClass()"
     >
         <div class="flex items-center justify-between border-b border-gray-100 bg-[#06C2A4] px-4 py-3 text-white">
             <div class="flex items-center gap-2.5">
@@ -59,13 +60,13 @@
         @pointerdown.prevent="startDrag($event)"
         @click="toggleFromLauncher()"
         type="button"
-        class="inline-flex h-16 w-16 cursor-move items-center justify-center overflow-hidden rounded-full bg-black p-0 shadow-xl ring-2 ring-white/80 transition hover:scale-[1.03]"
+        class="inline-flex h-16 w-16 cursor-move items-center justify-center overflow-hidden rounded-full bg-transparent p-0 transition hover:scale-[1.03]"
         aria-label="فتح مساعد حاسم"
     >
         <img
-            src="{{ asset('images/hasim-assistant-icon.jpg') }}"
-            alt="مساعد حاسم الذكي"
-            class="h-full w-full scale-[1.18] object-cover object-center"
+            src="{{ asset('images/hasim-assistant-icon.png') }}"
+            alt="مساعد {{ ($publicSite ?? \App\Support\Site\PublicSite::current())->nameAr() }}"
+            class="h-full w-full scale-[1.08] object-cover object-center"
         >
     </button>
 </div>

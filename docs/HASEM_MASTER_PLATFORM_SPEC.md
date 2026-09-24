@@ -48,24 +48,40 @@ Modular Laravel monolith.
 
 ## 2. Domain map (inside one product)
 
+Official rule: **one platform, one website, one Laravel backend, one database, three functional domains, three catalogs.** Catalogs do not inherit from each other.
+
 ```text
-HASEM
-├── Identity / Tenancy / RBAC
-├── CRM (customers, tags, notes, leads)
-├── Sales (invoices, credit notes, payments, statements, contracts)
-├── POS / Cashier
-├── Products / Inventory
-├── Purchasing (suppliers, purchase orders → goods receipt → supplier bill)
-├── Accounting (COA, journals, GL reports, periods, tax rates)
-├── Expenses / Payroll / Employees
-├── Treasury (cash/bank accounts, transfers, bank statements)
-├── Projects (profitability from invoices + expenses)
-├── Website / WhatsApp / Email
-├── Billing / Subscriptions / Plans
-├── AI (workspace assistant + finance copilot)
-├── API / Webhooks / Notifications / Audit
+HASEM PLATFORM
+├── Identity / Tenancy / RBAC / Customers (shared)
+├── FINANCE DOMAIN
+│   ├── Finance / Commerce Catalog (`products`)
+│   ├── Invoices / Accounting / Expenses / Taxes / Treasury / Reports
+│   └── `/api/finance/v1/*` + apps/hasim_finance
+├── CASHIER / POS DOMAIN
+│   ├── Cashier Catalog (`pos_menu_items` + `pos_item_categories`)
+│   ├── POS sales / orders / tables / kitchen / Electronic Menu
+│   └── `/api/cashier/v1/*` + apps/hasim_cashier
+├── CHAT DOMAIN
+│   ├── Chat Catalog (`chat_catalog_items` + categories/variants)
+│   ├── Unified Inbox / WhatsApp / Email / AI (Chat Catalog + role + business context)
+│   └── `/api/mobile/v1/*` + apps/hasim
+├── Billing / Subscriptions / Plans (unchanged; not a catalog)
 └── Infrastructure (queues, scheduler, observability)
 ```
+
+### Catalog isolation
+
+| Catalog | Source of truth | Consumers | Does not feed |
+| --- | --- | --- | --- |
+| Finance / Commerce | `products` | Finance UI/API, inventory, optional invoice lines | Cashier, Chat AI, Electronic Menu |
+| Cashier | `pos_menu_items` | POS, cashier API, Electronic Menu (active only) | Finance catalog, Chat AI |
+| Chat | `chat_catalog_items` | Chat app, Chat Catalog API, Chat AI | Finance, Cashier, Electronic Menu |
+
+`pos_menu_items.product_id` is an **optional inventory mapping**, not catalog inheritance. Creating a Finance product does not create a POS or Chat item, and the reverse is also false.
+
+Chat AI retrieval searches Chat Catalog tokens only. Instagram / Messenger / Telegram UI may exist; WhatsApp inbound is the live inbox channel. Do not document UI-only channels as live backends.
+
+P1-17 is **domain catalog separation**, not “unify all products”.
 
 ---
 

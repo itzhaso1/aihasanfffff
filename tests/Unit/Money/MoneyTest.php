@@ -23,6 +23,12 @@ class MoneyTest extends TestCase
         $this->assertSame('15.00', Money::extractInclusiveTax('115.00', 15));
     }
 
+    public function test_calculates_fixed_scale_tax_rates_without_binary_floats(): void
+    {
+        $this->assertSame('0.83', Money::percentOfFixedRate('10.00', '8.25'));
+        $this->assertSame('0.76', Money::extractInclusiveTaxFixedRate('10.00', '8.25'));
+    }
+
     public function test_rejects_invalid_amount(): void
     {
         $this->expectException(InvalidArgumentException::class);

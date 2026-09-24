@@ -15,6 +15,12 @@
         <dt>العنوان</dt>
         <dd>{{ $legal['address'] }}</dd>
     </div>
+    @if (filled($legal['tax_number'] ?? null))
+        <div>
+            <dt>الرقم الضريبي</dt>
+            <dd>{{ $legal['tax_number'] }}</dd>
+        </div>
+    @endif
     @if (filled($legal['email'] ?? null))
         <div class="sm:col-span-2">
             <dt>البريد الإلكتروني</dt>

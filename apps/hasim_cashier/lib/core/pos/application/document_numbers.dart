@@ -18,6 +18,30 @@ class DocumentNumberService {
     return _next(storeId: storeId, kind: 'invoice', prefix: prefix, width: 6);
   }
 
+  /// Same sequence as checkout. A workspace without a store still gets
+  /// INV-000001 style numbers, never a LOCAL-uuid.
+  Future<String> nextInvoiceNumberForWorkspace({
+    required int workspaceId,
+    String prefix = 'INV-',
+  }) async {
+    final store = await (_db.select(_db.localStores)
+          ..where((t) => t.workspaceId.equals(workspaceId))
+          ..limit(1))
+        .getSingleOrNull();
+    if (store != null) {
+      final storePrefix = store.invoicePrefix.trim();
+      return nextInvoiceNumber(
+        storeId: store.localId,
+        prefix: storePrefix.isEmpty ? prefix : storePrefix,
+      );
+    }
+    final existing = await (_db.select(
+      _db.localInvoices,
+    )..where((t) => t.workspaceId.equals(workspaceId))).get();
+    final n = existing.length + 1;
+    return '$prefix${n.toString().padLeft(6, '0')}';
+  }
+
   Future<String> nextOrderNumber({
     required String storeId,
     String prefix = 'ORD-',

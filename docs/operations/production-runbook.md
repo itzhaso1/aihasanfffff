@@ -14,7 +14,7 @@
 First-party runtime: `docs/operations/production-runtime-runbook.md`.
 
 ```bash
-php artisan queue:work redis --queue=default --sleep=1 --tries=3 --backoff=5 --timeout=200
+php artisan queue:work redis --queue=emails,default --sleep=1 --tries=3 --backoff=5 --timeout=200
 php artisan runtime:check --production-strict
 ```
 

@@ -41,6 +41,14 @@ This repository now includes a functional multi-tenant foundation plus operation
    - Sales/purchase invoices + invoice items + partial/full payments + VAT-aware calculations.
    - Suppliers, expenses, tax settings, treasury (cash/bank), accounting dashboard, and reports.
 
+## Flutter clients
+
+Three first-party Flutter apps talk to this monolith. They do not host a separate database or tenant model.
+
+- `apps/hasim` — Hasim chat/inbox (Mobile API `/api/mobile/v1`)
+- `apps/hasim_finance` — Hasim finance (Finance API `/api/finance/v1`)
+- `apps/hasim_cashier` — Hasim cashier POS (Cashier API `/api/cashier/v1`)
+
 ## Local Setup
 
 ```bash
@@ -48,7 +56,7 @@ composer install
 cp .env.example .env
 php artisan key:generate
 npm install
-php artisan migrate --seed
+php artisan migrate --seed   # set PLATFORM_ADMIN_EMAIL and PLATFORM_ADMIN_PASSWORD first
 php artisan storage:link
 php artisan serve
 npm run dev
@@ -84,13 +92,11 @@ npm run dev
 - Controller used:
   - `App\Http\Controllers\Webhook\WhatsAppWebhookController`
 
-## Default Platform Admin (local)
+## Platform Admin
 
-- Email: `admin@hasem.local`
-- Password: `password`
-
-Override via `.env`:
+Set these in `.env` before creating the platform admin account (`php artisan db:seed` / `migrate --seed`):
 
 - `PLATFORM_ADMIN_EMAIL`
 - `PLATFORM_ADMIN_PASSWORD`
-- `PLATFORM_ADMIN_NAME`
+
+There is no default password. Seeding fails if the password is missing, empty, or weak.

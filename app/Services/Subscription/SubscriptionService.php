@@ -8,10 +8,12 @@ use App\Models\Subscription;
 use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionCheckoutSession;
 use App\Models\Workspace;
+use App\Services\Feature\FeatureAccessService;
 use App\Services\Subscription\Contracts\SubscriptionBillingProviderInterface;
 use App\Support\Subscription\SubscriptionBillingGuard;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -19,6 +21,8 @@ use Illuminate\Support\Str;
 
 class SubscriptionService
 {
+    private const RUNNING_GUARD = 'running';
+
     public function current(Workspace $workspace): ?Subscription
     {
         return Subscription::withoutGlobalScopes()
@@ -48,9 +52,10 @@ class SubscriptionService
     {
         return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $plan): Subscription {
             return DB::transaction(function () use ($workspace, $plan): Subscription {
+                $this->lockWorkspaceForSubscription($workspace);
                 $this->cancelRunningSubscriptions($workspace);
 
-                return Subscription::withoutGlobalScopes()->create([
+                return $this->createRunningSubscription([
                     'workspace_id' => $workspace->id,
                     'plan_id' => $plan->id,
                     'status' => Subscription::STATUS_ACTIVE,
@@ -60,6 +65,53 @@ class SubscriptionService
                     'metadata' => [
                         'proration' => 'none',
                         'note' => 'Plan activated without proration.',
+                    ],
+                ]);
+            });
+        });
+    }
+
+    /**
+     * Operator grant from Platform Admin. Complimentary activation — not a tenant payment claim.
+     *
+     * @param  array{status?:string,current_period_end?:mixed,trial_ends_at?:mixed}  $options
+     */
+    public function grantByPlatformAdmin(Workspace $workspace, Plan $plan, array $options = []): Subscription
+    {
+        $status = (string) ($options['status'] ?? Subscription::STATUS_ACTIVE);
+        if (! in_array($status, [Subscription::STATUS_ACTIVE, Subscription::STATUS_TRIALING], true)) {
+            $status = Subscription::STATUS_ACTIVE;
+        }
+
+        $periodEnd = isset($options['current_period_end']) && $options['current_period_end']
+            ? Carbon::parse($options['current_period_end'])
+            : now()->addYear();
+
+        $trialEndsAt = null;
+        if ($status === Subscription::STATUS_TRIALING) {
+            $trialEndsAt = isset($options['trial_ends_at']) && $options['trial_ends_at']
+                ? Carbon::parse($options['trial_ends_at'])
+                : $periodEnd->copy();
+        }
+
+        return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $plan, $status, $periodEnd, $trialEndsAt): Subscription {
+            return DB::transaction(function () use ($workspace, $plan, $status, $periodEnd, $trialEndsAt): Subscription {
+                $this->lockWorkspaceForSubscription($workspace);
+                $this->cancelRunningSubscriptions($workspace);
+
+                return $this->createRunningSubscription([
+                    'workspace_id' => $workspace->id,
+                    'plan_id' => $plan->id,
+                    'status' => $status,
+                    'starts_at' => now(),
+                    'trial_ends_at' => $trialEndsAt,
+                    'current_period_start' => now(),
+                    'current_period_end' => $periodEnd,
+                    'provider' => 'platform_admin',
+                    'metadata' => [
+                        'activated_via' => 'platform_admin',
+                        'granted_at' => now()->toIso8601String(),
+                        'proration' => 'none',
                     ],
                 ]);
             });
@@ -139,25 +191,32 @@ class SubscriptionService
             ? $this->nextPeriodEnd($plan->billing_period)
             : now()->addMonth();
 
-        $subscription->forceFill([
-            'status' => Subscription::STATUS_ACTIVE,
-            'starts_at' => $subscription->starts_at ?? now(),
-            'cancelled_at' => null,
-            'paused_at' => null,
-            'ends_at' => null,
-            'grace_ends_at' => null,
-            'current_period_start' => now(),
-            'current_period_end' => $periodEnd,
-            'metadata' => array_merge(
-                is_array($subscription->metadata) ? $subscription->metadata : [],
-                [
-                    'reactivated_at' => now()->toIso8601String(),
-                    'proration' => 'none',
-                ]
-            ),
-        ])->save();
+        return DB::transaction(function () use ($subscription, $periodEnd): Subscription {
+            $workspace = Workspace::query()->findOrFail($subscription->workspace_id);
+            $this->lockWorkspaceForSubscription($workspace);
+            $this->cancelRunningSubscriptions($workspace, exceptSubscriptionId: (int) $subscription->id);
 
-        return $subscription->refresh();
+            $subscription->forceFill([
+                'status' => Subscription::STATUS_ACTIVE,
+                'running_guard' => self::RUNNING_GUARD,
+                'starts_at' => $subscription->starts_at ?? now(),
+                'cancelled_at' => null,
+                'paused_at' => null,
+                'ends_at' => null,
+                'grace_ends_at' => null,
+                'current_period_start' => now(),
+                'current_period_end' => $periodEnd,
+                'metadata' => array_merge(
+                    is_array($subscription->metadata) ? $subscription->metadata : [],
+                    [
+                        'reactivated_at' => now()->toIso8601String(),
+                        'proration' => 'none',
+                    ]
+                ),
+            ])->save();
+
+            return $subscription->refresh();
+        });
     }
 
     public function createCheckoutSession(Workspace $workspace, Plan $plan): SubscriptionCheckoutSession
@@ -277,9 +336,10 @@ class SubscriptionService
                 throw new \RuntimeException('Checkout session is not payable anymore.');
             }
 
+            $this->lockWorkspaceForSubscription($workspace);
             $this->cancelRunningSubscriptions($workspace);
 
-            $subscription = app(WorkspaceContext::class)->runFor($workspace, fn () => Subscription::withoutGlobalScopes()->create([
+            $subscription = app(WorkspaceContext::class)->runFor($workspace, fn () => $this->createRunningSubscription([
                 'workspace_id' => $workspace->id,
                 'plan_id' => $fresh->plan_id,
                 'status' => Subscription::STATUS_ACTIVE,
@@ -412,9 +472,10 @@ class SubscriptionService
 
         return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $plan, $direction): Subscription {
             return DB::transaction(function () use ($workspace, $plan, $direction): Subscription {
+                $this->lockWorkspaceForSubscription($workspace);
                 $this->cancelRunningSubscriptions($workspace);
 
-                return Subscription::withoutGlobalScopes()->create([
+                return $this->createRunningSubscription([
                     'workspace_id' => $workspace->id,
                     'plan_id' => $plan->id,
                     'status' => Subscription::STATUS_ACTIVE,
@@ -431,20 +492,63 @@ class SubscriptionService
         });
     }
 
-    private function cancelRunningSubscriptions(Workspace $workspace): void
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function createRunningSubscription(array $attributes): Subscription
     {
-        Subscription::withoutGlobalScopes()
+        $subscription = Subscription::withoutGlobalScopes()->create([
+            ...$attributes,
+            'running_guard' => self::RUNNING_GUARD,
+        ]);
+
+        app(FeatureAccessService::class)->forgetWorkspaceFeatureCache((int) $subscription->workspace_id);
+
+        return $subscription;
+    }
+
+    private function lockWorkspaceForSubscription(Workspace $workspace): void
+    {
+        Workspace::query()->whereKey($workspace->id)->lockForUpdate()->first();
+    }
+
+    private function cancelRunningSubscriptions(Workspace $workspace, ?int $exceptSubscriptionId = null): void
+    {
+        $query = Subscription::withoutGlobalScopes()
             ->where('workspace_id', $workspace->id)
             ->whereIn('status', [
                 Subscription::STATUS_TRIALING,
                 Subscription::STATUS_ACTIVE,
                 Subscription::STATUS_PAST_DUE,
                 Subscription::STATUS_PAUSED,
-            ])
-            ->update([
-                'status' => Subscription::STATUS_CANCELLED,
-                'cancelled_at' => now(),
             ]);
+
+        if ($exceptSubscriptionId !== null) {
+            $query->where('id', '!=', $exceptSubscriptionId);
+        }
+
+        $query->lockForUpdate()->get();
+
+        $updateQuery = Subscription::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->whereIn('status', [
+                Subscription::STATUS_TRIALING,
+                Subscription::STATUS_ACTIVE,
+                Subscription::STATUS_PAST_DUE,
+                Subscription::STATUS_PAUSED,
+            ]);
+
+        if ($exceptSubscriptionId !== null) {
+            $updateQuery->where('id', '!=', $exceptSubscriptionId);
+        }
+
+        $updateQuery->update([
+            'status' => Subscription::STATUS_CANCELLED,
+            'cancelled_at' => now(),
+            'running_guard' => null,
+        ]);
+
+        app(FeatureAccessService::class)->forgetWorkspaceFeatureCache((int) $workspace->id);
     }
 
     private function resolveServerCheckoutProvider(): string
@@ -466,7 +570,7 @@ class SubscriptionService
         return $configured !== '' ? $configured : 'hyperpay';
     }
 
-    private function nextPeriodEnd(string $billingPeriod): \Illuminate\Support\Carbon
+    private function nextPeriodEnd(string $billingPeriod): Carbon
     {
         return match ($billingPeriod) {
             'yearly' => now()->addYear(),

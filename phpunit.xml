@@ -34,5 +34,9 @@
         <env name="PULSE_ENABLED" value="false" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false" force="true"/>
         <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
+        <env name="PLATFORM_ADMIN_PASSWORD" value="HasemPhpunitOnly-PlatformAdmin-NotAProdSecret" force="true"/>
+        <env name="GEMINI_API_KEY" value="" force="true"/>
+        <env name="OPENAI_API_KEY" value="" force="true"/>
+        <env name="FINANCE_ASSISTANT_AGENT" value="false" force="true"/>
     </php>
 </phpunit>

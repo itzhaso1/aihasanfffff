@@ -85,6 +85,7 @@ class _TablesBoardState extends ConsumerState<TablesBoard> {
     _source?.dispose();
     _source = PollingPosEventSource(
       interval: Duration(seconds: AppConfig.tablesPollSeconds),
+      idleInterval: Duration(seconds: AppConfig.tablesPollIdleSeconds),
       // Always refresh local SQLite. Do not gate on internet — occupancy
       // must update on this device even while offlineOnly.
       enabled: () => true,

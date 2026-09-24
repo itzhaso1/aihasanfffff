@@ -47,12 +47,13 @@ class AuthenticationService
     private function createUserAndWorkspace(array $payload): array
     {
         return DB::transaction(function () use ($payload): array {
-            $user = User::query()->create([
+            $user = User::query()->make([
                 'name' => $payload['name'],
                 'email' => $payload['email'],
                 'phone' => $payload['phone'] ?? null,
-                'password' => $payload['password'],
             ]);
+            $user->forceFill(['password' => $payload['password']]);
+            $user->save();
 
             $workspace = $this->workspaceService->createForUser(
                 $user,

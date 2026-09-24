@@ -29,7 +29,7 @@ Route::prefix('auth')->group(function (): void {
     Route::post('/social/token', [SocialAuthController::class, 'exchangeToken'])->middleware('throttle:10,1');
 });
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'throttle:legacy-api'])->group(function (): void {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/employee-invitations/{token}/accept', [EmployeeController::class, 'acceptInvitation']);
@@ -37,16 +37,16 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('/workspaces', [WorkspaceController::class, 'index']);
 });
 
-Route::middleware(['auth:sanctum', 'workspace.resolve', 'workspace.member'])
+Route::middleware(['auth:sanctum', 'workspace.resolve', 'workspace.member', 'throttle:legacy-api'])
     ->group(function (): void {
         Route::get('/workspace/{workspace}/current', [WorkspaceController::class, 'current']);
 
         Route::apiResource('/categories', CategoryController::class);
-        Route::apiResource('/products', ProductController::class);
         Route::apiResource('/customers', CustomerController::class);
-        Route::apiResource('/orders', OrderController::class);
         Route::apiResource('/conversations', ConversationController::class);
-        Route::apiResource('/messages', MessageController::class)->only(['index', 'store', 'show']);
+        Route::get('/messages', [MessageController::class, 'index']);
+        Route::post('/messages', [MessageController::class, 'store'])->middleware('throttle:mobile-messages');
+        Route::get('/messages/{message}', [MessageController::class, 'show']);
         Route::apiResource('/payments', PaymentController::class)->only(['index', 'store', 'show']);
         Route::get('/subscriptions', [SubscriptionController::class, 'index']);
         Route::get('/subscriptions/plans', [SubscriptionController::class, 'plans']);
@@ -64,13 +64,26 @@ Route::middleware(['auth:sanctum', 'workspace.resolve', 'workspace.member'])
         Route::get('/inventory/movements', [InventoryController::class, 'index']);
         Route::post('/inventory/adjust', [InventoryController::class, 'adjust']);
 
-        Route::get('/ai/settings', [AiController::class, 'settings']);
-        Route::put('/ai/settings', [AiController::class, 'updateSettings']);
-        Route::post('/ai/reply', [AiController::class, 'generateReply']);
+        Route::middleware('workspace.feature:products')->group(function (): void {
+            Route::apiResource('/products', ProductController::class);
+        });
 
-        Route::get('/whatsapp/accounts', [WhatsAppController::class, 'index']);
-        Route::post('/whatsapp/accounts', [WhatsAppController::class, 'storeAccount']);
-        Route::post('/whatsapp/phone-numbers', [WhatsAppController::class, 'storePhoneNumber']);
+        Route::middleware('workspace.feature:orders')->group(function (): void {
+            Route::apiResource('/orders', OrderController::class);
+        });
+
+        Route::middleware('workspace.feature:ai')->group(function (): void {
+            Route::get('/ai/settings', [AiController::class, 'settings']);
+            Route::put('/ai/settings', [AiController::class, 'updateSettings']);
+            Route::post('/ai/reply', [AiController::class, 'generateReply'])
+                ->middleware('throttle:mobile-ai');
+        });
+
+        Route::middleware('workspace.feature:whatsapp')->group(function (): void {
+            Route::get('/whatsapp/accounts', [WhatsAppController::class, 'index']);
+            Route::post('/whatsapp/accounts', [WhatsAppController::class, 'storeAccount']);
+            Route::post('/whatsapp/phone-numbers', [WhatsAppController::class, 'storePhoneNumber']);
+        });
 
         Route::get('/employees', [EmployeeController::class, 'index']);
         Route::post('/employees/invite', [EmployeeController::class, 'invite']);
@@ -147,6 +160,7 @@ Route::prefix('finance/v1')
             'auth:sanctum',
             'workspace.resolve',
             'workspace.member',
+            'workspace.feature:finance',
             'throttle:cashier-api',
         ])->group(base_path('routes/finance-api.php'));
     });
@@ -162,6 +176,7 @@ Route::prefix('pos/sync')
         'auth:sanctum',
         'workspace.resolve',
         'workspace.member',
+        'mobile.idempotency',
         'throttle:cashier-api',
     ])
     ->group(function (): void {

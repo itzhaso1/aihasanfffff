@@ -133,8 +133,8 @@ void main() {
     AppConfig.autoSyncEnabled = true;
   });
 
-  test('auto sync interval is 5 seconds', () {
-    expect(AppConfig.autoSyncSeconds, 5);
+  test('auto sync interval is bounded for background load', () {
+    expect(AppConfig.autoSyncSeconds, 15);
     expect(AppConfig.autoSyncSeconds >= 5, isTrue);
   });
 
@@ -342,8 +342,9 @@ void main() {
     );
   });
 
-  testWidgets('auto sync ticks immediately then every 5 seconds', (tester) async {
+  testWidgets('auto sync ticks immediately then on configured interval', (tester) async {
     var calls = 0;
+    final interval = Duration(seconds: AppConfig.autoSyncSeconds);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -356,11 +357,11 @@ void main() {
     );
     await tester.pump();
     expect(calls, 1);
-    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(interval - const Duration(seconds: 1));
     expect(calls, 1);
     await tester.pump(const Duration(seconds: 1));
     expect(calls, 2);
-    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(interval);
     expect(calls, 3);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 20));

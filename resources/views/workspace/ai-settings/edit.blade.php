@@ -13,6 +13,14 @@
                         <input name="name" required value="{{ old('name', $setting?->name ?? 'AI Assistant') }}" class="w-full rounded-lg border-gray-300" />
                     </div>
                     <div>
+                        <label class="mb-1 block text-sm">دور الذكاء الاصطناعي</label>
+                        <select name="ai_role" class="w-full rounded-lg border-gray-300">
+                            @foreach($aiRoles ?? [] as $role)
+                                <option value="{{ $role }}" @selected(old('ai_role', $setting?->ai_role ?? 'general_business_assistant') === $role)>{{ $role }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
                         <label class="mb-1 block text-sm">Provider</label>
                         <select name="provider" class="w-full rounded-lg border-gray-300">
                             @foreach(['google_ai_studio' => 'Google AI Studio (Gemini)', 'openai' => 'OpenAI'] as $value => $label)

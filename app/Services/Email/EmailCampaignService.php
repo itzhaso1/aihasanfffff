@@ -139,6 +139,10 @@ class EmailCampaignService
      */
     public function sendRecipient(EmailCampaignRecipient $recipient): void
     {
+        $recipient = EmailCampaignRecipient::withoutGlobalScopes()
+            ->whereKey($recipient->id)
+            ->firstOrFail();
+
         $campaign = EmailCampaign::withoutGlobalScopes()
             ->with(['account'])
             ->findOrFail($recipient->email_campaign_id);
@@ -162,6 +166,64 @@ class EmailCampaignService
             throw new RuntimeException('حساب البريد غير موجود.');
         }
 
+        $message = $this->resolveCampaignOutboundMessage($recipient, $campaign, $account);
+
+        if ($message->delivery_status === 'sent') {
+            $this->finalizeRecipientSend($recipient, $campaign, $workspace, $message);
+
+            return;
+        }
+
+        $classifier = app(CustomerMailboxErrorClassifier::class);
+
+        try {
+            $message->forceFill([
+                'delivery_status' => 'sending',
+                'delivery_error' => null,
+            ])->save();
+
+            $this->workspaceEmailSender->send($message);
+            $this->finalizeRecipientSend($recipient, $campaign, $workspace, $message);
+        } catch (\Throwable $exception) {
+            $safeError = $classifier->safeStoredError($exception, 'send');
+
+            $message->forceFill([
+                'delivery_status' => 'failed',
+                'delivery_error' => $safeError,
+            ])->save();
+
+            if ($classifier->isRetryable($exception)) {
+                throw $exception;
+            }
+
+            $recipient->forceFill([
+                'status' => EmailCampaignRecipient::STATUS_FAILED,
+                'email_message_id' => $message->id,
+                'error_message' => $safeError,
+            ])->save();
+
+            $campaign->increment('failed_count');
+
+            throw $exception;
+        }
+    }
+
+    private function resolveCampaignOutboundMessage(
+        EmailCampaignRecipient $recipient,
+        EmailCampaign $campaign,
+        EmailAccount $account,
+    ): EmailMessage {
+        if ($recipient->email_message_id) {
+            $existing = EmailMessage::withoutGlobalScopes()
+                ->whereKey($recipient->email_message_id)
+                ->where('workspace_id', $campaign->workspace_id)
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
+        }
+
         $message = EmailMessage::withoutGlobalScopes()->create([
             'workspace_id' => $campaign->workspace_id,
             'email_account_id' => $account->id,
@@ -170,47 +232,43 @@ class EmailCampaignService
             'subject' => $campaign->subject,
             'body' => $campaign->body,
             'type' => 'outbound',
-            'delivery_status' => 'sending',
+            'delivery_status' => 'pending',
             'message_id' => '<'.Str::uuid().'@'.Str::after((string) $account->email, '@').'>',
             'thread_key' => Str::uuid()->toString(),
         ]);
 
-        try {
-            $log = $this->workspaceEmailSender->send($message);
+        $recipient->forceFill(['email_message_id' => $message->id])->save();
 
-            $message->forceFill([
-                'delivery_status' => 'sent',
-                'delivered_at' => now(),
-                'message_id' => $log->provider_message_id ?: $message->message_id,
-            ])->save();
+        return $message;
+    }
 
-            $recipient->forceFill([
-                'status' => EmailCampaignRecipient::STATUS_SENT,
-                'email_message_id' => $message->id,
-                'sent_at' => now(),
-                'error_message' => null,
-            ])->save();
-
-            $campaign->increment('sent_count');
-
-            // Consume after successful send — campaigns own metering (not WorkspaceEmailSender).
-            $this->featureAccessService->consumeUsage($workspace, 'email_sends', 1, enforce: false);
-        } catch (\Throwable $exception) {
-            $message->forceFill([
-                'delivery_status' => 'failed',
-                'delivery_error' => $exception->getMessage(),
-            ])->save();
-
-            $recipient->forceFill([
-                'status' => EmailCampaignRecipient::STATUS_FAILED,
-                'email_message_id' => $message->id,
-                'error_message' => $exception->getMessage(),
-            ])->save();
-
-            $campaign->increment('failed_count');
-
-            throw $exception;
+    private function finalizeRecipientSend(
+        EmailCampaignRecipient $recipient,
+        EmailCampaign $campaign,
+        Workspace $workspace,
+        EmailMessage $message,
+    ): void {
+        if ($recipient->status === EmailCampaignRecipient::STATUS_SENT) {
+            return;
         }
+
+        $message->forceFill([
+            'delivery_status' => 'sent',
+            'delivered_at' => $message->delivered_at ?? now(),
+            'delivery_error' => null,
+        ])->save();
+
+        $recipient->forceFill([
+            'status' => EmailCampaignRecipient::STATUS_SENT,
+            'email_message_id' => $message->id,
+            'sent_at' => now(),
+            'error_message' => null,
+        ])->save();
+
+        $campaign->increment('sent_count');
+
+        // Consume after successful send — campaigns own metering (not WorkspaceEmailSender).
+        $this->featureAccessService->consumeUsage($workspace, 'email_sends', 1, enforce: false);
     }
 
     public function refreshCampaignStatus(EmailCampaign $campaign): EmailCampaign

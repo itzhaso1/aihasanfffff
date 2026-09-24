@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $pageTitle }} | حاسم الذكي</title>
+    <title>{{ $pageTitle }} | {{ ($publicSite ?? \App\Support\Site\PublicSite::current())->nameAr() }}</title>
     <meta name="description" content="{{ $metaDescription }}">
+    @php $publicSite ??= \App\Support\Site\PublicSite::current(); @endphp
+    <link rel="icon" href="{{ $publicSite->faviconUrl() }}">
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=cairo:400,500,600,700,800&display=swap" rel="stylesheet" />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -17,7 +19,7 @@
 
     <header class="hs-legal-hero">
         <div class="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-            <p class="hs-legal-kicker">HASIM SMART</p>
+            <p class="hs-legal-kicker">{{ ($publicSite ?? \App\Support\Site\PublicSite::current())->tagline() }}</p>
             <h1 class="mt-2 text-3xl font-black leading-tight text-[#0f172a] sm:text-4xl">{{ $pageHeading }}</h1>
             <p class="mt-3 max-w-3xl text-sm font-medium leading-7 text-slate-600 sm:text-[15px]">{{ $pageIntro }}</p>
             @if (filled($legal['effective_date'] ?? null))

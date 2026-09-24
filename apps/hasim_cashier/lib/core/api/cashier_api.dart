@@ -46,13 +46,15 @@ final dioProvider = Provider<Dio>((ref) {
         final cloud = CashierRequestAuth.activeLink(
           ref.read(cloudLinkSessionProvider),
         );
+        final sessionToken = ref.read(authTokenProvider);
         final token = CashierRequestAuth.bearerToken(
-          sessionToken: ref.read(authTokenProvider),
+          sessionToken: sessionToken,
           cloud: cloud,
         );
         final workspaceId = CashierRequestAuth.workspaceId(
           sessionWorkspaceId: ref.read(workspaceIdProvider),
           cloud: cloud,
+          sessionToken: sessionToken,
         );
         final deviceId = CashierRequestAuth.deviceId(
           sessionDeviceId: ref.read(deviceIdHeaderProvider),
@@ -96,6 +98,11 @@ final dioProvider = Provider<Dio>((ref) {
         handler.next(response);
       },
       onError: (error, handler) {
+        // A blocked local-first write is not evidence the server is down.
+        if (error.error == 'offline_only_no_network') {
+          handler.next(error);
+          return;
+        }
         final status =
             error.response?.statusCode ??
             ((error.type == DioExceptionType.connectionError ||
@@ -107,8 +114,12 @@ final dioProvider = Provider<Dio>((ref) {
                 : null);
         if (status == 401) {
           final token = ref.read(authTokenProvider);
-          if (token == null ||
-              (!token.startsWith('standalone:') && token != 'local-offline')) {
+          final sent = error.requestOptions.headers['Authorization']?.toString();
+          final rejectedThisToken =
+              token != null && token.isNotEmpty && sent == 'Bearer $token';
+          if (rejectedThisToken &&
+              !token.startsWith('standalone:') &&
+              token != 'local-offline') {
             ref.read(authTokenProvider.notifier).state = null;
           }
         }

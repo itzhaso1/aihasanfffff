@@ -81,13 +81,14 @@ void main() {
           'original_name': 'a.png',
           'mime_type': 'image/png',
           'size_bytes': 10,
+          'preview_url': 'https://example.com/a.png',
           'download_url': 'https://example.com/a.png',
         }
       ],
     });
     expect(m.isOutbound, isTrue);
     expect(m.attachments.first.kind, 'image');
-    expect(m.attachments.first.downloadUrl, isNotNull);
+    expect(m.attachments.first.displayUrl, isNotNull);
   });
 
 }

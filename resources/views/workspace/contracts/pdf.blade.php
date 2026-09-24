@@ -11,9 +11,11 @@
     $customerName = $customer['name'] ?? ($contract->customer?->name ?: '—');
     $statusLabel = [
         'draft' => 'مسودة',
-        'open' => 'مفتوح',
+        'open' => 'ساري',
+        'expired' => 'منتهٍ',
         'closed' => 'مغلق',
         'cancelled' => 'ملغي',
+        'renewed' => 'مُجدَّد',
     ][$contract->status] ?? $contract->status;
 @endphp
 <!DOCTYPE html>

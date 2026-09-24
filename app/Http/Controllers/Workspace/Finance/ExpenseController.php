@@ -11,7 +11,6 @@ use App\Services\Finance\ExpenseService;
 use App\Services\Finance\FinanceBootstrapService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -168,12 +167,8 @@ class ExpenseController extends FinanceBaseController
         $this->authorizeFinance($request, 'expenses.view');
         abort_unless((int) $expense->workspace_id === (int) $this->currentWorkspace()->id, 404);
         abort_unless(is_string($expense->attachment_path) && $expense->attachment_path !== '', 404);
-        abort_unless(Storage::disk('public')->exists($expense->attachment_path), 404);
 
-        return Storage::disk('public')->download(
-            $expense->attachment_path,
-            basename($expense->attachment_path)
-        );
+        return $expense->attachmentDownloadResponse();
     }
 
     public function destroy(Request $request, FinanceExpense $expense): RedirectResponse

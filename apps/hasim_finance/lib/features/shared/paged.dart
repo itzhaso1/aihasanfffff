@@ -12,6 +12,8 @@ import 'package:hasim_finance/core/theme/finance_tokens.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
+export 'package:hasim_finance/core/widgets/finance_snackbar.dart' show showApiError, showSnack;
+
 class PagedListScreen<T> extends ConsumerStatefulWidget {
   const PagedListScreen({
     super.key,
@@ -302,15 +304,6 @@ Future<void> confirmAndRun(BuildContext context, Future<void> Function() action,
     ),
   );
   if (ok == true) await action();
-}
-
-void showSnack(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-}
-
-void showApiError(BuildContext context, Object error) {
-  final message = error is ApiException ? error.message : error.toString();
-  showSnack(context, message);
 }
 
 class DocumentHeader extends StatelessWidget {

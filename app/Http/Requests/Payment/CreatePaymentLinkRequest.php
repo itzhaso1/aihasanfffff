@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests\Payment;
 
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CreatePaymentLinkRequest extends FormRequest
 {
@@ -22,9 +24,23 @@ class CreatePaymentLinkRequest extends FormRequest
      */
     public function rules(): array
     {
+        $workspaceId = app(WorkspaceContext::class)->workspaceId();
+
         return [
-            'order_id' => ['required', 'integer', 'exists:orders,id'],
-            'payment_gateway_id' => ['nullable', 'integer', 'exists:payment_gateways,id'],
+            'order_id' => [
+                'required',
+                'integer',
+                Rule::exists('orders', 'id')->where(
+                    fn ($query) => $query->where('workspace_id', $workspaceId)
+                ),
+            ],
+            'payment_gateway_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('payment_gateways', 'id')->where(
+                    fn ($query) => $query->where('workspace_id', $workspaceId)
+                ),
+            ],
         ];
     }
 }

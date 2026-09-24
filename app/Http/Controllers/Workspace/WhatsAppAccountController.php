@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Workspace;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Workspace\Concerns\InteractsWithWorkspace;
 use App\Models\WhatsAppAccount;
+use App\Support\Authorization\WorkspaceAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -15,6 +16,8 @@ class WhatsAppAccountController extends Controller
 
     public function index(): View
     {
+        $this->authorizeWhatsAppManage(request());
+
         $accounts = WhatsAppAccount::query()
             ->with('phoneNumbers')
             ->latest('id')
@@ -25,11 +28,15 @@ class WhatsAppAccountController extends Controller
 
     public function create(): View
     {
+        $this->authorizeWhatsAppManage(request());
+
         return view('workspace.whatsapp-accounts.create');
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorizeWhatsAppManage($request);
+
         $validated = $request->validate([
             'business_account_id' => ['required', 'string', 'max:191'],
             'app_id' => ['nullable', 'string', 'max:191'],
@@ -53,6 +60,8 @@ class WhatsAppAccountController extends Controller
 
     public function edit(WhatsAppAccount $whatsapp_account): View
     {
+        $this->authorizeWhatsAppManage(request());
+
         return view('workspace.whatsapp-accounts.edit', [
             'account' => $whatsapp_account->load('phoneNumbers'),
             'metadataJson' => json_encode($whatsapp_account->metadata ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
@@ -68,6 +77,8 @@ class WhatsAppAccountController extends Controller
 
     public function update(Request $request, WhatsAppAccount $whatsapp_account): RedirectResponse
     {
+        $this->authorizeWhatsAppManage($request);
+
         $validated = $request->validate([
             'business_account_id' => ['required', 'string', 'max:191'],
             'app_id' => ['nullable', 'string', 'max:191'],
@@ -91,6 +102,8 @@ class WhatsAppAccountController extends Controller
 
     public function destroy(WhatsAppAccount $whatsapp_account): RedirectResponse
     {
+        $this->authorizeWhatsAppManage(request());
+
         $whatsapp_account->phoneNumbers()->delete();
         $whatsapp_account->delete();
 
@@ -121,5 +134,15 @@ class WhatsAppAccountController extends Controller
         if ($existingIds !== []) {
             $account->phoneNumbers()->whereNotIn('id', $existingIds)->delete();
         }
+    }
+
+    private function authorizeWhatsAppManage(Request $request): void
+    {
+        $user = $request->user();
+        $workspace = $this->currentWorkspace();
+        abort_unless(
+            $user && app(WorkspaceAccess::class)->canManageWhatsAppChannels($user, $workspace),
+            403
+        );
     }
 }

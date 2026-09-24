@@ -1,16 +1,13 @@
-@php $homeUrl = url('/'); @endphp
+@php $homeUrl = url('/'); $publicSite ??= \App\Support\Site\PublicSite::current(); @endphp
 <footer id="support" class="border-t border-slate-200 bg-white">
     <div class="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-4 lg:px-8">
         <div>
             <a href="{{ $homeUrl }}" class="flex items-center gap-2.5">
                 <x-hasim-logo variant="mark" size="md" />
-                <span>
-                    <span class="block text-sm font-extrabold text-[#0f172a]">حاسم الذكي</span>
-                    <span class="text-[10px] font-bold tracking-[0.18em] text-slate-500">HASIM SMART</span>
-                </span>
+                @include('partials.site-brand-lockup')
             </a>
             <p class="mt-4 max-w-md text-sm font-medium leading-7 text-slate-600">
-                منصة عربية لإدارة المحادثات والطلبات والعملاء والفريق من مكان واحد.
+                {{ $publicSite->description() }}
             </p>
         </div>
         <div>

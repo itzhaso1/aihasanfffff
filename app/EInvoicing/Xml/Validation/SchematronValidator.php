@@ -3,6 +3,9 @@
 namespace App\EInvoicing\Xml\Validation;
 
 use App\EInvoicing\Xml\EInvoiceXmlValidationException;
+use App\Enums\EInvoicing\ValidationChannelStatus;
+use App\Services\EInvoicing\ComplianceIssue;
+use App\Services\EInvoicing\ValidationChannelResult;
 use DOMDocument;
 use DOMXPath;
 
@@ -18,32 +21,33 @@ final class SchematronValidator
         private readonly ?string $rulesPath = null,
     ) {}
 
-    /**
-     * @return list<string>
-     */
-    public function validate(string $xml): array
+    public function validateStructured(string $xml): ValidationChannelResult
     {
         $path = $this->rulesFile();
         if ($path === null) {
-            throw new EInvoiceXmlValidationException(
-                'Schematron rules are not available. See resources/einvoicing/schematron/README.md.'
-            );
+            return new ValidationChannelResult(ValidationChannelStatus::NotAvailable);
         }
 
         $xmlDocument = new DOMDocument;
         if (! @$xmlDocument->loadXML($xml)) {
-            return ['XML is not well-formed.'];
+            return new ValidationChannelResult(
+                ValidationChannelStatus::Invalid,
+                [new ComplianceIssue('xml_not_well_formed', 'xml', 'XML is not well-formed.', source: 'xml')],
+            );
         }
 
         $rules = new DOMDocument;
         if (! @$rules->load($path)) {
-            throw new EInvoiceXmlValidationException('Schematron rules file could not be parsed.');
+            return new ValidationChannelResult(
+                ValidationChannelStatus::Invalid,
+                [new ComplianceIssue('schematron_rules_unreadable', 'schematron', 'Schematron rules file could not be parsed.', source: 'schematron')],
+            );
         }
 
         $xpath = new DOMXPath($xmlDocument);
         $this->registerNamespaces($xpath, $xmlDocument);
 
-        $errors = [];
+        $issues = [];
         foreach ($rules->getElementsByTagName('rule') as $rule) {
             $context = $rule->getAttribute('context') ?: '/*';
             $nodes = @$xpath->query($context);
@@ -64,13 +68,37 @@ final class SchematronValidator
                         || ($result instanceof \DOMNodeList && $result->length > 0);
 
                     if (! $passed) {
-                        $errors[] = trim($assert->textContent) ?: $test;
+                        $issues[] = new ComplianceIssue(
+                            code: 'schematron_assertion_failed',
+                            field: 'xml',
+                            message: trim($assert->textContent) ?: $test,
+                            source: 'schematron',
+                        );
                     }
                 }
             }
         }
 
-        return $errors;
+        return $issues === []
+            ? new ValidationChannelResult(ValidationChannelStatus::Valid)
+            : new ValidationChannelResult(ValidationChannelStatus::Invalid, $issues);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function validate(string $xml): array
+    {
+        $structured = $this->validateStructured($xml);
+        if ($structured->status === ValidationChannelStatus::NotAvailable) {
+            return [];
+        }
+
+        if ($structured->status === ValidationChannelStatus::Valid) {
+            return [];
+        }
+
+        return array_map(static fn (ComplianceIssue $issue): string => $issue->message, $structured->issues);
     }
 
     public function rulesFile(): ?string
@@ -80,6 +108,14 @@ final class SchematronValidator
             return $configured;
         }
 
+        return null;
+    }
+
+    /**
+     * HASEM structural smoke rules — not official ZATCA Schematron.
+     */
+    public static function localHarnessRulesFile(): ?string
+    {
         $bundled = base_path('resources/einvoicing/schematron/local-structure.sch');
 
         return is_file($bundled) ? $bundled : null;

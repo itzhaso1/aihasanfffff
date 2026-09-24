@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Cashier\V1\AssistantController;
 use App\Http\Controllers\Api\Cashier\V1\AuthController;
 use App\Http\Controllers\Api\Cashier\V1\BootstrapController;
 use App\Http\Controllers\Api\Cashier\V1\CatalogController;
@@ -79,6 +80,8 @@ Route::middleware([
 
     Route::get('/kitchen/orders', [KitchenController::class, 'index']);
     Route::get('/reports/daily', [ReportController::class, 'daily']);
+    Route::post('/assistant/ask', [AssistantController::class, 'ask'])
+        ->middleware('throttle:mobile-ai');
 
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/recent-menu', [OrderController::class, 'recentMenu'])->middleware('throttle:mobile-api');

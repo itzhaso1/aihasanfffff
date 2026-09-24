@@ -48,6 +48,38 @@ class TaxRateResolver
         ];
     }
 
+    /**
+     * Fixed-scale form of the default profile for domains that must preserve
+     * decimal tax rates without crossing a binary floating-point boundary.
+     *
+     * @return array{type:string, rate:string}
+     */
+    public function defaultProfileFixed(int $workspaceId): array
+    {
+        $defaultTaxRate = FinanceTaxRate::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->where('is_default', true)
+            ->where('is_active', true)
+            ->first();
+
+        if ($defaultTaxRate) {
+            return [
+                'type' => TaxProfileType::tryFrom((string) $defaultTaxRate->type)?->value
+                    ?? TaxProfileType::Standard->value,
+                'rate' => $this->fixedRate($defaultTaxRate->rate),
+            ];
+        }
+
+        $settings = FinanceSetting::forWorkspaceId($workspaceId);
+
+        return [
+            'type' => TaxProfileType::Standard->value,
+            // Keep the Commerce boundary fixed-scale without changing the
+            // legacy float constant used by existing Finance callers.
+            'rate' => $this->fixedRate($settings?->default_vat_rate ?? '15.00'),
+        ];
+    }
+
     public function hasExplicitRate(mixed $rate): bool
     {
         return $rate !== null && $rate !== '';
@@ -73,5 +105,21 @@ class TaxRateResolver
         }
 
         return $rate;
+    }
+
+    private function fixedRate(mixed $rate): string
+    {
+        $value = trim((string) $rate);
+        if (! preg_match('/^\d+(\.\d{1,2})?$/', $value)) {
+            throw new TaxCalculationException('نسبة الضريبة غير صالحة.');
+        }
+
+        [$whole, $fraction] = array_pad(explode('.', $value, 2), 2, '00');
+        $hundredths = ((int) $whole) * 100 + (int) str_pad($fraction, 2, '0');
+        if ($hundredths > 10_000) {
+            throw new TaxCalculationException('نسبة الضريبة يجب أن تكون بين 0 و 100.');
+        }
+
+        return intdiv($hundredths, 100).'.'.str_pad((string) ($hundredths % 100), 2, '0', STR_PAD_LEFT);
     }
 }

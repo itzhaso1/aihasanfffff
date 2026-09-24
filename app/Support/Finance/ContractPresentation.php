@@ -15,8 +15,10 @@ final class ContractPresentation
         return [
             'draft' => 'مسودة',
             'open' => 'ساري',
+            'expired' => 'منتهٍ',
             'closed' => 'مغلق',
             'cancelled' => 'ملغي',
+            'renewed' => 'مُجدَّد',
         ];
     }
 
@@ -30,8 +32,10 @@ final class ContractPresentation
         return match ($status) {
             'draft' => 'bg-slate-100 text-slate-600',
             'open' => 'bg-emerald-50 text-emerald-700',
+            'expired' => 'bg-amber-50 text-amber-800',
             'closed' => 'bg-slate-200 text-slate-600',
             'cancelled' => 'bg-rose-50 text-rose-700',
+            'renewed' => 'bg-indigo-50 text-indigo-700',
             default => 'bg-slate-100 text-slate-700',
         };
     }
@@ -45,7 +49,7 @@ final class ContractPresentation
             return ['days' => null, 'label' => 'بدون تاريخ نهاية', 'severity' => 'none'];
         }
 
-        if (in_array($contract->status, ['closed', 'cancelled'], true)) {
+        if (in_array($contract->status, ['closed', 'cancelled', 'renewed', 'expired'], true)) {
             return ['days' => null, 'label' => self::statusLabel($contract->status), 'severity' => 'none'];
         }
 

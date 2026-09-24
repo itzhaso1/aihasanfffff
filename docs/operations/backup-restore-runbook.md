@@ -59,6 +59,7 @@ Dumps contain financial data and PII. There is no first-party crypto library in 
 
 ```bash
 php artisan backup:verify database/hasem-db-YYYYMMDD-HHMMSS.sql.gz
+php artisan backup:verify-latest
 ```
 
 Checks: file exists, size > 0, gzip readable, checksum match when the sidecar exists.

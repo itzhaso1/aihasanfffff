@@ -5,6 +5,7 @@ namespace Tests\Feature\Feature\Api;
 use App\Models\Product;
 use App\Models\Workspace;
 use App\Services\Inventory\InventoryService;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -31,11 +32,13 @@ class InventoryServiceTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Insufficient stock.');
 
-        $service->adjustStock(
-            productId: $product->id,
-            variantId: null,
-            type: 'remove',
-            quantity: 2,
-        );
+        app(WorkspaceContext::class)->runForId((int) $workspace->id, function () use ($service, $product): void {
+            $service->adjustStock(
+                productId: $product->id,
+                variantId: null,
+                type: 'remove',
+                quantity: 2,
+            );
+        });
     }
 }

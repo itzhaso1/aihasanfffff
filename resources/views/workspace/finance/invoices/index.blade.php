@@ -156,7 +156,7 @@
                                         @if($life === 'draft')
                                             <a href="{{ route('workspace.finance.invoices.edit', $invoice) }}" class="text-slate-700 hover:underline">تعديل</a>
                                         @endif
-                                        <a href="{{ route('workspace.finance.invoices.pdf', $invoice) }}" class="text-slate-700 hover:underline">PDF</a>
+                                        <a href="{{ app(\App\Services\Finance\InvoicePdfAccessService::class)->webUrl($invoice) }}" class="text-slate-700 hover:underline">PDF</a>
                                         @if(in_array($life, ['sent', 'partial', 'overdue'], true))
                                             <a href="{{ route('workspace.finance.invoices.show', $invoice) }}#payments" class="text-slate-700 hover:underline">دفعة</a>
                                         @endif

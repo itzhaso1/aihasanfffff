@@ -21,6 +21,8 @@ class ProductController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', Product::class);
+
         $products = Product::query()
             ->with(['category', 'variants'])
             ->when($request->string('search')->toString(), function ($query, $search): void {
@@ -39,6 +41,8 @@ class ProductController extends Controller
 
     public function store(StoreProductRequest $request): JsonResponse
     {
+        $this->authorize('create', Product::class);
+
         $product = $this->productService->create([
             ...$request->validated(),
             'slug' => $request->string('slug')->toString() ?: Str::slug($request->string('name')->toString()),

@@ -43,17 +43,23 @@ class PollingPosEventSource implements PosEventSource {
   PollingPosEventSource({
     required this.poll,
     this.interval = const Duration(seconds: 5),
+    this.idleInterval,
+    this.idleAfterEmptyTicks = 6,
     this.enabled,
   });
 
   final Future<List<PosEvent>> Function() poll;
   final Duration interval;
+  final Duration? idleInterval;
+  final int idleAfterEmptyTicks;
   final bool Function()? enabled;
 
   final _controller = StreamController<PosEvent>.broadcast();
   Timer? _timer;
   var _running = false;
   var _tickInFlight = false;
+  var _emptyTicks = 0;
+  late Duration _currentInterval;
 
   @override
   Stream<PosEvent> get events => _controller.stream;
@@ -65,8 +71,19 @@ class PollingPosEventSource implements PosEventSource {
   Future<void> start() async {
     if (_running) return;
     _running = true;
+    _currentInterval = interval;
+    _emptyTicks = 0;
     await _tick();
-    _timer = Timer.periodic(interval, (_) => _tick());
+    _scheduleNext();
+  }
+
+  void _scheduleNext() {
+    _timer?.cancel();
+    if (!_running) return;
+    _timer = Timer(_currentInterval, () async {
+      await _tick();
+      _scheduleNext();
+    });
   }
 
   Future<void> _tick() async {
@@ -77,6 +94,15 @@ class PollingPosEventSource implements PosEventSource {
       final batch = await poll();
       for (final event in batch) {
         if (!_controller.isClosed) _controller.add(event);
+      }
+      if (batch.isEmpty && idleInterval != null) {
+        _emptyTicks += 1;
+        if (_emptyTicks >= idleAfterEmptyTicks) {
+          _currentInterval = idleInterval!;
+        }
+      } else {
+        _emptyTicks = 0;
+        _currentInterval = interval;
       }
     } catch (_) {
       // Keep polling; UI shows last known state.

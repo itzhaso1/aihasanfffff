@@ -440,4 +440,262 @@ void main() {
       0,
     );
   });
+
+  test('a new table is not opened with its board id', () async {
+    const localId = 'tbl-fresh';
+    await db.into(db.localTables).insert(
+          LocalTablesCompanion.insert(
+            localId: localId,
+            workspaceId: workspaceId,
+            name: 'New',
+            payloadJson: Value(jsonEncode({'id': 7, 'board_id': 7})),
+            updatedAt: DateTime.now(),
+          ),
+        );
+    await queue.enqueue(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      entityType: 'table',
+      entityId: localId,
+      operation: 'create',
+      payload: {'name': 'New', 'table_server_id': 7},
+      clientReference: localId,
+    );
+    await queue.enqueue(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      entityType: 'table_session',
+      entityId: localId,
+      operation: 'open',
+      payload: {
+        'table_server_id': 7,
+        'table_local_id': localId,
+        'session_client_id': 'sess-fresh',
+      },
+      clientReference: 'sess-fresh',
+    );
+
+    final batches = <List<String>>[];
+    await SyncEngineV2(
+      db,
+      queue,
+      postPushBatch: (body) async {
+        final ops = (body['operations'] as List).cast<Map>();
+        batches.add([for (final op in ops) op['type'] as String]);
+        if (ops.any((op) => op['type'] == 'table_session.open')) {
+          expect(ops.single['data']['table_server_id'], 55);
+          expect(ops.single['data']['table_server_id'], isNot(7));
+        }
+        return {
+          'accepted': [
+            for (final op in ops)
+              {
+                'id': op['id'],
+                'status': 'applied',
+                'entity_id': op['type'] == 'table.created' ? 55 : 9,
+                'result': op['type'] == 'table.created'
+                    ? {'id': 55, 'name': 'New'}
+                    : {'id': 9, 'session_id': 9},
+              },
+          ],
+          'failed': <Map<String, dynamic>>[],
+        };
+      },
+    ).pushPending(workspaceId: workspaceId);
+
+    expect(batches, [
+      ['table.created'],
+      ['table_session.open'],
+    ]);
+    final table = await (db.select(db.localTables)
+          ..where((t) => t.localId.equals(localId)))
+        .getSingle();
+    expect(table.serverId, 55);
+  });
+
+  test('a dropped invoice response stays pending and retry keeps one invoice', () async {
+    final result = await sellTable(clientReference: 'table-drop-1');
+    var invoiceAttempts = 0;
+    Future<Map<String, dynamic>> poster(Map<String, dynamic> body) async {
+      final ops = (body['operations'] as List).cast<Map>();
+      if (ops.any((op) => op['type'] == 'invoice.created')) {
+        invoiceAttempts++;
+        if (invoiceAttempts == 1) {
+          throw Exception('socket closed before response');
+        }
+      }
+      return ackBatch(body);
+    }
+
+    final engine = SyncEngineV2(db, queue, postPushBatch: poster);
+    await engine.pushPending(workspaceId: workspaceId);
+
+    final mid = await (db.select(db.localInvoices)
+          ..where((t) => t.localId.equals(result.invoiceLocalId)))
+        .getSingle();
+    expect(mid.serverInvoiceNumber, isNull);
+    expect(mid.syncStatus, isNot('synced'));
+    final queued = await (db.select(db.syncQueueItems)
+          ..where((t) => t.entityType.equals('invoice')))
+        .getSingle();
+    expect(queued.status, 'pending');
+
+    await (db.update(db.syncQueueItems)..where((t) => t.id.equals(queued.id)))
+        .write(const SyncQueueItemsCompanion(nextAttemptAt: Value(null)));
+
+    final restarted = SyncEngineV2(db, queue, postPushBatch: poster);
+    await restarted.pushPending(workspaceId: workspaceId);
+
+    final done = await (db.select(db.localInvoices)
+          ..where((t) => t.localId.equals(result.invoiceLocalId)))
+        .getSingle();
+    expect(done.serverInvoiceNumber, 'CASH-00000021');
+    expect(done.invoiceNumber, result.invoiceNumber);
+    expect(done.syncStatus, 'synced');
+    expect(await db.select(db.localInvoices).get(), hasLength(1));
+    expect(invoiceAttempts, 2);
+  });
+
+  test('session close without an invoice does not sync the local invoice', () async {
+    const invoiceLocalId = 'local-inv-close';
+    await db.into(db.localInvoices).insert(
+          LocalInvoicesCompanion.insert(
+            localId: invoiceLocalId,
+            workspaceId: workspaceId,
+            deviceId: deviceId,
+            invoiceNumber: const Value('LOCAL-local-inv-close'),
+            localInvoiceNumber: const Value('LOCAL-local-inv-close'),
+            syncStatus: const Value('pending'),
+            payloadJson: const Value('{}'),
+            createdAt: DateTime.now(),
+          ),
+        );
+    await queue.enqueue(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      entityType: 'table_session',
+      entityId: LocalIds.table(workspaceId, 4),
+      operation: 'close',
+      payload: {
+        'table_local_id': LocalIds.table(workspaceId, 4),
+        'invoice_local_id': invoiceLocalId,
+        'session_client_id': 'sess-close-empty',
+      },
+      clientReference: 'close-empty',
+    );
+
+    await SyncEngineV2(
+      db,
+      queue,
+      postPushBatch: (body) async => ackBatch(body),
+    ).pushPending(workspaceId: workspaceId);
+
+    final invoice = await (db.select(db.localInvoices)
+          ..where((t) => t.localId.equals(invoiceLocalId)))
+        .getSingle();
+    expect(invoice.syncStatus, 'pending');
+    expect(invoice.serverId, isNull);
+    expect(invoice.serverInvoiceNumber, isNull);
+    expect(invoice.invoiceNumber, 'LOCAL-local-inv-close');
+  });
+
+  Map<String, dynamic> line(String name) => {
+        'pos_menu_item_id': productServerId,
+        'product_local_id': productLocalId,
+        'name': name,
+        'quantity': 1,
+        'unit_price': 10,
+        'total_amount': 10,
+      };
+
+  test('reopening a table keeps one unpaid order across adds and restarts', () async {
+    await tables.openSessionLocal(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableServerId: 4,
+    );
+    final first = await orders.createTableOrder(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableId: 4,
+      clientReference: 'ord-a',
+      items: [line('شاي')],
+    );
+    final second = await orders.createTableOrder(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableId: 4,
+      clientReference: 'ord-b',
+      items: [line('قهوة')],
+    );
+    final third = await orders.createTableOrder(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableId: 4,
+      clientReference: 'ord-c',
+      items: [line('ماء')],
+    );
+    expect(second['local_id'], first['local_id']);
+    expect(third['local_id'], first['local_id']);
+    expect(third['client_reference'], 'ord-a');
+    expect(third['items'], hasLength(3));
+    expect(await db.select(db.localOrders).get(), hasLength(1));
+
+    final replay = await orders.createTableOrder(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableId: 4,
+      clientReference: 'ord-a',
+      items: [line('شاي')],
+    );
+    expect(replay['items'], hasLength(3));
+
+    final localId = first['local_id'] as String;
+    await (db.update(db.localOrders)..where((t) => t.localId.equals(localId)))
+        .write(
+      const LocalOrdersCompanion(
+        serverId: Value(77),
+        syncStatus: Value('synced'),
+      ),
+    );
+    await (db.update(db.syncQueueItems)
+          ..where((t) => t.entityType.equals('order')))
+        .write(const SyncQueueItemsCompanion(status: Value('synced')));
+
+    final reopened = OrdersRepository(db, queue);
+    final added = await reopened.createTableOrder(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableId: 4,
+      clientReference: 'ord-d',
+      items: [line('عصير')],
+    );
+    expect(added['local_id'], localId);
+    expect(added['items'], hasLength(4));
+    final delta = (await db.select(db.syncQueueItems).get())
+        .singleWhere(
+          (row) => row.entityType == 'order' && row.operation == 'update',
+        );
+    final deltaItems =
+        (jsonDecode(delta.payloadJson) as Map)['items'] as List;
+    expect(deltaItems, hasLength(1));
+    expect(deltaItems.single['name'], 'عصير');
+
+    await (db.update(db.localOrders)..where((t) => t.localId.equals(localId)))
+        .write(
+      const LocalOrdersCompanion(
+        paymentStatus: Value('paid'),
+        posStatus: Value('completed'),
+      ),
+    );
+    final afterCheckout = await orders.createTableOrder(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableId: 4,
+      clientReference: 'ord-e',
+      items: [line('شاي')],
+    );
+    expect(afterCheckout['local_id'], isNot(localId));
+    expect(await db.select(db.localOrders).get(), hasLength(2));
+  });
 }

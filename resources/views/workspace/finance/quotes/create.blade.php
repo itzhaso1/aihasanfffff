@@ -45,19 +45,23 @@
                     'total' => 0,
                 ]]));
     @endphp
-    <div x-data="financeQuoteBuilder()" class="space-y-4">
-        <div class="flex items-center justify-between">
-            <h2 class="text-xl font-bold text-slate-900">{{ $pageTitle ?? 'منشئ عروض الأسعار' }}</h2>
-            <a href="{{ route('workspace.finance.quotes.index') }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">رجوع</a>
+    <div x-data="financeQuoteBuilder()" class="hs-inv-page">
+        <div class="hs-inv-hero">
+            <div>
+                <p class="hs-inv-kicker">النظام المالي</p>
+                <h2>{{ $pageTitle ?? 'منشئ عروض الأسعار' }}</h2>
+                <p>أدخل بنود العرض والضريبة ثم احفظ المسودة أو أصدر العرض. الحساب النهائي يتم في الخادم.</p>
+            </div>
+            <a href="{{ route('workspace.finance.quotes.index') }}" class="hs-inv-pill">رجوع لعروض الأسعار</a>
         </div>
 
-        <form method="POST" action="{{ $formAction }}" enctype="multipart/form-data" class="space-y-4">
+        <form method="POST" action="{{ $formAction }}" enctype="multipart/form-data" class="hs-inv-form">
             @csrf
             @if(strtoupper($formMethod) !== 'POST')
                 @method($formMethod)
             @endif
 
-            <div class="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-3">
+            <div class="hs-inv-card hs-inv-grid is-3">
                 <div>
                     <label class="mb-1 block text-xs font-semibold text-slate-600">رقم عرض السعر</label>
                     @if($quote->exists && $quote->quote_number)
@@ -121,40 +125,40 @@
                     </select>
                     <p class="mt-1 text-[11px] text-slate-500">الحساب النهائي يتم في الخادم. المعاينة هنا تقريبية.</p>
                 </div>
-                <div class="lg:col-span-3">
+                <div class="hs-inv-span-3">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">الشروط</label>
                     <textarea name="terms" rows="2" class="w-full rounded-lg border-slate-300 text-sm" placeholder="شروط العرض">{{ old('terms', $quote->terms) }}</textarea>
                 </div>
-                <div class="lg:col-span-3">
+                <div class="hs-inv-span-3">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">ملاحظات</label>
                     <textarea name="notes" rows="2" class="w-full rounded-lg border-slate-300 text-sm">{{ old('notes', $quote->notes) }}</textarea>
                 </div>
             </div>
 
-            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-slate-200 text-sm">
-                        <thead class="bg-slate-50 text-slate-600">
+            <section class="hs-inv-card">
+                <div class="hs-inv-table-wrap">
+                    <table class="hs-inv-table">
+                        <thead>
                             <tr>
-                                <th class="px-3 py-2 text-right">المنتج (اختياري)</th>
-                                <th class="px-3 py-2 text-right">اسم البند</th>
-                                <th class="px-3 py-2 text-right">الوحدة</th>
-                                <th class="px-3 py-2 text-right">الوصف</th>
-                                <th class="px-3 py-2 text-right">الكمية</th>
-                                <th class="px-3 py-2 text-right">سعر الوحدة</th>
-                                <th class="px-3 py-2 text-right">الخصم</th>
-                                <th class="px-3 py-2 text-right">تصنيف الضريبة</th>
-                                <th class="px-3 py-2 text-right">نسبة الضريبة %</th>
-                                <th class="px-3 py-2 text-right">سبب الإعفاء</th>
-                                <th class="px-3 py-2 text-right">الإجمالي</th>
-                                <th class="px-3 py-2"></th>
+                                <th>المنتج (اختياري)</th>
+                                <th>اسم البند</th>
+                                <th>الوحدة</th>
+                                <th>الوصف</th>
+                                <th>الكمية</th>
+                                <th>سعر الوحدة</th>
+                                <th>الخصم</th>
+                                <th>تصنيف الضريبة</th>
+                                <th>نسبة الضريبة %</th>
+                                <th>سبب الإعفاء</th>
+                                <th>الإجمالي</th>
+                                <th></th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            <template x-for="(item, idx) in items" :key="idx">
+                        <tbody>
+                            <template x-for="(item, idx) in items" :key="item.uid">
                                 <tr>
-                                    <td class="px-3 py-2">
-                                        <select class="w-40 rounded-md border-slate-300 text-xs" :value="item.product_id" @change="applyProduct(idx, $event)">
+                                    <td data-label="المنتج (اختياري)" data-span="all">
+                                        <select class="hs-inv-input" :value="item.product_id" @change="applyProduct(idx, $event)">
                                             <option value="">بند حر</option>
                                             @foreach($products as $product)
                                                 @php $listed = ($listPrices ?? [])[$product->id] ?? null; @endphp
@@ -170,98 +174,99 @@
                                         </select>
                                         <input type="hidden" x-model="item.product_id">
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <input type="text" x-model="item.product_name" class="w-40 rounded-md border-slate-300 text-xs" placeholder="مثال: عزل أسطح">
+                                    <td data-label="اسم البند" data-span="all">
+                                        <input type="text" x-model="item.product_name" class="hs-inv-input" placeholder="مثال: عزل أسطح">
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <input type="text" x-model="item.unit" maxlength="32" class="w-20 rounded-md border-slate-300 text-xs" placeholder="متر">
+                                    <td data-label="الوحدة">
+                                        <input type="text" x-model="item.unit" maxlength="32" class="hs-inv-input" placeholder="متر">
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <textarea x-model="item.description" class="w-44 rounded-md border-slate-300 text-xs" rows="2" placeholder="وصف اختياري"></textarea>
+                                    <td data-label="الوصف" data-span="all">
+                                        <textarea x-model="item.description" class="hs-inv-input" rows="2" placeholder="وصف اختياري"></textarea>
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <input type="number" step="0.001" min="0.001" x-model.number="item.quantity" @input="recalculate()" class="w-20 rounded-md border-slate-300 text-xs">
+                                    <td data-label="الكمية">
+                                        <input type="number" step="0.001" min="0.001" x-model.number="item.quantity" @input="recalculate()" class="hs-inv-input">
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <input type="number" step="0.01" min="0" x-model.number="item.unit_price" @input="recalculate()" class="w-24 rounded-md border-slate-300 text-xs">
+                                    <td data-label="سعر الوحدة">
+                                        <input type="number" step="0.01" min="0" x-model.number="item.unit_price" @input="recalculate()" class="hs-inv-input">
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <input type="number" step="0.01" min="0" x-model.number="item.discount" @input="recalculate()" class="w-24 rounded-md border-slate-300 text-xs">
+                                    <td data-label="الخصم">
+                                        <input type="number" step="0.01" min="0" x-model.number="item.discount" @input="recalculate()" class="hs-inv-input">
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <select x-model="item.tax_type" @change="recalculate()" class="w-28 rounded-md border-slate-300 text-xs">
+                                    <td data-label="تصنيف الضريبة">
+                                        <select x-model="item.tax_type" @change="recalculate()" class="hs-inv-input">
                                             <option value="standard">قياسية</option>
                                             <option value="zero_rated">صفرية</option>
                                             <option value="exempt">معفاة</option>
                                             <option value="out_of_scope">خارج النطاق</option>
                                         </select>
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <input type="number" step="0.01" min="0" max="100" x-model.number="item.tax_rate" @input="recalculate()" class="w-20 rounded-md border-slate-300 text-xs">
+                                    <td data-label="نسبة الضريبة %">
+                                        <input type="number" step="0.01" min="0" max="100" x-model.number="item.tax_rate" @input="recalculate()" class="hs-inv-input">
                                     </td>
-                                    <td class="px-3 py-2">
+                                    <td data-label="سبب الإعفاء">
                                         <input
                                             type="text"
                                             x-show="item.tax_type !== 'standard'"
                                             x-model="item.exemption_reason"
                                             maxlength="255"
                                             placeholder="اختياري"
-                                            class="w-36 rounded-md border-slate-300 text-xs"
+                                            class="hs-inv-input"
                                         >
                                         <input type="hidden" x-model="item.exemption_code">
                                     </td>
-                                    <td class="px-3 py-2 font-semibold text-slate-900" x-text="format(item.total)"></td>
-                                    <td class="px-3 py-2">
-                                        <button type="button" @click="removeItem(idx)" class="rounded-md border border-red-200 px-2 py-1 text-xs text-red-600">حذف</button>
+                                    <td data-label="الإجمالي">
+                                        <span class="hs-inv-line-total" x-text="format(item.total)"></span>
+                                    </td>
+                                    <td data-label="إجراءات">
+                                        <button type="button" @click="removeItem(idx)" class="hs-inv-icon-btn is-danger" title="حذف">حذف</button>
                                     </td>
                                 </tr>
                             </template>
                         </tbody>
                     </table>
                 </div>
-                <div class="border-t border-slate-200 p-3">
-                    <button type="button" @click="addItem()" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">
-                        + إضافة بند
-                    </button>
-                    <p class="mt-2 text-[11px] text-slate-500">يمكن إدخال بند حر بالكامل دون اختيار منتج من الكتالوج.</p>
-                </div>
-            </div>
+                <button type="button" @click="addItem()" class="hs-inv-add">
+                    + إضافة بند
+                </button>
+                <p class="hs-inv-help">يمكن إدخال بند حر بالكامل دون اختيار منتج من الكتالوج.</p>
+            </section>
 
             <div class="grid gap-4 lg:grid-cols-2">
-                <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <section class="hs-inv-card hs-inv-summary">
                     <h3 class="mb-3 text-sm font-bold text-slate-900">ملخص الحساب</h3>
-                    <div class="space-y-2 text-sm">
-                        <div class="flex justify-between"><span>الإجمالي قبل الضريبة</span><span x-text="format(summary.subtotal)"></span></div>
-                        <div class="flex justify-between"><span>الخصم</span><span x-text="format(summary.discount)"></span></div>
-                        <div class="flex justify-between"><span>المبلغ الخاضع للضريبة</span><span x-text="format(summary.taxable_amount)"></span></div>
-                        <div class="flex justify-between"><span>ضريبة القيمة المضافة</span><span x-text="format(summary.tax_amount)"></span></div>
-                        <div class="flex justify-between border-t pt-2 font-bold"><span>الإجمالي النهائي</span><span x-text="format(summary.total)"></span></div>
-                        <template x-for="(bucket, key) in summary.categories" :key="key">
-                            <div class="flex justify-between text-xs text-slate-500">
-                                <span x-text="bucket.label"></span>
-                                <span x-text="format(bucket.tax_amount)"></span>
-                            </div>
-                        </template>
+                    <div class="hs-inv-sum-row"><span>الإجمالي قبل الضريبة</span><strong x-text="format(summary.subtotal)"></strong></div>
+                    <div class="hs-inv-sum-row"><span>الخصم</span><strong x-text="format(summary.discount)"></strong></div>
+                    <div class="hs-inv-sum-row"><span>المبلغ الخاضع للضريبة</span><strong x-text="format(summary.taxable_amount)"></strong></div>
+                    <div class="hs-inv-sum-row"><span>ضريبة القيمة المضافة</span><strong x-text="format(summary.tax_amount)"></strong></div>
+                    <div class="hs-inv-sum-total">
+                        <span>الإجمالي النهائي</span>
+                        <b x-text="format(summary.total)"></b>
                     </div>
-                </div>
+                    <template x-for="(bucket, key) in summary.categories" :key="key">
+                        <div class="hs-inv-sum-row text-xs">
+                            <span x-text="bucket.label"></span>
+                            <strong x-text="format(bucket.tax_amount)"></strong>
+                        </div>
+                    </template>
+                </section>
 
-                <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <section class="hs-inv-card">
                     <h3 class="mb-3 text-sm font-bold text-slate-900">حفظ عرض السعر</h3>
                     <input type="hidden" name="items_json" :value="serializedItems">
                     @error('items_json')
-                        <p class="mb-2 text-sm font-semibold text-red-600">{{ $message }}</p>
+                        <p class="hs-inv-error">{{ $message }}</p>
                     @enderror
-                    <p class="text-sm text-slate-500">
+                    <p class="hs-inv-help">
                         سيتم إعادة حساب جميع القيم في الخادم. عرض السعر ليس فاتورة ولا ينشئ قيدًا محاسبيًا.
                     </p>
                     <div class="mt-3">
-                        <label class="mb-1 block text-xs font-semibold text-slate-600">مرفقات (اختياري)</label>
-                        <input type="file" name="attachments[]" multiple class="w-full rounded-lg border-slate-300 text-sm">
+                        <label class="hs-inv-label" for="quote-attachments">مرفقات (اختياري)</label>
+                        <input id="quote-attachments" type="file" name="attachments[]" multiple class="hs-inv-input">
                     </div>
-                    <button type="submit" class="mt-4 rounded-lg bg-[#06C2A4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">
+                    <button type="submit" class="hs-inv-btn hs-inv-btn-primary mt-4">
                         {{ $quote->exists ? 'حفظ التعديلات' : 'حفظ عرض السعر' }}
                     </button>
-                </div>
+                </section>
             </div>
         </form>
     </div>
@@ -298,8 +303,11 @@
                         exemption_code: item.exemption_code || '',
                     })));
                 },
+                nextUid() {
+                    return 'line_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+                },
                 addItem() {
-                    this.items.push({product_id: '', product_name: '', description: '', unit: '', quantity: 1, unit_price: 0, discount: 0, tax_rate: Number(this.form.tax_rate || 0), tax_type: this.form.tax_profile_type, exemption_reason: '', exemption_code: '', total: 0});
+                    this.items.push({uid: this.nextUid(), product_id: '', product_name: '', description: '', unit: '', quantity: 1, unit_price: 0, discount: 0, tax_rate: Number(this.form.tax_rate || 0), tax_type: this.form.tax_profile_type, exemption_reason: '', exemption_code: '', total: 0});
                     this.recalculate();
                 },
                 removeItem(index) {
@@ -393,6 +401,10 @@
                     return this.money(value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 },
                 init() {
+                    this.items = this.items.map((item) => ({
+                        ...item,
+                        uid: item.uid || this.nextUid(),
+                    }));
                     this.recalculate();
                     this.$watch('form.tax_profile_type', () => this.recalculate());
                     this.$watch('form.tax_rate', () => this.recalculate());

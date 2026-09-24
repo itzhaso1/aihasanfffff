@@ -7,6 +7,7 @@ import 'package:hasim/core/storage/inbox_session.dart';
 import 'package:hasim/core/storage/prefs_store.dart';
 import 'package:hasim/core/storage/secure_store.dart';
 import 'package:hasim/features/auth/data/auth_repository.dart';
+import 'package:hasim/features/catalog/data/chat_catalog_repository.dart';
 import 'package:hasim/features/contacts/data/contact_group_repository.dart';
 import 'package:hasim/features/contacts/data/contact_repository.dart';
 import 'package:hasim/features/conversations/data/conversation_repository.dart';
@@ -16,9 +17,11 @@ import 'package:hasim/features/home/data/home_repository.dart';
 import 'package:hasim/features/notifications/data/notification_repository.dart';
 import 'package:hasim/features/settings/data/plan_channel_repository.dart';
 import 'package:hasim/features/settings/data/session_repository.dart';
+import 'package:hasim/features/search/data/search_repository.dart';
 import 'package:hasim/features/stories/data/story_repository.dart';
 import 'package:hasim/features/workspace/data/workspace_repository.dart';
 import 'package:hasim/push/push_service.dart';
+import 'package:hasim/realtime/hybrid_realtime_service.dart';
 import 'package:hasim/realtime/realtime_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -62,6 +65,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 final authRepositoryProvider = Provider((ref) => AuthRepository(ref.watch(apiClientProvider)));
 final workspaceRepositoryProvider = Provider((ref) => WorkspaceRepository(ref.watch(apiClientProvider)));
 final homeRepositoryProvider = Provider((ref) => HomeRepository(ref.watch(apiClientProvider)));
+final searchRepositoryProvider = Provider((ref) => SearchRepository(ref.watch(apiClientProvider)));
 final conversationRepositoryProvider = Provider(
   (ref) => ConversationRepository(
     ref.watch(apiClientProvider),
@@ -71,6 +75,7 @@ final conversationRepositoryProvider = Provider(
 final emailRepositoryProvider = Provider((ref) => EmailRepository(ref.watch(apiClientProvider)));
 final campaignRepositoryProvider = Provider((ref) => CampaignRepository(ref.watch(apiClientProvider)));
 final contactRepositoryProvider = Provider((ref) => ContactRepository(ref.watch(apiClientProvider)));
+final chatCatalogRepositoryProvider = Provider((ref) => ChatCatalogRepository(ref.watch(apiClientProvider)));
 final contactGroupRepositoryProvider = Provider((ref) => ContactGroupRepository(ref.watch(apiClientProvider)));
 final storyRepositoryProvider = Provider((ref) => StoryRepository(ref.watch(apiClientProvider)));
 final notificationRepositoryProvider = Provider((ref) => NotificationRepository(ref.watch(apiClientProvider)));
@@ -83,9 +88,14 @@ final customerRepositoryProvider = Provider((ref) => CustomerRepository(ref.watc
 final aiRepositoryProvider = Provider((ref) => AiRepository(ref.watch(apiClientProvider)));
 
 final realtimeServiceProvider = Provider<RealtimeService>((ref) {
-  return PollingRealtimeService(
+  final polling = PollingRealtimeService(
     ref.watch(conversationRepositoryProvider),
     workspaceIdOf: () => ref.read(prefsStoreProvider).workspaceId,
+  );
+
+  return HybridRealtimeService(
+    polling,
+    apiClient: ref.watch(apiClientProvider),
   );
 });
 

@@ -1,17 +1,19 @@
 <?php
 
-use App\Exceptions\MissingWorkspaceContextException;
 use App\EInvoicing\QR\QrEncodingException;
 use App\EInvoicing\Security\Exceptions\ProductionCryptographicProfileException;
 use App\EInvoicing\Xml\EInvoiceXmlMappingException;
 use App\Exceptions\Api\ApiApplicationException;
+use App\Exceptions\MissingWorkspaceContextException;
 use App\Http\Api\FinanceApiErrorRenderer;
+use App\Http\Middleware\AssignCorrelationId;
 use App\Http\Middleware\EnsureFeatureAccess;
 use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsureWorkspaceMembership;
 use App\Http\Middleware\EnsureWorkspaceSelected;
 use App\Http\Middleware\Mobile\EnsureIdempotency;
 use App\Http\Middleware\ResolveWorkspaceContext;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -48,7 +50,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'webhooks/resend',
             'whatsapp-webhook',
+            'meta-webhook',
         ]);
+
+        $middleware->append(SecurityHeaders::class);
 
         $middleware->alias([
             'workspace.resolve' => ResolveWorkspaceContext::class,
@@ -57,6 +62,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'workspace.feature' => EnsureFeatureAccess::class,
             'platform.admin' => EnsurePlatformAdmin::class,
             'mobile.idempotency' => EnsureIdempotency::class,
+            'assign.correlation' => AssignCorrelationId::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

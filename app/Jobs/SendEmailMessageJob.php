@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\CustomerMailboxException;
 use App\Models\EmailMessage;
+use App\Services\Email\CustomerMailboxErrorClassifier;
 use App\Services\Email\WorkspaceEmailSender;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,6 +17,7 @@ class SendEmailMessageJob implements ShouldQueue
     use Queueable;
 
     public int $tries = 3;
+
     public int $timeout = 120;
 
     public function __construct(
@@ -44,19 +47,15 @@ class SendEmailMessageJob implements ShouldQueue
                 'delivery_error' => null,
             ])->save();
 
-            $emailLog = $workspaceEmailSender->send($emailMessage);
-
-            $emailMessage->forceFill([
-                'delivery_status' => 'sent',
-                'delivery_error' => null,
-                'delivered_at' => now(),
-                'message_id' => $emailLog->provider_message_id ?: $emailMessage->message_id,
-            ])->save();
-        } catch (\Throwable $exception) {
-            Log::error('email-send-job-failed', [
+            $workspaceEmailSender->send($emailMessage);
+        } catch (Throwable $exception) {
+            Log::warning('email-send-job-failed', [
                 'email_message_id' => $this->emailMessageId,
                 'workspace_id' => $emailMessage->workspace_id,
-                'error' => $exception->getMessage(),
+                'email_account_id' => $emailMessage->email_account_id,
+                'category' => $exception instanceof CustomerMailboxException
+                    ? $exception->category
+                    : app(CustomerMailboxErrorClassifier::class)->classify($exception),
             ]);
 
             throw $exception;
@@ -73,18 +72,24 @@ class SendEmailMessageJob implements ShouldQueue
         app(WorkspaceContext::class)->runForId((int) $emailMessage->workspace_id, function () use ($emailMessage, $exception): void {
             $emailMessage->forceFill([
                 'delivery_status' => 'failed',
-                'delivery_error' => $exception->getMessage(),
+                'delivery_error' => app(CustomerMailboxErrorClassifier::class)->safeStoredError($exception, 'send'),
             ])->save();
         });
     }
 
     private function findOwnedMessage(): ?EmailMessage
     {
-        $query = EmailMessage::withoutGlobalScopes()->whereKey($this->emailMessageId);
-        if ($this->workspaceId !== null) {
-            $query->where('workspace_id', $this->workspaceId);
+        if ($this->workspaceId === null) {
+            Log::warning('email-send-job-missing-workspace', [
+                'email_message_id' => $this->emailMessageId,
+            ]);
+
+            return null;
         }
 
-        return $query->first();
+        return EmailMessage::withoutGlobalScopes()
+            ->whereKey($this->emailMessageId)
+            ->where('workspace_id', $this->workspaceId)
+            ->first();
     }
 }

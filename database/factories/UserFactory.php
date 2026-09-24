@@ -30,9 +30,19 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'phone' => fake()->unique()->numerify('+9665########'),
             'phone_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
         ];
+    }
+
+    public function configure(): static
+    {
+        return $this->afterMaking(function (User $user, array $attributes = []): void {
+            $plain = $attributes['password'] ?? static::$password ?? 'password';
+            $hashed = is_string($plain) && str_starts_with($plain, '$2y$')
+                ? $plain
+                : Hash::make((string) $plain);
+            $user->forceFill(['password' => $hashed]);
+        });
     }
 
     /**

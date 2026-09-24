@@ -16,10 +16,14 @@
         </div>
 
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            @include('workspace.finance.partials.kpi-card', ['label' => 'كل العقود', 'value' => number_format((int) ($stats['total'] ?? 0), 0), 'tone' => 'slate'])
             @include('workspace.finance.partials.kpi-card', ['label' => 'عقود سارية', 'value' => number_format((int) $stats['open'], 0), 'tone' => 'emerald'])
-            @include('workspace.finance.partials.kpi-card', ['label' => 'تنتهي خلال 30 يومًا', 'value' => number_format((int) $stats['expiring'], 0), 'tone' => 'amber', 'href' => request()->fullUrlWithQuery(['expiring' => 1])])
             @include('workspace.finance.partials.kpi-card', ['label' => 'مسودات', 'value' => number_format((int) $stats['draft'], 0), 'tone' => 'slate'])
-            @include('workspace.finance.partials.kpi-card', ['label' => 'قيمة العقود السارية', 'value' => $stats['value_open'], 'tone' => 'indigo'])
+            @include('workspace.finance.partials.kpi-card', ['label' => 'منتهية', 'value' => number_format((int) ($stats['expired'] ?? 0), 0), 'tone' => 'amber'])
+            @include('workspace.finance.partials.kpi-card', ['label' => 'ملغاة', 'value' => number_format((int) ($stats['cancelled'] ?? 0), 0), 'tone' => 'rose'])
+            @include('workspace.finance.partials.kpi-card', ['label' => 'تنتهي خلال 30 يومًا', 'value' => number_format((int) $stats['expiring'], 0), 'tone' => 'amber', 'href' => request()->fullUrlWithQuery(['expiring' => 1])])
+            @include('workspace.finance.partials.kpi-card', ['label' => 'قيمة العقود', 'value' => number_format((float) ($stats['value_total'] ?? $stats['value_open'] ?? 0), 2), 'tone' => 'indigo'])
+            @include('workspace.finance.partials.kpi-card', ['label' => 'مفوتر / مدفوع / متبقي / غير مفوتر', 'value' => number_format((float) ($stats['invoiced'] ?? 0), 2).' / '.number_format((float) ($stats['paid'] ?? 0), 2).' / '.number_format((float) ($stats['outstanding'] ?? 0), 2).' / '.number_format((float) ($stats['unbilled'] ?? 0), 2), 'tone' => 'emerald'])
         </div>
 
         <form method="GET" class="grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-6">

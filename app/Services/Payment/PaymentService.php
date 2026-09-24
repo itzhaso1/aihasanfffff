@@ -9,11 +9,13 @@ use App\Models\Payment;
 use App\Models\PaymentGateway;
 use App\Models\WebhookEvent;
 use App\Models\Workspace;
-use App\Support\Tenancy\WorkspaceContext;
 use App\Services\Finance\InvoicePaymentService;
 use App\Services\Finance\InvoiceStateService;
 use App\Services\Merchant\MerchantPaymentEligibilityService;
 use App\Services\Payment\Contracts\BillableCheckoutRequest;
+use App\Support\Http\WebhookHeaderSanitizer;
+use App\Support\Tenancy\WorkspaceContext;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -32,6 +34,9 @@ class PaymentService
         ?PaymentGateway $gateway = null,
         string $paymentContext = 'merchant_order',
     ): Payment {
+        if ($order->source === 'commerce') {
+            throw new RuntimeException('Commerce payment execution is not enabled in this phase.');
+        }
         if ($order->payment_status === 'paid') {
             throw new RuntimeException('Order is already paid.');
         }
@@ -48,47 +53,77 @@ class PaymentService
             ->orderBy('id')
             ->first();
         $provider = $this->paymentGatewayManager->resolve($gateway);
-        $idempotencyKey = (string) Str::uuid();
+        $idempotencyKey = self::orderCheckoutIdempotencyKey((int) $order->workspace_id, (int) $order->id);
         $checkoutReference = (string) $order->order_number;
 
-        $result = $provider->createPaymentLink(
-            reference: $checkoutReference,
-            amount: (float) $order->total_amount,
-            currency: $order->currency,
-            metadata: [
-                'workspace_id' => $order->workspace_id,
-                'order_id' => $order->id,
-                'payment_context' => $paymentContext,
-                'money_bucket' => $moneyBucket,
-            ]
-        );
+        return app(WorkspaceContext::class)->runForId((int) $order->workspace_id, function () use ($order, $gateway, $provider, $idempotencyKey, $paymentContext, $moneyBucket, $checkoutReference): Payment {
+            return DB::transaction(function () use ($order, $gateway, $provider, $idempotencyKey, $paymentContext, $moneyBucket, $checkoutReference): Payment {
+                Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
-        return app(WorkspaceContext::class)->runForId((int) $order->workspace_id, function () use ($order, $gateway, $result, $idempotencyKey, $paymentContext, $moneyBucket, $checkoutReference): Payment {
-            return DB::transaction(function () use ($order, $gateway, $result, $idempotencyKey, $paymentContext, $moneyBucket, $checkoutReference): Payment {
-            $payment = Payment::query()->create([
-                'workspace_id' => $order->workspace_id,
-                'order_id' => $order->id,
-                'billable_type' => null,
-                'billable_id' => null,
-                'checkout_reference' => $checkoutReference,
-                'payment_gateway_id' => $gateway?->id,
-                'provider' => $gateway?->provider ?? config('payment.default_provider', 'local'),
-                'provider_payment_id' => $result['provider_payment_id'],
-                'idempotency_key' => $idempotencyKey,
-                'status' => 'pending',
-                'amount' => $order->total_amount,
-                'currency' => $order->currency,
-                'payment_link' => $result['payment_link'],
-                'provider_payload' => $result['payload'],
-                'payment_context' => $paymentContext,
-                'money_bucket' => $moneyBucket,
-            ]);
+                $existing = Payment::query()
+                    ->where('workspace_id', $order->workspace_id)
+                    ->where('order_id', $order->id)
+                    ->whereIn('status', ['pending', 'processing'])
+                    ->lockForUpdate()
+                    ->latest('id')
+                    ->first();
 
-            $order->update(['payment_link' => $payment->payment_link]);
+                if ($existing && filled($existing->payment_link)) {
+                    return $existing;
+                }
 
-            return $payment;
+                $result = $provider->createPaymentLink(
+                    reference: $checkoutReference,
+                    amount: (float) $order->total_amount,
+                    currency: $order->currency,
+                    metadata: [
+                        'workspace_id' => $order->workspace_id,
+                        'order_id' => $order->id,
+                        'payment_context' => $paymentContext,
+                        'money_bucket' => $moneyBucket,
+                    ]
+                );
+
+                try {
+                    $payment = Payment::query()->create([
+                        'workspace_id' => $order->workspace_id,
+                        'order_id' => $order->id,
+                        'billable_type' => null,
+                        'billable_id' => null,
+                        'checkout_reference' => $checkoutReference,
+                        'payment_gateway_id' => $gateway?->id,
+                        'provider' => $gateway?->provider ?? config('payment.default_provider', 'local'),
+                        'provider_payment_id' => $result['provider_payment_id'],
+                        'idempotency_key' => $idempotencyKey,
+                        'status' => 'pending',
+                        'amount' => $order->total_amount,
+                        'currency' => $order->currency,
+                        'payment_link' => $result['payment_link'],
+                        'provider_payload' => $result['payload'],
+                        'payment_context' => $paymentContext,
+                        'money_bucket' => $moneyBucket,
+                    ]);
+                } catch (QueryException $exception) {
+                    if (! $this->isDuplicateIdempotencyKey($exception)) {
+                        throw $exception;
+                    }
+
+                    $payment = Payment::query()
+                        ->where('workspace_id', $order->workspace_id)
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->firstOrFail();
+                }
+
+                $order->update(['payment_link' => $payment->payment_link]);
+
+                return $payment;
             });
         });
+    }
+
+    public static function orderCheckoutIdempotencyKey(int $workspaceId, int $orderId): string
+    {
+        return 'checkout-order:'.$workspaceId.':'.$orderId;
     }
 
     public function createBillablePaymentLink(
@@ -117,66 +152,66 @@ class PaymentService
         $checkoutReference = self::financeCheckoutReference($request->workspaceId, $request->billableId);
 
         return app(WorkspaceContext::class)->runForId((int) $request->workspaceId, function () use ($request, $gateway, $provider, $paymentContext, $moneyBucket, $checkoutReference, $amount): Payment {
-        return DB::transaction(function () use ($request, $gateway, $provider, $paymentContext, $moneyBucket, $checkoutReference, $amount): Payment {
-            $existing = Payment::withoutGlobalScopes()
-                ->where('workspace_id', $request->workspaceId)
-                ->where('billable_type', $request->billableType)
-                ->where('billable_id', $request->billableId)
-                ->whereNull('order_id')
-                ->whereIn('status', ['pending', 'processing'])
-                ->lockForUpdate()
-                ->latest('id')
-                ->first();
+            return DB::transaction(function () use ($request, $gateway, $provider, $paymentContext, $moneyBucket, $checkoutReference, $amount): Payment {
+                $existing = Payment::withoutGlobalScopes()
+                    ->where('workspace_id', $request->workspaceId)
+                    ->where('billable_type', $request->billableType)
+                    ->where('billable_id', $request->billableId)
+                    ->whereNull('order_id')
+                    ->whereIn('status', ['pending', 'processing'])
+                    ->lockForUpdate()
+                    ->latest('id')
+                    ->first();
 
-            if (
-                $existing
-                && abs((float) $existing->amount - $amount) <= InvoiceStateService::PAYMENT_TOLERANCE
-                && filled($existing->payment_link)
-            ) {
-                return $existing;
-            }
+                if (
+                    $existing
+                    && abs((float) $existing->amount - $amount) <= InvoiceStateService::PAYMENT_TOLERANCE
+                    && filled($existing->payment_link)
+                ) {
+                    return $existing;
+                }
 
-            if ($existing) {
-                $existing->update([
-                    'status' => 'failed',
-                    'failed_at' => now(),
-                    'failure_reason' => 'superseded_by_new_checkout',
-                ]);
-            }
+                if ($existing) {
+                    $existing->update([
+                        'status' => 'failed',
+                        'failed_at' => now(),
+                        'failure_reason' => 'superseded_by_new_checkout',
+                    ]);
+                }
 
-            $result = $provider->createPaymentLink(
-                reference: $checkoutReference,
-                amount: $amount,
-                currency: $request->currency,
-                metadata: array_merge($request->metadata, [
+                $result = $provider->createPaymentLink(
+                    reference: $checkoutReference,
+                    amount: $amount,
+                    currency: $request->currency,
+                    metadata: array_merge($request->metadata, [
+                        'workspace_id' => $request->workspaceId,
+                        'billable_type' => $request->billableType,
+                        'billable_id' => $request->billableId,
+                        'payment_context' => $paymentContext,
+                        'money_bucket' => $moneyBucket,
+                        'description' => 'Invoice '.$request->reference,
+                    ])
+                );
+
+                return app(WorkspaceContext::class)->runForId((int) $request->workspaceId, fn () => Payment::withoutGlobalScopes()->create([
                     'workspace_id' => $request->workspaceId,
+                    'order_id' => null,
                     'billable_type' => $request->billableType,
                     'billable_id' => $request->billableId,
+                    'checkout_reference' => $checkoutReference,
+                    'payment_gateway_id' => $gateway?->id,
+                    'provider' => $gateway?->provider ?? config('payment.default_provider', 'local'),
+                    'provider_payment_id' => $result['provider_payment_id'],
+                    'idempotency_key' => (string) Str::uuid(),
+                    'status' => 'pending',
+                    'amount' => $amount,
+                    'currency' => strtoupper($request->currency),
+                    'payment_link' => $result['payment_link'],
+                    'provider_payload' => $result['payload'],
                     'payment_context' => $paymentContext,
                     'money_bucket' => $moneyBucket,
-                    'description' => 'Invoice '.$request->reference,
-                ])
-            );
-
-            return app(WorkspaceContext::class)->runForId((int) $request->workspaceId, fn () => Payment::withoutGlobalScopes()->create([
-                'workspace_id' => $request->workspaceId,
-                'order_id' => null,
-                'billable_type' => $request->billableType,
-                'billable_id' => $request->billableId,
-                'checkout_reference' => $checkoutReference,
-                'payment_gateway_id' => $gateway?->id,
-                'provider' => $gateway?->provider ?? config('payment.default_provider', 'local'),
-                'provider_payment_id' => $result['provider_payment_id'],
-                'idempotency_key' => (string) Str::uuid(),
-                'status' => 'pending',
-                'amount' => $amount,
-                'currency' => strtoupper($request->currency),
-                'payment_link' => $result['payment_link'],
-                'provider_payload' => $result['payload'],
-                'payment_context' => $paymentContext,
-                'money_bucket' => $moneyBucket,
-            ]));
-        });
+                ]));
+            });
         });
     }
 
@@ -231,7 +266,7 @@ class PaymentService
                     'workspace_id' => $workspaceId,
                     'event_type' => $verification['status'] ?? 'unknown',
                     'idempotency_key' => $eventId,
-                    'headers' => $headers,
+                    'headers' => WebhookHeaderSanitizer::redact($headers),
                     'payload' => $payload,
                     'status' => $verification['verified'] ? 'pending' : 'invalid',
                 ]
@@ -440,6 +475,15 @@ class PaymentService
     public function financeSettlementReference(Payment $payment): string
     {
         return 'checkout:'.$payment->id;
+    }
+
+    private function isDuplicateIdempotencyKey(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? '');
+        $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+
+        return in_array($sqlState, ['23000', '23505'], true)
+            || in_array($driverCode, [1062, 19], true);
     }
 
     private function resolveMoneyBucket(string $paymentContext): string

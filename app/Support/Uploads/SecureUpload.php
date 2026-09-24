@@ -108,4 +108,19 @@ class SecureUpload
 
         Storage::disk($disk)->delete($path);
     }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public static function contractAttachmentRules(bool $attachmentsRequired = false): array
+    {
+        return [
+            'attachments' => array_values(array_filter([
+                $attachmentsRequired ? 'required' : 'nullable',
+                'array',
+                'max:10',
+            ])),
+            'attachments.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,webp'],
+        ];
+    }
 }

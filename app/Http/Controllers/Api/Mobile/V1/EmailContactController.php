@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Mobile\V1;
 
+use App\Http\Controllers\Api\Mobile\Concerns\AuthorizesMobileEmail;
 use App\Http\Controllers\Api\Mobile\Concerns\ResolvesMobileWorkspace;
 use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Http\Resources\Mobile\EmailContactResource;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 
 class EmailContactController extends MobileController
 {
+    use AuthorizesMobileEmail;
     use ResolvesMobileWorkspace;
 
     public function __construct(
@@ -22,6 +24,7 @@ class EmailContactController extends MobileController
 
     public function index(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $perPage = max(1, min(50, (int) $request->input('per_page', 20)));
 
@@ -43,6 +46,7 @@ class EmailContactController extends MobileController
 
     public function store(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
 
         $validated = $request->validate([
@@ -66,6 +70,7 @@ class EmailContactController extends MobileController
 
     public function show(EmailContact $contact): JsonResponse
     {
+        $this->authorizeEmailUse(request());
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $contact = $this->emailContactService->findForWorkspace($workspace, $contact->id);
 
@@ -74,6 +79,7 @@ class EmailContactController extends MobileController
 
     public function update(Request $request, EmailContact $contact): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $contact = $this->emailContactService->findForWorkspace($workspace, $contact->id);
 
@@ -94,6 +100,7 @@ class EmailContactController extends MobileController
 
     public function destroy(EmailContact $contact): JsonResponse
     {
+        $this->authorizeEmailUse(request());
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $contact = $this->emailContactService->findForWorkspace($workspace, $contact->id);
         $this->emailContactService->delete($contact);
@@ -103,6 +110,7 @@ class EmailContactController extends MobileController
 
     public function recentRecipients(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $limit = max(1, min(50, (int) $request->input('limit', 20)));
         $recipients = $this->emailContactService->recentRecipients($workspace, $limit);
@@ -112,6 +120,7 @@ class EmailContactController extends MobileController
 
     public function favorite(EmailContact $contact): JsonResponse
     {
+        $this->authorizeEmailUse(request());
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $contact = $this->emailContactService->findForWorkspace($workspace, $contact->id);
         $contact = $this->emailContactService->toggleFavorite($contact);

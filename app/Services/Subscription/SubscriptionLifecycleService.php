@@ -8,8 +8,10 @@ use App\Models\Subscription;
 use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionCheckoutSession;
 use App\Models\Workspace;
+use App\Support\Subscription\SubscriptionBillingGuard;
 use App\Support\Subscription\SubscriptionStateMachine;
 use App\Support\Tenancy\WorkspaceContext;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -24,111 +26,112 @@ class SubscriptionLifecycleService
     public function expireTrials(): int
     {
         return $this->runScheduled(function (): int {
-        $expired = 0;
+            $expired = 0;
 
-        Subscription::withoutGlobalScopes()
-            ->where('status', Subscription::STATUS_TRIALING)
-            ->whereNotNull('trial_ends_at')
-            ->where('trial_ends_at', '<', now())
-            ->orderBy('id')
-            ->chunkById(100, function ($subscriptions) use (&$expired): void {
-                foreach ($subscriptions as $subscription) {
-                    if ($this->activateVerifiedPendingCheckout($subscription)) {
-                        continue;
+            Subscription::withoutGlobalScopes()
+                ->where('status', Subscription::STATUS_TRIALING)
+                ->whereNotNull('trial_ends_at')
+                ->where('trial_ends_at', '<', now())
+                ->orderBy('id')
+                ->chunkById(100, function ($subscriptions) use (&$expired): void {
+                    foreach ($subscriptions as $subscription) {
+                        if ($this->activateVerifiedPendingCheckout($subscription)) {
+                            continue;
+                        }
+
+                        $this->expire($subscription, 'trial_ended');
+                        $expired++;
                     }
+                });
 
-                    $this->expire($subscription, 'trial_ended');
-                    $expired++;
-                }
-            });
-
-        return $expired;
+            return $expired;
         });
     }
 
     public function processRenewals(): int
     {
         return $this->runScheduled(function (): int {
-        $this->expireCheckouts();
+            $this->expireCheckouts();
 
-        $created = 0;
-        $leadDays = max(0, (int) config('subscription.renewal_lead_days', 3));
-        $horizon = now()->addDays($leadDays);
+            $created = 0;
+            $leadDays = max(0, (int) config('subscription.renewal_lead_days', 3));
+            $horizon = now()->addDays($leadDays);
 
-        Subscription::withoutGlobalScopes()
-            ->whereIn('status', [Subscription::STATUS_ACTIVE, Subscription::STATUS_PAST_DUE])
-            ->whereNotNull('current_period_end')
-            ->where('current_period_end', '<=', $horizon)
-            ->orderBy('id')
-            ->chunkById(100, function ($subscriptions) use (&$created): void {
-                foreach ($subscriptions as $subscription) {
-                    if ($this->createRenewalAttemptIfNeeded($subscription)) {
-                        $created++;
+            Subscription::withoutGlobalScopes()
+                ->whereIn('status', [Subscription::STATUS_ACTIVE, Subscription::STATUS_PAST_DUE])
+                ->whereNotNull('current_period_end')
+                ->where('current_period_end', '<=', $horizon)
+                ->orderBy('id')
+                ->chunkById(100, function ($subscriptions) use (&$created): void {
+                    foreach ($subscriptions as $subscription) {
+                        if ($this->createRenewalAttemptIfNeeded($subscription)) {
+                            $created++;
+                        }
+
+                        if (
+                            $subscription->status === Subscription::STATUS_ACTIVE
+                            && $subscription->current_period_end
+                            && $subscription->current_period_end->isPast()
+                        ) {
+                            $this->markPastDue($subscription, 'period_ended_without_verified_payment');
+                        }
                     }
+                });
 
-                    if (
-                        $subscription->status === Subscription::STATUS_ACTIVE
-                        && $subscription->current_period_end
-                        && $subscription->current_period_end->isPast()
-                    ) {
-                        $this->markPastDue($subscription, 'period_ended_without_verified_payment');
-                    }
-                }
-            });
-
-        return $created;
+            return $created;
         });
     }
 
     public function processDunning(): int
     {
         return $this->runScheduled(function (): int {
-        $this->expireCheckouts();
+            $this->expireCheckouts();
 
-        $expired = 0;
+            $expired = 0;
 
-        Subscription::withoutGlobalScopes()
-            ->where('status', Subscription::STATUS_PAST_DUE)
-            ->whereNotNull('grace_ends_at')
-            ->where('grace_ends_at', '<', now())
-            ->orderBy('id')
-            ->chunkById(100, function ($subscriptions) use (&$expired): void {
-                foreach ($subscriptions as $subscription) {
-                    $this->expire($subscription, 'grace_ended');
-                    $expired++;
-                }
-            });
+            Subscription::withoutGlobalScopes()
+                ->where('status', Subscription::STATUS_PAST_DUE)
+                ->whereNotNull('grace_ends_at')
+                ->where('grace_ends_at', '<', now())
+                ->orderBy('id')
+                ->chunkById(100, function ($subscriptions) use (&$expired): void {
+                    foreach ($subscriptions as $subscription) {
+                        $this->expire($subscription, 'grace_ended');
+                        $expired++;
+                    }
+                });
 
-        return $expired;
+            return $expired;
         });
     }
 
     public function expireCheckouts(): int
     {
         return $this->runScheduled(function (): int {
-        $updated = 0;
+            $updated = 0;
 
-        SubscriptionCheckoutSession::withoutGlobalScopes()
-            ->whereIn('checkout_status', ['initiated', 'awaiting_payment'])
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<', now())
-            ->orderBy('id')
-            ->chunkById(100, function ($sessions) use (&$updated): void {
-                foreach ($sessions as $session) {
-                    $session->update(['checkout_status' => 'expired']);
-                    SubscriptionBillingAttempt::withoutGlobalScopes()
-                        ->where('checkout_session_id', $session->id)
-                        ->where('status', SubscriptionBillingAttempt::STATUS_PENDING)
-                        ->update([
-                            'status' => SubscriptionBillingAttempt::STATUS_EXPIRED,
-                            'failed_at' => now(),
-                            'failure_reason' => 'checkout_expired',
-                        ]);
-                    $updated++;
-                }
-            });
+            SubscriptionCheckoutSession::withoutGlobalScopes()
+                ->whereIn('checkout_status', ['initiated', 'awaiting_payment'])
+                ->whereNotNull('expires_at')
+                ->where('expires_at', '<', now())
+                ->orderBy('id')
+                ->chunkById(100, function ($sessions) use (&$updated): void {
+                    foreach ($sessions as $session) {
+                        $session->update(['checkout_status' => 'expired']);
+                        SubscriptionBillingAttempt::withoutGlobalScopes()
+                            ->where('checkout_session_id', $session->id)
+                            ->where('status', SubscriptionBillingAttempt::STATUS_PENDING)
+                            ->update([
+                                'status' => SubscriptionBillingAttempt::STATUS_EXPIRED,
+                                'failed_at' => now(),
+                                'failure_reason' => 'checkout_expired',
+                                'active_period_guard' => null,
+                            ]);
+                        $updated++;
+                    }
+                });
 
-        return $updated;
+            return $updated;
         });
     }
 
@@ -234,7 +237,7 @@ class SubscriptionLifecycleService
         string $verificationSource,
         ?string $paymentReference = null
     ): Subscription {
-        if (! \App\Support\Subscription\SubscriptionBillingGuard::isTrustedVerificationSource($verificationSource)) {
+        if (! SubscriptionBillingGuard::isTrustedVerificationSource($verificationSource)) {
             throw UntrustedSubscriptionActivationException::untrustedSource($verificationSource);
         }
 
@@ -325,6 +328,7 @@ class SubscriptionLifecycleService
                 'status' => SubscriptionBillingAttempt::STATUS_FAILED,
                 'failed_at' => now(),
                 'failure_reason' => $reason,
+                'active_period_guard' => null,
             ]);
 
         if ($subscription && SubscriptionStateMachine::canTransition($subscription->status, Subscription::STATUS_PAST_DUE)) {
@@ -391,45 +395,57 @@ class SubscriptionLifecycleService
             ? $subscription->current_period_end->toDateString()
             : (string) $subscription->current_period_end;
 
-        $existing = SubscriptionBillingAttempt::withoutGlobalScopes()
-            ->where('subscription_id', $subscription->id)
-            ->where('purpose', SubscriptionBillingAttempt::PURPOSE_RENEWAL)
-            ->where('period_key', $periodKey)
-            ->whereIn('status', [
-                SubscriptionBillingAttempt::STATUS_PENDING,
-                SubscriptionBillingAttempt::STATUS_PROCESSING,
-                SubscriptionBillingAttempt::STATUS_PAID,
-            ])
-            ->exists();
+        try {
+            return (bool) DB::transaction(function () use ($subscription, $plan, $periodKey): bool {
+                Subscription::withoutGlobalScopes()
+                    ->whereKey($subscription->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-        if ($existing) {
+                $existing = SubscriptionBillingAttempt::withoutGlobalScopes()
+                    ->where('subscription_id', $subscription->id)
+                    ->where('purpose', SubscriptionBillingAttempt::PURPOSE_RENEWAL)
+                    ->where('period_key', $periodKey)
+                    ->whereIn('status', [
+                        SubscriptionBillingAttempt::STATUS_PENDING,
+                        SubscriptionBillingAttempt::STATUS_PROCESSING,
+                        SubscriptionBillingAttempt::STATUS_PAID,
+                    ])
+                    ->exists();
+
+                if ($existing) {
+                    return false;
+                }
+
+                SubscriptionBillingAttempt::withoutGlobalScopes()->create([
+                    'workspace_id' => $subscription->workspace_id,
+                    'plan_id' => $plan->id,
+                    'subscription_id' => $subscription->id,
+                    'purpose' => SubscriptionBillingAttempt::PURPOSE_RENEWAL,
+                    'status' => SubscriptionBillingAttempt::STATUS_PENDING,
+                    'amount' => $plan->price,
+                    'currency' => $plan->currency,
+                    'payment_provider' => (string) config('subscription.checkout_provider', 'hyperpay'),
+                    'provider_checkout_id' => 'subrnw_'.Str::lower(Str::random(24)),
+                    'period_key' => $periodKey,
+                    'active_period_guard' => $periodKey,
+                    'expires_at' => $subscription->current_period_end,
+                    'metadata' => [
+                        'note' => 'Renewal attempt created. Activation requires verified provider payment.',
+                    ],
+                ]);
+
+                Log::info('subscription.renewal.started', [
+                    'subscription_id' => $subscription->id,
+                    'workspace_id' => $subscription->workspace_id,
+                    'period_key' => $periodKey,
+                ]);
+
+                return true;
+            });
+        } catch (UniqueConstraintViolationException) {
             return false;
         }
-
-        SubscriptionBillingAttempt::withoutGlobalScopes()->create([
-            'workspace_id' => $subscription->workspace_id,
-            'plan_id' => $plan->id,
-            'subscription_id' => $subscription->id,
-            'purpose' => SubscriptionBillingAttempt::PURPOSE_RENEWAL,
-            'status' => SubscriptionBillingAttempt::STATUS_PENDING,
-            'amount' => $plan->price,
-            'currency' => $plan->currency,
-            'payment_provider' => (string) config('subscription.checkout_provider', 'hyperpay'),
-            'provider_checkout_id' => 'subrnw_'.Str::lower(Str::random(24)),
-            'period_key' => $periodKey,
-            'expires_at' => $subscription->current_period_end,
-            'metadata' => [
-                'note' => 'Renewal attempt created. Activation requires verified provider payment.',
-            ],
-        ]);
-
-        Log::info('subscription.renewal.started', [
-            'subscription_id' => $subscription->id,
-            'workspace_id' => $subscription->workspace_id,
-            'period_key' => $periodKey,
-        ]);
-
-        return true;
     }
 
     private function assertAttemptMatchesPlan(SubscriptionBillingAttempt $attempt, Plan $plan): void

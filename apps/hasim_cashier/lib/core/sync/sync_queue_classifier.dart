@@ -77,7 +77,7 @@ class SyncQueueCountsByBucket {
       blocked;
 }
 
-/// Classifies sync_queue rows without deleting or rewriting them.
+/// Classifies sync_queue rows. Rows stay until an ack or an explicit settle.
 class SyncQueueClassifier {
   const SyncQueueClassifier(this._db);
 
@@ -105,6 +105,13 @@ class SyncQueueClassifier {
     return items == null || (items is List && items.isEmpty);
   }
 
+  static bool isOrderItemsUpdate(SyncQueueItem row) {
+    if (row.entityType != 'order' || row.operation != 'update') return false;
+    if (isKitchenStatusOp(row)) return false;
+    final items = decodePayload(row.payloadJson)['items'];
+    return items is List && items.isNotEmpty;
+  }
+
   static const menuTypes = {'category', 'product'};
 
   static const tableMasterType = 'table';
@@ -127,6 +134,19 @@ class SyncQueueClassifier {
   Future<List<SyncQueueClassification>> classifyWorkspace(int workspaceId) async {
     final rows = await SyncQueueRepository(_db).pendingForWorkspace(workspaceId);
     return [for (final row in rows) await classify(row)];
+  }
+
+  /// A row whose local entity already has a server id is not still pending.
+  Future<int> settleAlreadyApplied(int workspaceId) async {
+    final items = await classifyWorkspace(workspaceId);
+    final queue = SyncQueueRepository(_db);
+    var marked = 0;
+    for (final item in items) {
+      if (item.bucket != SyncQueueBucket.alreadyApplied) continue;
+      await queue.markSynced(item.row.id);
+      marked++;
+    }
+    return marked;
   }
 
   Future<SyncQueueCountsByBucket> counts(int workspaceId) async {
@@ -207,6 +227,9 @@ class SyncQueueClassifier {
     }
 
     if (row.entityType == 'order' && row.operation == 'update') {
+      if (isOrderItemsUpdate(row)) {
+        return _classifyOrderItemsUpdate(row);
+      }
       return _classifyKitchenStatus(row);
     }
 
@@ -288,6 +311,36 @@ class SyncQueueClassifier {
     );
   }
 
+  Future<SyncQueueClassification> _classifyOrderItemsUpdate(
+    SyncQueueItem row,
+  ) async {
+    final payload = decodePayload(row.payloadJson);
+    final order = await _order(row.workspaceId, row.entityId);
+    final serverId = order?.serverId ??
+        (payload['order_server_id'] as num?)?.toInt() ??
+        (payload['server_order_id'] as num?)?.toInt();
+    if (serverId == null || serverId <= 0) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.waitingParent,
+        reason: 'إضافة الأصناف تنتظر وصول الطلب إلى Laravel أولاً.',
+      );
+    }
+    final items = payload['items'];
+    if (items is! List || items.isEmpty) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.blocked,
+        reason: 'تحديث الطلب بلا أصناف.',
+      );
+    }
+    return SyncQueueClassification(
+      row: row,
+      bucket: SyncQueueBucket.ready,
+      reason: 'أصناف إضافية لنفس الطلب جاهزة للمزامنة.',
+    );
+  }
+
   Future<SyncQueueClassification> _classifyOrderCreate(SyncQueueItem row) async {
     final payload = decodePayload(row.payloadJson);
     final type = '${payload['order_type'] ?? ''}'.trim().toLowerCase();
@@ -314,7 +367,8 @@ class SyncQueueClassifier {
         reason: 'لا توجد عناصر صالحة للدفع.',
       );
     }
-    for (final item in items) {
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
       if (item is! Map) {
         return SyncQueueClassification(
           row: row,
@@ -322,13 +376,16 @@ class SyncQueueClassifier {
           reason: 'عنصر بدون معرّف سحابة.',
         );
       }
-      final menuId = (item['pos_menu_item_id'] as num?)?.toInt() ?? 0;
+      var menuId = (item['pos_menu_item_id'] as num?)?.toInt() ?? 0;
       final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+      if (menuId <= 0) {
+        menuId = await _menuIdFromLocalProduct(row, item, i);
+      }
       if (menuId <= 0 || qty < 1) {
         return SyncQueueClassification(
           row: row,
-          bucket: SyncQueueBucket.blocked,
-          reason: 'صنف محلي بدون server id — لا يُرسل إلى Laravel.',
+          bucket: SyncQueueBucket.waitingParent,
+          reason: 'صنف محلي بدون server id — ينتظر مزامنة المنيو.',
         );
       }
     }
@@ -501,18 +558,13 @@ class SyncQueueClassifier {
       );
     }
     final payload = decodePayload(row.payloadJson);
-    final tableServerId = (payload['table_server_id'] as num?)?.toInt() ??
-        (payload['dining_table_id'] as num?)?.toInt() ??
-        0;
-    if (tableServerId <= 0) {
-      final waitingTable = await _tableNeedsServerId(row, payload);
-      if (waitingTable) {
-        return SyncQueueClassification(
-          row: row,
-          bucket: SyncQueueBucket.waitingParent,
-          reason: 'جلسة الطاولة تنتظر وصول الطاولة إلى Laravel أولاً.',
-        );
-      }
+    final table = await _table(row.workspaceId, row.entityId);
+    if (table == null || table.serverId == null || table.serverId! <= 0) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.waitingParent,
+        reason: 'جلسة الطاولة تنتظر وصول الطاولة إلى Laravel أولاً.',
+      );
     }
     if (row.operation == 'close') {
       final waitingOpen = await _hasPendingSessionOpen(row);
@@ -521,6 +573,13 @@ class SyncQueueClassifier {
           row: row,
           bucket: SyncQueueBucket.waitingParent,
           reason: 'إغلاق الطاولة ينتظر وصول فتح الجلسة إلى Laravel أولاً.',
+        );
+      }
+      if (await _closeBlockedByUnsyncedOrders(row)) {
+        return SyncQueueClassification(
+          row: row,
+          bucket: SyncQueueBucket.waitingParent,
+          reason: 'إغلاق الطاولة ينتظر مزامنة طلبات الجلسة أولاً.',
         );
       }
     }
@@ -636,6 +695,67 @@ class SyncQueueClassifier {
       }
     }
     return null;
+  }
+
+  Future<int> _menuIdFromLocalProduct(
+    SyncQueueItem row,
+    Map item,
+    int index,
+  ) async {
+    final hinted = '${item['product_local_id'] ?? ''}'.trim();
+    if (hinted.isNotEmpty) {
+      final product = await _product(row.workspaceId, hinted);
+      final id = product?.serverId ?? 0;
+      if (id > 0) return id;
+    }
+    final locals =
+        await (_db.select(_db.localOrderItems)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.orderLocalId.equals(row.entityId) &
+                  t.isRemoved.equals(false),
+            ))
+            .get();
+    if (index >= locals.length) return 0;
+    final fromItem = locals[index].productServerId ?? 0;
+    if (fromItem > 0) return fromItem;
+    final localId = locals[index].productLocalId?.trim() ?? '';
+    if (localId.isEmpty) return 0;
+    final product = await _product(row.workspaceId, localId);
+    return product?.serverId ?? 0;
+  }
+
+  Future<bool> _closeBlockedByUnsyncedOrders(SyncQueueItem row) async {
+    final payload = decodePayload(row.payloadJson);
+    final tableLocalId = '${payload['table_local_id'] ?? ''}'.trim();
+    if (tableLocalId.isNotEmpty) {
+      final rows =
+          await (_db.select(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.tableLocalId.equals(tableLocalId) &
+                    t.posStatus.isNotValue('cancelled') &
+                    (t.syncStatus.equals('pending') |
+                        t.syncStatus.equals('syncing') |
+                        t.syncStatus.equals('failed')),
+              ))
+              .get();
+      return rows.isNotEmpty;
+    }
+    final tableId = (payload['table_server_id'] as num?)?.toInt();
+    if (tableId == null || tableId <= 0) return false;
+    final rows =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.tableServerId.equals(tableId) &
+                  t.posStatus.isNotValue('cancelled') &
+                  (t.syncStatus.equals('pending') |
+                      t.syncStatus.equals('syncing') |
+                      t.syncStatus.equals('failed')),
+            ))
+            .get();
+    return rows.isNotEmpty;
   }
 
   Future<LocalCustomer?> _customer(int workspaceId, String localId) {

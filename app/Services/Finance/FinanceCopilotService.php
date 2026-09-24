@@ -7,6 +7,9 @@ use App\Models\Finance\FinanceInvoice;
 use App\Support\Money\Money;
 use Illuminate\Support\Carbon;
 
+/**
+ * @deprecated Legacy keyword copilot. Web and API now use FinancialAssistantOrchestrator via FinanceAssistantTurnService.
+ */
 class FinanceCopilotService
 {
     public function __construct(

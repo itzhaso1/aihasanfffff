@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ai\GenerateReplyRequest;
-use App\Models\AiSetting;
+use App\Http\Requests\Ai\UpdateAiSettingRequest;
+use App\Http\Resources\Mobile\AiSettingResource;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\AI\AIService;
-use App\Services\AI\AiSafety;
+use App\Services\AI\AiSettingManagementService;
 use App\Services\Feature\FeatureAccessService;
+use App\Support\Authorization\WorkspaceAccess;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,64 +20,38 @@ class AiController extends Controller
 {
     public function __construct(
         private readonly AIService $aiService,
-        private readonly AiSafety $safety,
+        private readonly AiSettingManagementService $aiSettings,
         private readonly FeatureAccessService $featureAccess,
+        private readonly WorkspaceContext $workspaceContext,
+        private readonly WorkspaceAccess $workspaceAccess,
     ) {}
 
-    public function settings(): JsonResponse
+    public function settings(Request $request): JsonResponse
     {
-        $settings = AiSetting::query()->first();
+        $workspace = $this->requireWorkspace();
+        $user = $request->user();
+        if (! $user || ! $this->workspaceAccess->canManageAiSettings($user, $workspace)) {
+            abort(403);
+        }
 
-        return response()->json(['data' => $settings]);
+        $setting = $this->aiSettings->forWorkspace($workspace);
+
+        return response()->json(['data' => new AiSettingResource($setting)]);
     }
 
-    public function updateSettings(Request $request): JsonResponse
+    public function updateSettings(UpdateAiSettingRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => ['nullable', 'string', 'max:255'],
-            'instructions' => ['nullable', 'string', 'max:2000'],
-            'tone' => ['nullable', 'string', 'max:255'],
-            'reply_style' => ['nullable', 'string', 'max:255'],
-            'rules' => ['nullable', 'array'],
-            'business_information' => ['nullable', 'array'],
-            'provider' => ['nullable', 'string', 'max:64'],
-            'model' => ['nullable', 'string', 'max:255'],
-            'max_tokens' => ['nullable', 'integer', 'min:64', 'max:'.$this->safety->capMaxTokens(4096)],
-            'temperature' => ['nullable', 'numeric', 'min:0', 'max:1'],
-            'is_active' => ['nullable', 'boolean'],
-        ]);
+        $workspace = $this->requireWorkspace();
+        $setting = $this->aiSettings->update($workspace, $request->validated());
 
-        if (isset($validated['provider'])) {
-            $validated['provider'] = $this->safety->resolveProvider($validated['provider']);
-        }
-        if (isset($validated['model'])) {
-            $provider = $validated['provider'] ?? (string) config('ai.default_provider', 'google_ai_studio');
-            $validated['model'] = $this->safety->resolveModel($this->safety->resolveProvider($provider), $validated['model']);
-        }
-        if (isset($validated['max_tokens'])) {
-            $validated['max_tokens'] = $this->safety->capMaxTokens((int) $validated['max_tokens']);
-        }
-        if (isset($validated['temperature'])) {
-            $validated['temperature'] = $this->safety->capTemperature((float) $validated['temperature']);
-        }
-
-        $settings = AiSetting::query()->firstOrCreate([], [
-            'name' => 'AI Assistant',
-            'provider' => config('ai.default_provider', 'google_ai_studio'),
-            'model' => config('ai.google_ai_studio.model', 'gemini-2.5-flash'),
-            'temperature' => config('ai.google_ai_studio.temperature', 0.3),
-            'max_tokens' => config('ai.google_ai_studio.max_tokens', 1024),
-        ]);
-        $settings->update($validated);
-
-        return response()->json(['data' => $settings->refresh()]);
+        return response()->json(['data' => new AiSettingResource($setting)]);
     }
 
     public function generateReply(GenerateReplyRequest $request): JsonResponse
     {
         $conversation = Conversation::query()->findOrFail($request->integer('conversation_id'));
         $this->authorize('update', $conversation);
-        $currentWorkspaceId = app(\App\Support\Tenancy\WorkspaceContext::class)->workspaceId();
+        $currentWorkspaceId = $this->workspaceContext->workspaceId();
         if ($currentWorkspaceId === null || (int) $conversation->workspace_id !== (int) $currentWorkspaceId) {
             abort(404);
         }
@@ -107,5 +84,13 @@ class AiController extends Controller
                 'message' => $outbound,
             ],
         ]);
+    }
+
+    private function requireWorkspace()
+    {
+        $workspace = $this->workspaceContext->workspace();
+        abort_if($workspace === null, 403);
+
+        return $workspace;
     }
 }

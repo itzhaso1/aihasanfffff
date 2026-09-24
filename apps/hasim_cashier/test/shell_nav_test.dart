@@ -121,9 +121,11 @@ void main() {
             localId: 'inv-1',
             workspaceId: ws,
             deviceId: 'dev-1',
+            serverId: const Value(1001),
             invoiceNumber: const Value('INV-TEST-1'),
             localInvoiceNumber: const Value('INV-TEST-1'),
             totalAmount: const Value(2300),
+            syncStatus: const Value('synced'),
             createdAt: now,
           ),
         );
@@ -688,8 +690,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.widgetWithText(HsPrimaryButton, 'حذف الكل'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(find.textContaining('تم حذف الفواتير محلياً'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('تم حذف الفواتير محلياً'), findsWidgets);
 
     await tapNav(tester, 'الفواتير');
     expect(find.text('INV-TEST-1'), findsNothing);

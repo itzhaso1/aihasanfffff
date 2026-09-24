@@ -41,6 +41,16 @@ class EgsUnit extends WorkspaceScopedModel
         return $this->hasMany(EInvoiceSecurityRecord::class, 'egs_unit_id');
     }
 
+    public function privateKeyReferences(): HasMany
+    {
+        return $this->hasMany(PrivateKeyReference::class, 'egs_unit_id');
+    }
+
+    public function onboardings(): HasMany
+    {
+        return $this->hasMany(EgsOnboarding::class, 'egs_unit_id');
+    }
+
     public function isActive(): bool
     {
         return $this->status === self::STATUS_ACTIVE;

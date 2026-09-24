@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../config/app_config.dart';
 import '../local_db/app_database.dart';
+import '../pos/application/document_numbers.dart';
 import '../pos/domain/pricing_service.dart';
 import '../pos/table_session_orders.dart';
 import '../local_db/local_ids.dart';
@@ -97,7 +98,36 @@ class OrdersRepository {
     apiPayload['payment_status'] = 'unpaid';
     apiPayload['offline_sale'] = true;
 
-    await _db.transaction(() async {
+    final savedLocalId = await _db.transaction(() async {
+      final replay =
+          await (_db.select(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(workspaceId) &
+                    t.clientReference.equals(key),
+              ))
+              .getSingleOrNull();
+      if (replay != null) return replay.localId;
+
+      final openedAt = table == null
+          ? null
+          : parseOpenedAt(_tablePayload(table)['opened_at']);
+      final active = await _oldestActiveTableOrder(
+        workspaceId: workspaceId,
+        tableLocalId: resolvedLocalId,
+        tableServerId: table?.serverId,
+        sessionLocalId: sessionLocalId ?? '',
+        openedAt: openedAt,
+      );
+      if (active != null) {
+        await _appendItemsToActiveOrder(
+          order: active,
+          deviceId: deviceId.trim(),
+          normalized: normalized,
+          notes: notes,
+        );
+        return active.localId;
+      }
+
       await _db
           .into(_db.localOrders)
           .insert(
@@ -183,12 +213,13 @@ class OrdersRepository {
         tableId: resolvedServerId,
         now: now,
       );
+      return key;
     });
 
     final order = await (_db.select(
       _db.localOrders,
-    )..where((t) => t.localId.equals(key))).getSingle();
-    return _orderToDisplay(order, await _itemsFor(key));
+    )..where((t) => t.localId.equals(savedLocalId))).getSingle();
+    return _orderToDisplay(order, await _itemsFor(savedLocalId));
   }
 
   /// Cashier → select table → Create Order.
@@ -809,7 +840,9 @@ class OrdersRepository {
     final clientRef = '$invoiceLocalId';
     final now = DateTime.now();
     final method = (paymentMethod ?? 'cash').trim();
-    final invoiceNumber = 'LOCAL-$invoiceLocalId';
+    final invoiceNumber = await DocumentNumberService(
+      _db,
+    ).nextInvoiceNumberForWorkspace(workspaceId: workspaceId);
     final invoicePayload = {
       'local_id': invoiceLocalId,
       'invoice_number': invoiceNumber,
@@ -842,6 +875,7 @@ class OrdersRepository {
               workspaceId: workspaceId,
               deviceId: deviceId.trim(),
               invoiceNumber: Value(invoiceNumber),
+              localInvoiceNumber: Value(invoiceNumber),
               totalAmount: Value(order.totalAmount),
               syncStatus: const Value('pending'),
               payloadJson: Value(jsonEncode(invoicePayload)),
@@ -886,6 +920,8 @@ class OrdersRepository {
           'invoice_local_id': invoiceLocalId,
           'order_local_id': orderLocalId,
           'order_server_id': order.serverId,
+          'local_invoice_number': invoiceNumber,
+          'order_type': order.orderType,
           'payment_method': method,
         },
         clientReference: clientRef,
@@ -908,6 +944,215 @@ class OrdersRepository {
               t.orderLocalId.equals(orderLocalId) & t.isRemoved.equals(false),
         ))
         .get();
+  }
+
+  /// The sitting's unpaid order. Closed, completed, cancelled, and paid
+  /// tickets are not active, so the next add starts a new order.
+  Future<LocalOrder?> _oldestActiveTableOrder({
+    required int workspaceId,
+    required String tableLocalId,
+    required int? tableServerId,
+    required String sessionLocalId,
+    required DateTime? openedAt,
+  }) async {
+    final rows =
+        await (_db.select(_db.localOrders)
+              ..where((t) {
+                var match = t.tableLocalId.equals(tableLocalId);
+                if (tableServerId != null && tableServerId > 0) {
+                  match = match | t.tableServerId.equals(tableServerId);
+                }
+                return t.workspaceId.equals(workspaceId) &
+                    t.orderType.equals('table') &
+                    t.posStatus.isNotValue('cancelled') &
+                    t.posStatus.isNotValue('completed') &
+                    t.paymentStatus.isNotValue('paid') &
+                    match;
+              })
+              ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+            .get();
+    for (final row in rows) {
+      if (isOrderInOpenTableSession(
+        posStatus: row.posStatus,
+        paymentStatus: row.paymentStatus,
+        createdAt: row.createdAt,
+        openedAt: openedAt,
+        completedAt: row.completedAt,
+        orderSessionLocalId: row.sessionLocalId,
+        currentSessionLocalId: sessionLocalId,
+      )) {
+        return row;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _appendItemsToActiveOrder({
+    required LocalOrder order,
+    required String deviceId,
+    required List<Map<String, dynamic>> normalized,
+    String? notes,
+  }) async {
+    final now = DateTime.now();
+    for (final item in normalized) {
+      await _db.into(_db.localOrderItems).insert(
+            LocalOrderItemsCompanion.insert(
+              localId: '${item['local_id']}',
+              workspaceId: order.workspaceId,
+              orderLocalId: order.localId,
+              productServerId: Value(asInt(item['pos_menu_item_id'])),
+              productLocalId: Value(
+                await _db.existingFk(
+                  'local_products',
+                  'local_id',
+                  _productLocalIdHint(order.workspaceId, item),
+                ),
+              ),
+              name: '${item['name'] ?? item['product_name'] ?? 'صنف'}',
+              quantity: asIntOr(item['quantity']),
+              unitPrice: Money.toCents(item['unit_price']),
+              discountAmount: Value(Money.toCents(item['discount_amount'])),
+              totalAmount: Money.toCents(
+                item['total_amount'] ??
+                    (asIntOr(item['quantity']) * asDoubleOr(item['unit_price'])),
+              ),
+              updatedAt: now,
+            ),
+          );
+    }
+    await _recordSaleMovements(
+      workspaceId: order.workspaceId,
+      deviceId: deviceId,
+      orderLocalId: order.localId,
+      items: normalized,
+    );
+    final all = await _itemsFor(order.localId);
+    final subtotal = all.fold<int>(0, (sum, item) => sum + item.totalAmount);
+    final note = (notes ?? '').trim();
+    await (_db.update(_db.localOrders)..where(
+          (t) => t.localId.equals(order.localId),
+        ))
+        .write(
+          LocalOrdersCompanion(
+            notes: note.isEmpty ? const Value.absent() : Value(note),
+            subtotal: Value(subtotal),
+            totalAmount: Value(subtotal),
+            syncStatus: order.syncStatus == 'syncing'
+                ? const Value.absent()
+                : const Value('pending'),
+            lastError: const Value(null),
+            updatedAt: Value(now),
+          ),
+        );
+    final payloadItems = [
+      for (final item in all)
+        {
+          'local_id': item.localId,
+          'pos_menu_item_id': item.productServerId,
+          'product_local_id': item.productLocalId,
+          'name': item.name,
+          'product_name': item.name,
+          'quantity': item.quantity,
+          'unit_price': Money.fromCents(item.unitPrice),
+          'total_amount': Money.fromCents(item.totalAmount),
+        },
+    ];
+    final apiPayload = _apiCreatePayload(
+      orderType: 'table',
+      tableId: order.tableServerId,
+      clientReference: order.clientReference,
+      notes: note.isEmpty ? order.notes : note,
+      items: payloadItems,
+    );
+    apiPayload['table_local_id'] = order.tableLocalId;
+    if ((order.sessionLocalId ?? '').trim().isNotEmpty) {
+      apiPayload['session_local_id'] = order.sessionLocalId;
+    }
+    apiPayload['pos_status'] = order.posStatus;
+    apiPayload['payment_status'] = 'unpaid';
+    apiPayload['offline_sale'] = true;
+    final updatedCreate = await _queue.updateOpenPayload(
+      workspaceId: order.workspaceId,
+      entityType: 'order',
+      entityId: order.localId,
+      operation: 'create',
+      payload: apiPayload,
+    );
+    if (!updatedCreate) {
+      await _enqueueItemDelta(
+        order: order,
+        deviceId: deviceId,
+        items: normalized,
+      );
+    }
+    final tableId = order.tableServerId;
+    if (tableId != null && tableId > 0) {
+      await _writeTableSessionSnapshot(
+        workspaceId: order.workspaceId,
+        tableId: tableId,
+        now: now,
+      );
+    }
+  }
+
+  /// Lines added after the order already reached Laravel, or while its
+  /// create request is in flight. One open update is extended; a retry
+  /// keeps the same operation id.
+  Future<void> _enqueueItemDelta({
+    required LocalOrder order,
+    required String deviceId,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final existing = await _queue.findOpenOp(
+      workspaceId: order.workspaceId,
+      entityType: 'order',
+      entityId: order.localId,
+      operation: 'update',
+    );
+    if (existing != null && existing.status != 'syncing') {
+      final raw = jsonDecode(existing.payloadJson);
+      final payload = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : <String, dynamic>{};
+      final current = payload['items'];
+      final next = current is List
+          ? [for (final item in current) item]
+          : <dynamic>[];
+      next.addAll(items);
+      payload['items'] = next;
+      payload['client_reference'] = order.clientReference;
+      final serverId = order.serverId;
+      if (serverId != null && serverId > 0) {
+        payload['server_order_id'] = serverId;
+        payload['order_server_id'] = serverId;
+      }
+      await _queue.updateOpenPayload(
+        workspaceId: order.workspaceId,
+        entityType: 'order',
+        entityId: order.localId,
+        operation: 'update',
+        payload: payload,
+      );
+      return;
+    }
+    final serverId = order.serverId;
+    await _queue.enqueue(
+      workspaceId: order.workspaceId,
+      deviceId: deviceId,
+      entityType: 'order',
+      entityId: order.localId,
+      operation: 'update',
+      payload: {
+        'items': items,
+        'client_reference': order.clientReference,
+        'order_type': 'table',
+        if (serverId != null && serverId > 0) ...{
+          'server_order_id': serverId,
+          'order_server_id': serverId,
+        },
+      },
+      clientReference: order.clientReference,
+    );
   }
 
   List<Map<String, dynamic>> _normalizeItems(List<Map<String, dynamic>> items) {

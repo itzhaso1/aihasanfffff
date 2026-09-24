@@ -44,9 +44,9 @@ class EmailInboxHubTest extends TestCase
                 'name' => 'Support Mail',
                 'email' => 'support@workspace-a.test',
                 'password' => 'secret',
-                'imap_host' => 'imap.workspace-a.test',
+                'imap_host' => 'example.com',
                 'imap_port' => 993,
-                'smtp_host' => 'smtp.workspace-a.test',
+                'smtp_host' => 'example.com',
                 'smtp_port' => 587,
                 'brand_color' => '#06C2A4',
                 'aliases' => "Support\nSales",
@@ -86,10 +86,17 @@ class EmailInboxHubTest extends TestCase
         ]);
 
         $this->mock(WorkspaceEmailSender::class, function ($mock): void {
-            $mock->shouldReceive('send')->once()->andReturn(new EmailLog([
-                'provider_message_id' => 'test-msg-1',
-                'status' => 'sent',
-            ]));
+            $mock->shouldReceive('send')->once()->andReturnUsing(function (EmailMessage $message): EmailLog {
+                $message->forceFill([
+                    'delivery_status' => 'sent',
+                    'delivered_at' => now(),
+                ])->save();
+
+                return new EmailLog([
+                    'provider_message_id' => 'test-msg-1',
+                    'status' => 'sent',
+                ]);
+            });
         });
 
         $this->actingAs($user)
@@ -148,10 +155,17 @@ class EmailInboxHubTest extends TestCase
         ]);
 
         $this->mock(WorkspaceEmailSender::class, function ($mock): void {
-            $mock->shouldReceive('send')->once()->andReturn(new EmailLog([
-                'provider_message_id' => 'test-msg-1',
-                'status' => 'sent',
-            ]));
+            $mock->shouldReceive('send')->once()->andReturnUsing(function (EmailMessage $message): EmailLog {
+                $message->forceFill([
+                    'delivery_status' => 'sent',
+                    'delivered_at' => now(),
+                ])->save();
+
+                return new EmailLog([
+                    'provider_message_id' => 'test-msg-1',
+                    'status' => 'sent',
+                ]);
+            });
         });
 
         $this->actingAs($user)
@@ -201,9 +215,9 @@ class EmailInboxHubTest extends TestCase
                 'name' => 'Updated Account',
                 'email' => 'new@company.test',
                 'password' => 'new-password',
-                'imap_host' => 'imap.new.test',
+                'imap_host' => 'example.com',
                 'imap_port' => 995,
-                'smtp_host' => 'smtp.new.test',
+                'smtp_host' => 'example.com',
                 'smtp_port' => 465,
                 'brand_color' => '#112233',
                 'aliases' => "Support Team\nSales Team",
@@ -214,9 +228,9 @@ class EmailInboxHubTest extends TestCase
         $account->refresh();
         $this->assertSame('Updated Account', $account->name);
         $this->assertSame('new@company.test', $account->email);
-        $this->assertSame('imap.new.test', $account->imap_host);
+        $this->assertSame('example.com', $account->imap_host);
         $this->assertSame(995, $account->imap_port);
-        $this->assertSame('smtp.new.test', $account->smtp_host);
+        $this->assertSame('example.com', $account->smtp_host);
         $this->assertSame(465, $account->smtp_port);
         $this->assertSame('#112233', $account->brand_color);
         $this->assertSame(['Support Team', 'Sales Team'], $account->aliases);
@@ -309,7 +323,7 @@ class EmailInboxHubTest extends TestCase
                 'body' => 'Body',
             ])
             ->assertRedirect(route('workspace.emails.compose', ['account_id' => $account->id]))
-            ->assertSessionHas('error', 'تعذر إرسال الرسالة حاليًا. يرجى المحاولة لاحقًا.');
+            ->assertSessionHas('error', 'تعذر إرسال الرسالة. تحقق من إعدادات SMTP.');
 
         $this->assertDatabaseHas('email_messages', [
             'workspace_id' => $workspace->id,

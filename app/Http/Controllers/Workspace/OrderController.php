@@ -26,6 +26,7 @@ class OrderController extends Controller
         $this->authorize('viewAny', Order::class);
 
         $orders = Order::query()
+            ->where('source', '!=', 'commerce')
             ->with('customer')
             ->withCount('items')
             ->when($request->string('search')->toString(), function ($query, $search): void {

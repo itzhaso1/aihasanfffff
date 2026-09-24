@@ -29,6 +29,7 @@ final class InvoiceIssueService
         private readonly EInvoiceXmlGenerator $xmlGenerator,
         private readonly EInvoiceSecurityService $securityService,
         private readonly EInvoiceQrService $qrService,
+        private readonly EInvoiceXmlValidationService $xmlValidation,
     ) {}
 
     public function prepareFromSnapshot(IssuedDocumentSnapshot $snapshot): InvoiceIssueResult
@@ -79,6 +80,9 @@ final class InvoiceIssueService
                 qrSkipReason: 'xml_unavailable',
             );
         }
+
+        $validation = $this->xmlValidation->assessXml($xml->xml, 'issue');
+        $record = $this->xmlValidation->persistIssuedValidation($record, $validation);
 
         $securityGenerated = false;
         $securitySkipReason = null;

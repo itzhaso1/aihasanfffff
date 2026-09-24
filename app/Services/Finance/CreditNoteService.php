@@ -10,6 +10,7 @@ use App\Models\Finance\FinanceJournalEntry;
 use App\Models\Finance\FinanceSetting;
 use App\Models\Workspace;
 use App\Services\EInvoicing\InvoiceIssueService;
+use App\Services\EInvoicing\ZatcaRequiredIssueGate;
 use App\Services\Finance\Tax\TaxCalculationResult;
 use App\Services\Finance\Tax\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +27,7 @@ class CreditNoteService
         private readonly FinancialPeriodGuardService $financialPeriodGuardService,
         private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
         private readonly InvoiceIssueService $invoiceIssueService,
+        private readonly ZatcaRequiredIssueGate $zatcaRequiredIssueGate,
     ) {}
 
     /**
@@ -153,20 +155,32 @@ class CreditNoteService
                 context: 'إصدار إشعار مالي'
             );
 
-            $this->postNoteEntry($locked, $invoice, $actorUserId);
-
             $locked->update([
                 'status' => FinanceCreditNote::STATUS_ISSUED,
                 'issued_at' => now(),
                 'issued_by' => $actorUserId,
             ]);
 
-            $this->applyToInvoice($invoice, $locked);
+            $issuedForSnapshot = $locked->fresh(['items', 'invoice', 'customer']);
+            $snapshot = $this->issuedSnapshotBuilder->captureCreditNote($issuedForSnapshot);
+            $this->zatcaRequiredIssueGate->assertIssuedSnapshot(
+                $snapshot,
+                $this->zatcaRequiredIssueGate->isRequiredForCreditNoteParent($invoice),
+            );
 
-            $issued = $locked->fresh(['items', 'invoice', 'customer']);
-            $this->connectIssuedNote($issued);
+            $this->postNoteEntry($issuedForSnapshot, $invoice, $actorUserId);
 
-            return $issued;
+            $this->applyToInvoice($invoice, $issuedForSnapshot);
+
+            $pipeline = $this->invoiceIssueService->prepareFromSnapshot($snapshot);
+            $this->zatcaRequiredIssueGate->assertMandatoryIssuePipeline(
+                $pipeline,
+                $snapshot,
+                $this->zatcaRequiredIssueGate->isRequiredForCreditNoteParent($invoice),
+                creditNote: $issuedForSnapshot,
+            );
+
+            return $issuedForSnapshot;
         });
     }
 

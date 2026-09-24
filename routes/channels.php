@@ -6,7 +6,7 @@ use App\Models\Workspace;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('workspace.{workspaceId}.conversations', function (User $user, int $workspaceId): bool {
-    return Workspace::query()
+    return Workspace::withoutGlobalScopes()
         ->whereKey($workspaceId)
         ->whereHas('users', function ($query) use ($user): void {
             $query->where('users.id', $user->id)->where('workspace_users.status', 'active');
@@ -19,7 +19,7 @@ Broadcast::channel('workspace.{workspaceId}.conversation.{conversationId}', func
     int $workspaceId,
     int $conversationId,
 ): bool {
-    $member = Workspace::query()
+    $member = Workspace::withoutGlobalScopes()
         ->whereKey($workspaceId)
         ->whereHas('users', function ($query) use ($user): void {
             $query->where('users.id', $user->id)->where('workspace_users.status', 'active');
@@ -30,14 +30,15 @@ Broadcast::channel('workspace.{workspaceId}.conversation.{conversationId}', func
         return false;
     }
 
-    return Conversation::withoutGlobalScopes()
+    $conversation = Conversation::withoutGlobalScopes()
         ->whereKey($conversationId)
-        ->where('workspace_id', $workspaceId)
-        ->exists();
+        ->first(['id', 'workspace_id']);
+
+    return $conversation !== null && (int) $conversation->workspace_id === (int) $workspaceId;
 });
 
 Broadcast::channel('workspace.{workspaceId}.pos', function (User $user, int $workspaceId): bool {
-    return Workspace::query()
+    return Workspace::withoutGlobalScopes()
         ->whereKey($workspaceId)
         ->whereHas('users', function ($query) use ($user): void {
             $query->where('users.id', $user->id)->where('workspace_users.status', 'active');

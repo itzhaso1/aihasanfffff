@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
@@ -442,16 +443,67 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   }
 }
 
-class CopilotScreen extends ConsumerStatefulWidget {
-  const CopilotScreen({super.key});
-  @override
-  ConsumerState<CopilotScreen> createState() => _CopilotScreenState();
+class _AssistantMessage {
+  const _AssistantMessage({required this.isUser, required this.text, this.response});
+
+  final bool isUser;
+  final String text;
+  final FinanceAssistantResponse? response;
 }
 
-class _CopilotScreenState extends ConsumerState<CopilotScreen> {
+class AssistantScreen extends ConsumerStatefulWidget {
+  const AssistantScreen({super.key, this.initialConversationId});
+
+  final int? initialConversationId;
+
+  @override
+  ConsumerState<AssistantScreen> createState() => _AssistantScreenState();
+}
+
+typedef CopilotScreen = AssistantScreen;
+
+class _AssistantScreenState extends ConsumerState<AssistantScreen> {
+  static const _quickPrompts = [
+    'مبيعات هذا الشهر',
+    'صافي الربح',
+    'مصاريف هذا الشهر',
+    'الرواتب',
+    'المبالغ المستحقة للموردين',
+    'قارن الشهر الماضي',
+    'ملخص الوضع المالي',
+  ];
+
   final _question = TextEditingController();
-  Map<String, dynamic>? _answer;
+  final _messages = <_AssistantMessage>[];
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _busy = false;
+  bool _loadingConversation = false;
+  bool _loadingHistory = false;
+  String? _error;
+  int? _conversationId;
+  List<FinanceAssistantConversation> _conversations = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _conversationId = widget.initialConversationId;
+    if (_conversationId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadConversation(_conversationId!));
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AssistantScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialConversationId == oldWidget.initialConversationId) return;
+    if (widget.initialConversationId == null) {
+      _startNewConversation(silent: true);
+      return;
+    }
+    if (widget.initialConversationId != _conversationId) {
+      _loadConversation(widget.initialConversationId!);
+    }
+  }
 
   @override
   void dispose() {
@@ -459,49 +511,363 @@ class _CopilotScreenState extends ConsumerState<CopilotScreen> {
     super.dispose();
   }
 
-  Future<void> _ask() async {
-    if (_question.text.trim().isEmpty) return;
-    setState(() => _busy = true);
+  Future<void> _openHistory() async {
+    _scaffoldKey.currentState?.openEndDrawer();
+    await _loadConversations();
+  }
+
+  Future<void> _loadConversations() async {
+    setState(() => _loadingHistory = true);
     try {
-      final answer = await ref.read(financeApiProvider).askCopilot(_question.text.trim());
+      final page = await ref.read(financeApiProvider).assistantConversations();
       if (!mounted) return;
-      setState(() => _answer = answer);
+      setState(() => _conversations = page.items);
     } catch (e) {
-      if (mounted) showApiError(context, e);
+      if (!mounted) return;
+      setState(() => _error = e is ApiException ? e.message : e.toString());
+    } finally {
+      if (mounted) setState(() => _loadingHistory = false);
+    }
+  }
+
+  Future<void> _loadConversation(int id) async {
+    setState(() {
+      _loadingConversation = true;
+      _error = null;
+      _messages.clear();
+    });
+    try {
+      final detail = await ref.read(financeApiProvider).assistantConversation(id);
+      if (!mounted) return;
+      setState(() {
+        _conversationId = detail.id;
+        _messages.addAll(
+          detail.messages.map((message) => _AssistantMessage(isUser: message.isUser, text: message.body)),
+        );
+      });
+      if (mounted) context.go('/assistant/${detail.id}');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _conversationId = null;
+        _error = e is ApiException ? e.message : e.toString();
+      });
+      if (mounted) context.go('/assistant');
+    } finally {
+      if (mounted) setState(() => _loadingConversation = false);
+    }
+  }
+
+  void _startNewConversation({bool silent = false}) {
+    setState(() {
+      _conversationId = null;
+      _messages.clear();
+      if (!silent) _error = null;
+    });
+    _scaffoldKey.currentState?.closeEndDrawer();
+    if (!silent && mounted) context.go('/assistant');
+  }
+
+  Future<void> _deleteConversation(int id) async {
+    try {
+      await ref.read(financeApiProvider).deleteAssistantConversation(id);
+      if (!mounted) return;
+      setState(() => _conversations = _conversations.where((item) => item.id != id).toList());
+      if (_conversationId == id) _startNewConversation();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e is ApiException ? e.message : e.toString());
+    }
+  }
+
+  Future<void> _ask([String? preset]) async {
+    final text = (preset ?? _question.text).trim();
+    if (text.isEmpty || _busy || _loadingConversation) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _messages.add(_AssistantMessage(isUser: true, text: text));
+      if (preset == null) _question.clear();
+    });
+    final idempotencyKey = const Uuid().v4();
+    try {
+      final response = await ref.read(financeApiProvider).askAssistant(
+            question: text,
+            conversationId: _conversationId,
+            idempotencyKey: idempotencyKey,
+          );
+      if (!mounted) return;
+      final nextConversationId = response.conversationId ?? _conversationId;
+      setState(() {
+        _conversationId = nextConversationId;
+        _messages.add(_AssistantMessage(isUser: false, text: response.answer, response: response));
+      });
+      if (nextConversationId != null && widget.initialConversationId != nextConversationId) {
+        context.go('/assistant/$nextConversationId');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _messages.removeLast();
+        _error = e is ApiException ? e.message : e.toString();
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    return PermissionGate(
-      allowed: ref.watch(authControllerProvider).permissions.financeView,
-      child: FinanceScaffold(
-        title: l.copilot,
-        showBack: true,
-        body: ListView(
-          padding: const EdgeInsets.all(16),
+  Widget _historyDrawer(AppLocalizations l, ThemeData theme) {
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(l.copilotHint),
-            const SizedBox(height: 12),
-            TextField(controller: _question, maxLines: 3, decoration: InputDecoration(labelText: l.askQuestion)),
-            const SizedBox(height: 8),
-            FilledButton(onPressed: _busy ? null : _ask, child: Text(l.askCopilot)),
-            if (_answer != null) ...[
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text('${_answer!['answer'] ?? ''}'),
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(child: Text(l.conversationHistory, style: theme.textTheme.titleMedium)),
+                  IconButton(
+                    tooltip: l.newConversation,
+                    onPressed: () => _startNewConversation(),
+                    icon: const Icon(Icons.add_comment_outlined),
+                  ),
+                ],
               ),
-            ],
+            ),
+            if (_loadingHistory) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: _conversations.isEmpty && !_loadingHistory
+                  ? Center(child: Text(l.noConversations, style: theme.textTheme.bodyMedium))
+                  : ListView.builder(
+                      itemCount: _conversations.length,
+                      itemBuilder: (context, index) {
+                        final conversation = _conversations[index];
+                        final selected = conversation.id == _conversationId;
+                        return Dismissible(
+                          key: ValueKey(conversation.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: AlignmentDirectional.centerEnd,
+                            padding: const EdgeInsetsDirectional.only(end: 20),
+                            color: theme.colorScheme.error,
+                            child: Icon(Icons.delete_outline, color: theme.colorScheme.onError),
+                          ),
+                          confirmDismiss: (_) async {
+                            return await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: Text(l.deleteConversation),
+                                    content: Text(l.confirmDestructive),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+                                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete)),
+                                    ],
+                                  ),
+                                ) ??
+                                false;
+                          },
+                          onDismissed: (_) => _deleteConversation(conversation.id),
+                          child: ListTile(
+                            selected: selected,
+                            title: Text(conversation.title?.trim().isNotEmpty == true ? conversation.title! : l.newConversation),
+                            subtitle: conversation.lastMessageAt != null ? Text(_formatWhen(conversation.lastMessageAt!)) : null,
+                            onTap: () {
+                              _scaffoldKey.currentState?.closeEndDrawer();
+                              _loadConversation(conversation.id);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  String _formatWhen(DateTime value) {
+    final local = value.toLocal();
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    ref.listen(authControllerProvider, (previous, next) {
+      if (previous?.workspace?.id == next.workspace?.id) return;
+      setState(() {
+        _conversationId = null;
+        _messages.clear();
+        _conversations = const [];
+        _error = null;
+      });
+      if (mounted) context.go('/assistant');
+    });
+    return PermissionGate(
+      allowed: ref.watch(authControllerProvider).permissions.assistantView,
+      child: FinanceScaffold(
+        scaffoldKey: _scaffoldKey,
+        endDrawer: _historyDrawer(l, theme),
+        title: l.assistant,
+        showBack: true,
+        actions: [
+          IconButton(
+            tooltip: l.newConversation,
+            onPressed: _busy || _loadingConversation ? null : () => _startNewConversation(),
+            icon: const Icon(Icons.add_comment_outlined),
+          ),
+          IconButton(
+            tooltip: l.conversationHistory,
+            onPressed: _busy ? null : _openHistory,
+            icon: const Icon(Icons.history),
+          ),
+        ],
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Text(l.assistantHint, style: theme.textTheme.bodyMedium),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final prompt in _quickPrompts)
+                        ActionChip(label: Text(prompt), onPressed: _busy || _loadingConversation ? null : () => _ask(prompt)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (_loadingConversation)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_messages.isEmpty && !_busy)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          l.assistantEmptyState,
+                          style: theme.textTheme.titleMedium,
+                        ),
+                      ),
+                    ),
+                  for (final message in _messages) ...[
+                    Align(
+                      alignment: message.isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.88),
+                        child: Card(
+                          color: message.isUser ? theme.colorScheme.primaryContainer : null,
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(message.text),
+                                if (message.response != null) ...[
+                                  const SizedBox(height: 12),
+                                  for (final fact in message.response!.facts)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        dense: true,
+                                        title: Text(_factLabel(fact.tool)),
+                                        subtitle: fact.displayValue != null ? Text(fact.displayValue!) : null,
+                                        trailing: fact.available
+                                            ? null
+                                            : Text(
+                                                fact.reason == 'period_not_supported'
+                                                    ? l.periodNotSupported
+                                                    : l.unavailable,
+                                                style: theme.textTheme.bodySmall,
+                                              ),
+                                      ),
+                                    ),
+                                  if (message.response!.period?.from != null)
+                                    Text(
+                                      '${message.response!.period!.from} → ${message.response!.period!.to}',
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (_busy)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  if (_error != null)
+                    Card(
+                      color: theme.colorScheme.errorContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(_error!, style: TextStyle(color: theme.colorScheme.onErrorContainer)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _question,
+                        minLines: 1,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          hintText: l.askQuestion,
+                          border: const OutlineInputBorder(),
+                        ),
+                        onSubmitted: _busy || _loadingConversation ? null : (_) => _ask(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      onPressed: _busy || _loadingConversation ? null : () => _ask(),
+                      icon: const Icon(Icons.send),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _factLabel(String tool) {
+    return switch (tool) {
+      'sales.today' || 'sales.period' => 'الإيرادات',
+      'expenses.period' => 'المصاريف',
+      'profit.net' => 'صافي الربح',
+      'profit.gross' => 'إجمالي الربح',
+      'profit.cogs' => 'تكلفة البضاعة',
+      'payroll.period' || 'payroll.total' => 'الرواتب',
+      'payroll.employees_count' => 'موظفو الشركة',
+      'suppliers.payable' => 'المستحق للموردين',
+      'inventory.value' => 'قيمة المخزون',
+      'finance.summary' => 'ملخص مالي',
+      _ => tool,
+    };
   }
 }
 

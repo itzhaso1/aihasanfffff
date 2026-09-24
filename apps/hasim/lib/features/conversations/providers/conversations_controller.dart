@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/local_db/conversation_reconciler.dart';
@@ -9,6 +10,8 @@ import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/storage/inbox_scope.dart';
 import 'package:hasim/core/storage/inbox_session.dart';
 import 'package:hasim/core/utils/idempotency.dart';
+import 'package:hasim/features/conversations/data/chat_attachment_policy.dart';
+import 'package:hasim/features/conversations/data/conversation_repository.dart';
 import 'package:hasim/realtime/realtime_service.dart';
 
 class ConversationsState {
@@ -21,6 +24,7 @@ class ConversationsState {
     this.channel,
     this.search = '',
     this.error,
+    this.mutatingConversationId,
   });
 
   final bool loading;
@@ -31,6 +35,7 @@ class ConversationsState {
   final String? channel;
   final String search;
   final String? error;
+  final int? mutatingConversationId;
 
   ConversationsState copyWith({
     bool? loading,
@@ -43,6 +48,8 @@ class ConversationsState {
     String? search,
     String? error,
     bool clearCursor = false,
+    int? mutatingConversationId,
+    bool clearMutating = false,
   }) {
     return ConversationsState(
       loading: loading ?? this.loading,
@@ -53,6 +60,8 @@ class ConversationsState {
       channel: clearChannel ? channel : (channel ?? this.channel),
       search: search ?? this.search,
       error: error,
+      mutatingConversationId:
+          clearMutating ? null : (mutatingConversationId ?? this.mutatingConversationId),
     );
   }
 }
@@ -108,6 +117,16 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   Future<void> setChannel(String? channel) async {
     state = state.copyWith(channel: channel, clearChannel: true);
     await refresh();
+  }
+
+  /// يصفّر العداد في القائمة فور فتح المحادثة (قبل/بعد markRead من الخادم).
+  void clearUnreadInList(int conversationId) {
+    final items = state.items;
+    final index = items.indexWhere((c) => c.id == conversationId);
+    if (index < 0 || items[index].unreadCount == 0) return;
+    final next = [...items];
+    next[index] = next[index].copyWith(unreadCount: 0);
+    state = state.copyWith(items: next);
   }
 
   Future<void> setSearch(String search) async {
@@ -211,6 +230,67 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     if (!mounted) return false;
     return inboxScopeIsCurrent(_ref, scope);
   }
+
+  bool _matchesCurrentFilter(ConversationModel conversation) {
+    if (state.filter == 'archived') return conversation.archived;
+    if (conversation.archived) return false;
+    if (state.filter == 'unread') return conversation.unreadCount > 0;
+    return true;
+  }
+
+  Future<String?> setArchived(int conversationId, {required bool archived}) {
+    return _mutateConversation(
+      conversationId,
+      apply: (repo, workspaceId) => repo.archive(
+        conversationId,
+        archived: archived,
+        workspaceId: workspaceId,
+      ),
+      update: (conversation) => conversation.copyWith(archived: archived),
+    );
+  }
+
+  Future<String?> setMuted(int conversationId, {required bool muted}) {
+    return _mutateConversation(
+      conversationId,
+      apply: (repo, workspaceId) => repo.mute(
+        conversationId,
+        muted: muted,
+        workspaceId: workspaceId,
+      ),
+      update: (conversation) => conversation.copyWith(muted: muted),
+    );
+  }
+
+  Future<String?> _mutateConversation(
+    int conversationId, {
+    required Future<void> Function(ConversationRepository repo, int? workspaceId) apply,
+    required ConversationModel Function(ConversationModel conversation) update,
+  }) async {
+    if (state.mutatingConversationId != null) return null;
+    final scope = captureInboxScope(_ref);
+    state = state.copyWith(mutatingConversationId: conversationId, error: null);
+    try {
+      await apply(_ref.read(conversationRepositoryProvider), scope.workspaceId);
+      if (!_canCommit(scope)) return null;
+      final next = [
+        for (final item in state.items)
+          if (item.id == conversationId) update(item) else item,
+      ].where(_matchesCurrentFilter).toList();
+      state = state.copyWith(items: next, clearMutating: true);
+      bumpInboxLocalRevision(_ref);
+      unawaited(refresh(silent: true));
+      return null;
+    } on ApiException catch (e) {
+      if (!_canCommit(scope)) return e.message;
+      state = state.copyWith(clearMutating: true);
+      return e.message;
+    } catch (_) {
+      if (!_canCommit(scope)) return 'تعذر تحديث المحادثة.';
+      state = state.copyWith(clearMutating: true);
+      return 'تعذر تحديث المحادثة.';
+    }
+  }
 }
 
 final conversationsControllerProvider =
@@ -226,6 +306,7 @@ class ChatState {
     this.nextCursor,
     this.error,
     this.aiBusy = false,
+    this.mutating = false,
   });
 
   final bool loading;
@@ -236,6 +317,7 @@ class ChatState {
   final String? nextCursor;
   final String? error;
   final bool aiBusy;
+  final bool mutating;
 
   ChatState copyWith({
     bool? loading,
@@ -246,6 +328,7 @@ class ChatState {
     String? nextCursor,
     String? error,
     bool? aiBusy,
+    bool? mutating,
     bool clearCursor = false,
   }) {
     return ChatState(
@@ -257,6 +340,7 @@ class ChatState {
       nextCursor: clearCursor ? nextCursor : (nextCursor ?? this.nextCursor),
       error: error,
       aiBusy: aiBusy ?? this.aiBusy,
+      mutating: mutating ?? this.mutating,
     );
   }
 }
@@ -283,15 +367,15 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> _init() async {
     await _sub?.cancel();
     _sub = null;
-    state = const ChatState();
     final workspaceId = _boundWorkspaceId;
+    var cached = const <MessageModel>[];
     if (workspaceId != null) {
-      final cached = await _ref.read(conversationRepositoryProvider).cachedMessages(workspaceId, conversationId);
-      if (!mounted || _boundWorkspaceId != workspaceId) return;
-      if (cached.isNotEmpty) {
-        state = state.copyWith(messages: cached, loading: true);
-      }
+      cached = await _ref.read(conversationRepositoryProvider).cachedMessages(workspaceId, conversationId);
     }
+    if (!mounted || _boundWorkspaceId != workspaceId) return;
+    state = cached.isNotEmpty
+        ? ChatState(messages: cached, loading: true)
+        : const ChatState(loading: true);
     _realtime.watchConversation(conversationId);
     _sub = _realtime.messageCreated.listen((m) {
       if (m.conversationId != conversationId) return;
@@ -420,6 +504,10 @@ class ChatController extends StateNotifier<ChatState> {
 
   Future<void> retryFailed(MessageModel message) async {
     if (!message.localFailed || message.clientId == null) return;
+    if (message.localAttachmentPath != null) {
+      await _retryAttachment(message);
+      return;
+    }
     final clientId = message.clientId!;
     final updatedPending = state.messages.map((m) {
       if (m.clientId == clientId) return m.copyWith(localPending: true, localFailed: false);
@@ -441,9 +529,28 @@ class ChatController extends StateNotifier<ChatState> {
     state = state.copyWith(messages: after, sending: false);
   }
 
-  Future<MessageModel?> sendThenAttach(File file, {String caption = ''}) async {
+  /// Returns an error token for localization, or null on success.
+  Future<String?> sendAttachment(File file, {String caption = ''}) async {
+    final validation = ChatAttachmentPolicy.validateFile(file);
+    if (validation != null) return validation;
+    if (!await _hasNetwork()) return 'offline';
+    final sent = await sendThenAttach(
+      file,
+      caption: caption,
+      clientId: newIdempotencyKey(),
+    );
+    if (sent == null) return 'uploadFailed';
+    return null;
+  }
+
+  Future<MessageModel?> sendThenAttach(
+    File file, {
+    String caption = '',
+    String? clientId,
+  }) async {
     final text = caption.trim().isEmpty ? '📎' : caption.trim();
-    final clientId = newIdempotencyKey();
+    final key = clientId ?? newIdempotencyKey();
+    final path = file.path;
     final optimistic = MessageModel(
       id: -DateTime.now().millisecondsSinceEpoch,
       conversationId: conversationId,
@@ -452,46 +559,131 @@ class ChatController extends StateNotifier<ChatState> {
       content: text,
       createdAt: DateTime.now(),
       localPending: true,
-      clientId: clientId,
+      localUploading: false,
+      localAttachmentPath: path,
+      clientId: key,
     );
     final scope = captureInboxScope(_ref);
-    state = state.copyWith(messages: [...state.messages, optimistic], sending: true);
+    final existing = state.messages.any((m) => m.clientId == key);
+    state = state.copyWith(
+      messages: existing
+          ? state.messages.map((m) => m.clientId == key ? optimistic : m).toList()
+          : [...state.messages, optimistic],
+      sending: true,
+      error: null,
+    );
     try {
-      final saved = await _ref.read(conversationRepositoryProvider).sendMessageWithKey(
-            conversationId,
-            text,
-            clientId,
-          );
+      final repo = _ref.read(conversationRepositoryProvider);
+      final saved = await repo.sendMessageWithKey(conversationId, text, key);
       if (!_canCommit(scope)) return null;
-      final attachment = await _ref.read(conversationRepositoryProvider).uploadAttachment(saved.id, file);
+      _replaceLocalMessage(
+        key,
+        saved.copyWith(
+          localPending: true,
+          localUploading: true,
+          localFailed: false,
+          localAttachmentPath: path,
+          clientId: key,
+        ),
+      );
+      final attachment = await repo.uploadAttachment(saved.id, file);
       if (!_canCommit(scope)) return null;
       final withAttach = saved.copyWith(
         localPending: false,
-        clientId: clientId,
+        localUploading: false,
+        localFailed: false,
+        clearLocalAttachmentPath: true,
+        clientId: key,
         attachments: [...saved.attachments, attachment],
       );
-      final updated = state.messages.map((m) {
-        if (m.clientId == clientId) return withAttach;
-        return m;
-      }).toList();
-      state = state.copyWith(messages: updated, sending: false);
+      _replaceLocalMessage(key, withAttach);
+      state = state.copyWith(sending: false);
       final workspaceId = scope.workspaceId;
       if (workspaceId != null) {
-        await _ref.read(conversationRepositoryProvider).persistMessages(
-              workspaceId,
-              conversationId,
-              updated,
-            );
+        await repo.persistMessages(workspaceId, conversationId, state.messages);
       }
       return withAttach;
     } catch (_) {
       if (!_canCommit(scope)) return null;
-      final updated = state.messages.map((m) {
-        if (m.clientId == clientId) return m.copyWith(localPending: false, localFailed: true);
-        return m;
+      final failed = state.messages.map((m) {
+        if (m.clientId != key) return m;
+        return m.copyWith(
+          localPending: false,
+          localUploading: false,
+          localFailed: true,
+          localAttachmentPath: path,
+        );
       }).toList();
-      state = state.copyWith(messages: updated, sending: false, error: 'تعذر إرسال المرفق.');
+      state = state.copyWith(messages: failed, sending: false);
       return null;
+    }
+  }
+
+  Future<void> _retryAttachment(MessageModel message) async {
+    final path = message.localAttachmentPath;
+    final clientId = message.clientId;
+    if (path == null || clientId == null) return;
+    final file = File(path);
+    if (!file.existsSync()) {
+      state = state.copyWith(error: 'missing');
+      return;
+    }
+    if (!await _hasNetwork()) {
+      state = state.copyWith(error: 'offline');
+      return;
+    }
+    if (message.id > 0) {
+      final scope = captureInboxScope(_ref);
+      _replaceLocalMessage(
+        clientId,
+        message.copyWith(localPending: true, localUploading: true, localFailed: false),
+      );
+      state = state.copyWith(sending: true, error: null);
+      try {
+        final attachment = await _ref.read(conversationRepositoryProvider).uploadAttachment(message.id, file);
+        if (!_canCommit(scope)) return;
+        final done = message.copyWith(
+          localPending: false,
+          localUploading: false,
+          localFailed: false,
+          clearLocalAttachmentPath: true,
+          attachments: [...message.attachments, attachment],
+        );
+        _replaceLocalMessage(clientId, done);
+        state = state.copyWith(sending: false);
+        final workspaceId = scope.workspaceId;
+        if (workspaceId != null) {
+          await _ref.read(conversationRepositoryProvider).persistMessages(
+                workspaceId,
+                conversationId,
+                state.messages,
+              );
+        }
+      } catch (_) {
+        if (!_canCommit(scope)) return;
+        _replaceLocalMessage(
+          clientId,
+          message.copyWith(localPending: false, localUploading: false, localFailed: true),
+        );
+        state = state.copyWith(sending: false);
+      }
+      return;
+    }
+    await sendThenAttach(file, caption: message.content == '📎' ? '' : message.content, clientId: clientId);
+  }
+
+  void _replaceLocalMessage(String clientId, MessageModel next) {
+    state = state.copyWith(
+      messages: state.messages.map((m) => m.clientId == clientId ? next : m).toList(),
+    );
+  }
+
+  Future<bool> _hasNetwork() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      return results.any((r) => r != ConnectivityResult.none);
+    } catch (_) {
+      return true;
     }
   }
 
@@ -530,6 +722,57 @@ class ChatController extends StateNotifier<ChatState> {
       if (!_canCommit(scope)) return null;
       state = state.copyWith(aiBusy: false, error: 'تعذر تلخيص المحادثة.');
       return null;
+    }
+  }
+
+  Future<String?> setArchived({required bool archived}) {
+    return _mutateConversation(
+      apply: (repo, workspaceId) => repo.archive(
+        conversationId,
+        archived: archived,
+        workspaceId: workspaceId,
+      ),
+      update: (conversation) => conversation.copyWith(archived: archived),
+    );
+  }
+
+  Future<String?> setMuted({required bool muted}) {
+    return _mutateConversation(
+      apply: (repo, workspaceId) => repo.mute(
+        conversationId,
+        muted: muted,
+        workspaceId: workspaceId,
+      ),
+      update: (conversation) => conversation.copyWith(muted: muted),
+    );
+  }
+
+  Future<String?> _mutateConversation({
+    required Future<void> Function(ConversationRepository repo, int? workspaceId) apply,
+    required ConversationModel Function(ConversationModel conversation) update,
+  }) async {
+    if (state.mutating) return null;
+    final scope = captureInboxScope(_ref);
+    state = state.copyWith(mutating: true);
+    try {
+      await apply(_ref.read(conversationRepositoryProvider), scope.workspaceId);
+      if (!_canCommit(scope)) return null;
+      final conversation = state.conversation;
+      state = state.copyWith(
+        mutating: false,
+        conversation: conversation == null ? null : update(conversation),
+      );
+      bumpInboxLocalRevision(_ref);
+      unawaited(_ref.read(conversationsControllerProvider.notifier).refresh(silent: true));
+      return null;
+    } on ApiException catch (e) {
+      if (!_canCommit(scope)) return e.message;
+      state = state.copyWith(mutating: false);
+      return e.message;
+    } catch (_) {
+      if (!_canCommit(scope)) return 'تعذر تحديث المحادثة.';
+      state = state.copyWith(mutating: false);
+      return 'تعذر تحديث المحادثة.';
     }
   }
 

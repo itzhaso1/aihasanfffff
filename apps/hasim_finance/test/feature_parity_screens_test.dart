@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/features/catalog/catalog_screens.dart';
 import 'package:hasim_finance/features/dashboard/dashboard_screen.dart';
 import 'package:hasim_finance/features/hubs/hub_screens.dart';
+import 'package:hasim_finance/features/invoices/invoice_form_screen.dart';
 import 'package:hasim_finance/features/invoices/invoices_screens.dart';
 import 'package:hasim_finance/features/modules/module_screens.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
@@ -104,7 +105,7 @@ void main() {
   testWidgets('alerts and copilot screens render server content', (tester) async {
     await pumpScreen(tester, const AlertsScreen());
     expect(find.text('فواتير متأخرة'), findsOneWidget);
-    await pumpScreen(tester, const CopilotScreen());
+    await pumpScreen(tester, const AssistantScreen());
     expect(find.textContaining('المساعد'), findsWidgets);
   });
 
@@ -153,9 +154,41 @@ void main() {
     await pumpScreen(tester, const SettingsScreen());
     expect(find.text('شعار المنشأة'), findsOneWidget);
     expect(find.text('اختيار الشعار'), findsOneWidget);
+    await tester.tap(find.text('الضرائب'));
+    await tester.pump();
     expect(find.text('VAT 15'), findsOneWidget);
-    expect(find.text('صندوق المكتب'), findsOneWidget);
     expect(find.text('نسب الضريبة'), findsOneWidget);
+    await tester.tap(find.text('النظام'));
+    await tester.pump();
+    expect(find.text('صندوق المكتب'), findsOneWidget);
     expect(find.textContaining('نقدي'), findsWidgets);
+    await tester.tap(find.text('حفظ التغييرات'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('تم بنجاح'), findsWidgets);
+    await tester.tap(find.text('إعادة التعيين'));
+    await tester.pump();
+  });
+
+  testWidgets('settings uses section cards and compact nav', (tester) async {
+    await pumpScreen(tester, const SettingsScreen());
+    expect(find.text('أقسام الإعدادات'), findsOneWidget);
+    expect(find.text('بيانات الشركة'), findsOneWidget);
+    await tester.tap(find.text('اللغة والمظهر'));
+    await tester.pump();
+    expect(find.text('فاتح'), findsOneWidget);
+    expect(find.text('داكن'), findsOneWidget);
+    expect(find.text('العربية'), findsWidgets);
+
+    tester.view.physicalSize = const Size(800, 1024);
+    await tester.pump();
+    expect(find.text('أقسام الإعدادات'), findsOneWidget);
+
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pump();
+    expect(find.text('أقسام الإعدادات'), findsNothing);
+    await tester.tap(find.text('العنوان'));
+    await tester.pump();
+    expect(find.text('المدينة'), findsOneWidget);
   });
 }

@@ -5,11 +5,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/core/theme/app_theme.dart';
+import 'package:hasim/core/theme/hasim_layout.dart';
+import 'package:hasim/core/theme/hasim_tokens.dart';
+import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
+import 'package:hasim/core/widgets/hasim_card.dart';
+import 'package:hasim/core/widgets/hasim_form_field.dart';
+import 'package:hasim/core/widgets/hasim_settings_body.dart';
 import 'package:image_picker/image_picker.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
@@ -24,6 +33,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _confirm = TextEditingController();
   bool _saving = false;
   bool _changingPassword = false;
+  bool _obscureCurrent = true;
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
 
   @override
   void initState() {
@@ -106,58 +118,155 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authControllerProvider).user;
+
+    final compact = HasimLayout.isCompact(context);
+    final content = HasimSettingsBody(
+          mobileLayout: compact && !widget.embedded,
+          children: [
+            HasimCard(
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 44,
+                    backgroundColor: AppTheme.brand.withValues(alpha: 0.12),
+                    backgroundImage: user?.avatarUrl != null ? CachedNetworkImageProvider(user!.avatarUrl!) : null,
+                    child: user?.avatarUrl == null
+                        ? Text(
+                            (user?.name.isNotEmpty == true ? user!.name[0] : '?'),
+                            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: AppTheme.brand),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: _avatar,
+                    icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                    label: const Text('تغيير الصورة'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.brand,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            HasimCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  HasimFormField(
+                    controller: _name,
+                    label: 'الاسم',
+                    icon: Icons.person_outline_rounded,
+                  ),
+                  const SizedBox(height: 16),
+                  HasimFormField(
+                    controller: _email,
+                    label: 'البريد',
+                    icon: Icons.mail_outline_rounded,
+                    textDirection: TextDirection.ltr,
+                    textAlign: TextAlign.left,
+                  ),
+                  const SizedBox(height: 16),
+                  HasimFormField(
+                    controller: _phone,
+                    label: 'الجوال',
+                    icon: Icons.phone_outlined,
+                    textDirection: TextDirection.ltr,
+                    textAlign: TextAlign.left,
+                  ),
+                  const SizedBox(height: 20),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: SizedBox(
+                      width: 220,
+                      height: 46,
+                      child: FilledButton(
+                        onPressed: _saving ? null : _saveProfile,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.brand,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                        child: Text(_saving ? 'جارٍ الحفظ...' : 'حفظ'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            HasimCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'تغيير كلمة المرور',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: HasimTokens.inkColor(context),
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  HasimFormField(
+                    controller: _currentPassword,
+                    label: 'كلمة المرور الحالية',
+                    icon: Icons.lock_outline_rounded,
+                    obscureText: _obscureCurrent,
+                    onToggleObscure: () => setState(() => _obscureCurrent = !_obscureCurrent),
+                  ),
+                  const SizedBox(height: 16),
+                  HasimFormField(
+                    controller: _password,
+                    label: 'كلمة المرور الجديدة',
+                    icon: Icons.lock_reset_rounded,
+                    obscureText: _obscureNew,
+                    onToggleObscure: () => setState(() => _obscureNew = !_obscureNew),
+                  ),
+                  const SizedBox(height: 16),
+                  HasimFormField(
+                    controller: _confirm,
+                    label: 'تأكيد كلمة المرور',
+                    icon: Icons.verified_user_outlined,
+                    obscureText: _obscureConfirm,
+                    onToggleObscure: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  ),
+                  const SizedBox(height: 20),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: SizedBox(
+                      width: 220,
+                      height: 46,
+                      child: OutlinedButton(
+                        onPressed: _changingPassword ? null : _changePassword,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.brand,
+                          side: BorderSide(color: AppTheme.brand.withValues(alpha: 0.55)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: Text(_changingPassword ? 'جارٍ التحديث...' : 'تغيير كلمة المرور'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+    );
+
+    if (widget.embedded) {
+      return content;
+    }
+
+    if (compact) {
+      return HasimMobileScaffold(title: 'الملف الشخصي', body: content);
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('الملف الشخصي')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Center(
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 42,
-                  backgroundImage: user?.avatarUrl != null ? CachedNetworkImageProvider(user!.avatarUrl!) : null,
-                  child: user?.avatarUrl == null
-                      ? Text((user?.name.isNotEmpty == true ? user!.name[0] : '?'), style: const TextStyle(fontSize: 28))
-                      : null,
-                ),
-                TextButton.icon(onPressed: _avatar, icon: const Icon(Icons.camera_alt_outlined), label: const Text('تغيير الصورة')),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'الاسم')),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _email,
-            decoration: const InputDecoration(labelText: 'البريد'),
-            textDirection: TextDirection.ltr,
-            textAlign: TextAlign.left,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _phone,
-            decoration: const InputDecoration(labelText: 'الجوال'),
-            textDirection: TextDirection.ltr,
-            textAlign: TextAlign.left,
-          ),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: _saving ? null : _saveProfile, child: Text(_saving ? 'جارٍ الحفظ...' : 'حفظ')),
-          const Divider(height: 36),
-          Text('تغيير كلمة المرور', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 12),
-          TextField(controller: _currentPassword, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور الحالية')),
-          const SizedBox(height: 12),
-          TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة')),
-          const SizedBox(height: 12),
-          TextField(controller: _confirm, obscureText: true, decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور')),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: _changingPassword ? null : _changePassword,
-            child: Text(_changingPassword ? 'جارٍ التحديث...' : 'تغيير كلمة المرور'),
-          ),
-        ],
-      ),
+      backgroundColor: HasimTokens.pageBg(context),
+      body: content,
     );
   }
 }

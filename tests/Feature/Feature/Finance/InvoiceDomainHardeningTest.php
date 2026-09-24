@@ -5,6 +5,7 @@ namespace Tests\Feature\Feature\Finance;
 use App\Models\AuditLog;
 use App\Models\Customer;
 use App\Models\Finance\FinanceInvoice;
+use App\Models\Finance\FinanceInvoiceAttachment;
 use App\Models\Finance\FinanceInvoiceItem;
 use App\Models\Finance\FinanceJournalEntry;
 use App\Models\Finance\FinanceSetting;
@@ -16,6 +17,7 @@ use App\Models\Workspace;
 use App\Models\WorkspaceFeatureFlag;
 use App\Services\Finance\CreditNoteService;
 use App\Services\Finance\Tax\TaxCalculationService;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
@@ -137,6 +139,7 @@ class InvoiceDomainHardeningTest extends TestCase
     public function test_issued_invoice_rejects_forbidden_attachment_mutations(): void
     {
         Storage::fake('public');
+        Storage::fake('local');
         [$user, $workspace] = $this->createWorkspaceOwner('company');
         $customer = $this->makeCustomer($workspace, 'Attachment Customer');
 
@@ -156,7 +159,10 @@ class InvoiceDomainHardeningTest extends TestCase
             ->assertRedirect();
 
         $invoice->refresh();
-        $attachment = $invoice->attachments()->firstOrFail();
+        app(WorkspaceContext::class)->set($workspace);
+        $attachment = FinanceInvoiceAttachment::withoutGlobalScopes()
+            ->where('invoice_id', $invoice->id)
+            ->firstOrFail();
         $this->assertSame(1, $invoice->attachments()->count());
 
         $this->actingAs($user)
@@ -173,8 +179,8 @@ class InvoiceDomainHardeningTest extends TestCase
             ->assertRedirect()
             ->assertSessionHas('error');
 
-        $this->assertTrue($attachment->fresh() !== null);
-        $this->assertSame(1, $invoice->attachments()->count());
+        $this->assertNotNull(FinanceInvoiceAttachment::withoutGlobalScopes()->find($attachment->id));
+        $this->assertSame(1, FinanceInvoiceAttachment::withoutGlobalScopes()->where('invoice_id', $invoice->id)->count());
     }
 
     public function test_cancelled_invoice_remains_immutable_and_cannot_be_deleted(): void
@@ -671,11 +677,15 @@ class InvoiceDomainHardeningTest extends TestCase
             ->post(route('workspace.finance.invoices.store'), $this->invoicePayload($customer->id))
             ->assertRedirect();
 
-        return FinanceInvoice::withoutGlobalScopes()
+        $invoice = FinanceInvoice::withoutGlobalScopes()
             ->where('workspace_id', $workspace->id)
             ->where('id', '>', $before)
             ->orderByDesc('id')
             ->firstOrFail();
+
+        app(WorkspaceContext::class)->set($workspace);
+
+        return $invoice;
     }
 
     /**

@@ -13,9 +13,12 @@ use App\Models\Finance\FinanceSupplier;
 use App\Models\Product;
 use App\Models\Workspace;
 use App\Services\EInvoicing\InvoiceIssueService;
+use App\Services\EInvoicing\ZatcaRequiredIssueGate;
 use App\Services\Finance\Tax\TaxCalculationResult;
 use App\Services\Finance\Tax\TaxCalculationService;
 use App\Support\Money\Money;
+use App\Support\Storage\PrivateDocumentDisk;
+use App\Support\Tenancy\WorkspaceContext;
 use App\Support\Uploads\SecureUpload;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
@@ -34,6 +37,7 @@ class InvoiceService
         private readonly InventoryAccountingService $inventoryAccountingService,
         private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
         private readonly InvoiceIssueService $invoiceIssueService,
+        private readonly ZatcaRequiredIssueGate $zatcaRequiredIssueGate,
     ) {}
 
     /**
@@ -41,6 +45,7 @@ class InvoiceService
      */
     public function create(Workspace $workspace, array $payload, int $actorUserId): FinanceInvoice
     {
+        app(WorkspaceContext::class)->set($workspace);
         $this->chartOfAccountsService->ensureDefaultAccounts($workspace);
         $profile = $this->resolveTaxProfile($workspace, $payload);
 
@@ -211,11 +216,20 @@ class InvoiceService
 
             $this->storeUploadedAttachments($invoice, $payload['attachments'] ?? [], $actorUserId);
 
+            $created = FinanceInvoice::withoutGlobalScopes()
+                ->with([
+                    'items' => fn ($query) => $query->withoutGlobalScopes(),
+                    'customer' => fn ($query) => $query->withoutGlobalScopes(),
+                    'supplier' => fn ($query) => $query->withoutGlobalScopes(),
+                    'attachments' => fn ($query) => $query->withoutGlobalScopes(),
+                ])
+                ->findOrFail($invoice->id);
+
             if ($shouldIssue) {
-                return $this->issue($invoice->fresh(['items', 'customer', 'supplier']), $actorUserId, (bool) ($payload['skip_inventory'] ?? false));
+                return $this->issue($created, $actorUserId, (bool) ($payload['skip_inventory'] ?? false));
             }
 
-            return $invoice->load(['items', 'customer', 'supplier', 'attachments']);
+            return $created;
         });
     }
 
@@ -421,6 +435,8 @@ class InvoiceService
 
             $this->assertIssuedTaxReconciles($locked);
 
+            $this->zatcaRequiredIssueGate->assertDraftFinanceInvoice($locked);
+
             $paid = $this->invoiceStateService->postedPaymentsSum($locked);
             $credited = (float) ($locked->amount_credited ?? 0);
             $debited = (float) ($locked->amount_debited ?? 0);
@@ -477,12 +493,24 @@ class InvoiceService
 
             $locked->update($attributes);
 
-            $this->postInvoiceEntry($locked->fresh(), $actorUserId, $skipInventory);
+            $issuedForSnapshot = $locked->fresh(['items', 'customer', 'supplier', 'attachments', 'contract']);
+            $snapshot = $this->issuedSnapshotBuilder->captureInvoice($issuedForSnapshot);
+            $this->zatcaRequiredIssueGate->assertIssuedSnapshot(
+                $snapshot,
+                $this->zatcaRequiredIssueGate->isRequired($issuedForSnapshot),
+            );
 
-            $issued = $locked->fresh(['items', 'customer', 'supplier', 'attachments', 'contract']);
-            $this->connectIssuedInvoice($issued);
+            $this->postInvoiceEntry($issuedForSnapshot, $actorUserId, $skipInventory);
 
-            return $issued;
+            $pipeline = $this->invoiceIssueService->prepareFromSnapshot($snapshot);
+            $this->zatcaRequiredIssueGate->assertMandatoryIssuePipeline(
+                $pipeline,
+                $snapshot,
+                $this->zatcaRequiredIssueGate->isRequired($issuedForSnapshot),
+                $issuedForSnapshot,
+            );
+
+            return $issuedForSnapshot;
         });
     }
 
@@ -919,7 +947,7 @@ class InvoiceService
             $storedPath = app(SecureUpload::class)->store(
                 $file,
                 'workspaces/'.$invoice->workspace_id.'/finance/invoices/'.$invoice->id,
-                'public',
+                PrivateDocumentDisk::DISK,
                 10240
             );
             FinanceInvoiceAttachment::withoutGlobalScopes()->create([

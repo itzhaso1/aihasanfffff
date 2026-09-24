@@ -5,11 +5,18 @@ namespace App\Services\Conversation;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
+use App\Services\Channel\Outbound\ChannelOutboundService;
+use App\Services\Inbox\InboxHumanHandoffService;
+use App\Services\Inbox\InboxRealtimePublisher;
 use Illuminate\Support\Facades\DB;
 
 class ConversationService
 {
-    private const DB_CHANNELS = ['whatsapp', 'web', 'manual'];
+    private const DB_CHANNELS = ['whatsapp', 'web', 'manual', 'instagram', 'facebook_messenger', 'email', 'tiktok', 'telegram'];
+
+    public function __construct(
+        private readonly ChannelOutboundService $channelOutbound,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -26,7 +33,7 @@ class ConversationService
      */
     public function addMessage(Conversation $conversation, array $data, ?User $actor = null): Message
     {
-        return DB::transaction(function () use ($conversation, $data, $actor): Message {
+        $message = DB::transaction(function () use ($conversation, $data, $actor): Message {
             $message = $conversation->messages()->create([
                 ...$data,
                 'user_id' => $data['user_id'] ?? $actor?->id,
@@ -59,6 +66,26 @@ class ConversationService
 
             return $message;
         });
+
+        if ($message->direction === 'outbound') {
+            $this->channelOutbound->queueOutboundForMessage(
+                $conversation->fresh() ?? $conversation,
+                $message,
+            );
+        }
+
+        app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage(
+            $conversation->fresh() ?? $conversation,
+            $message,
+        );
+
+        app(InboxRealtimePublisher::class)->publishNewMessage(
+            $message,
+            $conversation->fresh() ?? $conversation,
+            ['provider' => 'web_inbox'],
+        );
+
+        return $message;
     }
 
     public function toggleAi(Conversation $conversation, bool $enabled): Conversation

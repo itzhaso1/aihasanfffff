@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\Mobile\Concerns\ResolvesMobileWorkspace;
 use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Models\EmailAccount;
 use App\Models\WhatsAppAccount;
+use App\Models\WorkspaceMetaConnection;
+use App\Support\Meta\MetaConnectionKind;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 
@@ -39,7 +41,10 @@ class ChannelController extends MobileController
             && filled(config('whatsapp.embedded_signup_config_id'));
 
         $facebookConnected = (bool) ($workspaceChannelSettings['facebook_messenger']['connected'] ?? false);
-        $instagramConnected = (bool) ($workspaceChannelSettings['instagram']['connected'] ?? false);
+        $instagramConnected = WorkspaceMetaConnection::query()
+            ->where('kind', MetaConnectionKind::INSTAGRAM_USER)
+            ->where('status', 'connected')
+            ->exists();
 
         $channels = [
             $this->channelPayload(
@@ -55,6 +60,8 @@ class ChannelController extends MobileController
                     : 'اربط عبر Meta Embedded Signup',
                 manageUrl: route('workspace.whatsapp-accounts.index'),
                 canConnectInApp: $embeddedSignupReady,
+                displayName: $latestWhatsAppAccount?->display_name,
+                phoneNumber: $latestWhatsAppAccount?->phoneNumbers->first()?->display_phone_number,
             ),
             $this->channelPayload(
                 key: 'facebook_messenger',
@@ -65,6 +72,8 @@ class ChannelController extends MobileController
                 hint: 'إعدادات الربط جاهزة للتكامل المستقبلي.',
                 manageUrl: route('workspace.conversations.index', ['channel' => 'facebook_messenger']),
                 canConnectInApp: false,
+                displayName: null,
+                phoneNumber: null,
             ),
             $this->channelPayload(
                 key: 'instagram',
@@ -75,6 +84,8 @@ class ChannelController extends MobileController
                 hint: 'إعدادات الربط جاهزة للتكامل المستقبلي.',
                 manageUrl: route('workspace.conversations.index', ['channel' => 'instagram']),
                 canConnectInApp: false,
+                displayName: null,
+                phoneNumber: null,
             ),
             $this->channelPayload(
                 key: 'email',
@@ -85,6 +96,8 @@ class ChannelController extends MobileController
                 hint: $emailConnected ? 'حساب البريد مُعد وجاهز.' : 'لم يتم إعداد حساب بريد بعد.',
                 manageUrl: route('workspace.emails.accounts.index'),
                 canConnectInApp: false,
+                displayName: null,
+                phoneNumber: null,
             ),
         ];
 
@@ -103,6 +116,8 @@ class ChannelController extends MobileController
         string $hint,
         string $manageUrl,
         bool $canConnectInApp,
+        ?string $displayName,
+        ?string $phoneNumber,
     ): array {
         return [
             'key' => $key,
@@ -114,6 +129,8 @@ class ChannelController extends MobileController
             'hint' => $hint,
             'manage_url' => $manageUrl,
             'can_connect_in_app' => $canConnectInApp,
+            'display_name' => $displayName,
+            'phone_number' => $phoneNumber,
         ];
     }
 

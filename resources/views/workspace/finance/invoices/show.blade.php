@@ -74,7 +74,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('workspace.finance.invoices.index') }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">رجوع</a>
-                <a href="{{ route('workspace.finance.invoices.pdf', $invoice) }}" class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">PDF</a>
+                <a href="{{ app(\App\Services\Finance\InvoicePdfAccessService::class)->webUrl($invoice) }}" class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">PDF</a>
                 @if($invoice->isSendable())
                     <a href="#invoice-send" class="rounded-lg bg-[#06C2A4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">إرسال بالبريد الإلكتروني</a>
                 @endif
@@ -547,7 +547,7 @@
             <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 class="text-sm font-bold">المستندات</h3>
                 <ul class="mt-3 space-y-2 text-sm">
-                    <li><a class="font-semibold text-[#06C2A4] hover:underline" href="{{ route('workspace.finance.invoices.pdf', $invoice) }}">تحميل PDF</a></li>
+                    <li><a class="font-semibold text-[#06C2A4] hover:underline" href="{{ app(\App\Services\Finance\InvoicePdfAccessService::class)->webUrl($invoice) }}">تحميل PDF</a></li>
                     @if(($zatcaArtifacts['xml_available'] ?? false) && $invoice->type !== 'purchase')
                         <li><a class="font-semibold text-[#06C2A4] hover:underline" href="{{ route('workspace.finance.invoices.xml', $invoice) }}">تحميل XML الإلكتروني</a></li>
                     @endif

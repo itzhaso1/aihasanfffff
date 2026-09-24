@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Mobile\V1;
 
 use App\Exceptions\FeatureNotAvailableException;
 use App\Exceptions\UsageLimitExceededException;
+use App\Http\Controllers\Api\Mobile\Concerns\AuthorizesMobileEmail;
 use App\Http\Controllers\Api\Mobile\Concerns\ResolvesMobileWorkspace;
 use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Http\Resources\Mobile\EmailCampaignResource;
@@ -17,6 +18,7 @@ use RuntimeException;
 
 class EmailCampaignController extends MobileController
 {
+    use AuthorizesMobileEmail;
     use ResolvesMobileWorkspace;
 
     public function __construct(
@@ -26,6 +28,7 @@ class EmailCampaignController extends MobileController
 
     public function store(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
 
         $validated = $request->validate([
@@ -67,6 +70,7 @@ class EmailCampaignController extends MobileController
 
     public function show(EmailCampaign $campaign): JsonResponse
     {
+        $this->authorizeEmailUse(request());
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $campaign = $this->emailCampaignService->findForWorkspace($workspace, $campaign->id);
 
@@ -75,6 +79,7 @@ class EmailCampaignController extends MobileController
 
     public function cancel(Request $request, EmailCampaign $campaign): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $campaign = $this->emailCampaignService->findForWorkspace($workspace, $campaign->id);
 

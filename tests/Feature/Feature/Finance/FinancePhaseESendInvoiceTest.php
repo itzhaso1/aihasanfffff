@@ -41,6 +41,7 @@ class FinancePhaseESendInvoiceTest extends TestCase
         parent::setUp();
         Notification::fake();
         Storage::fake('public');
+        Storage::fake('local');
         $this->seed(FoundationSeeder::class);
     }
 
@@ -76,8 +77,9 @@ class FinancePhaseESendInvoiceTest extends TestCase
         $this->assertSame('invoice-'.$invoice->invoice_number.'.pdf', $sent['attachments'][0]['name']);
         $this->assertSame('application/pdf', $sent['attachments'][0]['mime']);
         $storedPath = $sent['attachments'][0]['storage_path'];
-        $this->assertTrue(Storage::disk('public')->exists($storedPath));
-        $this->assertStringStartsWith('%PDF', (string) Storage::disk('public')->get($storedPath));
+        $this->assertTrue(Storage::disk('local')->exists($storedPath));
+        $this->assertStringStartsWith('%PDF', (string) Storage::disk('local')->get($storedPath));
+        $this->assertFalse(Storage::disk('public')->exists($storedPath));
         $this->assertStringContainsString((string) $workspace->id, $storedPath);
         $this->assertStringContainsString($invoice->invoice_number, $storedPath);
 

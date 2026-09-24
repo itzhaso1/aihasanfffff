@@ -72,7 +72,7 @@
                 ['label' => 'التقارير', 'route' => 'workspace.finance.reports.index', 'active' => 'workspace.finance.reports.*', 'icon' => 'M4 19V5m0 14h16M8 15V9m4 6V7m4 8v-4'],
                 ['label' => 'تصدير CSV', 'route' => 'workspace.finance.exports.index', 'active' => 'workspace.finance.exports.*', 'icon' => 'M12 4v10m0 0l-3-3m3 3l3-3M5 18h14'],
                 ['label' => 'التنبيهات', 'route' => 'workspace.finance.alerts.index', 'active' => 'workspace.finance.alerts.*', 'icon' => 'M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0'],
-                ['label' => 'المساعد المالي', 'route' => 'workspace.finance.copilot.index', 'active' => 'workspace.finance.copilot.*', 'icon' => 'M12 3a7 7 0 00-7 7c0 3 2 5 3 6h8c1-1 3-3 3-6a7 7 0 00-7-7zM10 20h4'],
+                ['label' => 'المساعد المالي', 'route' => 'workspace.finance.assistant.index', 'active' => ['workspace.finance.assistant.*', 'workspace.finance.copilot.*'], 'icon' => 'M12 3a7 7 0 00-7 7c0 3 2 5 3 6h8c1-1 3-3 3-6a7 7 0 00-7-7zM10 20h4'],
             ],
         ],
         'accounting' => [
@@ -114,7 +114,10 @@
     ];
 
     $isLinkActive = function (array $link) use ($isPurchaseInvoices): bool {
-        $isActive = request()->routeIs($link['active'] ?? $link['route']);
+        $active = $link['active'] ?? $link['route'];
+        $isActive = is_array($active)
+            ? collect($active)->contains(fn (string $pattern): bool => request()->routeIs($pattern))
+            : request()->routeIs($active);
 
         if (($link['route'] ?? '') === 'workspace.finance.invoices.index') {
             return request()->routeIs('workspace.finance.invoices.*') && ! $isPurchaseInvoices;

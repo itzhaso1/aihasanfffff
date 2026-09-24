@@ -48,70 +48,71 @@ class SubscriptionWebhookProcessor
         }
 
         app(WorkspaceContext::class)->runForId((int) $workspaceId, function () use ($providerName, $verification, $checkout, $attempt, $workspaceId): void {
-        $webhookEvent = WebhookEvent::withoutGlobalScopes()->firstOrCreate(
-            [
-                'provider' => 'subscription:'.$providerName,
-                'external_event_id' => $verification->eventId,
-            ],
-            [
-                'workspace_id' => $workspaceId,
-                'event_type' => $verification->outcome ?? 'unknown',
-                'idempotency_key' => $verification->eventId,
-                'headers' => [],
-                'payload' => $verification->redacted(),
-                'status' => $verification->verified ? 'pending' : 'invalid',
-            ]
-        );
+            $webhookEvent = WebhookEvent::withoutGlobalScopes()->firstOrCreate(
+                [
+                    'workspace_id' => $workspaceId,
+                    'provider' => 'subscription:'.$providerName,
+                    'external_event_id' => $verification->eventId,
+                ],
+                [
+                    'workspace_id' => $workspaceId,
+                    'event_type' => $verification->outcome ?? 'unknown',
+                    'idempotency_key' => $verification->eventId,
+                    'headers' => [],
+                    'payload' => $verification->redacted(),
+                    'status' => $verification->verified ? 'pending' : 'invalid',
+                ]
+            );
 
-        if (! $webhookEvent->wasRecentlyCreated) {
-            return;
-        }
+            if (! $webhookEvent->wasRecentlyCreated) {
+                return;
+            }
 
-        if (! $verification->verified) {
-            $webhookEvent->update([
-                'status' => 'invalid',
-                'failed_reason' => $verification->reason,
-                'processed_at' => now(),
-            ]);
-
-            return;
-        }
-
-        if (! $checkout && ! $attempt) {
-            $webhookEvent->update([
-                'status' => 'failed',
-                'failed_reason' => 'checkout_or_attempt_not_found',
-                'processed_at' => now(),
-            ]);
-
-            return;
-        }
-
-        try {
-            DB::transaction(function () use ($verification, $checkout, $attempt, $webhookEvent): void {
-                if ($checkout) {
-                    $this->applyCheckoutOutcome($checkout->fresh() ?? $checkout, $verification, $attempt);
-                } elseif ($attempt) {
-                    $this->applyAttemptOutcome($attempt->fresh() ?? $attempt, $verification);
-                }
-
+            if (! $verification->verified) {
                 $webhookEvent->update([
-                    'status' => 'processed',
+                    'status' => 'invalid',
+                    'failed_reason' => $verification->reason,
                     'processed_at' => now(),
                 ]);
-            });
-        } catch (\Throwable $exception) {
-            $webhookEvent->update([
-                'status' => 'failed',
-                'failed_reason' => 'processing_failed',
-                'processed_at' => now(),
-            ]);
 
-            Log::error('subscription.webhook.processing_failed', [
-                'event_id' => $verification->eventId,
-                'reason' => $exception->getMessage(),
-            ]);
-        }
+                return;
+            }
+
+            if (! $checkout && ! $attempt) {
+                $webhookEvent->update([
+                    'status' => 'failed',
+                    'failed_reason' => 'checkout_or_attempt_not_found',
+                    'processed_at' => now(),
+                ]);
+
+                return;
+            }
+
+            try {
+                DB::transaction(function () use ($verification, $checkout, $attempt, $webhookEvent): void {
+                    if ($checkout) {
+                        $this->applyCheckoutOutcome($checkout->fresh() ?? $checkout, $verification, $attempt);
+                    } elseif ($attempt) {
+                        $this->applyAttemptOutcome($attempt->fresh() ?? $attempt, $verification);
+                    }
+
+                    $webhookEvent->update([
+                        'status' => 'processed',
+                        'processed_at' => now(),
+                    ]);
+                });
+            } catch (\Throwable $exception) {
+                $webhookEvent->update([
+                    'status' => 'failed',
+                    'failed_reason' => 'processing_failed',
+                    'processed_at' => now(),
+                ]);
+
+                Log::error('subscription.webhook.processing_failed', [
+                    'event_id' => $verification->eventId,
+                    'reason' => $exception->getMessage(),
+                ]);
+            }
         });
     }
 
@@ -243,6 +244,7 @@ class SubscriptionWebhookProcessor
                 'status' => SubscriptionBillingAttempt::STATUS_FAILED,
                 'failed_at' => now(),
                 'failure_reason' => 'verified_payment_failed',
+                'active_period_guard' => null,
             ]);
 
             if ($subscription) {

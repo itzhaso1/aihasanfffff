@@ -226,8 +226,12 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: palette.surface,
-        contentTextStyle: shaped.bodyMedium,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FinanceTokens.radius)),
+        elevation: 2,
+        contentTextStyle: shaped.bodySmall?.copyWith(fontWeight: FontWeight.w600, height: 1.35),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(FinanceTokens.radius),
+          side: BorderSide(color: palette.border),
+        ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: FinanceTokens.brand,

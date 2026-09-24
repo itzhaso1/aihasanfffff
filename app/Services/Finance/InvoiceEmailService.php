@@ -11,6 +11,7 @@ use App\Models\Finance\FinanceInvoice;
 use App\Models\User;
 use App\Services\Audit\AuditLogService;
 use App\Services\Email\CentralEmailService;
+use App\Support\Storage\PrivateDocumentDisk;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -94,7 +95,7 @@ class InvoiceEmailService
                 $binary = $this->pdfInvoiceService->renderBinary($invoice);
                 $filename = 'invoice-'.$invoice->invoice_number.'.pdf';
                 $attachmentPath = 'workspaces/'.$invoice->workspace_id.'/finance/invoices/emails/'.Str::uuid().'_'.$filename;
-                $attachmentDisk = 'public';
+                $attachmentDisk = PrivateDocumentDisk::DISK;
                 Storage::disk($attachmentDisk)->put($attachmentPath, $binary);
                 $attachments[] = [
                     'storage_disk' => $attachmentDisk,

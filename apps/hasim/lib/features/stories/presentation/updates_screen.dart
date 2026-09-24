@@ -3,191 +3,215 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim/core/theme/app_theme.dart';
+import 'package:hasim/core/theme/hasim_tokens.dart';
+import 'package:hasim/core/widgets/empty_state.dart';
+import 'package:hasim/core/widgets/hasim_feature_card.dart';
+import 'package:hasim/core/widgets/hasim_page_header.dart';
+import 'package:hasim/core/widgets/hasim_profile_bubble.dart';
+import 'package:hasim/core/widgets/hasim_search_bar.dart';
 import 'package:hasim/core/widgets/hasim_shell_header.dart';
+import 'package:hasim/core/widgets/hasim_wave_backdrop.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
+import 'package:hasim/features/stories/presentation/widgets/updates_empty_illustration.dart';
 import 'package:hasim/features/stories/providers/stories_controller.dart';
 
 /// شاشة «التحديثات» المستقلة — Stories / Status (ليست جزءًا من المحادثات).
-class UpdatesScreen extends ConsumerWidget {
+class UpdatesScreen extends ConsumerStatefulWidget {
   const UpdatesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<UpdatesScreen> createState() => _UpdatesScreenState();
+}
+
+class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _openCreate() => context.push('/stories/create');
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(storiesControllerProvider);
     final auth = ref.watch(authControllerProvider);
     final theme = Theme.of(context);
+    final mint = HasimTokens.pageBg(context);
 
     final mine = state.buckets.where((b) => b.isMine).firstOrNull;
     final others = state.buckets.where((b) => !b.isMine && b.stories.isNotEmpty).toList();
     final myAvatar = mine?.avatarPath ?? auth.user?.avatarUrl;
+    final initial = (auth.user?.name.isNotEmpty == true ? auth.user!.name : 'ح');
+    final filteredOthers = _query.trim().isEmpty
+        ? others
+        : others.where((b) => b.authorName.contains(_query.trim())).toList();
+    final width = MediaQuery.sizeOf(context).width;
+    final compactCards = width < 360;
 
     return Scaffold(
-      appBar: const HasimShellHeader(),
-      body: RefreshIndicator(
-        onRefresh: () => ref.read(storiesControllerProvider.notifier).refresh(force: true),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-          children: [
-            Text(
-              'التحديثات',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 20),
-            Center(
-              child: _MyStatusTile(
-                label: 'حالتي',
-                avatarPath: myAvatar,
-                hasStories: mine?.stories.isNotEmpty == true,
-                onTap: () {
-                  if (mine != null && mine.stories.isNotEmpty) {
-                    final viewable = state.buckets.where((b) => b.stories.isNotEmpty).toList();
-                    final idx = viewable.indexWhere((b) => b.authorKey == mine.authorKey);
-                    context.push('/stories/view', extra: {
-                      'buckets': viewable,
-                      'bucketIndex': idx < 0 ? 0 : idx,
-                    });
-                  } else {
-                    context.push('/stories/create');
-                  }
-                },
-                onAdd: () => context.push('/stories/create'),
-              ),
-            ),
-            if (state.loading && state.buckets.isEmpty) ...[
-              const SizedBox(height: 48),
-              const Center(child: CircularProgressIndicator()),
-            ] else if (state.error != null && state.buckets.isEmpty) ...[
-              const SizedBox(height: 24),
-              Text(state.error!, style: TextStyle(color: theme.colorScheme.error)),
-              TextButton(
-                onPressed: () => ref.read(storiesControllerProvider.notifier).refresh(),
-                child: const Text('إعادة المحاولة'),
-              ),
-            ] else ...[
-              const SizedBox(height: 28),
-              if (others.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 32),
-                  child: Column(
+      backgroundColor: mint,
+      appBar: HasimShellHeader(
+        backgroundColor: mint,
+        toolbarHeight: 72,
+        brandLeading: HasimProfileBubble(
+          key: const Key('updates-profile-bubble'),
+          label: initial,
+          avatarPath: myAvatar,
+          hasStories: mine?.stories.isNotEmpty == true,
+          onTap: () {
+            if (mine != null && mine.stories.isNotEmpty) {
+              final viewable = state.buckets.where((b) => b.stories.isNotEmpty).toList();
+              final idx = viewable.indexWhere((b) => b.authorKey == mine.authorKey);
+              context.push('/stories/view', extra: {
+                'buckets': viewable,
+                'bucketIndex': idx < 0 ? 0 : idx,
+              });
+            } else {
+              _openCreate();
+            }
+          },
+          onAdd: _openCreate,
+        ),
+      ),
+      body: Stack(
+        children: [
+          const Align(
+            alignment: Alignment.bottomCenter,
+            child: HasimWaveBackdrop(height: 140),
+          ),
+          RefreshIndicator(
+            onRefresh: () => ref.read(storiesControllerProvider.notifier).refresh(force: true),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 36),
+              children: [
+                const HasimPageHeader(
+                  title: 'التحديثات',
+                  subtitle: 'تابع كل جديد في مكان واحد',
+                ),
+                HasimSearchBar(
+                  controller: _search,
+                  hintText: 'ابحث في التحديثات...',
+                  filledMint: true,
+                  onChanged: (value) => setState(() => _query = value),
+                  onSubmitted: (value) => setState(() => _query = value),
+                  onClear: () => setState(() => _query = ''),
+                ),
+                if (state.loading && state.buckets.isEmpty) ...[
+                  const SizedBox(height: 64),
+                  const Center(child: CircularProgressIndicator()),
+                ] else if (state.error != null && state.buckets.isEmpty) ...[
+                  const SizedBox(height: 24),
+                  Text(state.error!, style: TextStyle(color: theme.colorScheme.error)),
+                  TextButton(
+                    onPressed: () => ref.read(storiesControllerProvider.notifier).refresh(),
+                    child: const Text('إعادة المحاولة'),
+                  ),
+                ] else if (filteredOthers.isEmpty) ...[
+                  const SizedBox(height: 36),
+                  EmptyState(
+                    title: 'لا توجد تحديثات حالياً',
+                    subtitle: 'ستظهر هنا آخر التحديثات والمستجدات من حسابك أو من المصادر التي تتابعها.',
+                    illustration: const UpdatesEmptyIllustration(),
+                    actionLabel: '+ اضغط + لإنشاء تحديثك',
+                    actionIcon: Icons.add_rounded,
+                    pillAction: true,
+                    onAction: _openCreate,
+                  ),
+                  const SizedBox(height: 18),
+                  Builder(
+                    builder: (context) {
+                      final cards = _featureCards();
+                      if (compactCards) {
+                        return SizedBox(
+                          height: 128,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: cards.length,
+                            separatorBuilder: (_, _) => const SizedBox(width: 8),
+                            itemBuilder: (context, i) => SizedBox(width: 148, child: cards[i]),
+                          ),
+                        );
+                      }
+                      return Row(
+                        children: [
+                          for (var i = 0; i < cards.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            Expanded(child: cards[i]),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
+                ] else ...[
+                  const SizedBox(height: 22),
+                  Text(
+                    'التحديثات الأخيرة',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: HasimTokens.mutedColor(context),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
                     children: [
-                      Icon(Icons.auto_stories_outlined, size: 40, color: theme.colorScheme.onSurfaceVariant),
-                      const SizedBox(height: 10),
-                      Text(
-                        'لا توجد تحديثات حالياً',
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'اضغط + لإنشاء تحديثك',
-                        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                      ),
+                      for (final bucket in filteredOthers)
+                        _OtherStatusTile(
+                          label: bucket.authorName,
+                          avatarPath: bucket.avatarPath,
+                          hasUnviewed: bucket.hasUnviewed,
+                          onTap: () {
+                            final viewable = state.buckets.where((b) => b.stories.isNotEmpty).toList();
+                            final idx = viewable.indexWhere((b) => b.authorKey == bucket.authorKey);
+                            context.push('/stories/view', extra: {
+                              'buckets': viewable,
+                              'bucketIndex': idx < 0 ? 0 : idx,
+                            });
+                          },
+                        ),
                     ],
                   ),
-                )
-              else ...[
-                Text(
-                  'التحديثات الأخيرة',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.onSurfaceVariant,
+                  const SizedBox(height: 24),
+                  Text(
+                    'اضغط لمشاهدة التحديث',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(color: HasimTokens.mutedColor(context)),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 16,
-                  children: [
-                    for (final bucket in others)
-                      _OtherStatusTile(
-                        label: bucket.authorName,
-                        avatarPath: bucket.avatarPath,
-                        hasUnviewed: bucket.hasUnviewed,
-                        onTap: () {
-                          final viewable = state.buckets.where((b) => b.stories.isNotEmpty).toList();
-                          final idx = viewable.indexWhere((b) => b.authorKey == bucket.authorKey);
-                          context.push('/stories/view', extra: {
-                            'buckets': viewable,
-                            'bucketIndex': idx < 0 ? 0 : idx,
-                          });
-                        },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'اضغط لمشاهدة التحديث',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
+                ],
               ],
-            ],
-          ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
-}
 
-class _MyStatusTile extends StatelessWidget {
-  const _MyStatusTile({
-    required this.label,
-    required this.hasStories,
-    required this.onTap,
-    required this.onAdd,
-    this.avatarPath,
-  });
-
-  final String label;
-  final String? avatarPath;
-  final bool hasStories;
-  final VoidCallback onTap;
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final ring = hasStories ? AppTheme.brand : theme.dividerColor;
-
-    return Column(
-      children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            InkWell(
-              onTap: onTap,
-              customBorder: const CircleBorder(),
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: ring, width: 2.5),
-                ),
-                child: _Avatar(radius: 36, label: label, avatarPath: avatarPath),
-              ),
-            ),
-            PositionedDirectional(
-              end: 0,
-              bottom: 0,
-              child: Material(
-                color: AppTheme.brand,
-                shape: const CircleBorder(),
-                elevation: 1,
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: onAdd,
-                  child: const Padding(
-                    padding: EdgeInsets.all(6),
-                    child: Icon(Icons.add, size: 18, color: Colors.white),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-      ],
-    );
+  List<Widget> _featureCards() {
+    return const [
+      HasimFeatureCard(
+        title: 'شارك أفكارك',
+        subtitle: 'مع متابعيك',
+        icon: Icons.person_outline_rounded,
+        tint: Color(0xFFE8F8F3),
+      ),
+      HasimFeatureCard(
+        title: 'ابقَ على اطلاع',
+        subtitle: 'بكل جديد',
+        icon: Icons.notifications_none_rounded,
+        tint: Color(0xFFEEF4FB),
+      ),
+      HasimFeatureCard(
+        title: 'نصائح ومحتوى',
+        subtitle: 'من اهتماماتك',
+        icon: Icons.auto_awesome,
+        tint: Color(0xFFFFF6E8),
+      ),
+    ];
   }
 }
 

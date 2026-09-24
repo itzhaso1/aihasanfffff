@@ -24,8 +24,8 @@ class ApiClient {
   })  : _secureStore = secureStore,
         _prefsStore = prefsStore,
         _onUnauthorized = onUnauthorized {
-    final base = AppConfig.normalizeHostBase(
-      prefsStore.apiBaseOverride ?? AppConfig.apiBase,
+    final base = AppConfig.resolveApiBase(
+      override: prefsStore.apiBaseOverride,
     );
     _dio = dio ??
         Dio(
@@ -130,7 +130,7 @@ class ApiClient {
   }
 
   void updateBaseUrl(String apiBase) {
-    final host = AppConfig.normalizeHostBase(apiBase);
+    final host = AppConfig.resolveApiBase(override: apiBase);
     _dio.options.baseUrl = '$host/api/mobile/v1/';
   }
 

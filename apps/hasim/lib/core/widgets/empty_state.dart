@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:hasim/core/theme/app_theme.dart';
+import 'package:hasim/core/widgets/hasim_primary_button.dart';
 
 class EmptyState extends StatelessWidget {
   const EmptyState({
@@ -60,45 +60,11 @@ class EmptyState extends StatelessWidget {
             ],
             if (actionLabel != null && onAction != null) ...[
               SizedBox(height: emphasized ? 22 : 16),
-              pillAction ? _pillButton(context) : FilledButton(onPressed: onAction, child: Text(actionLabel!)),
+              pillAction
+                  ? HasimPrimaryButton(label: actionLabel!, onPressed: onAction!, icon: actionIcon)
+                  : FilledButton(onPressed: onAction, child: Text(actionLabel!)),
             ],
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _pillButton(BuildContext context) {
-    // Material/InkWell يحافظ على عرض المحتوى ويتجنب minimumSize الممتد لـ FilledButton.
-    return Material(
-      color: AppTheme.brand,
-      elevation: 0,
-      shape: const StadiumBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onAction,
-        customBorder: const StadiumBorder(),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  actionLabel!,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                ),
-                if (actionIcon != null) ...[
-                  const SizedBox(width: 8),
-                  Icon(actionIcon, size: 20, color: Colors.white),
-                ],
-              ],
-            ),
-          ),
         ),
       ),
     );

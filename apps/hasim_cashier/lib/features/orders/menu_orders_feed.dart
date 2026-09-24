@@ -71,6 +71,7 @@ class _MenuOrdersFeedState extends ConsumerState<MenuOrdersFeed> {
   Future<void> _startRealtime() async {
     _source = PollingPosEventSource(
       interval: Duration(seconds: AppConfig.menuPollSeconds),
+      idleInterval: Duration(seconds: AppConfig.menuPollIdleSeconds),
       enabled: () => ref.read(cashierLinkProvider).isOnline,
       poll: () async {
         await _fetch(silent: true);

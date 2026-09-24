@@ -450,6 +450,12 @@ class TaxEngineHardeningTest extends TestCase
             ->assertSee('معفاة')
             ->assertSee('خارج النطاق')
             ->assertSee('غير شامل الضريبة')
+            ->assertSee('إصدار الفاتورة')
+            ->assertSee('حفظ كمسودة')
+            ->assertSee('معاينة الفاتورة')
+            ->assertSee('ملخص الفاتورة')
+            ->assertSee('بيانات العميل')
+            ->assertSee('مرفقات')
             ->assertDontSee('ZATCA compliant')
             ->assertDontSee('Fatoora ready');
     }

@@ -3,6 +3,7 @@
 namespace App\Support\Ui;
 
 use App\Models\Workspace;
+use App\Support\Site\PublicSite;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Support\Facades\Storage;
 
@@ -21,6 +22,11 @@ class BrandLogo
     }
 
     public static function defaultUrl(): string
+    {
+        return PublicSite::current()->logoUrl();
+    }
+
+    public static function bundledUrl(): string
     {
         if (is_file(public_path('images/hasim-logo.png'))) {
             return asset('images/hasim-logo.png');

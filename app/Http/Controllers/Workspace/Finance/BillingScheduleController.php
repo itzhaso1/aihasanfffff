@@ -22,15 +22,19 @@ class BillingScheduleController extends FinanceBaseController
 
         $validated = $request->validate([
             'title' => ['nullable', 'string', 'max:255'],
-            'frequency' => ['required', 'in:weekly,monthly,quarterly,yearly,installment'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'frequency' => ['required', 'in:weekly,monthly,quarterly,semi_annual,yearly,installment,custom'],
             'interval_count' => ['nullable', 'integer', 'min:1', 'max:24'],
             'total_occurrences' => ['required', 'integer', 'min:1', 'max:120'],
+            'amount' => ['nullable', 'numeric', 'min:0'],
             'start_date' => ['required', 'date'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'auto_issue' => ['nullable', 'boolean'],
+            'allow_overrun' => ['nullable', 'boolean'],
             'status' => ['nullable', 'in:draft,active'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+        $validated['allow_overrun'] = $request->boolean('allow_overrun');
 
         try {
             $schedule = $this->billingScheduleService->createFromContract(
@@ -93,17 +97,17 @@ class BillingScheduleController extends FinanceBaseController
         abort_unless((int) $schedule->contract_id === (int) $contract->id, 404);
 
         try {
-            $invoice = $this->billingScheduleService->generateOne($schedule);
+            $invoice = $this->billingScheduleService->createInvoiceFromSchedule(
+                $schedule,
+                (int) $request->user()?->id,
+                true
+            );
         } catch (RuntimeException $exception) {
             return back()->with('error', $exception->getMessage());
         }
 
-        if (! $invoice) {
-            return back()->with('error', 'لا توجد دورة مستحقة لتوليد فاتورة حالياً.');
-        }
-
         return redirect()->route('workspace.finance.invoices.show', $invoice)
-            ->with('success', 'تم توليد الفاتورة '.$invoice->invoice_number.' من جدول الفوترة.');
+            ->with('success', 'تم إنشاء مسودة فاتورة '.$invoice->invoice_number.' من جدول الدفعات.');
     }
 
     private function contractShowRoute(): string

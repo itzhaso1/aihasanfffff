@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Finance\V1\AssistantController;
 use App\Http\Controllers\Api\Finance\V1\BootstrapController;
 use App\Http\Controllers\Api\Finance\V1\CatalogController;
 use App\Http\Controllers\Api\Finance\V1\ContractClientController;
@@ -107,6 +108,10 @@ Route::put('/contracts/{contract}', [ContractClientController::class, 'update'])
 Route::post('/contracts/{contract}/activate', [ContractClientController::class, 'activate'])->middleware('throttle:mobile-write');
 Route::post('/contracts/{contract}/close', [ContractClientController::class, 'close'])->middleware('throttle:mobile-write');
 Route::post('/contracts/{contract}/cancel', [ContractClientController::class, 'cancel'])->middleware('throttle:mobile-write');
+Route::post('/contracts/{contract}/renew', [ContractClientController::class, 'renew'])->middleware('throttle:mobile-write');
+Route::post('/contracts/{contract}/sign', [ContractClientController::class, 'sign'])->middleware('throttle:mobile-write');
+Route::get('/contracts/{contract}/invoices', [ContractClientController::class, 'invoices']);
+Route::get('/contracts/{contract}/payments', [ContractClientController::class, 'payments']);
 Route::get('/contracts/{contract}/pdf', [ContractClientController::class, 'pdf']);
 Route::post('/contracts/{contract}/attachments', [ContractClientController::class, 'storeAttachment'])->middleware('throttle:mobile-write');
 Route::get('/contracts/{contract}/attachments/{attachment}', [ContractClientController::class, 'downloadAttachment']);
@@ -192,6 +197,11 @@ Route::post('/treasury/statements/{statement}/lines/{line}/ignore', [TreasuryCli
 Route::post('/treasury/statements/{statement}/complete', [TreasuryClientController::class, 'complete'])->middleware('throttle:mobile-write');
 
 Route::post('/copilot/ask', [CopilotClientController::class, 'ask'])->middleware('throttle:mobile-write');
+Route::post('/assistant/ask', [AssistantController::class, 'ask'])->middleware('throttle:mobile-ai');
+Route::get('/assistant/conversations', [AssistantController::class, 'conversations']);
+Route::get('/assistant/conversations/{conversation}', [AssistantController::class, 'show']);
+Route::post('/assistant/conversations/{conversation}/archive', [AssistantController::class, 'archive'])->middleware('throttle:mobile-write');
+Route::delete('/assistant/conversations/{conversation}', [AssistantController::class, 'destroy'])->middleware('throttle:mobile-write');
 
 Route::get('/fiscal-years', [FiscalYearClientController::class, 'index']);
 Route::post('/fiscal-years', [FiscalYearClientController::class, 'store'])->middleware('throttle:mobile-write');

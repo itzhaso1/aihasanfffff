@@ -59,7 +59,14 @@ class NotificationController extends MobileController
             return $this->fail('غير مصرح.', 401);
         }
 
-        $record = $user->notifications()->whereKey($notification)->first();
+        $workspace = $this->requireWorkspace($this->workspaceContext);
+
+        $query = $user->notifications()->whereKey($notification);
+        if (Schema::hasColumn('notifications', 'workspace_id')) {
+            $query->where('workspace_id', $workspace->id);
+        }
+
+        $record = $query->first();
         if (! $record) {
             return $this->fail('الإشعار غير موجود.', 404);
         }

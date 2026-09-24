@@ -143,8 +143,9 @@ void main() {
     expect(AppConfig.menuPollSeconds >= 5, isTrue);
     expect(AppConfig.tablesPollSeconds >= 5, isTrue);
     expect(AppConfig.kitchenPollSeconds >= 5, isTrue);
-    expect(AppConfig.autoSyncSeconds, 5);
+    expect(AppConfig.autoSyncSeconds, 15);
     expect(AppConfig.autoSyncSeconds >= 5, isTrue);
+    expect(AppConfig.menuPollIdleSeconds >= AppConfig.menuPollSeconds, isTrue);
   });
 
   test('hourly sales prefer sales_total over total_sales', () {
@@ -581,19 +582,22 @@ void main() {
 
   test('device restore waits for API success before online', () {
     final controller = CashierLinkController();
-    if (AppConfig.offlineOnly) {
-      expect(controller.state.link, CashierLink.offline);
-      controller.setDeviceOnline(true);
-      controller.onApiSuccess();
-      expect(controller.state.link, CashierLink.offline);
-      return;
-    }
     controller.setDeviceOnline(false);
     expect(controller.state.link, CashierLink.offline);
     controller.setDeviceOnline(true);
     expect(controller.state.link, CashierLink.serverUnavailable);
     controller.onApiSuccess();
     expect(controller.state.link, CashierLink.online);
+  });
+
+  test('a fresh controller does not claim Laravel is reachable', () {
+    final controller = CashierLinkController();
+    expect(controller.state.link, CashierLink.serverUnavailable);
+    expect(controller.state.isOnline, isFalse);
+    controller.onApiSuccess();
+    expect(controller.state.link, CashierLink.online);
+    controller.onApiFailure(statusCode: 0);
+    expect(controller.state.link, CashierLink.serverUnavailable);
   });
 
   test('bootstrap in-flight guard prevents loop', () {

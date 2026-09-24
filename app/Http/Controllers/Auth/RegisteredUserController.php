@@ -61,6 +61,6 @@ class RegisteredUserController extends Controller
         Auth::login($user);
         $request->session()->put('current_workspace_id', $workspace->id);
 
-        return redirect(route('workspace.subscriptions.index', absolute: false));
+        return redirect(route('workspace.dashboard', absolute: false));
     }
 }

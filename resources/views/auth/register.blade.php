@@ -1,4 +1,4 @@
-<x-guest-layout variant="split" title="إنشاء حساب جديد | حاسم الذكي">
+<x-guest-layout variant="split" title="إنشاء حساب جديد | {{ $publicSite->nameAr() }}">
     @include('partials.auth-split-styles')
 
     <div class="hs-login-page">
@@ -7,10 +7,7 @@
                 <div class="mb-5 text-center">
                     <a href="{{ url('/') }}" class="inline-flex flex-col items-center gap-2">
                         <x-hasim-logo variant="mark" size="lg" class="h-12 w-12" />
-                        <span>
-                            <span class="block text-sm font-extrabold leading-none text-[#0f172a]">حاسم الذكي</span>
-                            <span class="mt-1 block text-[10px] font-bold tracking-[0.18em] text-slate-500">HASIM SMART</span>
-                        </span>
+                        @include('partials.site-brand-lockup', ['align' => 'center'])
                     </a>
                     <h1 id="hs-register-title" class="mt-4 text-2xl font-extrabold text-[#0f172a]">إنشاء حساب جديد</h1>
                     <p class="mt-1.5 text-sm font-medium leading-7 text-slate-500">املأ البيانات التالية لإنشاء حسابك في حاسم</p>
@@ -221,10 +218,7 @@
             <div class="hs-login-showcase-inner">
                 <a href="{{ url('/') }}" class="mb-6 inline-flex items-center gap-2.5">
                     <x-hasim-logo variant="mark" size="md" />
-                    <span>
-                        <span class="block text-sm font-extrabold leading-none text-[#0f172a]">حاسم الذكي</span>
-                        <span class="mt-1 block text-[10px] font-bold tracking-[0.18em] text-slate-500">HASIM SMART</span>
-                    </span>
+                    @include('partials.site-brand-lockup')
                 </a>
 
                 <h2 class="text-3xl font-extrabold leading-[1.35] text-[#0f172a] sm:text-4xl">

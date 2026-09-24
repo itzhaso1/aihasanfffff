@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'workspace_id',
     'plan_id',
     'status',
+    'running_guard',
     'starts_at',
     'trial_ends_at',
     'current_period_start',

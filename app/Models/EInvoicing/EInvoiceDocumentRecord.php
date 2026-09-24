@@ -10,6 +10,7 @@ use App\Enums\EInvoicing\InvoiceTypeCode;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Finance\IssuedDocumentSnapshot;
 use App\Models\WorkspaceScopedModel;
+use App\Services\EInvoicing\XmlValidationAssessment;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use RuntimeException;
@@ -36,6 +37,9 @@ class EInvoiceDocumentRecord extends WorkspaceScopedModel
         'type_code' => InvoiceTypeCode::class,
         'transaction_code' => InvoiceTransactionCode::class,
         'compliance_status' => ComplianceStatus::class,
+        'xml_well_formed' => 'boolean',
+        'validated_at' => 'datetime',
+        'validation_findings' => 'array',
     ];
 
     protected static function booted(): void
@@ -70,7 +74,7 @@ class EInvoiceDocumentRecord extends WorkspaceScopedModel
                 }
 
                 throw new RuntimeException(
-                    'Electronic invoice documents are immutable except for compliance_status.'
+                    'Electronic invoice documents are immutable except for compliance_status and validation fields.'
                 );
             }
         });
@@ -96,6 +100,21 @@ class EInvoiceDocumentRecord extends WorkspaceScopedModel
 
         $this->forceFill([
             'compliance_status' => $to,
+        ])->save();
+    }
+
+    public function recordXmlValidation(XmlValidationAssessment $assessment): void
+    {
+        $this->forceFill([
+            'xml_well_formed' => $assessment->wellFormed,
+            'xsd_validation_status' => $assessment->xsd->status->value,
+            'schematron_validation_status' => $assessment->schematron->status->value,
+            'validated_at' => now(),
+            'validation_data_source' => $assessment->dataSource ?? 'snapshot',
+            'validation_findings' => array_map(
+                static fn ($issue): array => $issue->toArray(),
+                $assessment->allIssues(),
+            ),
         ])->save();
     }
 

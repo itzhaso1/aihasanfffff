@@ -4,8 +4,10 @@ namespace App\Providers;
 
 use App\Events\OrderCreated;
 use App\Events\PaymentConfirmed;
+use App\Listeners\RevokeSanctumTokensOnPasswordReset;
 use App\Listeners\SendOrderCreatedNotifications;
 use App\Listeners\SendPaymentConfirmedNotifications;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -26,5 +28,6 @@ class EventServiceProvider extends ServiceProvider
     {
         Event::listen(OrderCreated::class, SendOrderCreatedNotifications::class);
         Event::listen(PaymentConfirmed::class, SendPaymentConfirmedNotifications::class);
+        Event::listen(PasswordReset::class, RevokeSanctumTokensOnPasswordReset::class);
     }
 }

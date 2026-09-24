@@ -8,7 +8,9 @@ import 'package:hasim_finance/features/auth/login_screen.dart';
 import 'package:hasim_finance/features/auth/workspace_gate_screens.dart';
 import 'package:hasim_finance/features/customers/customers_screens.dart';
 import 'package:hasim_finance/features/dashboard/dashboard_screen.dart';
+import 'package:hasim_finance/features/invoices/invoice_form_screen.dart';
 import 'package:hasim_finance/features/invoices/invoices_screens.dart';
+import 'package:hasim_finance/features/contracts/contract_form_screen.dart';
 import 'package:hasim_finance/features/modules/module_screens.dart';
 import 'package:hasim_finance/features/quotes/quotes_screens.dart';
 import 'package:hasim_finance/features/hubs/hub_screens.dart';
@@ -92,7 +94,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => QuoteFormScreen(id: int.parse(state.pathParameters['id']!)),
           ),
           GoRoute(path: '/invoices', builder: (_, _) => const InvoicesScreen()),
-          GoRoute(path: '/invoices/new', builder: (_, _) => const InvoiceFormScreen()),
+          GoRoute(
+            path: '/invoices/new',
+            builder: (_, state) => InvoiceFormScreen(
+              contractId: int.tryParse(state.uri.queryParameters['contract_id'] ?? ''),
+            ),
+          ),
           GoRoute(
             path: '/invoices/:id',
             builder: (_, state) => InvoiceDetailScreen(id: int.parse(state.pathParameters['id']!)),
@@ -167,7 +174,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/vat', builder: (_, _) => const VatHubScreen()),
           GoRoute(path: '/alerts', builder: (_, _) => const AlertsScreen()),
           GoRoute(path: '/accounting', builder: (_, _) => const AccountingHubScreen()),
-          GoRoute(path: '/copilot', builder: (_, _) => const CopilotScreen()),
+          GoRoute(
+            path: '/assistant',
+            builder: (_, state) {
+              final raw = state.uri.queryParameters['conversation_id'];
+              return AssistantScreen(initialConversationId: int.tryParse(raw ?? ''));
+            },
+            routes: [
+              GoRoute(
+                path: ':conversationId',
+                builder: (_, state) => AssistantScreen(
+                  initialConversationId: int.tryParse(state.pathParameters['conversationId'] ?? ''),
+                ),
+              ),
+            ],
+          ),
+          GoRoute(path: '/copilot', redirect: (_, __) => '/assistant'),
           GoRoute(path: '/banks', builder: (_, _) => const BanksScreen()),
           GoRoute(path: '/treasury', builder: (_, _) => const TreasuryScreen()),
           GoRoute(

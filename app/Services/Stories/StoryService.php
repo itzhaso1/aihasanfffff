@@ -76,6 +76,13 @@ class StoryService
             throw new InvalidArgumentException('إعدادات الظهور غير صالحة.');
         }
 
+        $selectedUserIds = $visibility === Story::VISIBILITY_SELECTED
+            ? $this->resolveWorkspaceMemberIds($workspace, $data['selected_user_ids'] ?? [])
+            : null;
+        $hiddenUserIds = $visibility === Story::VISIBILITY_HIDDEN
+            ? $this->resolveWorkspaceMemberIds($workspace, $data['hidden_user_ids'] ?? [])
+            : null;
+
         return Story::query()->create([
             'workspace_id' => $workspace->id,
             'user_id' => $author->id,
@@ -88,12 +95,8 @@ class StoryService
             'media_mime' => $mediaMime,
             'media_size' => $mediaSize,
             'visibility' => $visibility,
-            'selected_user_ids' => $visibility === Story::VISIBILITY_SELECTED
-                ? array_values(array_unique(array_map('intval', $data['selected_user_ids'] ?? [])))
-                : null,
-            'hidden_user_ids' => $visibility === Story::VISIBILITY_HIDDEN
-                ? array_values(array_unique(array_map('intval', $data['hidden_user_ids'] ?? [])))
-                : null,
+            'selected_user_ids' => $selectedUserIds,
+            'hidden_user_ids' => $hiddenUserIds,
             'expires_at' => now()->addHours($expiresInHours),
             'views_count' => 0,
             'status' => Story::STATUS_ACTIVE,
@@ -247,5 +250,35 @@ class StoryService
         }
 
         return ['public', $path, $mime, $size];
+    }
+
+    /**
+     * @param  array<int, mixed>  $userIds
+     * @return list<int>
+     */
+    private function resolveWorkspaceMemberIds(Workspace $workspace, array $userIds): array
+    {
+        $normalized = array_values(array_unique(array_filter(array_map(
+            fn ($id): int => (int) $id,
+            $userIds,
+        ), fn (int $id): bool => $id > 0)));
+
+        if ($normalized === []) {
+            return [];
+        }
+
+        $memberIds = $workspace->users()
+            ->wherePivot('status', 'active')
+            ->whereIn('users.id', $normalized)
+            ->pluck('users.id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        $foreign = array_diff($normalized, $memberIds);
+        if ($foreign !== []) {
+            throw new InvalidArgumentException('Some audience user IDs do not belong to this workspace.');
+        }
+
+        return $memberIds;
     }
 }

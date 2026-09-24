@@ -4,6 +4,9 @@ namespace App\EInvoicing\Xml\Validation;
 
 use App\EInvoicing\Xml\EInvoiceXmlValidationException;
 use App\EInvoicing\Xml\UblNamespaces;
+use App\Enums\EInvoicing\ValidationChannelStatus;
+use App\Services\EInvoicing\ComplianceIssue;
+use App\Services\EInvoicing\ValidationChannelResult;
 use DOMDocument;
 
 /**
@@ -18,32 +21,62 @@ final class XsdValidator
     /**
      * @return list<string>
      */
-    public function validate(string $xml): array
+    public function validateStructured(string $xml): ValidationChannelResult
     {
         $schemaFile = $this->schemaFileFor($xml);
         if ($schemaFile === null) {
-            throw new EInvoiceXmlValidationException(
-                'UBL 2.1 XSD files are not available. See resources/einvoicing/schemas/README.md.'
-            );
+            return new ValidationChannelResult(ValidationChannelStatus::NotAvailable);
         }
 
         $document = new DOMDocument;
         $document->preserveWhiteSpace = false;
         if (! @$document->loadXML($xml)) {
-            return ['XML is not well-formed.'];
+            return new ValidationChannelResult(
+                ValidationChannelStatus::Invalid,
+                [new ComplianceIssue('xml_not_well_formed', 'xml', 'XML is not well-formed.', source: 'xml')],
+            );
         }
 
         $previous = libxml_use_internal_errors(true);
         libxml_clear_errors();
         $valid = @$document->schemaValidate($schemaFile);
-        $errors = [];
+        $issues = [];
         foreach (libxml_get_errors() as $error) {
-            $errors[] = trim($error->message).' (line '.$error->line.')';
+            $issues[] = new ComplianceIssue(
+                code: 'xsd_validation_failed',
+                field: 'xml',
+                message: trim($error->message).' (line '.$error->line.')',
+                source: 'xsd',
+            );
         }
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
 
-        return $valid ? [] : ($errors === [] ? ['XSD validation failed.'] : $errors);
+        if ($valid) {
+            return new ValidationChannelResult(ValidationChannelStatus::Valid);
+        }
+
+        if ($issues === []) {
+            $issues[] = new ComplianceIssue('xsd_validation_failed', 'xml', 'XSD validation failed.', source: 'xsd');
+        }
+
+        return new ValidationChannelResult(ValidationChannelStatus::Invalid, $issues);
+    }
+
+    public function validate(string $xml): array
+    {
+        $structured = $this->validateStructured($xml);
+        if ($structured->status === ValidationChannelStatus::NotAvailable) {
+            throw new EInvoiceXmlValidationException(
+                'UBL 2.1 XSD files are not available. See resources/einvoicing/schemas/README.md.'
+            );
+        }
+
+        if ($structured->status === ValidationChannelStatus::Valid) {
+            return [];
+        }
+
+        return array_map(static fn (ComplianceIssue $issue): string => $issue->message, $structured->issues);
     }
 
     public function schemaFileFor(string $xml): ?string

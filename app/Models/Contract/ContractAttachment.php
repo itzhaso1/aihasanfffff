@@ -3,6 +3,7 @@
 namespace App\Models\Contract;
 
 use App\Models\Concerns\BelongsToWorkspace;
+use App\Models\User;
 use App\Models\WorkspaceScopedModel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +15,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'file_name',
     'file_type',
     'file_size',
+    'uploaded_by',
+    'disk',
 ])]
 class ContractAttachment extends WorkspaceScopedModel
 {
@@ -29,5 +32,15 @@ class ContractAttachment extends WorkspaceScopedModel
     public function contract(): BelongsTo
     {
         return $this->belongsTo(Contract::class);
+    }
+
+    public function uploader(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    public function storageDisk(): string
+    {
+        return $this->disk ?: 'public';
     }
 }

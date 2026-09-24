@@ -2,31 +2,82 @@
 
 namespace App\Services\Email;
 
+use App\Exceptions\CustomerMailboxException;
 use App\Models\EmailAccount;
 use App\Models\EmailAttachment;
 use App\Models\EmailMessage;
+use App\Support\Network\MailboxHostValidator;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class ImapSyncService
 {
+    public function __construct(
+        private readonly CustomerMailboxErrorClassifier $errorClassifier,
+    ) {}
+
+    public function extensionAvailable(): bool
+    {
+        return function_exists('imap_open');
+    }
+
+    /**
+     * @return array{mailbox: string, username: string, email_account_id: int, workspace_id: int}
+     */
+    public function connectionSettings(EmailAccount $account): array
+    {
+        return [
+            'mailbox' => $account->imapMailbox(),
+            'username' => $account->imapUsername(),
+            'email_account_id' => (int) $account->id,
+            'workspace_id' => (int) $account->workspace_id,
+        ];
+    }
+
     public function syncAccount(EmailAccount $account, int $limit = 30): int
     {
-        if (! function_exists('imap_open')) {
-            \Illuminate\Support\Facades\Log::warning('email.imap.extension_missing', [
+        try {
+            MailboxHostValidator::assertAllowed((string) $account->imap_host, 'imap_host');
+        } catch (ValidationException $exception) {
+            throw new CustomerMailboxException(
+                'تعذر مزامنة الوارد. عنوان خادم IMAP غير مسموح.',
+                CustomerMailboxErrorClassifier::CONFIGURATION,
+                (int) $account->workspace_id,
+                (int) $account->id,
+                previous: $exception,
+            );
+        }
+
+        if (! $this->extensionAvailable()) {
+            Log::warning('email.imap.extension_missing', [
                 'email_account_id' => $account->id,
                 'workspace_id' => $account->workspace_id,
             ]);
 
-            return 0;
+            throw new CustomerMailboxException(
+                'تعذر مزامنة الوارد. امتداد IMAP غير مفعّل على الخادم.',
+                CustomerMailboxErrorClassifier::CONFIGURATION,
+                (int) $account->workspace_id,
+                (int) $account->id,
+            );
         }
 
-        $mailbox = sprintf('{%s:%d/imap/ssl}INBOX', $account->imap_host, $account->imap_port);
-        $stream = @imap_open($mailbox, $account->email, (string) $account->password);
+        $settings = $this->connectionSettings($account);
+        $stream = @imap_open($settings['mailbox'], $settings['username'], $account->mailboxPassword());
 
         if (! $stream) {
-            throw new \RuntimeException((string) (imap_last_error() ?: 'Unable to open IMAP mailbox.'));
+            imap_errors();
+
+            throw $this->errorClassifier->wrap(
+                new \RuntimeException('Unable to open IMAP mailbox.'),
+                'imap',
+                $account,
+            );
         }
 
         $synced = 0;
@@ -43,49 +94,93 @@ class ImapSyncService
                     continue;
                 }
 
-                $externalMessageId = $this->normalizeMessageId((string) ($overview->message_id ?? 'imap-'.$account->id.'-'.$messageNumber));
-                $alreadyExists = EmailMessage::withoutGlobalScopes()
-                    ->where('workspace_id', $account->workspace_id)
-                    ->where('email_account_id', $account->id)
-                    ->where('message_id', $externalMessageId)
-                    ->exists();
+                $body = (string) (imap_fetchbody($stream, $messageNumber, '1.1') ?: imap_fetchbody($stream, $messageNumber, '1') ?: imap_body($stream, $messageNumber));
+                $imported = $this->importMessage($account, [
+                    'message_id' => (string) ($overview->message_id ?? ''),
+                    'fallback_key' => 'imap-'.$account->id.'-'.$messageNumber,
+                    'from' => $this->decodeMimeHeader((string) ($overview->from ?? '')),
+                    'to' => $this->decodeMimeHeader((string) ($overview->to ?? $account->email)),
+                    'subject' => $this->decodeMimeHeader((string) ($overview->subject ?? '(بدون عنوان)')),
+                    'body' => trim($body),
+                    'in_reply_to' => isset($overview->in_reply_to) ? $this->normalizeMessageId((string) $overview->in_reply_to) : null,
+                    'date' => isset($overview->date) ? (string) $overview->date : null,
+                ]);
 
-                if ($alreadyExists) {
+                if (! $imported) {
                     continue;
                 }
 
-                $body = (string) (imap_fetchbody($stream, $messageNumber, '1.1') ?: imap_fetchbody($stream, $messageNumber, '1') ?: imap_body($stream, $messageNumber));
-                $inReplyTo = isset($overview->in_reply_to) ? $this->normalizeMessageId((string) $overview->in_reply_to) : null;
-                $threadKey = $inReplyTo ?: $externalMessageId;
-
-                $message = EmailMessage::withoutGlobalScopes()->create([
-                    'workspace_id' => $account->workspace_id,
-                    'email_account_id' => $account->id,
-                    'sender' => $this->decodeMimeHeader((string) ($overview->from ?? '')),
-                    'recipient' => $this->decodeMimeHeader((string) ($overview->to ?? $account->email)),
-                    'subject' => $this->decodeMimeHeader((string) ($overview->subject ?? '(بدون عنوان)')),
-                    'body' => trim($body),
-                    'type' => 'inbound',
-                    'delivery_status' => 'received',
-                    'message_id' => $externalMessageId,
-                    'in_reply_to' => $inReplyTo,
-                    'thread_key' => $threadKey,
-                    'created_at' => isset($overview->date) ? Carbon::parse((string) $overview->date) : now(),
-                    'delivered_at' => now(),
-                ]);
-
                 $structure = imap_fetchstructure($stream, $messageNumber);
                 if ($structure) {
-                    $this->extractAndStoreAttachments($stream, $structure, (int) $messageNumber, $message);
+                    $this->extractAndStoreAttachments($stream, $structure, (int) $messageNumber, $imported);
                 }
 
                 $synced++;
             }
+        } catch (CustomerMailboxException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            throw $this->errorClassifier->wrap($exception, 'imap', $account);
         } finally {
             imap_close($stream);
         }
 
         return $synced;
+    }
+
+    /**
+     * Persist one inbound message for the selected account. Used by IMAP sync and tests.
+     *
+     * @param  array{
+     *     message_id?: string,
+     *     fallback_key?: string,
+     *     from?: string,
+     *     to?: string,
+     *     subject?: string,
+     *     body?: string,
+     *     in_reply_to?: string|null,
+     *     date?: string|null
+     * }  $payload
+     */
+    public function importMessage(EmailAccount $account, array $payload): ?EmailMessage
+    {
+        $externalMessageId = $this->normalizeMessageId((string) ($payload['message_id'] ?? ''));
+        if ($externalMessageId === '') {
+            $externalMessageId = $this->normalizeMessageId((string) ($payload['fallback_key'] ?? 'imap-'.$account->id.'-'.uniqid()));
+        }
+
+        $alreadyExists = EmailMessage::withoutGlobalScopes()
+            ->where('workspace_id', $account->workspace_id)
+            ->where('email_account_id', $account->id)
+            ->where('message_id', $externalMessageId)
+            ->exists();
+
+        if ($alreadyExists) {
+            return null;
+        }
+
+        $inReplyTo = isset($payload['in_reply_to']) && $payload['in_reply_to']
+            ? $this->normalizeMessageId((string) $payload['in_reply_to'])
+            : null;
+        $threadKey = $inReplyTo ?: $externalMessageId;
+
+        return app(WorkspaceContext::class)->runForId((int) $account->workspace_id, function () use ($account, $payload, $externalMessageId, $inReplyTo, $threadKey): EmailMessage {
+            return EmailMessage::withoutGlobalScopes()->create([
+                'workspace_id' => $account->workspace_id,
+                'email_account_id' => $account->id,
+                'sender' => (string) ($payload['from'] ?? ''),
+                'recipient' => (string) ($payload['to'] ?? $account->email),
+                'subject' => (string) ($payload['subject'] ?? '(بدون عنوان)'),
+                'body' => (string) ($payload['body'] ?? ''),
+                'type' => 'inbound',
+                'delivery_status' => 'received',
+                'message_id' => $externalMessageId,
+                'in_reply_to' => $inReplyTo,
+                'thread_key' => $threadKey,
+                'created_at' => isset($payload['date']) && $payload['date'] ? Carbon::parse((string) $payload['date']) : now(),
+                'delivered_at' => now(),
+            ]);
+        });
     }
 
     private function extractAndStoreAttachments($stream, object $structure, int $messageNumber, EmailMessage $message, string $partNumber = ''): void
@@ -149,8 +244,8 @@ class ImapSyncService
     private function decodeBodyByEncoding(string $body, int $encoding): string
     {
         return match ($encoding) {
-            3 => base64_decode($body, true) ?: $body, // BASE64
-            4 => quoted_printable_decode($body), // QUOTED-PRINTABLE
+            3 => base64_decode($body, true) ?: $body,
+            4 => quoted_printable_decode($body),
             default => $body,
         };
     }

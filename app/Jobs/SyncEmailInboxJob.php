@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\CustomerMailboxException;
 use App\Models\EmailAccount;
+use App\Services\Email\CustomerMailboxErrorClassifier;
 use App\Services\Email\ImapSyncService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,6 +16,7 @@ class SyncEmailInboxJob implements ShouldQueue
     use Queueable;
 
     public int $tries = 2;
+
     public int $timeout = 180;
 
     public function __construct(
@@ -21,15 +24,28 @@ class SyncEmailInboxJob implements ShouldQueue
         public readonly ?int $workspaceId = null,
     ) {}
 
-    public function handle(ImapSyncService $imapSyncService): void
+    public function handle(ImapSyncService $imapSyncService, ?CustomerMailboxErrorClassifier $errorClassifier = null): void
     {
-        $query = EmailAccount::withoutGlobalScopes()->whereKey($this->emailAccountId);
-        if ($this->workspaceId !== null) {
-            $query->where('workspace_id', $this->workspaceId);
+        $errorClassifier ??= app(CustomerMailboxErrorClassifier::class);
+        if ($this->workspaceId === null) {
+            Log::warning('email-sync-job-missing-workspace', [
+                'email_account_id' => $this->emailAccountId,
+            ]);
+
+            return;
         }
 
-        $emailAccount = $query->first();
+        $emailAccount = EmailAccount::withoutGlobalScopes()
+            ->whereKey($this->emailAccountId)
+            ->where('workspace_id', $this->workspaceId)
+            ->first();
+
         if (! $emailAccount) {
+            Log::warning('email-sync-job-account-not-found', [
+                'email_account_id' => $this->emailAccountId,
+                'workspace_id' => $this->workspaceId,
+            ]);
+
             return;
         }
 
@@ -37,14 +53,14 @@ class SyncEmailInboxJob implements ShouldQueue
             app(WorkspaceContext::class)->runForId((int) $emailAccount->workspace_id, function () use ($imapSyncService, $emailAccount): void {
                 $imapSyncService->syncAccount($emailAccount, 40);
             });
-        } catch (\Throwable $exception) {
-            Log::error('email-sync-job-failed', [
-                'email_account_id' => $this->emailAccountId,
-                'workspace_id' => $emailAccount->workspace_id,
-                'error' => $exception->getMessage(),
-            ]);
+        } catch (CustomerMailboxException $exception) {
+            $errorClassifier->log($exception, 'imap');
 
             throw $exception;
+        } catch (\Throwable $exception) {
+            $wrapped = $errorClassifier->wrap($exception, 'imap', $emailAccount);
+
+            throw $wrapped;
         }
     }
 }

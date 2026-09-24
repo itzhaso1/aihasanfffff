@@ -1,97 +1,67 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/models/models.dart';
-import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/core/theme/hasim_layout.dart';
+import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
 import 'package:hasim/core/widgets/skeleton_list.dart';
+import 'package:hasim/features/settings/providers/channels_controller.dart';
+import 'package:hasim/l10n/app_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class ChannelsScreen extends ConsumerStatefulWidget {
+class ChannelsScreen extends ConsumerWidget {
   const ChannelsScreen({super.key});
 
-  @override
-  ConsumerState<ChannelsScreen> createState() => _ChannelsScreenState();
-}
-
-class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
-  List<ChannelModel> _items = [];
-  String? _error;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final items = await ref.read(channelRepositoryProvider).list();
-      if (!mounted) return;
-      setState(() {
-        _items = items;
-        _loading = false;
-      });
-    } on ApiException catch (e) {
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    } catch (_) {
-      setState(() {
-        _error = 'تعذر تحميل القنوات.';
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _openManage(ChannelModel channel) async {
+  Future<void> _openManage(BuildContext context, ChannelModel channel) async {
+    final l10n = AppLocalizations.of(context);
     final url = channel.manageUrl;
     if (url == null || url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يوجد رابط إدارة لهذه القناة.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.channelNoManageUrl)));
       return;
     }
     final uri = Uri.tryParse(url);
     if (uri == null) return;
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر فتح رابط الإدارة.')),
-      );
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.channelOpenFailed)));
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('القنوات')),
-      body: _loading
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final state = ref.watch(channelsControllerProvider);
+    final compact = HasimLayout.isCompact(context);
+
+    final listBody = state.loading
           ? const SkeletonList()
-          : _error != null
+          : state.error != null
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(_error!),
-                      TextButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+                      Text(state.error!),
+                      TextButton(
+                        onPressed: () => ref.read(channelsControllerProvider.notifier).reload(),
+                        child: Text(l10n.retry),
+                      ),
                     ],
                   ),
                 )
               : RefreshIndicator(
-                  onRefresh: _load,
+                  onRefresh: () => ref.read(channelsControllerProvider.notifier).reload(),
                   child: ListView.separated(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _items.length,
+                    itemCount: state.items.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
-                      final c = _items[index];
+                      final c = state.items[index];
                       final connected = c.connected || c.status == 'connected';
+                      final details = [
+                        c.statusLabel ?? c.status,
+                        if (c.displayName != null && c.displayName!.isNotEmpty) c.displayName!,
+                        if (c.phoneNumber != null && c.phoneNumber!.isNotEmpty) c.phoneNumber!,
+                        if (c.hint != null) c.hint!,
+                      ].join(' · ');
                       return ListTile(
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -107,15 +77,23 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           ),
                         ),
                         title: Text(c.name),
-                        subtitle: Text([c.statusLabel ?? c.status, if (c.hint != null) c.hint!].join(' · ')),
+                        subtitle: Text(details),
                         trailing: TextButton(
-                          onPressed: () => _openManage(c),
-                          child: const Text('إدارة'),
+                          onPressed: () => _openManage(context, c),
+                          child: Text(l10n.manageChannel),
                         ),
                       );
                     },
                   ),
-                ),
+                );
+
+    if (compact) {
+      return HasimMobileScaffold(title: l10n.channels, body: listBody);
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.channels)),
+      body: listBody,
     );
   }
 }

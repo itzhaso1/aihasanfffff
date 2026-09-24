@@ -688,7 +688,7 @@ void main() {
         itemNamesOnTable(afterSecondAdd),
         containsAll(['برجر', 'عصير', 'بيتزا', 'ماء', 'سلطة']),
       );
-      expect(asMapList(afterSecondAdd?['orders']), hasLength(3));
+      expect(asMapList(afterSecondAdd?['orders']), hasLength(2));
       expect(
         itemNamesOnTable(await tables.getTable(1, 4)),
         containsAll(['برجر', 'عصير', 'بيتزا', 'ماء', 'سلطة']),

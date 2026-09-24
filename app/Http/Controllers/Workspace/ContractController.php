@@ -4,16 +4,20 @@ namespace App\Http\Controllers\Workspace;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Workspace\Concerns\InteractsWithWorkspace;
+use App\Models\AuditLog;
 use App\Models\Contract\Contract;
 use App\Models\Contract\ContractAttachment;
 use App\Models\Customer;
 use App\Models\EmailAccount;
 use App\Models\Projects\FinanceProject;
 use App\Models\User;
+use App\Services\Contracts\ContractBalanceService;
 use App\Services\Contracts\ContractEmailService;
 use App\Services\Contracts\ContractPdfService;
 use App\Services\Contracts\ContractService;
 use App\Services\Notification\DomainNotificationService;
+use App\Support\Authorization\FinanceAccess;
+use App\Support\Uploads\SecureUpload;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -22,6 +26,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use RuntimeException;
 
 class ContractController extends Controller
 {
@@ -32,6 +37,8 @@ class ContractController extends Controller
         private readonly ContractPdfService $contractPdfService,
         private readonly ContractEmailService $contractEmailService,
         private readonly DomainNotificationService $domainNotificationService,
+        private readonly ContractBalanceService $balanceService,
+        private readonly FinanceAccess $financeAccess,
     ) {}
 
     public function index(Request $request): View
@@ -65,8 +72,6 @@ class ContractController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        $base = Contract::query();
-
         return view('workspace.contracts.index', [
             'contracts' => $contracts,
             'filters' => [
@@ -76,13 +81,7 @@ class ContractController extends Controller
                 'project_id' => $projectId,
                 'expiring' => $expiring,
             ],
-            'stats' => [
-                'open' => (clone $base)->where('status', 'open')->count(),
-                'draft' => (clone $base)->where('status', 'draft')->count(),
-                'closed' => (clone $base)->where('status', 'closed')->count(),
-                'expiring' => (clone $base)->where('status', 'open')->whereNotNull('end_date')->whereDate('end_date', '<=', now()->addDays(30)->toDateString())->count(),
-                'value_open' => (clone $base)->where('status', 'open')->sum('value'),
-            ],
+            'stats' => $this->balanceService->workspaceDashboard(),
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name']),
             'projects' => Schema::hasTable('finance_projects')
                 ? FinanceProject::query()->orderBy('name')->get(['id', 'name'])
@@ -122,6 +121,12 @@ class ContractController extends Controller
             (int) $request->user()->id,
             $request->file('attachments', [])
         );
+        $this->domainNotificationService->notifyContractEvent(
+            $contract,
+            'تم إنشاء العقد '.$contract->contract_number,
+            'أُنشئ العقد كمسودة ويمكن تعديله قبل التفعيل.',
+            'contract_created'
+        );
 
         return redirect()->route($this->contractRouteName('show'), $contract)->with('success', 'تم إنشاء العقد بنجاح.');
     }
@@ -130,23 +135,42 @@ class ContractController extends Controller
     {
         $this->authorizeContracts($request, 'contracts.view');
         $this->assertSameWorkspace($contract->workspace_id);
-        $contract->load(['customer', 'project', 'items', 'attachments', 'billingSchedules', 'invoices.payments']);
+        $contract->load([
+            'customer',
+            'project',
+            'items',
+            'attachments.uploader',
+            'billingSchedules.invoices',
+            'invoices.payments',
+            'parentContract',
+            'renewals',
+            'companySigner',
+        ]);
 
-        $relatedInvoices = $contract->invoices;
-        $invoicedTotal = (float) $relatedInvoices->sum('total');
-        $paidTotal = (float) $relatedInvoices->sum('amount_paid');
-        $outstanding = (float) $relatedInvoices->sum('amount_due');
+        $billingSummary = $this->balanceService->summarize($contract);
+        $schedules = $contract->billingSchedules->map(function ($schedule) use ($contract) {
+            $schedule->payment_status = $this->balanceService->scheduleStatus($schedule);
+            $value = (float) $contract->value;
+            $schedule->percentage = $value > 0 ? round(((float) $schedule->amount / $value) * 100, 2) : 0;
+
+            return $schedule;
+        });
+
+        $auditLogs = AuditLog::query()
+            ->with('user')
+            ->where('entity_type', Contract::class)
+            ->where('entity_id', $contract->id)
+            ->latest('occurred_at')
+            ->limit(50)
+            ->get();
 
         return view('workspace.contracts.show', [
             'contract' => $contract,
             'emailAccounts' => EmailAccount::query()->orderBy('name')->get(['id', 'name', 'email']),
             'routePrefix' => $this->contractRoutePrefix(),
-            'billingSummary' => [
-                'invoiced_total' => $invoicedTotal,
-                'paid_total' => $paidTotal,
-                'outstanding' => $outstanding,
-                'invoices' => $relatedInvoices,
-            ],
+            'billingSummary' => $billingSummary,
+            'schedules' => $schedules,
+            'auditLogs' => $auditLogs,
         ]);
     }
 
@@ -174,15 +198,19 @@ class ContractController extends Controller
         $this->authorizeContracts($request, 'contracts.manage');
         $this->assertSameWorkspace($contract->workspace_id);
 
-        if (in_array($contract->status, ['closed', 'cancelled'], true)) {
+        if (in_array($contract->status, ['closed', 'cancelled', 'renewed'], true)) {
             return redirect()
                 ->route($this->contractRouteName('show'), $contract)
-                ->with('error', 'لا يمكن تعديل عقد مغلق أو ملغي.');
+                ->with('error', 'لا يمكن تعديل عقد مغلق أو ملغي أو مُجدَّد.');
         }
 
         $workspace = $this->currentWorkspace();
         $payload = $request->validate($this->rules($workspace->id, $contract->id));
-        $updated = $this->contractService->update($contract, $payload, $request->file('attachments', []));
+        try {
+            $updated = $this->contractService->update($contract, $payload, $request->file('attachments', []), (int) $request->user()->id);
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
 
         return redirect()->route($this->contractRouteName('show'), $updated)->with('success', 'تم تحديث العقد.');
     }
@@ -211,7 +239,8 @@ class ContractController extends Controller
         $this->domainNotificationService->notifyContractEvent(
             $contract,
             'تم تفعيل العقد '.$contract->contract_number,
-            'أصبح العقد مفتوحاً ويمكن ربط جداول فوترة مالية به عند الحاجة.'
+            'أصبح العقد سارياً ويمكن ربط جداول فوترة مالية به عند الحاجة.',
+            'contract_activated'
         );
 
         if (! $request->boolean('send_email')) {
@@ -253,7 +282,8 @@ class ContractController extends Controller
         $this->domainNotificationService->notifyContractEvent(
             $contract->fresh(),
             'تم إغلاق العقد '.$contract->contract_number,
-            'أُغلق العقد يدوياً. تاريخ النهاية وحده لا يغلق العقد تلقائياً.'
+            'أُغلق العقد يدوياً. تاريخ النهاية وحده لا يغلق العقد تلقائياً.',
+            'contract_closed'
         );
 
         return redirect()->route($this->contractRouteName('show'), $contract)->with('success', 'تم إغلاق العقد.');
@@ -267,7 +297,8 @@ class ContractController extends Controller
         $this->domainNotificationService->notifyContractEvent(
             $contract->fresh(),
             'تم إلغاء العقد '.$contract->contract_number,
-            'أُلغي العقد ولن تُولَّد فواتير جديدة من جداوله إلا بإجراء يدوي.'
+            'أُلغي العقد ولن تُولَّد فواتير جديدة من جداوله إلا بإجراء يدوي.',
+            'contract_cancelled'
         );
 
         return redirect()->route($this->contractRouteName('show'), $contract)->with('success', 'تم إلغاء العقد.');
@@ -286,8 +317,12 @@ class ContractController extends Controller
         $this->authorizeContracts($request, 'contracts.view');
         $this->assertSameWorkspace($contract->workspace_id);
         abort_unless((int) $attachment->contract_id === (int) $contract->id, 404);
+        abort_unless((int) $attachment->workspace_id === (int) $contract->workspace_id, 404);
 
-        return Storage::disk('public')->download(
+        $disk = $attachment->storageDisk();
+        abort_unless(Storage::disk($disk)->exists($attachment->file_path), 404);
+
+        return Storage::disk($disk)->download(
             $attachment->file_path,
             $attachment->file_name ?: ('contract-attachment-'.$attachment->id)
         );
@@ -302,6 +337,82 @@ class ContractController extends Controller
         $this->contractService->deleteAttachment($attachment);
 
         return redirect()->route($this->contractRouteName('show'), $contract)->with('success', 'تم حذف المرفق.');
+    }
+
+    public function storeAttachment(Request $request, Contract $contract): RedirectResponse
+    {
+        $this->authorizeContracts($request, 'contracts.attachments');
+        $this->assertSameWorkspace($contract->workspace_id);
+        $request->validate(SecureUpload::contractAttachmentRules(true));
+
+        try {
+            $this->contractService->storeAttachments($contract, $request->file('attachments', []) ?: [], (int) $request->user()->id);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route($this->contractRouteName('show'), $contract)->with('success', 'تم رفع المرفق.');
+    }
+
+    public function renew(Request $request, Contract $contract): RedirectResponse
+    {
+        $this->authorizeContracts($request, 'contracts.renew');
+        $this->assertSameWorkspace($contract->workspace_id);
+        $payload = $request->validate([
+            'title' => ['nullable', 'string', 'max:255'],
+            'start_date' => ['required', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'value' => ['nullable', 'numeric', 'min:0'],
+            'copy_schedules' => ['nullable', 'boolean'],
+        ]);
+        $payload['copy_schedules'] = $request->boolean('copy_schedules');
+
+        try {
+            $renewal = $this->contractService->renew($contract, $payload, (int) $request->user()->id);
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
+
+        $this->domainNotificationService->notifyContractEvent(
+            $renewal,
+            'تم تجديد العقد '.$contract->contract_number,
+            'أُنشئ عقد تجديد '.$renewal->contract_number.' دون تعديل السجل التاريخي للعقد الأصلي.',
+            'contract_renewed'
+        );
+
+        return redirect()->route($this->contractRouteName('show'), $renewal)->with('success', 'تم إنشاء عقد التجديد.');
+    }
+
+    public function sign(Request $request, Contract $contract): RedirectResponse
+    {
+        $this->authorizeContracts($request, 'contracts.update');
+        $this->assertSameWorkspace($contract->workspace_id);
+        $payload = $request->validate([
+            'party' => ['required', 'in:customer,company'],
+            'signer_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        try {
+            $this->contractService->recordSignature($contract, $payload, (int) $request->user()->id);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route($this->contractRouteName('show'), $contract)->with('success', 'تم تسجيل التوقيع التشغيلي. هذا ليس توقيعاً إلكترونياً قانونياً معتمداً.');
+    }
+
+    public function destroy(Request $request, Contract $contract): RedirectResponse
+    {
+        $this->authorizeContracts($request, 'contracts.delete');
+        $this->assertSameWorkspace($contract->workspace_id);
+
+        try {
+            $this->contractService->delete($contract);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route($this->contractRouteName('index'))->with('success', 'تم أرشفة العقد.');
     }
 
     /**
@@ -333,15 +444,31 @@ class ContractController extends Controller
             'value' => ['nullable', 'numeric', 'min:0'],
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'description' => ['nullable', 'string', 'max:15000'],
+            'payment_terms' => ['nullable', 'string', 'max:255'],
             'terms' => ['nullable', 'string', 'max:40000'],
             'notes' => ['nullable', 'string', 'max:15000'],
+            'term_fields' => ['nullable', 'array'],
+            'term_fields.payment' => ['nullable', 'string', 'max:8000'],
+            'term_fields.delivery' => ['nullable', 'string', 'max:8000'],
+            'term_fields.cancellation' => ['nullable', 'string', 'max:8000'],
+            'term_fields.renewal' => ['nullable', 'string', 'max:8000'],
+            'term_fields.warranty' => ['nullable', 'string', 'max:8000'],
+            'term_fields.termination' => ['nullable', 'string', 'max:8000'],
+            'term_fields.additional' => ['nullable', 'string', 'max:8000'],
             'items' => ['nullable', 'array', 'max:200'],
             'items.*.title' => ['nullable', 'string', 'max:255'],
+            'items.*.product_id' => ['nullable', 'integer'],
+            'items.*.item_kind' => ['nullable', 'in:service,product,subscription,one_time,monthly,recurring'],
+            'items.*.unit' => ['nullable', 'string', 'max:32'],
             'items.*.description' => ['nullable', 'string', 'max:2000'],
             'items.*.quantity' => ['nullable', 'numeric', 'min:0'],
             'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
-            'attachments' => ['nullable', 'array', 'max:10'],
-            'attachments.*' => ['file', 'max:10240'],
+            'items.*.discount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.discount_type' => ['nullable', 'in:amount,percent'],
+            'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'items.*.tax_type' => ['nullable', 'string', 'max:32'],
+            ...SecureUpload::contractAttachmentRules(),
         ];
     }
 
@@ -350,19 +477,36 @@ class ContractController extends Controller
         /** @var User|null $user */
         $user = $request->user();
         abort_unless($user, 403);
+        $workspace = $this->currentWorkspace();
 
-        if ($user->can($permission)) {
+        if (in_array($permission, ['contracts.view', 'contracts.payments'], true)) {
+            abort_unless(
+                $this->financeAccess->can($user, $workspace, 'contracts.view')
+                    || $this->financeAccess->can($user, $workspace, 'contracts.manage'),
+                403,
+                'You are not allowed to access contracts module.'
+            );
+
             return;
         }
 
-        $workspace = $this->currentWorkspace();
-        $isElevatedMember = $workspace->users()
-            ->where('users.id', $user->id)
-            ->wherePivot('status', 'active')
-            ->wherePivotIn('membership_role', ['owner', 'admin', 'manager'])
-            ->exists();
+        if ($permission === 'contracts.invoice') {
+            abort_unless(
+                $this->financeAccess->can($user, $workspace, 'contracts.manage')
+                    || $this->financeAccess->can($user, $workspace, 'invoices.create'),
+                403,
+                'You are not allowed to access contracts module.'
+            );
 
-        abort_unless($isElevatedMember, 403, 'You are not allowed to access contracts module.');
+            return;
+        }
+
+        abort_unless(
+            $this->financeAccess->can($user, $workspace, 'contracts.manage')
+                || $this->financeAccess->can($user, $workspace, $permission),
+            403,
+            'You are not allowed to access contracts module.'
+        );
     }
 
     private function contractRoutePrefix(): string

@@ -86,6 +86,7 @@ class AutoSyncController extends StateNotifier<AutoSyncStatus> {
     final workspaceId = CashierRequestAuth.workspaceId(
       sessionWorkspaceId: _ref.read(workspaceIdProvider),
       cloud: cloud,
+      sessionToken: _ref.read(authTokenProvider),
     );
     if (workspaceId == null || workspaceId <= 0) {
       state = AutoSyncStatus(lastSuccessAt: state.lastSuccessAt);

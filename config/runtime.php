@@ -26,13 +26,27 @@ return [
     | still-running worker is not assumed dead and the job is not released early.
     */
     'queue' => [
-        'name' => env('REDIS_QUEUE', 'default'),
+        'name' => env('REDIS_QUEUE', 'emails,default'),
         'redis_connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
         'max_job_timeout' => 180,
         'worker_timeout' => (int) env('QUEUE_WORKER_TIMEOUT', 200),
         'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 270),
         'tries' => (int) env('QUEUE_WORKER_TRIES', 3),
         'backoff' => (int) env('QUEUE_WORKER_BACKOFF', 5),
+    ],
+
+    /*
+    | Supervisor templates under deploy/supervisor/ (P1 queue separation).
+    */
+    'workers' => [
+        'emails' => ['queue' => 'emails', 'supervisor' => 'hasem-worker-emails'],
+        'default' => ['queue' => 'default', 'supervisor' => 'hasem-worker'],
+        'inbound' => ['queue' => 'inbound', 'supervisor' => 'hasem-worker-inbound'],
+        'realtime' => ['queue' => 'realtime', 'supervisor' => 'hasem-worker-realtime'],
+        'ai' => ['queue' => 'ai', 'supervisor' => 'hasem-worker-ai'],
+        'outbound' => ['queue' => 'outbound', 'supervisor' => 'hasem-worker-outbound'],
+        'media' => ['queue' => 'media', 'supervisor' => 'hasem-worker-media'],
+        'reverb' => ['supervisor' => 'hasem-reverb'],
     ],
 
     'redis' => [

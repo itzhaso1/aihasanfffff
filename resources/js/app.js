@@ -34,7 +34,7 @@ document.addEventListener('alpine:init', () => {
         messages: [
             { role: 'assistant', text: 'مرحبًا، أنا مساعد حاسم. كيف يمكنني مساعدتك اليوم؟' },
         ],
-        x: 24,
+        x: null,
         y: null,
         dragging: false,
         moved: false,
@@ -47,6 +47,10 @@ document.addEventListener('alpine:init', () => {
             if (Number.isFinite(storedX)) this.x = storedX;
             if (Number.isFinite(storedY)) this.y = storedY;
 
+            if (!Number.isFinite(this.x)) {
+                this.x = Math.max(24, window.innerWidth - 80);
+            }
+
             if (!Number.isFinite(this.y)) {
                 this.y = Math.max(24, window.innerHeight - 96);
             }
@@ -56,6 +60,9 @@ document.addEventListener('alpine:init', () => {
         },
         launcherStyle() {
             return `left:${this.x}px;top:${this.y}px;`;
+        },
+        panelAlignClass() {
+            return this.x > window.innerWidth / 2 ? 'end-0' : 'start-0';
         },
         startDrag(event) {
             this.dragging = true;

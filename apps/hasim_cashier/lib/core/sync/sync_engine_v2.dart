@@ -8,6 +8,7 @@ import '../api/cashier_api.dart';
 import '../local_db/app_database.dart';
 import '../pos/domain/pricing_service.dart';
 import '../local_db/workspace_scope.dart';
+import '../pos/pos_mode.dart';
 import '../repositories/sync_queue_repository.dart';
 import '../repositories/sync_conflict_repository.dart';
 import 'sync_pull_applier.dart';
@@ -234,6 +235,8 @@ class SyncEngineV2 {
     var kept = 0;
     try {
       await _queue.recoverStuckSyncing(workspaceId);
+      await _requeueSessionsSentBeforeTable(workspaceId);
+      await _catchUpUnqueuedSales(workspaceId);
       if (_preferBatchPush) {
         final batch = await _pushPendingBatch(workspaceId);
         if (!batch.fellBackToRow) {
@@ -285,15 +288,17 @@ class SyncEngineV2 {
           kept++;
           continue;
         }
+        if (row.entityType == 'table_session' &&
+            !await _localTableHasServerId(row)) {
+          kept++;
+          continue;
+        }
         if (row.entityType == 'table_session' && row.operation == 'close') {
           if (await _hasPendingSessionOpen(row)) {
             kept++;
             continue;
           }
-          final payload = _decode(row.payloadJson);
-          final tableId = (payload['table_server_id'] as num?)?.toInt();
-          if (tableId != null &&
-              await _hasUnsyncedOrdersForTable(workspaceId, tableId)) {
+          if (await _closeBlockedByUnsyncedOrders(row)) {
             kept++;
             continue;
           }
@@ -632,14 +637,12 @@ class SyncEngineV2 {
     // + table sessions. Sale stock.movement stays out (alreadyApplied).
     if (!_isScopedBatchOp(row)) return false;
     if (row.entityType == 'table_session') {
+      if (!await _localTableHasServerId(row)) return false;
       if (row.operation == 'close') {
         if (await _hasPendingSessionOpen(row)) {
           return false;
         }
-        final payload = _decode(row.payloadJson);
-        final tableId = (payload['table_server_id'] as num?)?.toInt();
-        if (tableId != null &&
-            await _hasUnsyncedOrdersForTable(row.workspaceId, tableId)) {
+        if (await _closeBlockedByUnsyncedOrders(row)) {
           return false;
         }
       }
@@ -652,6 +655,9 @@ class SyncEngineV2 {
       return true;
     }
     if (row.entityType == 'order' && row.operation == 'update') {
+      if (SyncQueueClassifier.isOrderItemsUpdate(row)) {
+        return _orderItemsUpdateReady(row);
+      }
       return _kitchenStatusReady(row);
     }
     if (row.entityType == 'order') {
@@ -682,7 +688,8 @@ class SyncEngineV2 {
       );
     }
     if (row.entityType == 'order' && row.operation == 'update') {
-      return SyncQueueClassifier.isKitchenStatusOp(row);
+      return SyncQueueClassifier.isKitchenStatusOp(row) ||
+          SyncQueueClassifier.isOrderItemsUpdate(row);
     }
     if (row.entityType == 'invoice' && row.operation == 'create') {
       final type = SyncQueueClassifier.saleTypeOf(row);
@@ -726,6 +733,24 @@ class SyncEngineV2 {
         (payload['server_order_id'] as num?)?.toInt() ??
         0;
     return serverId > 0;
+  }
+
+  Future<bool> _orderItemsUpdateReady(SyncQueueItem row) async {
+    if (!SyncQueueClassifier.isOrderItemsUpdate(row)) return false;
+    final payload = await _pushData(row);
+    final serverId = (payload['order_server_id'] as num?)?.toInt() ??
+        (payload['server_order_id'] as num?)?.toInt() ??
+        0;
+    if (serverId <= 0) return false;
+    final items = payload['items'];
+    if (items is! List || items.isEmpty) return false;
+    for (final item in items) {
+      if (item is! Map) return false;
+      final menuId = (item['pos_menu_item_id'] as num?)?.toInt() ?? 0;
+      final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+      if (menuId <= 0 || qty < 1) return false;
+    }
+    return true;
   }
 
   Future<bool> _saleCreateReady(SyncQueueItem row) async {
@@ -881,16 +906,23 @@ class SyncEngineV2 {
                     t.workspaceId.equals(row.workspaceId),
               ))
               .getSingleOrNull();
-      final sessionId = table?.sessionServerId ??
-          (payload['session_server_id'] as num?)?.toInt();
-      if (sessionId != null && sessionId > 0) {
-        payload['session_server_id'] = sessionId;
-        payload['session_id'] = sessionId;
-      }
-      final tableServerId = table?.serverId ??
-          (payload['table_server_id'] as num?)?.toInt();
+      final tableServerId = table?.serverId;
       if (tableServerId != null && tableServerId > 0) {
         payload['table_server_id'] = tableServerId;
+        payload['dining_table_id'] = tableServerId;
+        final sessionId = await _resolvedSessionServerId(row, payload, table);
+        if (sessionId != null && sessionId > 0) {
+          payload['session_server_id'] = sessionId;
+          payload['session_id'] = sessionId;
+        }
+      } else {
+        // A board id is not a Laravel id. Sending it opens the wrong table
+        // or fails the first sitting permanently.
+        payload.remove('table_server_id');
+        payload.remove('dining_table_id');
+        payload.remove('table_id');
+        payload.remove('session_server_id');
+        payload.remove('session_id');
       }
     }
     if (row.entityType == 'category' ||
@@ -914,6 +946,12 @@ class SyncEngineV2 {
         payload['server_order_id'] = serverId;
         payload['id'] = serverId;
       }
+      final items = payload['items'];
+      final hasItems = items is List && items.isNotEmpty;
+      if (hasItems && payload['kitchen_status'] != true) {
+        await _hydratePayloadItemServerIds(payload);
+        return payload;
+      }
       payload['kitchen_status'] = true;
       if ('${payload['pos_status'] ?? ''}'.trim().isEmpty) {
         payload['pos_status'] = order?.posStatus ?? 'new';
@@ -923,6 +961,7 @@ class SyncEngineV2 {
     if (row.entityType == 'order' && row.operation == 'create') {
       payload['offline_sale'] = true;
       await _resolveOrderTableId(row, payload);
+      await _hydrateOrderItemServerIds(row, payload);
     }
     if (row.entityType != 'order' || row.operation != 'create') {
       return payload;
@@ -1039,6 +1078,315 @@ class SyncEngineV2 {
     );
     if (tableId != null) {
       payload['dining_table_id'] = tableId;
+    }
+  }
+
+  Future<bool> _localTableHasServerId(SyncQueueItem row) async {
+    final table =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.localId.equals(row.entityId) &
+                  t.workspaceId.equals(row.workspaceId),
+            ))
+            .getSingleOrNull();
+    return table?.serverId != null && table!.serverId! > 0;
+  }
+
+  /// A session op that was rejected with a board id can proceed once
+  /// table.created has stored the real Laravel id.
+  Future<void> _requeueSessionsSentBeforeTable(int workspaceId) async {
+    final rows = await _queue.pendingForWorkspace(workspaceId);
+    final now = DateTime.now();
+    for (final row in rows) {
+      if (row.status != 'failed' || row.entityType != 'table_session') {
+        continue;
+      }
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(workspaceId),
+              ))
+              .getSingleOrNull();
+      final serverId = table?.serverId;
+      if (serverId == null || serverId <= 0) continue;
+      final payload = _decode(row.payloadJson);
+      final sentId = (payload['table_server_id'] as num?)?.toInt() ?? 0;
+      if (sentId == serverId) continue;
+      await (_db.update(_db.syncQueueItems)..where((t) => t.id.equals(row.id)))
+          .write(
+            SyncQueueItemsCompanion(
+              status: const Value('pending'),
+              nextAttemptAt: const Value(null),
+              updatedAt: Value(now),
+            ),
+          );
+    }
+  }
+
+  Future<void> _hydratePayloadItemServerIds(Map<String, dynamic> payload) async {
+    final items = payload['items'];
+    if (items is! List) return;
+    for (final raw in items) {
+      if (raw is! Map) continue;
+      final current = (raw['pos_menu_item_id'] as num?)?.toInt() ?? 0;
+      if (current > 0) continue;
+      final localId = '${raw['product_local_id'] ?? ''}'.trim();
+      if (localId.isEmpty) continue;
+      final product =
+          await (_db.select(_db.localProducts)..where(
+                (t) => t.localId.equals(localId),
+              ))
+              .getSingleOrNull();
+      final serverId = product?.serverId;
+      if (serverId != null && serverId > 0) {
+        raw['pos_menu_item_id'] = serverId;
+      }
+    }
+  }
+
+  Future<int?> _resolvedSessionServerId(
+    SyncQueueItem row,
+    Map<String, dynamic> payload,
+    LocalTable? table,
+  ) async {
+    final fromPayload = (payload['session_server_id'] as num?)?.toInt() ??
+        (payload['session_id'] as num?)?.toInt();
+    if (fromPayload != null && fromPayload > 0) return fromPayload;
+    final clientId = '${payload['session_client_id'] ?? ''}'.trim();
+    if (clientId.isNotEmpty) {
+      final session =
+          await (_db.select(_db.localSessions)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(clientId),
+              ))
+              .getSingleOrNull();
+      if (session?.serverId != null && session!.serverId! > 0) {
+        return session.serverId;
+      }
+    }
+    final fromTable = table?.sessionServerId;
+    if (fromTable != null && fromTable > 0) return fromTable;
+    return null;
+  }
+
+  /// Sales checked out before the product had a Laravel id never entered the
+  /// queue. Once the product is known, the next push sends them.
+  Future<void> _catchUpUnqueuedSales(int workspaceId) async {
+    if (PosMode.isReservedStandaloneWorkspace(workspaceId)) return;
+    final orders =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) & t.serverId.isNull(),
+            ))
+            .get();
+    for (final order in orders) {
+      final type = order.orderType.trim().toLowerCase();
+      if (!SyncQueueClassifier.saleTypes.contains(type)) continue;
+      if (order.posStatus == 'cancelled') continue;
+      if (order.clientReference.trim().isEmpty) continue;
+      final sync = order.syncStatus.trim().toLowerCase();
+      if (sync != 'local' && sync != 'pending') continue;
+      final existing = await (_db.select(_db.syncQueueItems)..where(
+            (t) =>
+                t.workspaceId.equals(workspaceId) &
+                t.entityType.equals('order') &
+                t.entityId.equals(order.localId) &
+                t.operation.equals('create') &
+                t.status.isNotValue('cancelled'),
+          ))
+          .get();
+      if (existing.isNotEmpty) continue;
+      final items =
+          await (_db.select(_db.localOrderItems)..where(
+                (t) =>
+                    t.orderLocalId.equals(order.localId) &
+                    t.workspaceId.equals(workspaceId) &
+                    t.isRemoved.equals(false),
+              ))
+              .get();
+      if (items.isEmpty) continue;
+      final sellable = items.every((item) {
+        final server = item.productServerId ?? 0;
+        final local = item.productLocalId?.trim() ?? '';
+        return server > 0 || local.isNotEmpty;
+      });
+      if (!sellable) continue;
+      await _queue.enqueue(
+        workspaceId: workspaceId,
+        deviceId: order.deviceId,
+        entityType: 'order',
+        entityId: order.localId,
+        operation: 'create',
+        clientReference: order.clientReference,
+        payload: {
+          'order_type': type,
+          'offline_sale': true,
+          if (order.tableServerId != null && order.tableServerId! > 0)
+            'dining_table_id': order.tableServerId,
+          if (order.tableLocalId != null && order.tableLocalId!.trim().isNotEmpty)
+            'table_local_id': order.tableLocalId!.trim(),
+          if (order.sessionLocalId != null &&
+              order.sessionLocalId!.trim().isNotEmpty)
+            'session_local_id': order.sessionLocalId!.trim(),
+          'client_reference': order.clientReference,
+          'placed_at': order.createdAt.toUtc().toIso8601String(),
+          'currency': 'SAR',
+          'subtotal_amount': Money.fromCents(order.subtotal),
+          'discount_amount': Money.fromCents(order.discountAmount),
+          'tax_amount': Money.fromCents(order.taxAmount),
+          'total_amount': Money.fromCents(order.totalAmount),
+          'items': [
+            for (final item in items)
+              {
+                if (item.productServerId != null && item.productServerId! > 0)
+                  'pos_menu_item_id': item.productServerId,
+                if (item.productLocalId != null &&
+                    item.productLocalId!.trim().isNotEmpty)
+                  'product_local_id': item.productLocalId!.trim(),
+                'quantity': item.quantity,
+                'unit_price': Money.fromCents(item.unitPrice),
+                'name': item.name,
+                'product_name': item.name,
+              },
+          ],
+        },
+      );
+      if (sync == 'local') {
+        await (_db.update(_db.localOrders)..where(
+              (t) => t.localId.equals(order.localId),
+            ))
+            .write(
+              const LocalOrdersCompanion(syncStatus: Value('pending')),
+            );
+      }
+      final invoices =
+          await (_db.select(_db.localInvoices)..where(
+                (t) =>
+                    t.workspaceId.equals(workspaceId) &
+                    t.orderLocalId.equals(order.localId) &
+                    t.serverId.isNull(),
+              ))
+              .get();
+      for (final invoice in invoices) {
+        final invoiceSync = invoice.syncStatus.trim().toLowerCase();
+        if (invoiceSync != 'local' && invoiceSync != 'pending') continue;
+        final queuedInvoice = await (_db.select(_db.syncQueueItems)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) &
+                  t.entityType.equals('invoice') &
+                  t.entityId.equals(invoice.localId) &
+                  t.operation.equals('create') &
+                  t.status.isNotValue('cancelled'),
+            ))
+            .get();
+        if (queuedInvoice.isNotEmpty) continue;
+        final localNumber =
+            (invoice.localInvoiceNumber ?? invoice.invoiceNumber ?? '')
+                .trim();
+        final payments =
+            await (_db.select(_db.localPayments)..where(
+                  (t) => t.invoiceLocalId.equals(invoice.localId),
+                ))
+                .get();
+        await _queue.enqueue(
+          workspaceId: workspaceId,
+          deviceId: invoice.deviceId,
+          entityType: 'invoice',
+          entityId: invoice.localId,
+          operation: 'create',
+          clientReference: invoice.localId,
+          payload: {
+            'order_type': type,
+            'order_local_id': order.localId,
+            'local_invoice_number': localNumber.isEmpty
+                ? invoice.localId
+                : localNumber,
+            'closed_at': invoice.createdAt.toUtc().toIso8601String(),
+            'currency': 'SAR',
+            'subtotal_amount': Money.fromCents(invoice.subtotal),
+            'discount_amount': Money.fromCents(invoice.discountAmount),
+            'tax_amount': Money.fromCents(invoice.taxAmount),
+            'total_amount': Money.fromCents(invoice.totalAmount),
+            'payment_method': payments.isEmpty ? 'cash' : payments.first.method,
+          },
+        );
+        if (invoiceSync == 'local') {
+          await (_db.update(_db.localInvoices)..where(
+                (t) => t.localId.equals(invoice.localId),
+              ))
+              .write(
+                const LocalInvoicesCompanion(syncStatus: Value('pending')),
+              );
+        }
+      }
+    }
+  }
+
+  Future<void> _hydrateOrderItemServerIds(
+    SyncQueueItem row,
+    Map<String, dynamic> payload,
+  ) async {
+    final items = payload['items'];
+    if (items is! List || items.isEmpty) return;
+    final locals =
+        await (_db.select(_db.localOrderItems)..where(
+              (t) =>
+                  t.orderLocalId.equals(row.entityId) &
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.isRemoved.equals(false),
+            ))
+            .get();
+    for (var i = 0; i < items.length; i++) {
+      final raw = items[i];
+      if (raw is! Map) continue;
+      var serverId = (raw['pos_menu_item_id'] as num?)?.toInt() ?? 0;
+      var localProductId = '${raw['product_local_id'] ?? ''}'.trim();
+      LocalOrderItem? localItem;
+      if (i < locals.length) {
+        localItem = locals[i];
+        final fromItem = localItem.productServerId;
+        if (serverId <= 0 && fromItem != null && fromItem > 0) {
+          serverId = fromItem;
+        }
+        if (localProductId.isEmpty) {
+          localProductId = localItem.productLocalId?.trim() ?? '';
+        }
+      }
+      if (serverId <= 0 && localProductId.isNotEmpty) {
+        final product =
+            await (_db.select(_db.localProducts)..where(
+                  (t) =>
+                      t.workspaceId.equals(row.workspaceId) &
+                      t.localId.equals(localProductId),
+                ))
+                .getSingleOrNull();
+        final found = product?.serverId ?? 0;
+        if (found > 0) {
+          serverId = found;
+          if (localItem != null &&
+              (localItem.productServerId == null ||
+                  localItem.productServerId! <= 0)) {
+            final itemId = localItem.localId;
+            await (_db.update(_db.localOrderItems)..where(
+                  (t) => t.localId.equals(itemId),
+                ))
+                .write(
+                  LocalOrderItemsCompanion(
+                    productServerId: Value(found),
+                    updatedAt: Value(DateTime.now()),
+                  ),
+                );
+          }
+        }
+      }
+      if (localProductId.isNotEmpty) {
+        raw['product_local_id'] = localProductId;
+      }
+      if (serverId > 0) {
+        raw['pos_menu_item_id'] = serverId;
+      }
     }
   }
 
@@ -1249,6 +1597,28 @@ class SyncEngineV2 {
     return false;
   }
 
+  Future<bool> _closeBlockedByUnsyncedOrders(SyncQueueItem row) async {
+    final payload = _decode(row.payloadJson);
+    final tableLocalId = '${payload['table_local_id'] ?? ''}'.trim();
+    if (tableLocalId.isNotEmpty) {
+      final rows =
+          await (_db.select(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.tableLocalId.equals(tableLocalId) &
+                    t.posStatus.isNotValue('cancelled') &
+                    (t.syncStatus.equals('pending') |
+                        t.syncStatus.equals('syncing') |
+                        t.syncStatus.equals('failed')),
+              ))
+              .get();
+      return rows.isNotEmpty;
+    }
+    final tableId = (payload['table_server_id'] as num?)?.toInt();
+    if (tableId == null) return false;
+    return _hasUnsyncedOrdersForTable(row.workspaceId, tableId);
+  }
+
   Future<bool> _hasUnsyncedOrdersForTable(int workspaceId, int tableId) async {
     final rows =
         await (_db.select(_db.localOrders)..where(
@@ -1438,6 +1808,17 @@ class SyncEngineV2 {
                   updatedAt: Value(now),
                 ),
               );
+          await (_db.update(_db.localOrderItems)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.productLocalId.equals(row.entityId),
+              ))
+              .write(
+                LocalOrderItemsCompanion(
+                  productServerId: Value(serverId),
+                  updatedAt: Value(now),
+                ),
+              );
         }
       } else if (row.entityType == 'table') {
         if (row.operation == 'delete') {
@@ -1618,8 +1999,10 @@ class SyncEngineV2 {
       ...prev,
       'id': data['invoice_id'] ?? data['id'],
       'server_id': serverId,
-      if (serverNumber != null && serverNumber.isNotEmpty)
+      if (serverNumber != null && serverNumber.isNotEmpty) ...{
         'server_invoice_number': serverNumber,
+        'invoice_number': serverNumber,
+      },
       'currency': data['currency'] ?? prev['currency'],
       'sync_status': 'synced',
     };
@@ -1682,22 +2065,23 @@ class SyncEngineV2 {
 
   Future<void> _pushSessionClose(SyncQueueItem row) async {
     final payload = _decode(row.payloadJson);
-    final tableId = (payload['table_server_id'] as num?)?.toInt();
+    final table =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.localId.equals(row.entityId) &
+                  t.workspaceId.equals(row.workspaceId),
+            ))
+            .getSingleOrNull();
+    var tableId = (payload['table_server_id'] as num?)?.toInt();
+    if (tableId == null || tableId <= 0) {
+      tableId = table?.serverId;
+    }
     if (tableId == null || tableId <= 0) {
       throw StateError('table_session close requires table_server_id');
     }
+    payload['table_server_id'] = tableId;
 
-    var sessionId = (payload['session_server_id'] as num?)?.toInt();
-    if (sessionId == null || sessionId <= 0) {
-      final table =
-          await (_db.select(_db.localTables)..where(
-                (t) =>
-                    t.localId.equals(row.entityId) &
-                    t.workspaceId.equals(row.workspaceId),
-              ))
-              .getSingleOrNull();
-      sessionId = table?.sessionServerId;
-    }
+    var sessionId = await _resolvedSessionServerId(row, payload, table);
     if (sessionId == null || sessionId <= 0) {
       final getter = _getTable;
       if (getter != null) {
@@ -1755,35 +2139,48 @@ class SyncEngineV2 {
     final invoiceLocalId = '${payload['invoice_local_id'] ?? ''}';
     final paymentLocalId = '${payload['payment_local_id'] ?? ''}';
     final now = DateTime.now();
-    if (invoiceLocalId.isNotEmpty) {
-      final existing = await (_db.select(
-        _db.localInvoices,
-      )..where((t) => t.localId.equals(invoiceLocalId))).getSingleOrNull();
-      final prev = existing == null
-          ? <String, dynamic>{}
-          : _decode(existing.payloadJson);
-      final merged = {
-        ...prev,
-        if (invoice != null) ...invoice,
-        'sync_status': 'synced',
-      };
-      await (_db.update(
-        _db.localInvoices,
-      )..where((t) => t.localId.equals(invoiceLocalId))).write(
-        LocalInvoicesCompanion(
-          serverId: Value((invoice?['id'] as num?)?.toInt()),
-          invoiceNumber: Value(
-            invoice?['invoice_number']?.toString() ?? existing?.invoiceNumber,
+    if (invoiceLocalId.isNotEmpty && invoice != null) {
+      final serverId = (invoice['invoice_id'] as num?)?.toInt() ??
+          (invoice['id'] as num?)?.toInt();
+      final serverNumber = invoice['invoice_number']?.toString();
+      if (serverId != null && serverId > 0) {
+        final existing = await (_db.select(
+          _db.localInvoices,
+        )..where((t) => t.localId.equals(invoiceLocalId))).getSingleOrNull();
+        final prev = existing == null
+            ? <String, dynamic>{}
+            : _decode(existing.payloadJson);
+        final merged = {
+          ...prev,
+          ...invoice,
+          'id': serverId,
+          'server_id': serverId,
+          if (serverNumber != null && serverNumber.isNotEmpty)
+            'invoice_number': serverNumber,
+          if (serverNumber != null && serverNumber.isNotEmpty)
+            'server_invoice_number': serverNumber,
+          'sync_status': 'synced',
+        };
+        await (_db.update(
+          _db.localInvoices,
+        )..where((t) => t.localId.equals(invoiceLocalId))).write(
+          LocalInvoicesCompanion(
+            serverId: Value(serverId),
+            serverInvoiceNumber: Value(
+              (serverNumber != null && serverNumber.isNotEmpty)
+                  ? serverNumber
+                  : existing?.serverInvoiceNumber,
+            ),
+            totalAmount: Value(
+              invoice['total_amount'] is num
+                  ? Money.toCents(invoice['total_amount'])
+                  : (existing?.totalAmount ?? 0),
+            ),
+            syncStatus: const Value('synced'),
+            payloadJson: Value(jsonEncode(merged)),
           ),
-          totalAmount: Value(
-            invoice?['total_amount'] is num
-                ? Money.toCents(invoice?['total_amount'])
-                : (existing?.totalAmount ?? 0),
-          ),
-          syncStatus: const Value('synced'),
-          payloadJson: Value(jsonEncode(merged)),
-        ),
-      );
+        );
+      }
     }
     if (paymentLocalId.isNotEmpty) {
       await (_db.update(_db.localPayments)

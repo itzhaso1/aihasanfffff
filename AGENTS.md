@@ -17,6 +17,7 @@ Laravel 13 / PHP 8.3 modular monolith. One product, one database, `workspace_id`
 
 ## Read first
 
+- Flutter UI (Hasim app): `docs/HASIM_FLUTTER_DESIGN_SYSTEM.md`
 - Architecture + non-negotiables: `docs/HASEM_MASTER_PLATFORM_SPEC.md`
 - Feature status (what exists vs later): `docs/HASEM_IMPLEMENTATION_STATUS.md`
 - Cursor rules: `.cursor/rules/`

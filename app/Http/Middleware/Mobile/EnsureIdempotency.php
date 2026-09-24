@@ -8,6 +8,7 @@ use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class EnsureIdempotency
 {
@@ -26,42 +27,49 @@ class EnsureIdempotency
         }
 
         $user = $request->user();
-        $key = $this->idempotencyService->keyFromRequest($request);
         $workspace = $this->workspaceContext->workspace();
 
-        if (! $user || $key === null || $workspace === null) {
+        if (! $user || $workspace === null) {
             return $next($request);
         }
 
-        $hash = $this->idempotencyService->requestHash($request);
-        $existing = $this->idempotencyService->find($user, $key, $request->path(), (int) $workspace->id);
-        if ($existing) {
-            if ($this->idempotencyService->conflicts($existing, $hash)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Idempotency-Key already used with a different request.',
-                ], 409);
-            }
+        $claim = $this->idempotencyService->begin($user, $workspace, $request);
 
-            return $this->idempotencyService->replay($existing);
+        if ($claim->isSkipped()) {
+            return $next($request);
         }
 
-        /** @var Response $response */
-        $response = $next($request);
+        if ($claim->isReplay() && $claim->record) {
+            return $this->idempotencyService->replay($claim->record);
+        }
 
-        if ($response instanceof JsonResponse && $response->getStatusCode() < 500) {
-            $content = json_decode($response->getContent() ?: 'null', true);
-            if (is_array($content)) {
-                $this->idempotencyService->store(
-                    user: $user,
-                    key: $key,
-                    route: $request->path(),
-                    statusCode: $response->getStatusCode(),
-                    body: $content,
-                    workspace: $workspace,
-                    requestHash: $hash,
-                );
+        if ($claim->isConflict()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Idempotency-Key already used with a different request.',
+            ], 409);
+        }
+
+        if ($claim->isBusy()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This request is already in progress.',
+            ], 409);
+        }
+
+        try {
+            /** @var Response $response */
+            $response = $next($request);
+        } catch (Throwable $exception) {
+            if ($claim->isClaimed() && $claim->record) {
+                $this->idempotencyService->release($claim->record);
             }
+
+            throw $exception;
+        }
+
+        if ($claim->isClaimed() && $claim->record && $response instanceof JsonResponse) {
+            $this->idempotencyService->complete($claim->record, $response);
         }
 
         return $response;

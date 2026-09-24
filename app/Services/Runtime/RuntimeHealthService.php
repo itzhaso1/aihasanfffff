@@ -177,6 +177,7 @@ class RuntimeHealthService
             'finance:invoices:refresh-payment-status',
             'finance:invoices:send-reminders',
             'finance:billing-schedules:generate',
+            'ExpireStoriesJob',
             'subscriptions:expire-trials',
             'subscriptions:process-renewals',
             'subscriptions:process-dunning',

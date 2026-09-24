@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Finance\Concerns;
 
+use App\Exceptions\Api\ApiApplicationException;
 use App\Exceptions\Api\ApiErrorCode;
 use App\Models\User;
 use App\Models\Workspace;
@@ -30,6 +31,8 @@ trait HandlesFinanceClient
     {
         try {
             return $callback();
+        } catch (ApiApplicationException $exception) {
+            throw $exception;
         } catch (RuntimeException $exception) {
             [$code, $status] = $this->financeDomainFailure($exception);
             throw new HttpResponseException($this->fail(

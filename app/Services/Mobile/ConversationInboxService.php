@@ -3,7 +3,6 @@
 namespace App\Services\Mobile;
 
 use App\Events\Realtime\ConversationUpdated;
-use App\Events\Realtime\MessageCreated;
 use App\Models\Conversation;
 use App\Models\ConversationUserState;
 use App\Models\Message;
@@ -55,10 +54,7 @@ class ConversationInboxService
         }
 
         if ($filter === 'unread') {
-            $query->where(function (Builder $q): void {
-                $q->whereNull('cus.last_read_message_id')
-                    ->orWhereRaw('cus.last_read_message_id < (select max(m.id) from messages m where m.conversation_id = conversations.id and m.direction = ?)', ['inbound']);
-            });
+            $this->applyUnreadFilter($query);
         }
 
         if ($channel !== '') {
@@ -87,25 +83,18 @@ class ConversationInboxService
 
     public function unreadConversationCount(User $user, Workspace $workspace): int
     {
-        return (int) Conversation::query()
+        $query = Conversation::query()
             ->leftJoin('conversation_user_states as cus', function ($join) use ($user): void {
                 $join->on('cus.conversation_id', '=', 'conversations.id')
                     ->where('cus.user_id', '=', $user->id);
             })
             ->where(function (Builder $q): void {
                 $q->whereNull('cus.archived_at');
-            })
-            ->where(function (Builder $q): void {
-                $q->whereNull('cus.last_read_message_id')
-                    ->orWhereRaw('cus.last_read_message_id < (select max(m.id) from messages m where m.conversation_id = conversations.id and m.direction = ?)', ['inbound']);
-            })
-            ->whereExists(function ($q): void {
-                $q->selectRaw('1')
-                    ->from('messages')
-                    ->whereColumn('messages.conversation_id', 'conversations.id')
-                    ->where('messages.direction', 'inbound');
-            })
-            ->count('conversations.id');
+            });
+
+        $this->applyUnreadFilter($query, requireInbound: true);
+
+        return (int) $query->count('conversations.id');
     }
 
     /**
@@ -139,9 +128,6 @@ class ConversationInboxService
 
             $message = $this->conversationService->addMessage($conversation, $payload, $actor);
 
-            event(new MessageCreated($message));
-            event(new ConversationUpdated($conversation->fresh()));
-
             return $message->load(['user', 'customer', 'attachments']);
         });
     }
@@ -150,24 +136,14 @@ class ConversationInboxService
     {
         $existing = Message::query()
             ->where('conversation_id', $conversation->id)
-            ->where('metadata->idempotency_key', $key)
+            ->where(function ($query) use ($key): void {
+                $query->where('metadata->idempotency_key', $key)
+                    ->orWhere('metadata->client_id', $key);
+            })
             ->lockForUpdate()
             ->first();
 
-        if ($existing) {
-            return $existing;
-        }
-
-        return Message::query()
-            ->where('conversation_id', $conversation->id)
-            ->lockForUpdate()
-            ->get()
-            ->first(function (Message $message) use ($key): bool {
-                $metadata = is_array($message->metadata) ? $message->metadata : [];
-
-                return (string) ($metadata['idempotency_key'] ?? '') === $key
-                    || (string) ($metadata['client_id'] ?? '') === $key;
-            });
+        return $existing;
     }
 
     public function markRead(Conversation $conversation, User $user, ?int $messageId = null): ConversationUserState
@@ -231,6 +207,31 @@ class ConversationInboxService
             ->where('conversation_id', $conversation->id)
             ->orderByDesc('id')
             ->cursorPaginate($perPage);
+    }
+
+    /**
+     * Unread = no read cursor, or read cursor behind latest inbound message.
+     * Uses one grouped subquery join instead of a per-row correlated MAX().
+     */
+    private function applyUnreadFilter(Builder $query, bool $requireInbound = false): void
+    {
+        $inboundMaxSub = Message::query()
+            ->selectRaw('conversation_id, MAX(id) as max_inbound_message_id')
+            ->where('direction', 'inbound')
+            ->groupBy('conversation_id');
+
+        $query->leftJoinSub($inboundMaxSub, 'inbound_latest', function ($join): void {
+            $join->on('inbound_latest.conversation_id', '=', 'conversations.id');
+        });
+
+        if ($requireInbound) {
+            $query->whereNotNull('inbound_latest.max_inbound_message_id');
+        }
+
+        $query->where(function (Builder $q): void {
+            $q->whereNull('cus.last_read_message_id')
+                ->orWhereColumn('cus.last_read_message_id', '<', 'inbound_latest.max_inbound_message_id');
+        });
     }
 
     public function unreadCountForConversation(Conversation $conversation, User $user): int

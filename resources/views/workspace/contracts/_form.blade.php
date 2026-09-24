@@ -4,18 +4,30 @@
     if (! is_array($initialItems)) {
         $initialItems = ($contract->items ?? collect())->map(fn ($item): array => [
             'title' => $item->title,
+            'item_kind' => $item->item_kind ?? 'service',
+            'unit' => $item->unit,
             'description' => $item->description,
             'quantity' => (float) $item->quantity,
             'unit_price' => (float) $item->unit_price,
+            'discount' => (float) ($item->discount ?? 0),
+            'discount_type' => $item->discount_type ?? 'amount',
+            'tax_rate' => (float) ($item->tax_rate ?? 0),
+            'tax_type' => $item->tax_type ?? 'standard',
         ])->all();
     }
 
     if ($initialItems === []) {
         $initialItems = [[
             'title' => '',
+            'item_kind' => 'service',
+            'unit' => '',
             'description' => '',
             'quantity' => 1,
             'unit_price' => 0,
+            'discount' => 0,
+            'discount_type' => 'amount',
+            'tax_rate' => 0,
+            'tax_type' => 'standard',
         ]];
     }
 @endphp
@@ -41,6 +53,10 @@
             <label class="mb-1 block text-xs font-semibold text-slate-600">عنوان العقد</label>
             <input name="title" required value="{{ old('title', $contract->title) }}" class="w-full rounded-lg border-slate-300 text-sm" placeholder="مثال: عقد تصميم وتشغيل منصة">
             @error('title')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+        </div>
+        <div class="md:col-span-2">
+            <label class="mb-1 block text-xs font-semibold text-slate-600">وصف العقد</label>
+            <textarea name="description" rows="2" class="w-full rounded-lg border-slate-300 text-sm">{{ old('description', $contract->description) }}</textarea>
         </div>
         <div>
             <label class="mb-1 block text-xs font-semibold text-slate-600">العميل</label>
@@ -72,6 +88,10 @@
             @error('value')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
         </div>
         <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-600">شروط الدفع المختصرة</label>
+            <input name="payment_terms" value="{{ old('payment_terms', $contract->payment_terms) }}" class="w-full rounded-lg border-slate-300 text-sm" placeholder="مثال: 30 يوماً">
+        </div>
+        <div>
             <label class="mb-1 block text-xs font-semibold text-slate-600">تاريخ البداية</label>
             <input name="start_date" type="date" value="{{ old('start_date', optional($contract->start_date)->format('Y-m-d')) }}" class="w-full rounded-lg border-slate-300 text-sm">
             @error('start_date')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
@@ -93,9 +113,13 @@
                 <thead class="bg-slate-50 text-slate-600">
                     <tr>
                         <th class="px-2 py-2 text-right">العنوان</th>
+                        <th class="px-2 py-2 text-right">النوع</th>
+                        <th class="px-2 py-2 text-right">الوحدة</th>
                         <th class="px-2 py-2 text-right">الوصف</th>
                         <th class="px-2 py-2 text-right">الكمية</th>
                         <th class="px-2 py-2 text-right">سعر الوحدة</th>
+                        <th class="px-2 py-2 text-right">خصم</th>
+                        <th class="px-2 py-2 text-right">ضريبة %</th>
                         <th class="px-2 py-2 text-right"></th>
                     </tr>
                 </thead>
@@ -106,6 +130,16 @@
                                 <input name="items[{{ $index }}][title]" value="{{ $item['title'] ?? '' }}" class="w-full rounded-md border-slate-300 text-sm" placeholder="اسم البند">
                             </td>
                             <td class="px-2 py-2">
+                                <select name="items[{{ $index }}][item_kind]" class="w-full rounded-md border-slate-300 text-sm">
+                                    @foreach(['service' => 'خدمة', 'product' => 'منتج', 'subscription' => 'اشتراك', 'one_time' => 'مرة واحدة', 'monthly' => 'شهري', 'recurring' => 'دوري'] as $kind => $kindLabel)
+                                        <option value="{{ $kind }}" @selected(($item['item_kind'] ?? 'service') === $kind)>{{ $kindLabel }}</option>
+                                    @endforeach
+                                </select>
+                            </td>
+                            <td class="px-2 py-2">
+                                <input name="items[{{ $index }}][unit]" value="{{ $item['unit'] ?? '' }}" class="w-full rounded-md border-slate-300 text-sm" placeholder="وحدة">
+                            </td>
+                            <td class="px-2 py-2">
                                 <input name="items[{{ $index }}][description]" value="{{ $item['description'] ?? '' }}" class="w-full rounded-md border-slate-300 text-sm" placeholder="وصف">
                             </td>
                             <td class="px-2 py-2">
@@ -113,6 +147,14 @@
                             </td>
                             <td class="px-2 py-2">
                                 <input name="items[{{ $index }}][unit_price]" type="number" min="0" step="0.01" value="{{ $item['unit_price'] ?? 0 }}" class="w-full rounded-md border-slate-300 text-sm">
+                            </td>
+                            <td class="px-2 py-2">
+                                <input name="items[{{ $index }}][discount]" type="number" min="0" step="0.01" value="{{ $item['discount'] ?? 0 }}" class="w-24 rounded-md border-slate-300 text-sm">
+                                <input type="hidden" name="items[{{ $index }}][discount_type]" value="{{ $item['discount_type'] ?? 'amount' }}">
+                            </td>
+                            <td class="px-2 py-2">
+                                <input name="items[{{ $index }}][tax_rate]" type="number" min="0" step="0.01" value="{{ $item['tax_rate'] ?? 0 }}" class="w-20 rounded-md border-slate-300 text-sm">
+                                <input type="hidden" name="items[{{ $index }}][tax_type]" value="{{ $item['tax_type'] ?? 'standard' }}">
                             </td>
                             <td class="px-2 py-2 text-left">
                                 <button type="button" onclick="this.closest('tr').remove();" class="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">حذف</button>
@@ -126,6 +168,35 @@
         @error('items.*.title')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
         @error('items.*.quantity')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
         @error('items.*.unit_price')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
+        <div id="contract-totals-preview" class="mt-3 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h4 class="font-bold text-slate-900">معاينة القيمة (تقريبية)</h4>
+                <p class="text-xs text-slate-500">الحساب النهائي يتم في الخادم عند الحفظ</p>
+            </div>
+            <dl class="mt-3 grid gap-2 sm:grid-cols-3">
+                <div class="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><dt class="text-slate-600">المجموع الفرعي</dt><dd id="contract-subtotal" class="font-semibold text-slate-900">0.00</dd></div>
+                <div class="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><dt class="text-slate-600">الضريبة</dt><dd id="contract-tax" class="font-semibold text-slate-900">0.00</dd></div>
+                <div class="flex justify-between gap-3 rounded-lg bg-emerald-50 px-3 py-2"><dt class="font-semibold text-emerald-800">الإجمالي</dt><dd id="contract-grand-total" class="font-black text-emerald-900">0.00</dd></div>
+            </dl>
+        </div>
+    </div>
+
+    @php $termFields = old('term_fields', is_array($contract->metadata) ? ($contract->metadata['terms'] ?? []) : []); @endphp
+    <div class="grid gap-3 md:grid-cols-2">
+        @foreach([
+            'payment' => 'شروط الدفع',
+            'delivery' => 'شروط التسليم',
+            'cancellation' => 'شروط الإلغاء',
+            'renewal' => 'شروط التجديد',
+            'warranty' => 'الضمان',
+            'termination' => 'إنهاء العقد',
+            'additional' => 'شروط إضافية',
+        ] as $termKey => $termLabel)
+            <div>
+                <label class="mb-1 block text-xs font-semibold text-slate-600">{{ $termLabel }}</label>
+                <textarea name="term_fields[{{ $termKey }}]" rows="3" class="w-full rounded-lg border-slate-300 text-sm">{{ $termFields[$termKey] ?? '' }}</textarea>
+            </div>
+        @endforeach
     </div>
 
     <div class="grid gap-3 md:grid-cols-2">
@@ -166,6 +237,47 @@
         const attachmentsInput = document.getElementById('contract-attachments-input');
         const attachmentsList = document.getElementById('attachments-preview-list');
         let contractItemIndex = {{ count($initialItems) }};
+        const valueInput = document.querySelector('input[name="value"]');
+
+        window.recalcContractTotals = function recalcContractTotals() {
+            const table = document.getElementById('contract-items-table');
+            if (!table) return;
+
+            let subtotal = 0;
+            let tax = 0;
+            let total = 0;
+            let hasItems = false;
+
+            table.querySelectorAll('tbody tr').forEach(function (row) {
+                const title = row.querySelector('[name*="[title]"]')?.value?.trim() || '';
+                const qty = Number(row.querySelector('[name*="[quantity]"]')?.value || 0);
+                const price = Number(row.querySelector('[name*="[unit_price]"]')?.value || 0);
+                const discount = Number(row.querySelector('[name*="[discount]"]')?.value || 0);
+                const taxRate = Number(row.querySelector('[name*="[tax_rate]"]')?.value || 0);
+                if (!title && qty <= 0 && price <= 0) return;
+                hasItems = true;
+                const lineBase = Math.max(0, (qty * price) - discount);
+                const lineTax = lineBase * (taxRate / 100);
+                subtotal += lineBase;
+                tax += lineTax;
+                total += lineBase + lineTax;
+            });
+
+            const subtotalEl = document.getElementById('contract-subtotal');
+            const taxEl = document.getElementById('contract-tax');
+            const totalEl = document.getElementById('contract-grand-total');
+            if (subtotalEl) subtotalEl.textContent = subtotal.toFixed(2);
+            if (taxEl) taxEl.textContent = tax.toFixed(2);
+            if (totalEl) totalEl.textContent = total.toFixed(2);
+            if (valueInput && hasItems) {
+                valueInput.value = total.toFixed(2);
+                valueInput.readOnly = true;
+                valueInput.classList.add('bg-slate-50');
+            } else if (valueInput) {
+                valueInput.readOnly = false;
+                valueInput.classList.remove('bg-slate-50');
+            }
+        }
 
         window.addContractItemRow = function () {
             const tableBody = document.querySelector('#contract-items-table tbody');
@@ -177,6 +289,19 @@
                     <input name="items[${contractItemIndex}][title]" class="w-full rounded-md border-slate-300 text-sm" placeholder="اسم البند">
                 </td>
                 <td class="px-2 py-2">
+                    <select name="items[${contractItemIndex}][item_kind]" class="w-full rounded-md border-slate-300 text-sm">
+                        <option value="service">خدمة</option>
+                        <option value="product">منتج</option>
+                        <option value="subscription">اشتراك</option>
+                        <option value="one_time">مرة واحدة</option>
+                        <option value="monthly">شهري</option>
+                        <option value="recurring">دوري</option>
+                    </select>
+                </td>
+                <td class="px-2 py-2">
+                    <input name="items[${contractItemIndex}][unit]" class="w-full rounded-md border-slate-300 text-sm" placeholder="وحدة">
+                </td>
+                <td class="px-2 py-2">
                     <input name="items[${contractItemIndex}][description]" class="w-full rounded-md border-slate-300 text-sm" placeholder="وصف">
                 </td>
                 <td class="px-2 py-2">
@@ -185,13 +310,33 @@
                 <td class="px-2 py-2">
                     <input name="items[${contractItemIndex}][unit_price]" type="number" min="0" step="0.01" value="0" class="w-full rounded-md border-slate-300 text-sm">
                 </td>
+                <td class="px-2 py-2">
+                    <input name="items[${contractItemIndex}][discount]" type="number" min="0" step="0.01" value="0" class="w-24 rounded-md border-slate-300 text-sm">
+                    <input type="hidden" name="items[${contractItemIndex}][discount_type]" value="amount">
+                </td>
+                <td class="px-2 py-2">
+                    <input name="items[${contractItemIndex}][tax_rate]" type="number" min="0" step="0.01" value="0" class="w-20 rounded-md border-slate-300 text-sm">
+                    <input type="hidden" name="items[${contractItemIndex}][tax_type]" value="standard">
+                </td>
                 <td class="px-2 py-2 text-left">
-                    <button type="button" class="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50" onclick="this.closest('tr').remove();">حذف</button>
+                                <button type="button" class="rounded-md border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50" onclick="this.closest('tr').remove(); if (typeof recalcContractTotals === 'function') recalcContractTotals();">حذف</button>
                 </td>
             `;
             tableBody.appendChild(row);
             contractItemIndex += 1;
+            row.querySelectorAll('input, select').forEach(function (input) {
+                input.addEventListener('input', window.recalcContractTotals);
+                input.addEventListener('change', window.recalcContractTotals);
+            });
+            window.recalcContractTotals();
         };
+
+        const itemsTable = document.getElementById('contract-items-table');
+        if (itemsTable) {
+            itemsTable.addEventListener('input', window.recalcContractTotals);
+            itemsTable.addEventListener('change', window.recalcContractTotals);
+            window.recalcContractTotals();
+        }
 
         if (!attachmentsInput || !attachmentsList) {
             return;

@@ -17,6 +17,8 @@ class ConversationController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', Conversation::class);
+
         $conversations = Conversation::query()
             ->with(['customer'])
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
@@ -31,6 +33,8 @@ class ConversationController extends Controller
 
     public function store(StoreConversationRequest $request): JsonResponse
     {
+        $this->authorize('create', Conversation::class);
+
         $conversation = $this->conversationService->create($request->validated());
 
         return response()->json(['data' => $conversation], 201);

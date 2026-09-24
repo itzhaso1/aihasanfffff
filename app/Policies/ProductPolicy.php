@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\Product;
 use App\Models\User;
 use App\Policies\Concerns\ChecksWorkspaceMembership;
+use App\Support\Tenancy\WorkspaceContext;
 
 class ProductPolicy
 {
@@ -28,7 +29,20 @@ class ProductPolicy
      */
     public function create(User $user): bool
     {
-        return true;
+        $workspace = app(WorkspaceContext::class)->workspace();
+        if (! $workspace) {
+            return false;
+        }
+
+        if (! $this->hasMembership($user, $workspace)) {
+            return false;
+        }
+
+        if ($user->can('products.manage') || $user->can('workspace.manage')) {
+            return true;
+        }
+
+        return $this->hasAnyWorkspaceRole($user, $workspace, ['owner', 'admin', 'manager']);
     }
 
     /**

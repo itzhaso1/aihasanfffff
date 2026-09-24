@@ -5,10 +5,11 @@ namespace App\Models\Finance;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\User;
 use App\Models\WorkspaceScopedModel;
+use App\Support\Storage\PrivateDocumentDisk;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 #[Fillable([
     'workspace_id',
@@ -33,11 +34,17 @@ class FinanceInvoiceAttachment extends WorkspaceScopedModel
         return $this->belongsTo(User::class, 'uploaded_by');
     }
 
+    public function downloadResponse(): StreamedResponse
+    {
+        return PrivateDocumentDisk::download(
+            (string) $this->file_path,
+            $this->file_name ?: ('invoice-attachment-'.$this->id),
+        );
+    }
+
     public function deleteFile(): void
     {
-        if (is_string($this->file_path) && $this->file_path !== '') {
-            Storage::disk('public')->delete($this->file_path);
-        }
+        PrivateDocumentDisk::delete((string) $this->file_path);
     }
 
     protected static function booted(): void

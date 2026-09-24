@@ -15,6 +15,11 @@ Local/testing stay on `database` / `array` / `sync` so SQLite PHPUnit keeps work
 | Failed jobs | `database-uuids` / `failed_jobs` table (kept) |
 | Scheduler | `* * * * * php /var/www/hasem/artisan schedule:run` |
 | Worker | Supervisor + `queue:work redis` (not `queue:listen`) |
+| `REDIS_QUEUE_AFTER_COMMIT` | `true` |
+
+Behind Nginx (or another reverse proxy), set `TRUSTED_PROXIES` in the host `.env` so `X-Forwarded-*` is trusted only from the edge — see `.env.example`. Production HTTPS also needs `SESSION_SECURE_COOKIE=true` once forwarded proto is trusted.
+
+Production Redis queue must set `REDIS_QUEUE_AFTER_COMMIT=true` so jobs dispatched during a DB transaction are pushed only after commit. After changing queue config, run `php artisan queue:restart` (or restart Supervisor workers) so workers reload settings.
 
 Never set `QUEUE_CONNECTION=failover` or `CACHE_STORE=failover` in production. Those stores silently fall back to the database.
 
@@ -51,7 +56,7 @@ Longest first-party job timeout today: `SyncEmailInboxJob` = **180s**.
 Rule: `max_job_timeout <= worker_timeout < retry_after`.
 
 ```bash
-php artisan queue:work redis --queue=default --sleep=1 --tries=3 --backoff=5 --timeout=200
+php artisan queue:work redis --queue=emails,default --sleep=1 --tries=3 --backoff=5 --timeout=200
 # or
 php artisan runtime:work
 ```
@@ -90,16 +95,31 @@ Host cron (required; schedule registration alone is not proof the clock is runni
 
 ## Supervisor
 
-One documented mechanism: **Supervisor**. Template: `deploy/supervisor/hasem-worker.conf`.
+One documented mechanism: **Supervisor**. P0 templates (all use `queue:work redis`, no secrets in files):
+
+| File | Program | Queue | Processes |
+| --- | --- | --- | --- |
+| `deploy/supervisor/hasem-worker-emails.conf` | `hasem-worker-emails` | `emails` | 1 |
+| `deploy/supervisor/hasem-worker.conf` | `hasem-worker` | `default` | 2 |
+| `deploy/supervisor/hasem-worker-inbound.conf` | `hasem-worker-inbound` | `default` | 2 |
+| `deploy/supervisor/hasem-worker-ai.conf` | `hasem-worker-ai` | `default` | 1 |
+
+P1 inbox jobs use dedicated Redis queues: **`inbound`**, **`realtime`**, **`ai`** (see `docs/operations/production-realtime-runbook.md`).
+
+P2 channel outbound (WhatsApp `SendWhatsAppMessage`, Instagram/Facebook delivery jobs) uses the **`outbound`** queue (`deploy/supervisor/hasem-worker-outbound.conf`, `INBOX_QUEUE_OUTBOUND`). Residual work stays on **`default`** / **`emails`**.
+
+P4 inbox AI replies run on **`ai`** (`hasem-worker-ai`). Inbox agent memory extraction runs on **`default`** (`AI_INBOX_MEMORY_QUEUE`) so it does not compete with inbound/realtime/outbound/media workers.
 
 ```bash
-sudo cp deploy/supervisor/hasem-worker.conf /etc/supervisor/conf.d/hasem-worker.conf
+sudo cp deploy/supervisor/hasem-worker*.conf /etc/supervisor/conf.d/
 sudo supervisorctl reread
 sudo supervisorctl update
-sudo supervisorctl status hasem-worker:*
+sudo supervisorctl status
 ```
 
-Logs: `storage/logs/worker.log` and `storage/logs/laravel.log`. Failures: `php artisan queue:failed`.
+Logs: `storage/logs/worker*.log` and `storage/logs/laravel.log`. Failures: `php artisan queue:failed`.
+
+Production `.env` must include `QUEUE_CONNECTION=redis` (not `database`). After changing queue settings: `php artisan queue:restart`.
 
 ## Deploy / graceful restart
 
@@ -115,6 +135,7 @@ Do not kill `-9` workers mid-job.
 ```bash
 php artisan runtime:check
 php artisan runtime:check --production-strict
+php artisan runtime:check --production-strict --require-redis
 php artisan config:show queue
 php artisan config:show cache
 php artisan config:show session

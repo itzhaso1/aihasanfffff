@@ -15,6 +15,20 @@ class ConversationUpdated implements ShouldBroadcast
 
     public function __construct(public Conversation $conversation) {}
 
+    public function broadcastConnection(): ?string
+    {
+        $connection = config('inbox.realtime.broadcast_connection');
+
+        return is_string($connection) && $connection !== '' && $connection !== 'null'
+            ? $connection
+            : null;
+    }
+
+    public function broadcastQueue(): string
+    {
+        return (string) config('inbox.queues.realtime', 'realtime');
+    }
+
     /**
      * @return array<int, PrivateChannel>
      */
@@ -36,12 +50,15 @@ class ConversationUpdated implements ShouldBroadcast
      */
     public function broadcastWith(): array
     {
+        $metadata = is_array($this->conversation->metadata) ? $this->conversation->metadata : [];
+
         return [
             'id' => $this->conversation->id,
             'workspace_id' => $this->conversation->workspace_id,
             'status' => $this->conversation->status,
             'channel' => $this->conversation->channel,
             'last_message_at' => optional($this->conversation->last_message_at)?->toIso8601String(),
+            'unread_count' => (int) ($metadata['unread_count'] ?? 0),
         ];
     }
 }

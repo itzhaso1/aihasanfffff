@@ -86,7 +86,14 @@ class JobIsolationExecutionTest extends TestCase
         $messageB = $this->outboundEmail($workspaceB, 'b@example.com');
 
         $sender = Mockery::mock(WorkspaceEmailSender::class);
-        $sender->shouldReceive('send')->once()->andReturn(new EmailLog(['provider_message_id' => 'mid-a']));
+        $sender->shouldReceive('send')->once()->andReturnUsing(function (EmailMessage $message): EmailLog {
+            $message->forceFill([
+                'delivery_status' => 'sent',
+                'delivered_at' => now(),
+            ])->save();
+
+            return new EmailLog(['provider_message_id' => 'mid-a']);
+        });
 
         (new SendEmailMessageJob($messageA->id, $workspaceA->id))->handle($sender);
 

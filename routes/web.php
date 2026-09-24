@@ -1,25 +1,39 @@
 <?php
 
 use App\Http\Controllers\AssistantController;
-use App\Http\Controllers\LegalPageController;
 use App\Http\Controllers\Auth\PhoneOtpController;
 use App\Http\Controllers\Auth\SocialLoginController;
 use App\Http\Controllers\Download\DigitalDownloadController;
+use App\Http\Controllers\DownloadsController;
+use App\Http\Controllers\LegalPageController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicChatCatalogController;
+use App\Http\Controllers\Webhook\MetaWebhookController;
 use App\Http\Controllers\Webhook\ResendWebhookController;
+use App\Http\Controllers\Webhook\TelegramWebhookController;
+use App\Http\Controllers\Webhook\TikTokWebhookController;
 use App\Http\Controllers\Webhook\WhatsAppWebhookController;
 use App\Http\Controllers\Workspace\AiSettingController;
 use App\Http\Controllers\Workspace\AnalyticsController as WorkspaceAnalyticsController;
 use App\Http\Controllers\Workspace\ApiKeyController as WorkspaceApiKeyController;
 use App\Http\Controllers\Workspace\CategoryController;
 use App\Http\Controllers\Workspace\ChannelController;
+use App\Http\Controllers\Workspace\Chat\ChatCatalogController;
+use App\Http\Controllers\Workspace\Chat\ChatCatalogDigitalInventoryController;
+use App\Http\Controllers\Workspace\Chat\ChatCatalogSettingsController;
+use App\Http\Controllers\Workspace\Commerce\CommerceCartController as WorkspaceCommerceCartController;
+use App\Http\Controllers\Workspace\Commerce\CommerceIntelligenceController as WorkspaceCommerceIntelligenceController;
+use App\Http\Controllers\Workspace\Commerce\CommerceOrderController as WorkspaceCommerceOrderController;
 use App\Http\Controllers\Workspace\ContractController as WorkspaceContractController;
 use App\Http\Controllers\Workspace\ConversationController;
 use App\Http\Controllers\Workspace\CustomerController;
 use App\Http\Controllers\Workspace\DashboardController as WorkspaceDashboardController;
+use App\Http\Controllers\Workspace\Email\EmailBrandingController;
+use App\Http\Controllers\Workspace\Email\EmailTemplateLibraryController;
 use App\Http\Controllers\Workspace\EmailController;
 use App\Http\Controllers\Workspace\EmployeeInvitationController;
+use App\Http\Controllers\Workspace\FacebookChannelConnectController;
 use App\Http\Controllers\Workspace\Finance\AccountingController as FinanceAccountingController;
 use App\Http\Controllers\Workspace\Finance\BillingDashboardController as FinanceBillingDashboardController;
 use App\Http\Controllers\Workspace\Finance\BillingScheduleController as FinanceBillingScheduleController;
@@ -47,8 +61,10 @@ use App\Http\Controllers\Workspace\Finance\SalesController as FinanceSalesContro
 use App\Http\Controllers\Workspace\Finance\SettingsController as FinanceSettingsController;
 use App\Http\Controllers\Workspace\Finance\SupplierController as FinanceSupplierController;
 use App\Http\Controllers\Workspace\Finance\TreasuryController as FinanceTreasuryController;
+use App\Http\Controllers\Workspace\InstagramChannelConnectController;
 use App\Http\Controllers\Workspace\InventoryController;
 use App\Http\Controllers\Workspace\MerchantPaymentController;
+use App\Http\Controllers\Workspace\MessageAttachmentController;
 use App\Http\Controllers\Workspace\OrderController;
 use App\Http\Controllers\Workspace\PaymentController;
 use App\Http\Controllers\Workspace\PaymentGatewayController;
@@ -67,9 +83,14 @@ use App\Http\Controllers\Workspace\Pos\PosSettingsController;
 use App\Http\Controllers\Workspace\Pos\TableController as PosTableController;
 use App\Http\Controllers\Workspace\ProductController;
 use App\Http\Controllers\Workspace\SubscriptionController;
+use App\Http\Controllers\Workspace\TelegramChannelConnectController;
+use App\Http\Controllers\Workspace\TikTokChannelConnectController;
 use App\Http\Controllers\Workspace\WhatsAppAccountController;
 use App\Http\Controllers\WorkspaceSelectionController;
+use App\Http\Middleware\EnsureWorkspaceMembership;
+use App\Http\Middleware\EnsureWorkspaceSelected;
 use App\Models\Plan;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
@@ -97,7 +118,12 @@ Route::get('/', function () {
     ]);
 });
 
-Route::view('/downloads', 'downloads')->name('downloads');
+Route::get('/downloads', [DownloadsController::class, 'index'])->name('downloads');
+Route::get('/downloads/{app}', [DownloadsController::class, 'show'])
+    ->whereIn('app', ['chat', 'finance', 'cashier'])
+    ->name('downloads.app');
+Route::get('/catalog/{workspaceSlug}/{catalogSlug?}', [PublicChatCatalogController::class, 'show'])
+    ->name('public.chat-catalog.show');
 
 Route::get('/privacy', [LegalPageController::class, 'privacy'])->name('legal.privacy');
 Route::get('/terms', [LegalPageController::class, 'terms'])->name('legal.terms');
@@ -113,12 +139,26 @@ Route::post('/webhooks/resend', [ResendWebhookController::class, 'handle'])
     ->middleware('throttle:120,1')
     ->name('webhooks.resend');
 
+Route::get('/meta-webhook', [MetaWebhookController::class, 'verify'])
+    ->middleware(['throttle:120,1', 'assign.correlation'])
+    ->name('webhooks.meta.verify');
+Route::post('/meta-webhook', [MetaWebhookController::class, 'handle'])
+    ->middleware(['throttle:120,1', 'assign.correlation'])
+    ->name('webhooks.meta.handle');
+
 Route::get('/whatsapp-webhook', [WhatsAppWebhookController::class, 'verify'])
     ->middleware('throttle:120,1')
     ->name('webhooks.whatsapp.verify');
 Route::post('/whatsapp-webhook', [WhatsAppWebhookController::class, 'handle'])
-    ->middleware('throttle:120,1')
+    ->middleware(['throttle:120,1', 'assign.correlation'])
     ->name('webhooks.whatsapp.handle');
+Route::post('/tiktok-webhook', [TikTokWebhookController::class, 'handle'])
+    ->middleware(['throttle:120,1', 'assign.correlation'])
+    ->name('webhooks.tiktok.handle');
+Route::post('/telegram-webhook/{publicWebhookKey}', [TelegramWebhookController::class, 'handle'])
+    ->middleware(['throttle:120,1', 'assign.correlation'])
+    ->where('publicWebhookKey', '[A-Za-z0-9_-]+')
+    ->name('webhooks.telegram.handle');
 
 Route::middleware('throttle:30,1')->group(function (): void {
     Route::get('/menu/{workspace:slug}', [PosCustomerMenuController::class, 'generalMenu'])->name('menu.general');
@@ -152,7 +192,7 @@ Route::get('/auth/{provider}/callback', [SocialLoginController::class, 'callback
     ->name('social.callback');
 
 Route::middleware(['auth'])->group(function (): void {
-    Route::get('/dashboard', fn () => redirect()->route('workspace.subscriptions.index'))->name('dashboard');
+    Route::get('/dashboard', fn () => redirect()->route('workspace.dashboard'))->name('dashboard');
 
     Route::get('/workspaces/choose', [WorkspaceSelectionController::class, 'choose'])->name('workspace.choose');
     Route::post('/workspaces/{workspace}/switch', [WorkspaceSelectionController::class, 'switch'])->name('workspace.switch');
@@ -168,6 +208,10 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+});
+
+Route::middleware(['web', 'auth'])->group(function (): void {
+    Broadcast::routes();
 });
 
 Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
@@ -203,21 +247,72 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         });
         Route::middleware('workspace.feature:orders')->group(function (): void {
             Route::resource('orders', OrderController::class)->except(['show']);
+            Route::get('commerce/carts', [WorkspaceCommerceCartController::class, 'index'])->name('commerce.carts.index');
+            Route::get('commerce/carts/{cart}', [WorkspaceCommerceCartController::class, 'show'])->name('commerce.carts.show');
+            Route::get('commerce/orders', [WorkspaceCommerceOrderController::class, 'index'])->name('commerce.orders.index');
+            Route::get('commerce/orders/{order}', [WorkspaceCommerceOrderController::class, 'show'])->name('commerce.orders.show');
+
+            Route::get('commerce/intelligence', [WorkspaceCommerceIntelligenceController::class, 'index'])->name('commerce.intelligence.index');
+            Route::put('commerce/intelligence/profile', [WorkspaceCommerceIntelligenceController::class, 'updateProfile'])->name('commerce.intelligence.profile.update');
+            Route::get('commerce/intelligence/attributes', [WorkspaceCommerceIntelligenceController::class, 'attributes'])->name('commerce.intelligence.attributes');
+            Route::post('commerce/intelligence/attributes', [WorkspaceCommerceIntelligenceController::class, 'storeAttribute'])->name('commerce.intelligence.attributes.store');
+            Route::delete('commerce/intelligence/attributes/{attribute}', [WorkspaceCommerceIntelligenceController::class, 'destroyAttribute'])->name('commerce.intelligence.attributes.destroy');
+            Route::get('commerce/intelligence/requirements', [WorkspaceCommerceIntelligenceController::class, 'requirements'])->name('commerce.intelligence.requirements');
+            Route::post('commerce/intelligence/requirements', [WorkspaceCommerceIntelligenceController::class, 'storeRequirement'])->name('commerce.intelligence.requirements.store');
+            Route::delete('commerce/intelligence/requirements/{requirement}', [WorkspaceCommerceIntelligenceController::class, 'destroyRequirement'])->name('commerce.intelligence.requirements.destroy');
+            Route::get('commerce/intelligence/rules', [WorkspaceCommerceIntelligenceController::class, 'rules'])->name('commerce.intelligence.rules');
+            Route::post('commerce/intelligence/rules', [WorkspaceCommerceIntelligenceController::class, 'storeRule'])->name('commerce.intelligence.rules.store');
+            Route::delete('commerce/intelligence/rules/{rule}', [WorkspaceCommerceIntelligenceController::class, 'destroyRule'])->name('commerce.intelligence.rules.destroy');
+            Route::get('commerce/intelligence/compatibilities', [WorkspaceCommerceIntelligenceController::class, 'compatibilities'])->name('commerce.intelligence.compatibilities');
+            Route::post('commerce/intelligence/compatibilities', [WorkspaceCommerceIntelligenceController::class, 'storeCompatibility'])->name('commerce.intelligence.compatibilities.store');
+            Route::delete('commerce/intelligence/compatibilities/{compatibility}', [WorkspaceCommerceIntelligenceController::class, 'destroyCompatibility'])->name('commerce.intelligence.compatibilities.destroy');
+            Route::get('commerce/intelligence/items/{item}', [WorkspaceCommerceIntelligenceController::class, 'item'])->name('commerce.intelligence.items.show');
+            Route::post('commerce/intelligence/items/{item}/attributes', [WorkspaceCommerceIntelligenceController::class, 'storeItemAttributes'])->name('commerce.intelligence.items.attributes.store');
         });
-        Route::get('contracts', [WorkspaceContractController::class, 'index'])->name('contracts.index');
-        Route::get('contracts/create', [WorkspaceContractController::class, 'create'])->name('contracts.create');
-        Route::post('contracts', [WorkspaceContractController::class, 'store'])->name('contracts.store');
-        Route::get('contracts/{contract}', [WorkspaceContractController::class, 'show'])->name('contracts.show');
-        Route::get('contracts/{contract}/edit', [WorkspaceContractController::class, 'edit'])->name('contracts.edit');
-        Route::put('contracts/{contract}', [WorkspaceContractController::class, 'update'])->name('contracts.update');
-        Route::post('contracts/{contract}/activate', [WorkspaceContractController::class, 'activate'])->name('contracts.activate');
-        Route::post('contracts/{contract}/close', [WorkspaceContractController::class, 'close'])->name('contracts.close');
-        Route::post('contracts/{contract}/cancel', [WorkspaceContractController::class, 'cancel'])->name('contracts.cancel');
-        Route::get('contracts/{contract}/pdf', [WorkspaceContractController::class, 'downloadPdf'])->name('contracts.pdf');
-        Route::get('contracts/{contract}/attachments/{attachment}', [WorkspaceContractController::class, 'downloadAttachment'])->name('contracts.attachments.download');
-        Route::delete('contracts/{contract}/attachments/{attachment}', [WorkspaceContractController::class, 'destroyAttachment'])->name('contracts.attachments.destroy');
+        Route::middleware('workspace.feature:finance')->group(function (): void {
+            Route::get('contracts', [WorkspaceContractController::class, 'index'])->name('contracts.index');
+            Route::get('contracts/create', [WorkspaceContractController::class, 'create'])->name('contracts.create');
+            Route::post('contracts', [WorkspaceContractController::class, 'store'])->name('contracts.store');
+            Route::get('contracts/{contract}', [WorkspaceContractController::class, 'show'])->name('contracts.show');
+            Route::get('contracts/{contract}/edit', [WorkspaceContractController::class, 'edit'])->name('contracts.edit');
+            Route::put('contracts/{contract}', [WorkspaceContractController::class, 'update'])->name('contracts.update');
+            Route::post('contracts/{contract}/activate', [WorkspaceContractController::class, 'activate'])->name('contracts.activate');
+            Route::post('contracts/{contract}/close', [WorkspaceContractController::class, 'close'])->name('contracts.close');
+            Route::post('contracts/{contract}/cancel', [WorkspaceContractController::class, 'cancel'])->name('contracts.cancel');
+            Route::get('contracts/{contract}/pdf', [WorkspaceContractController::class, 'downloadPdf'])->name('contracts.pdf');
+            Route::post('contracts/{contract}/attachments', [WorkspaceContractController::class, 'storeAttachment'])->name('contracts.attachments.store');
+            Route::get('contracts/{contract}/attachments/{attachment}', [WorkspaceContractController::class, 'downloadAttachment'])->name('contracts.attachments.download');
+            Route::delete('contracts/{contract}/attachments/{attachment}', [WorkspaceContractController::class, 'destroyAttachment'])->name('contracts.attachments.destroy');
+            Route::post('contracts/{contract}/renew', [WorkspaceContractController::class, 'renew'])->name('contracts.renew');
+            Route::post('contracts/{contract}/sign', [WorkspaceContractController::class, 'sign'])->name('contracts.sign');
+            Route::delete('contracts/{contract}', [WorkspaceContractController::class, 'destroy'])->name('contracts.destroy');
+        });
         Route::resource('conversations', ConversationController::class)->except(['show']);
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');
+        Route::get('message-attachments/{attachment}/download', [MessageAttachmentController::class, 'download'])
+            ->name('message-attachments.download');
+
+        Route::get('chat-catalog', [ChatCatalogController::class, 'index'])->name('chat-catalog.index');
+        Route::get('chat-catalog/settings', [ChatCatalogSettingsController::class, 'edit'])->name('chat-catalog.settings.edit');
+        Route::put('chat-catalog/settings', [ChatCatalogSettingsController::class, 'update'])->name('chat-catalog.settings.update');
+        Route::put('chat-catalog/settings/communication', [ChatCatalogSettingsController::class, 'updateCommunication'])->name('chat-catalog.settings.communication.update');
+        Route::post('chat-catalog/settings/publish', [ChatCatalogSettingsController::class, 'publish'])->name('chat-catalog.settings.publish');
+        Route::post('chat-catalog/settings/draft', [ChatCatalogSettingsController::class, 'draft'])->name('chat-catalog.settings.draft');
+        Route::post('chat-catalog/settings/pause', [ChatCatalogSettingsController::class, 'pause'])->name('chat-catalog.settings.pause');
+        Route::post('chat-catalog/settings/archive', [ChatCatalogSettingsController::class, 'archive'])->name('chat-catalog.settings.archive');
+        Route::get('chat-catalog/digital-inventory', [ChatCatalogDigitalInventoryController::class, 'index'])->name('chat-catalog.digital-inventory.index');
+        Route::post('chat-catalog/digital-inventory/pools', [ChatCatalogDigitalInventoryController::class, 'storePool'])->name('chat-catalog.digital-inventory.pools.store');
+        Route::post('chat-catalog/digital-inventory/pools/{pool}/import', [ChatCatalogDigitalInventoryController::class, 'import'])->name('chat-catalog.digital-inventory.pools.import');
+        Route::get('chat-catalog/create', [ChatCatalogController::class, 'create'])->name('chat-catalog.create');
+        Route::post('chat-catalog', [ChatCatalogController::class, 'store'])->name('chat-catalog.store');
+        Route::get('chat-catalog/{item}/edit', [ChatCatalogController::class, 'edit'])->name('chat-catalog.edit');
+        Route::put('chat-catalog/{item}', [ChatCatalogController::class, 'update'])->name('chat-catalog.update');
+        Route::post('chat-catalog/{item}/activate', [ChatCatalogController::class, 'activate'])->name('chat-catalog.activate');
+        Route::post('chat-catalog/{item}/deactivate', [ChatCatalogController::class, 'deactivate'])->name('chat-catalog.deactivate');
+        Route::delete('chat-catalog/{item}', [ChatCatalogController::class, 'destroy'])->name('chat-catalog.destroy');
+        Route::post('chat-catalog/categories', [ChatCatalogController::class, 'storeCategory'])->name('chat-catalog.categories.store');
+        Route::put('chat-catalog/categories/{category}', [ChatCatalogController::class, 'updateCategory'])->name('chat-catalog.categories.update');
+        Route::delete('chat-catalog/categories/{category}', [ChatCatalogController::class, 'destroyCategory'])->name('chat-catalog.categories.destroy');
 
         Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
         Route::get('inventory/create', [InventoryController::class, 'create'])->name('inventory.create');
@@ -258,6 +353,36 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::resource('whatsapp-accounts', WhatsAppAccountController::class)->except(['show']);
             Route::post('channels/whatsapp/connect', [ChannelController::class, 'connectWhatsApp'])->name('channels.whatsapp.connect');
         });
+        Route::middleware('workspace.feature:whatsapp')->group(function (): void {
+            Route::get('channels/instagram/connect', [InstagramChannelConnectController::class, 'redirect'])
+                ->name('channels.instagram.connect');
+            Route::get('channels/facebook/connect', [FacebookChannelConnectController::class, 'redirect'])
+                ->name('channels.facebook.connect');
+            Route::post('channels/facebook/disconnect', [FacebookChannelConnectController::class, 'disconnect'])
+                ->name('channels.facebook.disconnect');
+            Route::get('channels/tiktok/connect', [TikTokChannelConnectController::class, 'redirect'])
+                ->name('channels.tiktok.connect');
+            Route::post('channels/telegram/connect', [TelegramChannelConnectController::class, 'store'])
+                ->name('channels.telegram.connect');
+        });
+        Route::get('channels/instagram/callback', [InstagramChannelConnectController::class, 'callback'])
+            ->withoutMiddleware([
+                EnsureWorkspaceSelected::class,
+                EnsureWorkspaceMembership::class,
+            ])
+            ->name('channels.instagram.callback');
+        Route::get('channels/facebook/callback', [FacebookChannelConnectController::class, 'callback'])
+            ->withoutMiddleware([
+                EnsureWorkspaceSelected::class,
+                EnsureWorkspaceMembership::class,
+            ])
+            ->name('channels.facebook.callback');
+        Route::get('channels/tiktok/callback', [TikTokChannelConnectController::class, 'callback'])
+            ->withoutMiddleware([
+                EnsureWorkspaceSelected::class,
+                EnsureWorkspaceMembership::class,
+            ])
+            ->name('channels.tiktok.callback');
         Route::get('channels', [ChannelController::class, 'index'])->name('channels.index');
 
         Route::middleware('workspace.feature:email')->prefix('emails')->group(function (): void {
@@ -288,14 +413,29 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::put('/accounts/{emailAccount}', [EmailController::class, 'updateAccount'])->name('emails.accounts.update');
             Route::delete('/accounts/{emailAccount}', [EmailController::class, 'destroyAccount'])->name('emails.accounts.destroy');
             Route::post('/accounts/{emailAccount}/sync', [EmailController::class, 'syncAccount'])->name('emails.accounts.sync');
+            Route::post('/accounts/{emailAccount}/test-smtp', [EmailController::class, 'testAccountSmtp'])->name('emails.accounts.test-smtp');
+
+            Route::get('/branding', [EmailBrandingController::class, 'edit'])->name('emails.branding.edit');
+            Route::put('/branding', [EmailBrandingController::class, 'update'])->name('emails.branding.update');
+            Route::post('/branding/preview', [EmailBrandingController::class, 'preview'])->name('emails.branding.preview');
+
+            Route::get('/templates', [EmailTemplateLibraryController::class, 'index'])->name('emails.templates.index');
+            Route::get('/templates/selected', [EmailTemplateLibraryController::class, 'edit'])->name('emails.templates.edit');
+            Route::put('/templates/selected', [EmailTemplateLibraryController::class, 'update'])->name('emails.templates.update');
+            Route::post('/templates/selected/preview', [EmailTemplateLibraryController::class, 'livePreview'])->name('emails.templates.live-preview');
+            Route::post('/templates/{template}/use', [EmailTemplateLibraryController::class, 'use'])->name('emails.templates.use');
+            Route::get('/templates/{category}/{template}/preview', [EmailTemplateLibraryController::class, 'preview'])->name('emails.templates.preview');
+            Route::get('/templates/{category}', [EmailTemplateLibraryController::class, 'category'])->name('emails.templates.category');
         });
 
         Route::middleware('workspace.feature:finance')->prefix('finance')->as('finance.')->group(function (): void {
             Route::get('/', [FinanceDashboardController::class, 'index'])->name('dashboard');
             Route::get('search', [FinanceIntelligenceController::class, 'search'])->name('search');
             Route::get('alerts', [FinanceIntelligenceController::class, 'alerts'])->name('alerts.index');
+            Route::get('assistant', [FinanceIntelligenceController::class, 'assistant'])->name('assistant.index');
+            Route::post('assistant', [FinanceIntelligenceController::class, 'assistantAsk'])->name('assistant.ask');
             Route::get('copilot', [FinanceIntelligenceController::class, 'copilot'])->name('copilot.index');
-            Route::post('copilot', [FinanceIntelligenceController::class, 'ask'])->name('copilot.ask');
+            Route::post('copilot', [FinanceIntelligenceController::class, 'copilotAsk'])->name('copilot.ask');
             Route::get('billing', [FinanceBillingDashboardController::class, 'index'])->name('billing.dashboard');
             Route::get('statements', [FinanceCustomerStatementController::class, 'index'])->name('statements.index');
             Route::get('statements/show', [FinanceCustomerStatementController::class, 'show'])->name('statements.show');
@@ -309,8 +449,12 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::post('contracts/{contract}/close', [WorkspaceContractController::class, 'close'])->name('contracts.close');
             Route::post('contracts/{contract}/cancel', [WorkspaceContractController::class, 'cancel'])->name('contracts.cancel');
             Route::get('contracts/{contract}/pdf', [WorkspaceContractController::class, 'downloadPdf'])->name('contracts.pdf');
+            Route::post('contracts/{contract}/attachments', [WorkspaceContractController::class, 'storeAttachment'])->name('contracts.attachments.store');
             Route::get('contracts/{contract}/attachments/{attachment}', [WorkspaceContractController::class, 'downloadAttachment'])->name('contracts.attachments.download');
             Route::delete('contracts/{contract}/attachments/{attachment}', [WorkspaceContractController::class, 'destroyAttachment'])->name('contracts.attachments.destroy');
+            Route::post('contracts/{contract}/renew', [WorkspaceContractController::class, 'renew'])->name('contracts.renew');
+            Route::post('contracts/{contract}/sign', [WorkspaceContractController::class, 'sign'])->name('contracts.sign');
+            Route::delete('contracts/{contract}', [WorkspaceContractController::class, 'destroy'])->name('contracts.destroy');
 
             Route::get('invoices', [FinanceInvoiceController::class, 'index'])->name('invoices.index');
             Route::get('invoices/create', [FinanceInvoiceController::class, 'create'])->name('invoices.create');

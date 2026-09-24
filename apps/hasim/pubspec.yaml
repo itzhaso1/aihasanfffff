@@ -38,6 +38,7 @@ dependencies:
   flutter_animate: ^4.5.2
   url_launcher: ^6.3.1
   video_player: ^2.10.1
+  window_manager: ^0.5.2
 
 dev_dependencies:
   flutter_test:
@@ -55,3 +56,4 @@ flutter:
     - assets/branding/hasim_splash.png
     - assets/branding/hasim_login.png
     - assets/branding/splash/
+    - assets/chat_wallpapers/

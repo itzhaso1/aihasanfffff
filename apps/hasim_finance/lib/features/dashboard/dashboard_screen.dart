@@ -114,11 +114,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         subtitle: l.dashboardSubtitle,
         primaryAction: FilledButton.icon(
           onPressed: () => context.go('/exports'),
-          icon: const Icon(Icons.ios_share_rounded, size: 16),
+          icon: const Icon(Icons.ios_share_rounded, size: 15),
           label: Text(l.exportReport),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 32),
+            maximumSize: const Size(double.infinity, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
         ),
         actions: [
-          IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh_rounded)),
+          IconButton(
+            onPressed: _load,
+            tooltip: l.refresh,
+            style: IconButton.styleFrom(
+              minimumSize: const Size(32, 32),
+              maximumSize: const Size(32, 32),
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: context.hs.border),
+              ),
+            ),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+          ),
         ],
         body: AsyncBody(
           loading: _loading,

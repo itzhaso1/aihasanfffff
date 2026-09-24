@@ -1,6 +1,6 @@
 <x-communication-layout>
     @php
-        $channelOrder = ['whatsapp', 'instagram', 'facebook_messenger', 'email'];
+        $channelOrder = ['whatsapp', 'instagram', 'facebook_messenger', 'tiktok', 'telegram', 'email'];
         $orderedChannels = collect($channelOrder)
             ->map(fn (string $key) => collect($channels)->firstWhere('key', $key))
             ->filter()
@@ -11,6 +11,8 @@
             'instagram' => 'اربط حساب Instagram لاستقبال الرسائل والتعليقات.',
             'facebook_messenger' => 'اربط صفحة Facebook لاستقبال وإدارة المحادثات.',
             'email' => 'اربط حساب البريد الإلكتروني لاستقبال وإرسال الرسائل.',
+            'tiktok' => 'اربط حساب TikTok Business لاستقبال الرسائل المباشرة.',
+            'telegram' => 'اربط بوت Telegram لاستقبال رسائل العملاء في صندوق الوارد.',
         ];
 
         $whatsappConfigMissing = $metaAppId === '' || $metaConfigId === '';
@@ -130,21 +132,62 @@
                             <a href="{{ $channel['manage_url'] }}" class="hs-btn-secondary px-4 py-2 text-sm">
                                 إدارة القناة
                             </a>
-                            <button
-                                type="button"
-                                data-whatsapp-connect
-                                data-meta-app-id="{{ $metaAppId }}"
-                                data-meta-config-id="{{ $metaConfigId }}"
-                                data-graph-version="{{ $graphApiVersion }}"
-                                data-connect-url="{{ route('workspace.channels.whatsapp.connect') }}"
-                                class="hs-btn-primary px-4 py-2 text-sm"
-                            >
-                                ربط WhatsApp
-                                <span class="hidden">{{ $channel['primary_action'] }}</span>
-                            </button>
+                            @if($canManageChannels)
+                                <button
+                                    type="button"
+                                    data-whatsapp-connect
+                                    data-meta-app-id="{{ $metaAppId }}"
+                                    data-meta-config-id="{{ $metaConfigId }}"
+                                    data-graph-version="{{ $graphApiVersion }}"
+                                    data-connect-url="{{ route('workspace.channels.whatsapp.connect') }}"
+                                    class="hs-btn-primary px-4 py-2 text-sm"
+                                >
+                                    ربط WhatsApp
+                                    <span class="hidden">{{ $channel['primary_action'] }}</span>
+                                </button>
+                            @endif
                         @elseif($channel['key'] === 'email')
-                            <a href="{{ $channel['manage_url'] }}" class="{{ $connected ? 'hs-btn-secondary' : 'hs-btn-primary' }} px-4 py-2 text-sm">
-                                {{ $connected ? 'إدارة القناة' : 'ربط البريد الإلكتروني' }}
+                            @if($canUseEmail)
+                                <a href="{{ $channel['manage_url'] }}" class="{{ $connected ? 'hs-btn-secondary' : 'hs-btn-primary' }} px-4 py-2 text-sm">
+                                    {{ $connected ? 'إدارة القناة' : 'ربط البريد الإلكتروني' }}
+                                </a>
+                            @endif
+                        @elseif($channel['key'] === 'instagram')
+                            <a href="{{ $channel['manage_url'] }}" class="hs-btn-secondary px-4 py-2 text-sm">
+                                إدارة القناة
+                            </a>
+                            @if($canManageChannels)
+                                <a href="{{ $channel['connect_url'] ?? '#' }}" class="hs-btn-primary px-4 py-2 text-sm">
+                                    {{ $connected ? 'إعادة ربط Instagram' : 'ربط Instagram' }}
+                                </a>
+                            @endif
+                        @elseif($channel['key'] === 'facebook_messenger')
+                            <a href="{{ $channel['manage_url'] }}" class="hs-btn-secondary px-4 py-2 text-sm">
+                                إدارة القناة
+                            </a>
+                            @if($canManageChannels)
+                                <a href="{{ $channel['connect_url'] ?? '#' }}" class="hs-btn-primary px-4 py-2 text-sm">
+                                    {{ $connected ? 'إعادة ربط Facebook' : 'ربط Facebook' }}
+                                </a>
+                                @if($connected && ! empty($channel['disconnect_url']))
+                                    <form method="post" action="{{ $channel['disconnect_url'] }}" class="inline">
+                                        @csrf
+                                        <button type="submit" class="hs-btn-secondary px-4 py-2 text-sm">قطع الاتصال</button>
+                                    </form>
+                                @endif
+                            @endif
+                        @elseif($channel['key'] === 'tiktok')
+                            <a href="{{ $channel['manage_url'] }}" class="hs-btn-secondary px-4 py-2 text-sm">
+                                إدارة القناة
+                            </a>
+                            @if($canManageChannels)
+                                <a href="{{ $channel['connect_url'] ?? '#' }}" class="hs-btn-primary px-4 py-2 text-sm">
+                                    {{ $connected ? 'إعادة ربط TikTok' : 'ربط TikTok' }}
+                                </a>
+                            @endif
+                        @elseif($channel['key'] === 'telegram')
+                            <a href="{{ $channel['manage_url'] }}" class="hs-btn-secondary px-4 py-2 text-sm">
+                                إدارة القناة
                             </a>
                         @else
                             <a href="{{ $channel['manage_url'] }}" class="hs-btn-secondary px-4 py-2 text-sm">
@@ -155,6 +198,21 @@
                 </article>
             @endforeach
         </div>
+
+        @if($canManageChannels)
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 class="text-sm font-bold text-slate-900">ربط Telegram Bot</h2>
+                <p class="mt-1 text-sm text-slate-500">أدخل رمز البوت من BotFather. لا يُعرض الرمز بعد الحفظ.</p>
+                <form method="post" action="{{ route('workspace.channels.telegram.connect') }}" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                    @csrf
+                    <div class="flex-1">
+                        <label for="telegram_bot_token" class="block text-xs font-medium text-slate-600">Bot token</label>
+                        <input id="telegram_bot_token" name="bot_token" type="password" autocomplete="off" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="123456:ABC-DEF..." />
+                    </div>
+                    <button type="submit" class="hs-btn-primary px-4 py-2 text-sm">ربط Telegram</button>
+                </form>
+            </section>
+        @endif
 
         <section class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-start gap-3">
@@ -168,7 +226,7 @@
                     <p class="mt-1 text-sm text-slate-500">راجع دليل الربط أو تواصل مع الدعم لإعداد القنوات.</p>
                 </div>
             </div>
-            @if(\Illuminate\Support\Facades\Route::has('workspace.whatsapp-accounts.index'))
+            @if($canManageChannels && \Illuminate\Support\Facades\Route::has('workspace.whatsapp-accounts.index'))
                 <a href="{{ route('workspace.whatsapp-accounts.index') }}" class="hs-btn-secondary shrink-0 px-4 py-2 text-sm">
                     زيارة مركز المساعدة
                 </a>

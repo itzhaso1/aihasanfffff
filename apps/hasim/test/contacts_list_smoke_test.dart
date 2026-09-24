@@ -11,6 +11,8 @@ import 'package:hasim/features/contacts/data/contact_repository.dart';
 import 'package:hasim/features/contacts/presentation/contacts_list_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/isolated_api_client.dart';
+
 class _MemorySecureStore extends SecureStore {
   String? _token;
   @override
@@ -41,7 +43,7 @@ void main() {
   testWidgets('ContactsListScreen empty state', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
-    final api = ApiClient(
+    final api = isolatedTestApiClient(
       secureStore: _MemorySecureStore(),
       prefsStore: PrefsStore(prefs),
     );
@@ -50,6 +52,7 @@ void main() {
       ProviderScope(
         overrides: [
           sharedPrefsProvider.overrideWithValue(prefs),
+          apiClientProvider.overrideWithValue(api),
           contactRepositoryProvider.overrideWithValue(_FakeContactRepository(api)),
         ],
         child: MaterialApp(

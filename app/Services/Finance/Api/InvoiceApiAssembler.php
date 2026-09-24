@@ -12,6 +12,7 @@ use App\Models\Finance\FinanceCreditNote;
 use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\IssuedDocumentSnapshot;
 use App\Models\PosCashierInvoice;
+use App\Services\EInvoicing\ComplianceAssessment;
 use App\Services\Finance\Api\Dto\InvoiceComplianceDto;
 use App\Services\Finance\Api\Dto\InvoiceDetailsDto;
 use App\Services\Finance\Api\Dto\InvoiceLineDto;
@@ -102,6 +103,7 @@ final class InvoiceApiAssembler
         bool $xmlAvailable,
         bool $qrAvailable,
         ?string $securityStatus,
+        ?ComplianceAssessment $readiness = null,
         ?string $dueDate = null,
         ?string $paymentMethod = null,
     ): InvoiceDetailsDto {
@@ -148,6 +150,7 @@ final class InvoiceApiAssembler
                 qrAvailable: $qrAvailable,
                 securityStatus: $securityStatus,
                 document: $document,
+                readiness: $readiness,
             ),
             references: new InvoiceReferencesDto(
                 originalInvoiceId: $document->originalDocument?->invoiceId,
@@ -161,7 +164,7 @@ final class InvoiceApiAssembler
         );
     }
 
-    public function draftFinanceDetails(FinanceInvoice $invoice): InvoiceDetailsDto
+    public function draftFinanceDetails(FinanceInvoice $invoice, ?ComplianceAssessment $readiness = null): InvoiceDetailsDto
     {
         $invoice->loadMissing(['items', 'customer', 'supplier']);
 
@@ -219,16 +222,14 @@ final class InvoiceApiAssembler
                 amountPaid: Money::of($invoice->amount_paid ?? 0),
                 amountDue: Money::of($invoice->amount_due ?? 0),
             ),
-            compliance: new InvoiceComplianceDto(
+            compliance: $this->compliance(
                 businessStatus: $invoice->invoice_status ?? $invoice->status,
                 paymentStatus: $invoice->payment_status,
-                complianceStatus: null,
-                documentKind: null,
-                invoiceType: null,
-                transactionCode: null,
-                xmlAvailable: false,
-                qrAvailable: false,
+                record: null,
+                xmlAvailable: $readiness?->xmlAvailable ?? false,
+                qrAvailable: $readiness?->qrAvailable ?? false,
                 securityStatus: null,
+                readiness: $readiness,
             ),
             references: new InvoiceReferencesDto(null, null, null, null, null),
             notes: $invoice->notes,
@@ -244,7 +245,18 @@ final class InvoiceApiAssembler
         bool $qrAvailable,
         ?string $securityStatus,
         ?EInvoiceDocument $document = null,
+        ?ComplianceAssessment $readiness = null,
     ): InvoiceComplianceDto {
+        $issuePayloads = $readiness !== null
+            ? array_map(static fn ($issue): array => $issue->toArray(), $readiness->issues)
+            : null;
+        $warningPayloads = $readiness !== null
+            ? array_merge(
+                $readiness->warnings,
+                array_map(static fn ($issue): array => $issue->toArray(), $readiness->issueWarnings),
+            )
+            : null;
+
         return new InvoiceComplianceDto(
             businessStatus: $businessStatus,
             paymentStatus: $paymentStatus,
@@ -255,6 +267,12 @@ final class InvoiceApiAssembler
             xmlAvailable: $xmlAvailable,
             qrAvailable: $qrAvailable,
             securityStatus: $securityStatus,
+            seller: $readiness?->seller->toArray(),
+            buyer: $readiness?->buyer->toArray(),
+            dataErrors: $issuePayloads,
+            dataWarnings: $warningPayloads,
+            dataSource: $readiness?->dataSource,
+            validation: $readiness?->validation?->toArray(),
         );
     }
 

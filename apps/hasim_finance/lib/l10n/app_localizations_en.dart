@@ -769,7 +769,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alerts => 'Alerts';
 
   @override
-  String get copilot => 'Finance copilot';
+  String get assistant => 'Financial assistant';
+
+  @override
+  String get copilot => 'Financial assistant';
 
   @override
   String get banks => 'Bank accounts';
@@ -881,7 +884,32 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get copilotHint =>
-      'Ask about sales, profit, overdue invoices, or what needs attention. The copilot never invents amounts.';
+      'Ask about sales, profit, overdue invoices, or what needs attention. The assistant never invents amounts.';
+
+  @override
+  String get assistantHint =>
+      'Ask about sales, profit, overdue invoices, or what needs attention. The assistant never invents amounts.';
+
+  @override
+  String get assistantEmptyState => 'HASEM financial assistant';
+
+  @override
+  String get newConversation => 'New conversation';
+
+  @override
+  String get conversationHistory => 'Conversation history';
+
+  @override
+  String get noConversations => 'No previous conversations';
+
+  @override
+  String get deleteConversation => 'Delete conversation';
+
+  @override
+  String get periodNotSupported => 'Period not supported';
+
+  @override
+  String get unavailable => 'Unavailable';
 
   @override
   String get transfer => 'Transfer';
@@ -1510,4 +1538,78 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get expenseLockedHint =>
       'Posted expenses cannot be edited from the app.';
+
+  @override
+  String get settingsManageSubtitle => 'Manage system and company settings';
+
+  @override
+  String get settingsSections => 'Settings sections';
+
+  @override
+  String get settingsGeneral => 'General';
+
+  @override
+  String get settingsGeneralHint => 'Company profile and logo';
+
+  @override
+  String get settingsInvoices => 'Invoices';
+
+  @override
+  String get settingsInvoicesHint => 'Invoice settings and numbering';
+
+  @override
+  String get settingsTaxes => 'Taxes';
+
+  @override
+  String get settingsTaxesHint => 'Tax settings and rates';
+
+  @override
+  String get settingsAddress => 'Address';
+
+  @override
+  String get settingsAddressHint => 'Company address';
+
+  @override
+  String get settingsAppearance => 'Language & appearance';
+
+  @override
+  String get settingsAppearanceHint =>
+      'Choose the system language and appearance';
+
+  @override
+  String get settingsSystem => 'System';
+
+  @override
+  String get settingsSystemHint => 'System options';
+
+  @override
+  String get companyProfile => 'Company details';
+
+  @override
+  String get companyProfileHint =>
+      'These details appear on invoices, reports, and official documents';
+
+  @override
+  String get companyNameEn => 'English company name';
+
+  @override
+  String get additionalInfo => 'Additional information';
+
+  @override
+  String get additionalInfoHint => 'Optional notes shown on invoices';
+
+  @override
+  String get saveChanges => 'Save changes';
+
+  @override
+  String get resetForm => 'Reset';
+
+  @override
+  String get themeLight => 'Light';
+
+  @override
+  String get themeDark => 'Dark';
+
+  @override
+  String get themeSystem => 'System';
 }

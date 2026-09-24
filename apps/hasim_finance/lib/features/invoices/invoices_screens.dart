@@ -526,8 +526,11 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final invoice = _data;
     if (invoice == null) return;
     try {
-      final bytes = await ref.read(financeApiProvider).pdf('sales-invoices/${invoice.id}/pdf');
-      await saveAndOpenBytes(bytes, 'invoice-${invoice.invoiceNumber}.pdf');
+      final bytes = await ref.read(financeApiProvider).pdf(
+        'sales-invoices/${invoice.id}/pdf',
+        query: invoice.pdfDownloadQuery,
+      );
+      await saveAndOpenBytes(bytes, invoice.pdfLocalFileName);
     } catch (e) {
       if (mounted) showApiError(context, e);
     }
@@ -628,6 +631,33 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                       invoice: invoice,
                       actions: _toolbar(context, l, p, invoice),
                     ),
+                    if (invoice.documentStatus == 'draft' &&
+                        (invoice.zatcaSellerReady == false || invoice.zatcaBuyerReady == false)) ...[
+                      const SizedBox(height: 12),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(l.zatcaInfo, style: Theme.of(context).textTheme.titleSmall),
+                              const SizedBox(height: 6),
+                              if (invoice.zatcaSellerReady == false)
+                                Text(l.zatcaFoundation, style: Theme.of(context).textTheme.bodySmall),
+                              ...invoice.zatcaDataIssues.take(4).map(
+                                    (issue) => Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        '${issue['field'] ?? ''}: ${issue['message'] ?? ''}',
+                                        style: Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                    ),
+                                  ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     InvoiceTwoColumn(
                       leading: CustomerInfoCard(
@@ -834,303 +864,6 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             ),
           ),
       ],
-    );
-  }
-}
-
-class InvoiceFormScreen extends ConsumerStatefulWidget {
-  const InvoiceFormScreen({super.key, this.id});
-  final int? id;
-
-  @override
-  ConsumerState<InvoiceFormScreen> createState() => _InvoiceFormScreenState();
-}
-
-class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
-  int? _customerId;
-  int? _contractId;
-  int? _projectId;
-  bool _walkIn = false;
-  String _subtype = 'standard';
-  String _zatca = 'not_required';
-  String _taxProfile = 'standard';
-  String _taxMode = 'exclusive';
-  final _walkInName = TextEditingController();
-  final _issueDate = TextEditingController(text: isoDate());
-  final _dueDate = TextEditingController(text: isoDate(DateTime.now().add(const Duration(days: 14))));
-  final _currency = TextEditingController(text: 'SAR');
-  final _paymentTerms = TextEditingController();
-  final _taxRate = TextEditingController(text: '15');
-  final _notes = TextEditingController();
-  final _invoiceNumber = TextEditingController();
-  final _supplyDate = TextEditingController();
-  final List<LineDraft> _lines = [LineDraft(description: 'خدمة فوترة', unitPrice: '100')];
-  final List<PlatformFile> _files = [];
-  bool _issueNow = false;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.id != null) {
-      ref.read(financeApiProvider).invoice(widget.id!).then((invoice) {
-        if (!mounted) return;
-        _customerId = invoice.customerId;
-        _walkIn = invoice.customerId == null;
-        _walkInName.text = invoice.customerName ?? '';
-        _notes.text = invoice.notes ?? '';
-        _paymentTerms.text = invoice.paymentTerms ?? '';
-        _currency.text = invoice.currency;
-        _taxRate.text = invoice.taxRate ?? '15';
-        _taxProfile = invoice.taxProfileType ?? 'standard';
-        _taxMode = invoice.taxPriceMode ?? 'exclusive';
-        _subtype = invoice.zatcaSubtype ?? 'standard';
-        _zatca = invoice.zatcaRequirement ?? 'not_required';
-        _contractId = invoice.contractId;
-        _projectId = invoice.projectId;
-        _invoiceNumber.text = invoice.invoiceNumber ?? '';
-        if (invoice.issueDate != null) _issueDate.text = invoice.issueDate!.substring(0, 10);
-        if (invoice.dueDate != null) _dueDate.text = invoice.dueDate!.substring(0, 10);
-        if (invoice.supplyDate != null && invoice.supplyDate!.length >= 10) {
-          _supplyDate.text = invoice.supplyDate!.substring(0, 10);
-        }
-        if (invoice.lines.isNotEmpty) {
-          for (final line in _lines) {
-            line.dispose();
-          }
-          _lines
-            ..clear()
-            ..addAll(invoice.lines.map(LineDraft.fromItem));
-        }
-        setState(() {});
-      }).catchError((Object error) {
-        if (mounted) showApiError(context, error);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _walkInName.dispose();
-    _issueDate.dispose();
-    _dueDate.dispose();
-    _currency.dispose();
-    _paymentTerms.dispose();
-    _taxRate.dispose();
-    _notes.dispose();
-    _invoiceNumber.dispose();
-    _supplyDate.dispose();
-    for (final line in _lines) {
-      line.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (!_walkIn && _customerId == null) return;
-    if (_walkIn && _walkInName.text.trim().isEmpty) return;
-    setState(() => _busy = true);
-    try {
-      final body = <String, dynamic>{
-        if (!_walkIn) 'customer_id': _customerId,
-        if (_walkIn) 'customer_name': _walkInName.text.trim(),
-        'issue_date': _issueDate.text.trim(),
-        'due_date': _dueDate.text.trim(),
-        if (_supplyDate.text.trim().isNotEmpty) 'supply_date': _supplyDate.text.trim(),
-        'currency': _currency.text.trim(),
-        'payment_terms': _paymentTerms.text.trim(),
-        'notes': _notes.text.trim(),
-        'invoice_status': _issueNow && widget.id == null ? 'issued' : 'draft',
-        'tax_profile_type': _taxProfile,
-        'tax_rate': _taxRate.text.trim(),
-        'tax_price_mode': _taxMode,
-        'tax_document_subtype': _subtype,
-        'zatca_requirement': _zatca,
-        if (_invoiceNumber.text.trim().isNotEmpty) 'invoice_number': _invoiceNumber.text.trim(),
-        if (_contractId != null) 'contract_id': _contractId,
-        if (_projectId != null) 'project_id': _projectId,
-        'items': _lines.map((line) => line.toPayload()).toList(),
-      };
-      late final InvoiceRecord saved;
-      if (widget.id == null && _files.isNotEmpty) {
-        final form = FormData.fromMap({
-          ...body,
-          'items_json': jsonEncode(body['items']),
-        }..remove('items'));
-        for (final file in _files) {
-          final part = await multipartFromPicked(file);
-          if (part != null) form.files.add(MapEntry('attachments[]', part));
-        }
-        saved = await ref.read(financeApiProvider).saveInvoice({}, form: form);
-      } else {
-        saved = await ref.read(financeApiProvider).saveInvoice(body, id: widget.id);
-        if (_files.isNotEmpty) {
-          final form = FormData();
-          for (final file in _files) {
-            final part = await multipartFromPicked(file);
-            if (part != null) form.files.add(MapEntry('attachments[]', part));
-          }
-          if (form.files.isNotEmpty) {
-            await ref.read(financeApiProvider).uploadInvoiceAttachments(saved.id, form);
-          }
-        }
-      }
-      if (!mounted) return;
-      context.go('/invoices/${saved.id}');
-    } catch (e) {
-      if (mounted) showFormError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
-    return FinanceScaffold(
-      title: l.invoices,
-      showBack: true,
-      body: FinancePage(
-        child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          FormSection(
-            title: l.headerSection,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(l.walkInCustomer),
-                  value: _walkIn,
-                  onChanged: (v) => setState(() => _walkIn = v),
-                ),
-                if (_walkIn)
-                  TextField(controller: _walkInName, decoration: InputDecoration(labelText: l.walkInName))
-                else
-                  CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
-                FormGrid(children: [
-                  if (catalog.allowManualInvoiceNumbers || _invoiceNumber.text.isNotEmpty)
-                    TextField(controller: _invoiceNumber, decoration: InputDecoration(labelText: l.invoiceNumber)),
-                  DropdownButtonFormField(
-                    isExpanded: true,
-                    // ignore: deprecated_member_use
-                    value: _subtype,
-                    decoration: InputDecoration(labelText: l.taxDocumentSubtype),
-                    items: [
-                      DropdownMenuItem(value: 'standard', child: Text(l.standardTax)),
-                      DropdownMenuItem(value: 'simplified', child: Text(l.simplifiedTax)),
-                    ],
-                    onChanged: (v) => setState(() => _subtype = v ?? 'standard'),
-                  ),
-                  DropdownButtonFormField(
-                    isExpanded: true,
-                    // ignore: deprecated_member_use
-                    value: _zatca,
-                    decoration: InputDecoration(labelText: l.zatcaRequirement),
-                    items: [
-                      DropdownMenuItem(value: 'not_required', child: Text(l.notRequired)),
-                      DropdownMenuItem(value: 'required', child: Text(l.requiredLater)),
-                    ],
-                    onChanged: (v) => setState(() => _zatca = v ?? 'not_required'),
-                  ),
-                  OptionPicker(
-                    label: l.contract,
-                    options: [for (final row in catalog.contracts) NamedOption(id: row.id, name: row.name)],
-                    value: _contractId,
-                    onChanged: (id) => setState(() => _contractId = id),
-                  ),
-                  OptionPicker(
-                    label: l.project,
-                    options: [for (final row in catalog.projects) NamedOption(id: row.id, name: row.name)],
-                    value: _projectId,
-                    onChanged: (id) => setState(() => _projectId = id),
-                  ),
-                ]),
-              ],
-            ),
-          ),
-          FormSection(
-            title: l.datesSection,
-            child: FormGrid(children: [
-              TextField(controller: _issueDate, decoration: InputDecoration(labelText: l.issueDate)),
-              TextField(controller: _dueDate, decoration: InputDecoration(labelText: l.dueDate)),
-              TextField(controller: _supplyDate, decoration: InputDecoration(labelText: l.supplyDate)),
-              TextField(controller: _currency, decoration: InputDecoration(labelText: l.currency)),
-              TextField(controller: _paymentTerms, decoration: InputDecoration(labelText: l.paymentTerms)),
-            ]),
-          ),
-          FormSection(
-            title: l.taxSection,
-            child: FormGrid(children: [
-              DropdownButtonFormField(
-                isExpanded: true,
-                // ignore: deprecated_member_use
-                value: _taxProfile,
-                decoration: InputDecoration(labelText: l.taxProfile),
-                items: [
-                  DropdownMenuItem(value: 'standard', child: Text(l.standardTax)),
-                  DropdownMenuItem(value: 'zero_rated', child: Text(l.zeroRated)),
-                  DropdownMenuItem(value: 'exempt', child: Text(l.exempt)),
-                  DropdownMenuItem(value: 'out_of_scope', child: Text(l.outOfScope)),
-                ],
-                onChanged: (v) => setState(() => _taxProfile = v ?? 'standard'),
-              ),
-              DropdownButtonFormField(
-                isExpanded: true,
-                // ignore: deprecated_member_use
-                value: _taxMode,
-                decoration: InputDecoration(labelText: l.taxPriceMode),
-                items: [
-                  DropdownMenuItem(value: 'exclusive', child: Text(l.exclusive)),
-                  DropdownMenuItem(value: 'inclusive', child: Text(l.inclusive)),
-                ],
-                onChanged: (v) => setState(() => _taxMode = v ?? 'exclusive'),
-              ),
-              TextField(controller: _taxRate, decoration: InputDecoration(labelText: l.taxRate)),
-            ]),
-          ),
-          FormSection(
-            title: l.itemsSection,
-            child: DocumentLinesEditor(lines: _lines, products: catalog.products, onChanged: () => setState(() {})),
-          ),
-          FormSection(
-            title: l.notesSection,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 3),
-                if (widget.id == null)
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(l.issueImmediately),
-                    value: _issueNow,
-                    onChanged: (v) => setState(() => _issueNow = v),
-                  ),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final result = await FilePicker.platform.pickFiles(
-                      allowMultiple: true,
-                      type: FileType.custom,
-                      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
-                    );
-                    if (result != null && result.files.isNotEmpty) {
-                      setState(() => _files
-                        ..clear()
-                        ..addAll(result.files));
-                    }
-                  },
-                  icon: const Icon(Icons.attach_file),
-                  label: Text(_files.isEmpty ? l.pickAttachments : '${l.attachmentsTitle} (${_files.length})'),
-                ),
-              ],
-            ),
-          ),
-          FilledButton(onPressed: _busy ? null : _save, child: Text(l.save)),
-        ],
-      ),
-      ),
     );
   }
 }

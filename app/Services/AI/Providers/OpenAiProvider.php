@@ -7,8 +7,18 @@ use Illuminate\Support\Facades\Http;
 
 class OpenAiProvider implements AiProviderInterface
 {
-    public function generate(array $messages, string $model, float $temperature, int $maxTokens): array
+    public function supportsNativeToolCalling(): bool
     {
+        return false;
+    }
+
+    public function generate(
+        array $messages,
+        string $model,
+        float $temperature,
+        int $maxTokens,
+        array $toolDefinitions = [],
+    ): array {
         $apiKey = config('services.openai.key');
 
         if (! $apiKey) {
@@ -29,7 +39,7 @@ class OpenAiProvider implements AiProviderInterface
         return [
             'content' => (string) ($response['choices'][0]['message']['content'] ?? ''),
             'tokens_used' => (int) ($response['usage']['total_tokens'] ?? 0),
-            'raw' => $response,
+            'raw' => is_array($response) ? $response : [],
         ];
     }
 }

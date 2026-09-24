@@ -54,10 +54,11 @@ class MemorySecureStore extends SecureStore {
 }
 
 class SeededAuthController extends AuthController {
-  SeededAuthController({this.allowAll = true, this.workspaces});
+  SeededAuthController({this.allowAll = true, this.workspaces, this.permissions});
 
   final bool allowAll;
   final List<WorkspaceInfo>? workspaces;
+  final Map<String, bool>? permissions;
 
   static const ownerPerms = {
     'finance.view': true,
@@ -126,7 +127,9 @@ class SeededAuthController extends AuthController {
       user: const AuthUser(id: 1, name: 'Owner', email: 'owner@example.com'),
       workspace: list.first,
       workspaces: list,
-      permissions: FinancePermissions(allowAll ? ownerPerms : const {'finance.view': false}),
+      permissions: FinancePermissions(
+        allowAll ? ownerPerms : (permissions ?? const {'finance.view': false}),
+      ),
       financeEnabled: true,
     );
   }
@@ -266,12 +269,17 @@ class FakeFinanceApi extends FinanceApi {
   List<WorkspaceInfo> sessionWorkspaces = const [
     WorkspaceInfo(id: 1, name: 'شركة الاختبار', financeEnabled: true),
   ];
+  int? activeWorkspaceId;
 
   SessionPayload sessionPayload() {
+    final workspace = sessionWorkspaces.firstWhere(
+      (row) => row.id == (activeWorkspaceId ?? sessionWorkspaces.first.id),
+      orElse: () => sessionWorkspaces.first,
+    );
     return SessionPayload(
       token: 'sanctum-token',
       user: const AuthUser(id: 1, name: 'Owner', email: 'owner@example.com'),
-      workspace: sessionWorkspaces.first,
+      workspace: workspace,
       workspaces: sessionWorkspaces,
       permissions: SeededAuthController.ownerPerms,
       financeEnabled: financeEnabledFlag,
@@ -307,7 +315,9 @@ class FakeFinanceApi extends FinanceApi {
   }
 
   @override
-  Future<void> switchWorkspace(int workspaceId) async {}
+  Future<void> switchWorkspace(int workspaceId) async {
+    activeWorkspaceId = workspaceId;
+  }
 
   @override
   Future<void> logout() async {
@@ -841,6 +851,12 @@ class FakeFinanceApi extends FinanceApi {
   Future<Map<String, dynamic>> settings() async => settingsPayload;
 
   @override
+  Future<Map<String, dynamic>> updateSettings(Map<String, dynamic> body) async {
+    settingsPayload = {...settingsPayload, ...body};
+    return settingsPayload;
+  }
+
+  @override
   Future<Map<String, dynamic>> uploadCompanyLogo(FormData form) async {
     settingsPayload = {...settingsPayload, 'has_logo': true};
     return settingsPayload;
@@ -915,8 +931,111 @@ class FakeFinanceApi extends FinanceApi {
   @override
   Future<SupplierRecord> supplier(int id) async => const SupplierRecord(id: 3, name: 'مورد الاختبار', vatNumber: '300000000000003');
 
+  ApiException? assistantError;
+  String? lastAssistantQuestion;
+  int nextConversationId = 1;
+  final Map<int, FinanceAssistantConversationDetail> assistantConversationDetails = {};
+  FinanceAssistantResponse assistantResponse = const FinanceAssistantResponse(
+    answer: 'صافي الربح هذا الشهر 4,250.00 JOD حسب السجلات المالية.',
+    facts: [
+      FinanceAssistantFact(
+        tool: 'profit.net',
+        available: true,
+        data: {'value': '4250.00', 'currency': 'JOD', 'period': {'from': '2026-09-01', 'to': '2026-09-30'}},
+      ),
+    ],
+    toolsUsed: ['profit.net'],
+    period: FinanceAssistantPeriod(from: '2026-09-01', to: '2026-09-30'),
+  );
+
   @override
-  Future<Map<String, dynamic>> askCopilot(String question) async => {'answer': 'لا توجد مبالغ مخترعة. المبيعات 115.00'};
+  Future<FinanceAssistantResponse> askAssistant({
+    required String question,
+    String locale = 'ar',
+    int? conversationId,
+    String? idempotencyKey,
+  }) async {
+    lastAssistantQuestion = question;
+    final error = assistantError;
+    if (error != null) throw error;
+    if (question.contains('2050')) {
+      return const FinanceAssistantResponse(
+        answer: 'لا أستطيع الإجابة عن الفترة المطلوبة من السجلات المتاحة.',
+        facts: [
+          FinanceAssistantFact(
+            tool: 'period.request',
+            available: false,
+            reason: 'period_not_supported',
+            data: {'requested_period': {'from': '2050-01-01', 'to': '2050-12-31'}},
+          ),
+        ],
+      );
+    }
+    final id = conversationId ?? nextConversationId++;
+    final answer = assistantResponse.copyWith(conversationId: id);
+    final existing = assistantConversationDetails[id];
+    final messages = [
+      ...?existing?.messages,
+      FinanceAssistantMessage(id: (existing?.messages.length ?? 0) + 1, role: 'user', body: question),
+      FinanceAssistantMessage(
+        id: (existing?.messages.length ?? 0) + 2,
+        role: 'assistant',
+        body: answer.answer,
+      ),
+    ];
+    assistantConversationDetails[id] = FinanceAssistantConversationDetail(
+      id: id,
+      title: question.length > 48 ? '${question.substring(0, 48)}…' : question,
+      messages: messages,
+      lastMessageAt: DateTime(2026, 9, 18, 12),
+    );
+    return answer;
+  }
+
+  @override
+  Future<PagedResult<FinanceAssistantConversation>> assistantConversations({
+    String status = 'active',
+    int page = 1,
+  }) async {
+    final items = assistantConversationDetails.values
+        .map(
+          (detail) => FinanceAssistantConversation(
+            id: detail.id,
+            title: detail.title,
+            status: detail.status,
+            lastMessageAt: detail.lastMessageAt,
+          ),
+        )
+        .toList()
+      ..sort((a, b) => (b.lastMessageAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+          .compareTo(a.lastMessageAt ?? DateTime.fromMillisecondsSinceEpoch(0)));
+    return PagedResult(items: items, page: page, lastPage: 1, total: items.length);
+  }
+
+  @override
+  Future<FinanceAssistantConversationDetail> assistantConversation(int id) async {
+    final detail = assistantConversationDetails[id];
+    if (detail == null) {
+      throw ApiException('العنصر المطلوب غير موجود.', statusCode: 404);
+    }
+    return detail;
+  }
+
+  @override
+  Future<FinanceAssistantConversation> archiveAssistantConversation(int id) async {
+    final detail = await assistantConversation(id);
+    return FinanceAssistantConversation(
+      id: detail.id,
+      title: detail.title,
+      status: 'archived',
+      lastMessageAt: detail.lastMessageAt,
+    );
+  }
+
+  @override
+  Future<void> deleteAssistantConversation(int id) async {
+    assistantConversationDetails.remove(id);
+  }
 
   FinanceEmployeeRecord employeeRecord = const FinanceEmployeeRecord(
     id: 4,
@@ -1011,6 +1130,7 @@ List<Override> financeOverrides({
   required SharedPreferences prefs,
   required FakeFinanceApi api,
   bool allowAll = true,
+  Map<String, bool>? permissions,
   GoogleAccessTokenSource? google,
   SecureStore? secureStore,
   List<WorkspaceInfo>? workspaces,
@@ -1018,7 +1138,9 @@ List<Override> financeOverrides({
   return [
     sharedPrefsProvider.overrideWithValue(prefs),
     financeApiProvider.overrideWithValue(api),
-    authControllerProvider.overrideWith(() => SeededAuthController(allowAll: allowAll, workspaces: workspaces)),
+    authControllerProvider.overrideWith(
+      () => SeededAuthController(allowAll: allowAll, workspaces: workspaces, permissions: permissions),
+    ),
     if (google != null) googleAccessTokenSourceProvider.overrideWithValue(google),
     if (secureStore != null) secureStoreProvider.overrideWithValue(secureStore),
   ];

@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\DiningTable;
 use App\Models\InventoryMovement;
 use App\Models\Order;
+use App\Models\PosCashierInvoice;
 use App\Models\PosDevice;
 use App\Models\PosItemCategory;
 use App\Models\PosMenuItem;
@@ -742,6 +743,21 @@ class PosSyncPushService
      */
     private function invoiceCreated(Workspace $workspace, User $user, array $data): array
     {
+        $localNumber = trim((string) ($data['local_invoice_number'] ?? ''));
+        if ($localNumber !== '') {
+            $existingByLocal = PosCashierInvoice::withoutGlobalScopes()
+                ->where('workspace_id', $workspace->id)
+                ->where('metadata->local_invoice_number', $localNumber)
+                ->first();
+            if ($existingByLocal) {
+                return [
+                    'entity_type' => 'invoice',
+                    'entity_id' => (int) $existingByLocal->id,
+                    'result' => $this->invoiceResult($existingByLocal, $localNumber),
+                ];
+            }
+        }
+
         $order = $this->resolveOrder($workspace, [
             'server_order_id' => $data['order_server_id'] ?? $data['server_order_id'] ?? null,
             'client_reference' => $data['order_local_id'] ?? $data['client_reference'] ?? null,
@@ -784,19 +800,34 @@ class PosSyncPushService
         return [
             'entity_type' => 'invoice',
             'entity_id' => (int) $invoice->id,
-            'result' => [
-                'invoice_id' => $invoice->id,
-                'id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number,
-                'local_invoice_number' => $metadata['local_invoice_number'] ?? null,
-                'total_amount' => (float) $invoice->total_amount,
-                'subtotal' => (float) $invoice->subtotal,
-                'discount_amount' => (float) $invoice->discount_amount,
-                'tax_amount' => (float) $order->tax_amount,
-                'currency' => $invoice->currency,
-                'payment_method' => is_array($order->metadata) ? ($order->metadata['payment_method'] ?? null) : null,
-                'payment_status' => $order->payment_status,
-            ],
+            'result' => $this->invoiceResult($invoice->fresh() ?? $invoice, $localNumber !== '' ? $localNumber : null),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function invoiceResult(PosCashierInvoice $invoice, ?string $localNumber = null): array
+    {
+        $order = Order::withoutGlobalScopes()
+            ->where('workspace_id', $invoice->workspace_id)
+            ->where('pos_cashier_invoice_id', $invoice->id)
+            ->first();
+        $metadata = is_array($invoice->metadata) ? $invoice->metadata : [];
+        $storedLocal = trim((string) ($metadata['local_invoice_number'] ?? ''));
+
+        return [
+            'invoice_id' => $invoice->id,
+            'id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'local_invoice_number' => ($localNumber !== null && $localNumber !== '') ? $localNumber : ($storedLocal !== '' ? $storedLocal : null),
+            'total_amount' => (float) $invoice->total_amount,
+            'subtotal' => (float) $invoice->subtotal,
+            'discount_amount' => (float) $invoice->discount_amount,
+            'tax_amount' => (float) ($order?->tax_amount ?? $invoice->tax_amount),
+            'currency' => $invoice->currency,
+            'payment_method' => is_array($order?->metadata) ? ($order->metadata['payment_method'] ?? null) : ($metadata['payment_method'] ?? null),
+            'payment_status' => $order?->payment_status,
         ];
     }
 
@@ -1306,6 +1337,9 @@ class PosSyncPushService
     private function resolveTable(Workspace $workspace, array $data): DiningTable
     {
         $id = (int) ($data['table_server_id'] ?? $data['dining_table_id'] ?? $data['table_id'] ?? 0);
+        if ($id <= 0) {
+            throw PosSyncOperationException::retryable('معرّف الطاولة غير جاهز بعد.');
+        }
         $table = DiningTable::withoutGlobalScopes()
             ->where('workspace_id', $workspace->id)
             ->whereKey($id)

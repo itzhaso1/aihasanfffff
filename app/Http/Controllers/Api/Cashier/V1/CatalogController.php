@@ -12,6 +12,7 @@ use App\Http\Requests\Pos\UpdatePosMenuItemRequest;
 use App\Http\Resources\Cashier\MenuItemResource;
 use App\Models\PosItemCategory;
 use App\Models\PosMenuItem;
+use App\Models\Workspace;
 use App\Services\Feature\FeatureAccessService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -38,6 +39,7 @@ class CatalogController extends CashierController
         $categories = PosItemCategory::query()
             ->orderBy('sort_order')
             ->orderBy('name')
+            ->limit(200)
             ->get(['id', 'name', 'sort_order', 'is_active']);
 
         return $this->ok([
@@ -288,7 +290,7 @@ class CatalogController extends CashierController
         ];
     }
 
-    private function ensurePos(\App\Models\Workspace $workspace): void
+    private function ensurePos(Workspace $workspace): void
     {
         if (! $this->featureAccessService->workspaceHasFeature($workspace, 'pos')) {
             throw new HttpResponseException(

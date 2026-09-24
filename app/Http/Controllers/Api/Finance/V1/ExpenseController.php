@@ -11,7 +11,6 @@ use App\Services\Finance\FinanceBootstrapService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ExpenseController extends FinanceApiController
@@ -115,12 +114,8 @@ class ExpenseController extends FinanceApiController
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $this->clientActor($request, $workspace, 'expenses.view');
         abort_unless(is_string($expense->attachment_path) && $expense->attachment_path !== '', 404);
-        abort_unless(Storage::disk('public')->exists($expense->attachment_path), 404);
 
-        return Storage::disk('public')->download(
-            $expense->attachment_path,
-            basename($expense->attachment_path)
-        );
+        return $expense->attachmentDownloadResponse();
     }
 
     /**

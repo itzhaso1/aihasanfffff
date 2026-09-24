@@ -30,6 +30,7 @@ class FinancePermissions {
   bool get reportsView => can('reports.view');
   bool get settings => can('finance.settings');
   bool get financeView => can('finance.view');
+  bool get assistantView => reportsView || financeView || payrollView;
   bool get financeManage => can('finance.manage');
   bool get accountingView => can('accounting.view');
   bool get accountingManage => can('accounting.manage');

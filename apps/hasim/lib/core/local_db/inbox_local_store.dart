@@ -268,7 +268,10 @@ class InboxLocalStore {
               'original_name': a.originalName,
               'mime_type': a.mimeType,
               'size_bytes': a.sizeBytes,
+              'duration_ms': a.durationMs,
+              'status': a.status,
               'download_url': a.downloadUrl,
+              'preview_url': a.previewUrl,
             },
           )
           .toList(),

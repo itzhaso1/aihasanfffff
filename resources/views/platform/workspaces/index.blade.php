@@ -27,7 +27,11 @@
                                 <td class="px-4 py-3">{{ $workspace->owner?->name ?? '-' }}</td>
                                 <td class="px-4 py-3">{{ $workspace->type }}</td>
                                 <td class="px-4 py-3">{{ $workspace->status }}</td>
-                                <td class="px-4 py-3 text-left"><a href="{{ route('platform.workspaces.edit', $workspace) }}" class="text-blue-600">تعديل</a></td>
+                                <td class="px-4 py-3 text-left whitespace-nowrap">
+                                    <a href="{{ route('platform.subscriptions.create', ['workspace_id' => $workspace->id]) }}" class="text-blue-600">منح اشتراك</a>
+                                    <span class="text-gray-300">|</span>
+                                    <a href="{{ route('platform.workspaces.edit', $workspace) }}" class="text-blue-600">تعديل</a>
+                                </td>
                             </tr>
                         @empty
                             <tr><td colspan="5" class="px-4 py-6 text-center text-gray-500">لا توجد مساحات.</td></tr>

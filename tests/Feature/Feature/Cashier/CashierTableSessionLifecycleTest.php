@@ -4,13 +4,18 @@ namespace Tests\Feature\Feature\Cashier;
 
 use App\Models\DiningTable;
 use App\Models\Order;
+use App\Models\Plan;
 use App\Models\PosCashierInvoice;
 use App\Models\PosCustomerSession;
 use App\Models\PosMenuItem;
 use App\Models\PosSyncChange;
+use App\Models\Subscription;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Models\WorkspaceFeatureFlag;
+use App\Services\Pos\PosOrderService;
+use App\Support\Tenancy\WorkspaceContext;
 use Database\Seeders\FoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -40,6 +45,8 @@ class CashierTableSessionLifecycleTest extends TestCase
             ],
         ]);
         $this->assertTrue($open['success']);
+        $table->refresh();
+        $this->assertSame('occupied', $table->status);
         $firstId = (int) $open['accepted'][0]['result']['session_id'];
         $first = TableSession::withoutGlobalScopes()->findOrFail($firstId);
         $this->assertSame('open', $first->status);
@@ -152,6 +159,7 @@ class CashierTableSessionLifecycleTest extends TestCase
             'workspace' => $workspace->slug,
             'token' => $table->qr_token,
         ]))->assertOk();
+        $this->bindWorkspace($workspace);
 
         $guest = PosCustomerSession::query()->where('dining_table_id', $table->id)->firstOrFail();
         $this->withUnencryptedCookie('pos_guest_'.$table->id, $guest->token)
@@ -164,6 +172,7 @@ class CashierTableSessionLifecycleTest extends TestCase
                 'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
             ])
             ->assertRedirect();
+        $this->bindWorkspace($workspace);
 
         $order = Order::query()->where('source', 'qr_menu')->latest('id')->firstOrFail();
         $this->assertSame($table->id, (int) $order->dining_table_id);
@@ -219,12 +228,11 @@ class CashierTableSessionLifecycleTest extends TestCase
 
         $before = (int) PosSyncChange::withoutGlobalScopes()->max('id');
 
-        // Laravel-side open with no orders: dining_tables.status stays
-        // "available", so only the TableSession row changes.
-        $service = app(\App\Services\Pos\PosOrderService::class);
+        // An open sitting is occupied on the web board even before items arrive.
+        $service = app(PosOrderService::class);
         $session = $service->openSession($table->fresh());
         $table->refresh();
-        $this->assertSame('available', $table->status);
+        $this->assertSame('occupied', $table->status);
 
         $pull = $this->pullSince($token, $workspace, 'POS-WATCH', $before);
         $openChange = collect($pull['changes'])
@@ -295,6 +303,99 @@ class CashierTableSessionLifecycleTest extends TestCase
         $this->assertEqualsCanonicalizing(['ord-a', 'ord-b'], $pulledRefs);
     }
 
+    public function test_second_unpaid_ticket_appends_to_the_open_sitting_and_retry_does_not_duplicate(): void
+    {
+        [$token, $workspace, $item, $table] = $this->bootTable();
+
+        $this->push($token, $workspace, 'POS-ONE', [
+            'id' => 'op-open-one-order',
+            'type' => 'table_session.open',
+            'data' => [
+                'table_server_id' => $table->id,
+                'session_client_id' => 'sess-one-order',
+            ],
+        ]);
+
+        $first = $this->push($token, $workspace, 'POS-ONE', [
+            'id' => 'op-ord-a',
+            'type' => 'order.created',
+            'data' => [
+                'order_type' => 'table',
+                'offline_sale' => true,
+                'payment_status' => 'unpaid',
+                'pos_status' => 'new',
+                'dining_table_id' => $table->id,
+                'client_reference' => 'ord-a',
+                'items' => [[
+                    'pos_menu_item_id' => $item->id,
+                    'quantity' => 1,
+                    'unit_price' => 10,
+                    'name' => 'شاي',
+                ]],
+            ],
+        ], register: false);
+        $this->assertTrue($first['success']);
+        $orderId = (int) $first['accepted'][0]['entity_id'];
+
+        $secondOp = [
+            'id' => 'op-ord-b',
+            'type' => 'order.created',
+            'data' => [
+                'order_type' => 'table',
+                'offline_sale' => true,
+                'payment_status' => 'unpaid',
+                'pos_status' => 'new',
+                'dining_table_id' => $table->id,
+                'client_reference' => 'ord-b',
+                'items' => [[
+                    'pos_menu_item_id' => $item->id,
+                    'quantity' => 1,
+                    'unit_price' => 12,
+                    'name' => 'قهوة',
+                ]],
+            ],
+        ];
+        $second = $this->push($token, $workspace, 'POS-ONE', $secondOp, register: false);
+        $this->assertTrue($second['success']);
+        $this->assertSame($orderId, (int) $second['accepted'][0]['entity_id']);
+
+        $order = Order::query()->with('items')->findOrFail($orderId);
+        $this->assertSame(2, (int) $order->items->sum('quantity'));
+        $this->assertSame(1, Order::query()->where('dining_table_id', $table->id)->count());
+
+        $replay = $this->push($token, $workspace, 'POS-ONE', $secondOp, register: false);
+        $this->assertSame('duplicate', $replay['accepted'][0]['status']);
+        $order->refresh();
+        $order->load('items');
+        $this->assertSame(2, (int) $order->items->sum('quantity'));
+
+        $order->update([
+            'payment_status' => 'paid',
+            'pos_status' => 'completed',
+        ]);
+        $third = $this->push($token, $workspace, 'POS-ONE', [
+            'id' => 'op-ord-c',
+            'type' => 'order.created',
+            'data' => [
+                'order_type' => 'table',
+                'offline_sale' => true,
+                'payment_status' => 'unpaid',
+                'pos_status' => 'new',
+                'dining_table_id' => $table->id,
+                'client_reference' => 'ord-c',
+                'items' => [[
+                    'pos_menu_item_id' => $item->id,
+                    'quantity' => 1,
+                    'unit_price' => 10,
+                    'name' => 'شاي',
+                ]],
+            ],
+        ], register: false);
+        $this->assertTrue($third['success']);
+        $this->assertNotSame($orderId, (int) $third['accepted'][0]['entity_id']);
+        $this->assertSame(2, Order::query()->where('dining_table_id', $table->id)->count());
+    }
+
     public function test_unpaid_table_order_flagged_offline_sale_attaches_to_the_open_sitting(): void
     {
         [$token, $workspace, $item, $table] = $this->bootTable();
@@ -343,6 +444,92 @@ class CashierTableSessionLifecycleTest extends TestCase
             ->pluck('client_reference')
             ->all();
         $this->assertSame(['ord-live'], $listed);
+        $table->refresh();
+        $this->assertSame('occupied', $table->status);
+    }
+
+    public function test_missing_table_id_is_retryable_and_a_real_missing_table_is_permanent(): void
+    {
+        [$token, $workspace] = array_slice($this->bootTable(), 0, 2);
+
+        $missingId = $this->push($token, $workspace, 'POS-NO-TABLE', [
+            'id' => 'op-open-zero',
+            'type' => 'table_session.open',
+            'data' => [
+                'table_server_id' => 0,
+                'session_client_id' => 'sess-zero',
+            ],
+        ]);
+        $this->assertFalse($missingId['success']);
+        $this->assertTrue($missingId['failed'][0]['retryable']);
+        $this->assertSame(0, TableSession::query()->count());
+
+        $unknown = $this->push($token, $workspace, 'POS-NO-TABLE', [
+            'id' => 'op-open-missing',
+            'type' => 'table_session.open',
+            'data' => [
+                'table_server_id' => 999999,
+                'session_client_id' => 'sess-missing',
+            ],
+        ], register: false);
+        $this->assertFalse($unknown['failed'][0]['retryable']);
+        $this->assertSame(0, TableSession::query()->count());
+    }
+
+    public function test_same_local_invoice_number_with_a_new_operation_returns_the_original(): void
+    {
+        [$token, $workspace, $item, $table] = $this->bootTable();
+        unset($table);
+
+        $this->push($token, $workspace, 'POS-INV-IDEM', [
+            'id' => 'op-order-local-number',
+            'type' => 'order.created',
+            'data' => [
+                'order_type' => 'takeaway',
+                'offline_sale' => true,
+                'client_reference' => 'ord-local-number',
+                'currency' => 'SAR',
+                'items' => [[
+                    'pos_menu_item_id' => $item->id,
+                    'quantity' => 1,
+                    'unit_price' => 10,
+                    'name' => 'شاي',
+                ]],
+            ],
+        ]);
+        $order = Order::query()->where('client_reference', 'ord-local-number')->firstOrFail();
+
+        $first = $this->push($token, $workspace, 'POS-INV-IDEM', [
+            'id' => 'op-invoice-local-a',
+            'type' => 'invoice.created',
+            'data' => [
+                'order_type' => 'takeaway',
+                'order_local_id' => 'ord-local-number',
+                'order_server_id' => $order->id,
+                'local_invoice_number' => 'LOCAL-same-invoice',
+                'payment_method' => 'cash',
+            ],
+        ], register: false);
+        $this->assertTrue($first['success']);
+        $invoiceId = $first['accepted'][0]['entity_id'];
+        $number = $first['accepted'][0]['result']['invoice_number'];
+        $this->assertStringStartsWith('CASH-', (string) $number);
+
+        $second = $this->push($token, $workspace, 'POS-INV-IDEM', [
+            'id' => 'op-invoice-local-b',
+            'type' => 'invoice.created',
+            'data' => [
+                'order_type' => 'takeaway',
+                'order_local_id' => 'ord-local-number',
+                'order_server_id' => $order->id,
+                'local_invoice_number' => 'LOCAL-same-invoice',
+                'payment_method' => 'cash',
+            ],
+        ], register: false);
+        $this->assertTrue($second['success']);
+        $this->assertSame($invoiceId, $second['accepted'][0]['entity_id']);
+        $this->assertSame($number, $second['accepted'][0]['result']['invoice_number']);
+        $this->assertSame(1, PosCashierInvoice::query()->count());
     }
 
     public function test_paid_offline_sale_still_does_not_open_a_sitting(): void
@@ -377,7 +564,7 @@ class CashierTableSessionLifecycleTest extends TestCase
      */
     private function pullSince(string $token, Workspace $workspace, string $deviceId, int $cursor): array
     {
-        return $this->withToken($token)
+        $data = $this->withToken($token)
             ->withHeaders([
                 'X-Workspace-Id' => (string) $workspace->id,
                 'X-Device-Id' => $deviceId,
@@ -389,6 +576,9 @@ class CashierTableSessionLifecycleTest extends TestCase
             ])
             ->assertOk()
             ->json('data');
+        $this->bindWorkspace($workspace);
+
+        return $data;
     }
 
     /**
@@ -412,8 +602,14 @@ class CashierTableSessionLifecycleTest extends TestCase
             'status' => 'available',
             'qr_token' => 'qr-life-1',
         ]);
+        $this->bindWorkspace($workspace);
 
         return [$token, $workspace, $item, $table];
+    }
+
+    private function bindWorkspace(Workspace $workspace): void
+    {
+        app(WorkspaceContext::class)->set($workspace);
     }
 
     /**
@@ -431,7 +627,7 @@ class CashierTableSessionLifecycleTest extends TestCase
             $this->registerDevice($token, $workspace, $deviceId);
         }
 
-        return $this->withToken($token)
+        $data = $this->withToken($token)
             ->withHeaders([
                 'X-Workspace-Id' => (string) $workspace->id,
                 'X-Device-Id' => $deviceId,
@@ -442,6 +638,9 @@ class CashierTableSessionLifecycleTest extends TestCase
             ])
             ->assertOk()
             ->json('data');
+        $this->bindWorkspace($workspace);
+
+        return $data;
     }
 
     /**
@@ -449,7 +648,7 @@ class CashierTableSessionLifecycleTest extends TestCase
      */
     private function pull(string $token, Workspace $workspace, string $deviceId): array
     {
-        return $this->withToken($token)
+        $data = $this->withToken($token)
             ->withHeaders([
                 'X-Workspace-Id' => (string) $workspace->id,
                 'X-Device-Id' => $deviceId,
@@ -461,6 +660,9 @@ class CashierTableSessionLifecycleTest extends TestCase
             ])
             ->assertOk()
             ->json('data');
+        $this->bindWorkspace($workspace);
+
+        return $data;
     }
 
     private function registerDevice(string $token, Workspace $workspace, string $deviceId): void
@@ -473,6 +675,7 @@ class CashierTableSessionLifecycleTest extends TestCase
                 'platform' => 'cashier',
             ])
             ->assertOk();
+        $this->bindWorkspace($workspace);
     }
 
     private function loginToken(User $owner): string
@@ -507,19 +710,19 @@ class CashierTableSessionLifecycleTest extends TestCase
         ]);
 
         foreach (['pos', 'qr_menu', 'products', 'orders'] as $feature) {
-            \App\Models\WorkspaceFeatureFlag::withoutGlobalScopes()->updateOrCreate(
+            WorkspaceFeatureFlag::withoutGlobalScopes()->updateOrCreate(
                 ['workspace_id' => $workspace->id, 'feature_key' => $feature],
                 ['workspace_id' => $workspace->id, 'feature_key' => $feature, 'enabled' => true, 'source' => 'manual']
             );
         }
 
-        $plan = \App\Models\Plan::query()
+        $plan = Plan::query()
             ->where('workspace_type', $workspaceType)
             ->where('is_active', true)
             ->first();
 
         if ($plan) {
-            \App\Models\Subscription::withoutGlobalScopes()->updateOrCreate(
+            Subscription::withoutGlobalScopes()->updateOrCreate(
                 ['workspace_id' => $workspace->id],
                 [
                     'workspace_id' => $workspace->id,

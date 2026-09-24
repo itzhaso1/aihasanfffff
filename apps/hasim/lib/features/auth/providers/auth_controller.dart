@@ -48,6 +48,9 @@ class AuthState {
       error: clearError ? null : (error ?? this.error),
     );
   }
+
+  /// Changes on login, logout, and workspace switch so settings providers can reset.
+  String get isolationKey => '${isAuthenticated ? 1 : 0}:${user?.id ?? 0}:${workspace?.id ?? 0}';
 }
 
 class AuthController extends StateNotifier<AuthState> {

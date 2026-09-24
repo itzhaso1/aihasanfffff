@@ -9,11 +9,13 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PosMenuItem;
 use App\Models\Workspace;
+use App\Services\AI\AiUsageAccountant;
 use App\Services\Pos\PosMenuAiService;
 use App\Services\Pos\PosOrderService;
 use App\Services\Pos\TableGuestSessionService;
-use Illuminate\Http\RedirectResponse;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\RateLimiter;
@@ -42,6 +44,14 @@ class CustomerMenuController extends Controller
     }
 
     public function tableMenu(Request $request, Workspace $workspace, string $token): Response|RedirectResponse
+    {
+        return app(WorkspaceContext::class)->runFor(
+            $workspace,
+            fn () => $this->renderTableMenu($request, $workspace, $token),
+        );
+    }
+
+    private function renderTableMenu(Request $request, Workspace $workspace, string $token): Response|RedirectResponse
     {
         $table = $this->resolveTable($workspace, $token);
 
@@ -100,6 +110,14 @@ class CustomerMenuController extends Controller
     }
 
     public function placeTableOrder(StorePublicMenuOrderRequest $request, Workspace $workspace, string $token): RedirectResponse
+    {
+        return app(WorkspaceContext::class)->runFor(
+            $workspace,
+            fn () => $this->placeTableOrderInWorkspace($request, $workspace, $token),
+        );
+    }
+
+    private function placeTableOrderInWorkspace(StorePublicMenuOrderRequest $request, Workspace $workspace, string $token): RedirectResponse
     {
         $table = $this->resolveTable($workspace, $token);
         $cookieName = $this->guestSessionService->cookieName($table);
@@ -168,7 +186,7 @@ class CustomerMenuController extends Controller
         }
         RateLimiter::hit($rateKey, 60);
         RateLimiter::hit($dayKey, 86400);
-        app(\App\Services\AI\AiUsageAccountant::class)->incrementPublicBucket('pos-menu');
+        app(AiUsageAccountant::class)->incrementPublicBucket('pos-menu');
 
         try {
             $answer = $this->posMenuAiService->answer($workspace, (string) $validated['message']);

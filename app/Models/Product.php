@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Finance\FinanceInvoiceItem;
+use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -36,9 +37,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'images',
     'attributes',
 ])]
+/**
+ * Finance / Commerce catalog. Not Chat Catalog and not Cashier Catalog.
+ */
 class Product extends WorkspaceScopedModel
 {
-    /** @use HasFactory<\Database\Factories\ProductFactory> */
+    /** @use HasFactory<ProductFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
 
     protected function casts(): array

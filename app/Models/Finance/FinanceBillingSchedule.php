@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'customer_id',
     'contract_id',
     'title',
+    'description',
     'status',
     'frequency',
     'interval_count',

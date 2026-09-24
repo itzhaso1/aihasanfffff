@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
+import 'package:hasim_finance/features/shared/paged.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
 class WorkspaceSelectScreen extends ConsumerWidget {
@@ -33,9 +34,7 @@ class WorkspaceSelectScreen extends ConsumerWidget {
                   try {
                     await ref.read(authControllerProvider.notifier).switchWorkspace(workspace.id);
                   } on ApiException catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-                    }
+                    if (context.mounted) showApiError(context, e);
                   }
                 },
               ),

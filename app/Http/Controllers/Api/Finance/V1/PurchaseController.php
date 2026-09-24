@@ -11,6 +11,7 @@ use App\Services\Finance\Api\FinanceClientPresenter;
 use App\Services\Finance\FinanceBootstrapService;
 use App\Services\Finance\InvoiceInboxService;
 use App\Services\Finance\InvoicePaymentService;
+use App\Services\Finance\InvoicePdfAccessService;
 use App\Services\Finance\InvoiceService;
 use App\Services\Finance\LedgerReportService;
 use App\Services\Finance\PdfInvoiceService;
@@ -18,7 +19,6 @@ use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -35,6 +35,7 @@ class PurchaseController extends FinanceApiController
         private readonly FinanceBootstrapService $financeBootstrapService,
         private readonly FinanceClientPresenter $presenter,
         private readonly PdfInvoiceService $pdfInvoiceService,
+        private readonly InvoicePdfAccessService $invoicePdfAccessService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -229,8 +230,9 @@ class PurchaseController extends FinanceApiController
     public function pdf(Request $request, FinanceInvoice $invoice): mixed
     {
         $workspace = $this->clientWorkspace($this->workspaceContext);
-        $this->clientActor($request, $workspace, 'purchases.view');
+        $user = $this->clientActor($request, $workspace, 'purchases.view');
         abort_unless((string) $invoice->type === 'purchase', 404);
+        $this->invoicePdfAccessService->assertValid($request, $invoice, $user);
 
         return $this->runFinanceDomain(fn () => $this->pdfInvoiceService->download($invoice));
     }
@@ -292,10 +294,7 @@ class PurchaseController extends FinanceApiController
         abort_unless((string) $invoice->type === 'purchase', 404);
         abort_unless((int) $attachment->invoice_id === (int) $invoice->id, 404);
 
-        return Storage::disk('public')->download(
-            $attachment->file_path,
-            $attachment->file_name ?: ('purchase-attachment-'.$attachment->id)
-        );
+        return $attachment->downloadResponse();
     }
 
     public function destroyAttachment(Request $request, FinanceInvoice $invoice, FinanceInvoiceAttachment $attachment): JsonResponse

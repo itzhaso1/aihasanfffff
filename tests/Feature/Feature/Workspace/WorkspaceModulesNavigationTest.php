@@ -8,7 +8,9 @@ use App\Models\Finance\FinanceEmployee;
 use App\Models\Finance\FinanceEmployeePayrollRecord;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\Ui\CommunicationNav;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class WorkspaceModulesNavigationTest extends TestCase
@@ -30,10 +32,14 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->assertSee('الفوترة والحسابات')
             ->assertSee('الإعدادات')
             ->assertSee('نظرة عامة على أعمالك')
-            ->assertSee(route('workspace.categories.index'), false)
-            ->assertSee(route('workspace.products.index'), false)
-            ->assertSee(route('workspace.inventory.index'), false)
+            ->assertSee(route('workspace.conversations.index'), false)
+            ->assertSee(route('workspace.customers.index'), false)
+            ->assertSee(route('workspace.chat-catalog.index'), false)
             ->assertSee(route('workspace.channels.index'), false)
+            ->assertDontSee(route('workspace.products.index'), false)
+            ->assertDontSee(route('workspace.categories.index'), false)
+            ->assertDontSee(route('workspace.inventory.index'), false)
+            ->assertDontSee('مخزون التواصل')
             ->assertSee(route('workspace.finance.dashboard'), false)
             ->assertSee(route('workspace.finance.contracts.index'), false)
             ->assertSee(route('workspace.ai-settings.edit'), false)
@@ -46,8 +52,62 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->assertDontSee('Quick Actions')
             ->assertDontSee('مبيعات خلال آخر 7 أيام');
 
-        $this->assertFalse(\Illuminate\Support\Facades\Route::has('workspace.website.overview'));
-        $this->assertFalse(\Illuminate\Support\Facades\Route::has('public.website.show'));
+        $this->assertFalse(Route::has('workspace.website.overview'));
+        $this->assertFalse(Route::has('public.website.show'));
+    }
+
+    public function test_communication_sidebar_keeps_chat_catalog_and_excludes_finance_catalog(): void
+    {
+        [$owner, $workspace] = $this->createWorkspaceOwner('company');
+
+        $response = $this->actingAs($owner)
+            ->withSession(['current_workspace_id' => $workspace->id])
+            ->get(route('workspace.conversations.index'));
+
+        $response->assertOk()
+            ->assertSee(route('workspace.conversations.index'), false)
+            ->assertSee(route('workspace.customers.index'), false)
+            ->assertSee(route('workspace.chat-catalog.index'), false)
+            ->assertSee(route('workspace.channels.index'), false)
+            ->assertSee(route('workspace.emails.index'), false)
+            ->assertSee(route('workspace.whatsapp-accounts.index'), false)
+            ->assertSee('كتالوج الشات')
+            ->assertDontSee('مخزون التواصل')
+            ->assertDontSee('التصنيفات');
+
+        $labels = CommunicationNav::data()['secondaryLinks']->pluck('label')->all();
+        $routes = CommunicationNav::data()['secondaryLinks']->pluck('route')->all();
+
+        $this->assertSame([
+            'المحادثات',
+            'العملاء',
+            'كتالوج الشات',
+            'Channels',
+            'البريد الإلكتروني',
+            'واتساب',
+        ], $labels);
+        $this->assertSame('workspace.chat-catalog.index', $routes[2]);
+        $this->assertNotContains('workspace.products.index', $routes);
+        $this->assertNotContains('workspace.categories.index', $routes);
+        $this->assertNotContains('workspace.inventory.index', $routes);
+    }
+
+    public function test_finance_sidebar_still_exposes_products_and_inventory(): void
+    {
+        [$owner, $workspace] = $this->createWorkspaceOwner('company');
+
+        $this->actingAs($owner)
+            ->withSession(['current_workspace_id' => $workspace->id])
+            ->get(route('workspace.finance.dashboard'))
+            ->assertOk()
+            ->assertSee(route('workspace.finance.products.index'), false)
+            ->assertSee(route('workspace.finance.inventory.index'), false)
+            ->assertSee('المنتجات')
+            ->assertSee('المخزون');
+
+        $this->assertTrue(Route::has('workspace.products.index'));
+        $this->assertTrue(Route::has('workspace.categories.index'));
+        $this->assertTrue(Route::has('workspace.inventory.index'));
     }
 
     public function test_contracts_module_respects_workspace_customer_isolation(): void

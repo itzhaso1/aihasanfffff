@@ -39,6 +39,9 @@ class BootstrapController extends FinanceApiController
 
         $setting = FinanceSetting::forWorkspaceId((int) $workspace->id);
 
+        $customerRows = Customer::query()->orderBy('name')->limit(201)->get(['id', 'name', 'email', 'phone']);
+        $productRows = Product::query()->orderBy('name')->limit(501)->get(['id', 'name', 'price', 'currency', 'sku']);
+
         return $this->ok([
             'workspace' => [
                 'id' => $workspace->id,
@@ -49,10 +52,10 @@ class BootstrapController extends FinanceApiController
             'permissions' => $this->financePermissionMap($user, $workspace),
             'settings' => $setting ? $this->presenter->settings($setting) : null,
             'catalog' => [
-                'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'email', 'phone'])
+                'customers' => $customerRows->take(200)
                     ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name, 'email' => $row->email, 'phone' => $row->phone])
                     ->all(),
-                'products' => Product::query()->orderBy('name')->limit(500)->get(['id', 'name', 'price', 'currency', 'sku'])
+                'products' => $productRows->take(500)
                     ->map(fn ($row) => [
                         'id' => $row->id,
                         'name' => $row->name,
@@ -60,7 +63,7 @@ class BootstrapController extends FinanceApiController
                         'currency' => $row->currency,
                         'sku' => $row->sku,
                     ])->all(),
-                'tax_rates' => FinanceTaxRate::query()->where('is_active', true)->orderByDesc('is_default')->get(['id', 'name', 'type', 'rate', 'code'])
+                'tax_rates' => FinanceTaxRate::query()->where('is_active', true)->orderByDesc('is_default')->limit(100)->get(['id', 'name', 'type', 'rate', 'code'])
                     ->map(fn ($row) => [
                         'id' => $row->id,
                         'name' => $row->name,
@@ -68,11 +71,11 @@ class BootstrapController extends FinanceApiController
                         'rate' => $this->presenter->money($row->rate ?? 0),
                         'code' => $row->code,
                     ])->all(),
-                'suppliers' => FinanceSupplier::query()->orderBy('name')->get(['id', 'name'])
+                'suppliers' => FinanceSupplier::query()->orderBy('name')->limit(200)->get(['id', 'name'])
                     ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name])->all(),
-                'expense_categories' => FinanceExpenseCategory::query()->orderBy('name')->get(['id', 'name'])
+                'expense_categories' => FinanceExpenseCategory::query()->orderBy('name')->limit(200)->get(['id', 'name'])
                     ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name])->all(),
-                'treasury_accounts' => FinanceTreasuryAccount::query()->where('is_active', true)->orderBy('type')->get(['id', 'name', 'type'])
+                'treasury_accounts' => FinanceTreasuryAccount::query()->where('is_active', true)->orderBy('type')->limit(100)->get(['id', 'name', 'type'])
                     ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name, 'type' => $row->type])->all(),
                 'contracts' => Contract::query()->latest('id')->limit(200)->get(['id', 'title', 'contract_number'])
                     ->map(fn ($row) => [
@@ -81,6 +84,11 @@ class BootstrapController extends FinanceApiController
                     ])->all(),
                 'projects' => FinanceProject::query()->orderBy('name')->limit(200)->get(['id', 'name'])
                     ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name])->all(),
+            ],
+            'catalog_meta' => [
+                'customers' => ['limit' => 200, 'has_more' => $customerRows->count() > 200],
+                'products' => ['limit' => 500, 'has_more' => $productRows->count() > 500],
+                'pagination_note' => 'Use dedicated list APIs for full catalogs.',
             ],
         ]);
     }

@@ -26,6 +26,8 @@ class UserController extends Controller
 
     public function edit(User $user): View
     {
+        $user->load(['workspaces' => fn ($query) => $query->orderBy('workspaces.id')]);
+
         return view('platform.users.edit', compact('user'));
     }
 

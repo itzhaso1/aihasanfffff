@@ -10,7 +10,12 @@
         ];
     @endphp
 
-    <div x-data="{ detailsOpen: false }" class="hs-inbox-shell flex flex-col">
+    <div
+        id="inbox-shell"
+        data-workspace-id="{{ $workspaceId ?? app(\App\Support\Tenancy\WorkspaceContext::class)->workspaceId() }}"
+        x-data="{ detailsOpen: false }"
+        class="hs-inbox-shell flex flex-col"
+    >
         <div class="border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
             <div class="flex items-start justify-between gap-3">
                 <div>
@@ -35,4 +40,25 @@
             @endif
         </div>
     </div>
+
+    @php
+        $workspaceId = app(\App\Support\Tenancy\WorkspaceContext::class)->workspaceId();
+        $inboxRealtime = array_merge(
+            \App\Support\Inbox\InboxBroadcastConfig::clientPayload('/broadcasting/auth'),
+            [
+                'workspaceId' => $workspaceId,
+                'activeConversationId' => $activeConversation?->id,
+            ],
+        );
+    @endphp
+
+    @push('scripts')
+        @vite('resources/js/inbox-ui.js')
+        @if($inboxRealtime['enabled'] ?? false)
+            <script>
+                window.__INBOX_REALTIME__ = @json($inboxRealtime);
+            </script>
+            @vite('resources/js/inbox-realtime.js')
+        @endif
+    @endpush
 </x-communication-layout>

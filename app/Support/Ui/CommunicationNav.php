@@ -31,9 +31,7 @@ class CommunicationNav
         $secondaryLinks = collect([
             ['label' => 'المحادثات', 'route' => 'workspace.conversations.index', 'active' => 'workspace.conversations.*', 'icon' => 'chat'],
             ['label' => 'العملاء', 'route' => 'workspace.customers.index', 'active' => 'workspace.customers.*', 'icon' => 'users'],
-            ['label' => 'المنتجات', 'route' => 'workspace.products.index', 'active' => 'workspace.products.*', 'icon' => 'cube'],
-            ['label' => 'التصنيفات', 'route' => 'workspace.categories.index', 'active' => 'workspace.categories.*', 'icon' => 'tag'],
-            ['label' => 'مخزون التواصل', 'route' => 'workspace.inventory.index', 'active' => 'workspace.inventory.*', 'icon' => 'box'],
+            ['label' => 'كتالوج الشات', 'route' => 'workspace.chat-catalog.index', 'active' => 'workspace.chat-catalog.*', 'icon' => 'cube'],
             ['label' => 'Channels', 'route' => 'workspace.channels.index', 'active' => 'workspace.channels.*', 'icon' => 'channels'],
             ['label' => 'البريد الإلكتروني', 'route' => 'workspace.emails.index', 'active' => 'workspace.emails.*', 'icon' => 'mail'],
             ['label' => 'واتساب', 'route' => 'workspace.whatsapp-accounts.index', 'active' => 'workspace.whatsapp-accounts.*', 'icon' => 'whatsapp'],
@@ -45,10 +43,8 @@ class CommunicationNav
             'icons' => self::icons(),
             'isCommunicationModule' => request()->routeIs([
                 'workspace.conversations.*',
+                'workspace.chat-catalog.*',
                 'workspace.customers.*',
-                'workspace.products.*',
-                'workspace.categories.*',
-                'workspace.inventory.*',
                 'workspace.channels.*',
                 'workspace.emails.*',
                 'workspace.whatsapp-accounts.*',
@@ -65,11 +61,7 @@ class CommunicationNav
             return $isCommunicationModule;
         }
 
-        if ($isCommunicationModule && in_array($link['route'], [
-            'workspace.customers.index',
-            'workspace.products.index',
-            'workspace.inventory.index',
-        ], true)) {
+        if ($isCommunicationModule && $link['route'] === 'workspace.customers.index') {
             return false;
         }
 

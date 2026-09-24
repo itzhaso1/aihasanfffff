@@ -18,7 +18,6 @@ use App\Services\Finance\Tax\TaxCalculationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -336,10 +335,7 @@ class QuoteController extends FinanceBaseController
         $this->assertSameWorkspace($quote->workspace_id);
         abort_unless((int) $attachment->quote_id === (int) $quote->id, 404);
 
-        return Storage::disk('public')->download(
-            $attachment->file_path,
-            $attachment->file_name ?: ('quote-attachment-'.$attachment->id)
-        );
+        return $attachment->downloadResponse();
     }
 
     public function destroyAttachment(Request $request, FinanceQuote $quote, FinanceQuoteAttachment $attachment): RedirectResponse

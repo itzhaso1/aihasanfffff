@@ -27,6 +27,7 @@
                 </div>
                 <button class="rounded-lg bg-blue-600 px-4 py-2 text-white">حفظ</button>
             </form>
+            <a href="{{ route('platform.subscriptions.create', ['workspace_id' => $workspace->id]) }}" class="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">منح اشتراك لهذه المساحة</a>
         </div>
     </div>
 @endsection

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Mobile\V1;
 
+use App\Http\Controllers\Api\Mobile\Concerns\AuthorizesMobileEmail;
 use App\Http\Controllers\Api\Mobile\Concerns\ResolvesMobileWorkspace;
 use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Http\Resources\Mobile\EmailContactGroupResource;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 
 class EmailContactGroupController extends MobileController
 {
+    use AuthorizesMobileEmail;
     use ResolvesMobileWorkspace;
 
     public function __construct(
@@ -22,6 +24,7 @@ class EmailContactGroupController extends MobileController
 
     public function index(): JsonResponse
     {
+        $this->authorizeEmailUse(request());
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $groups = $this->emailContactGroupService->list($workspace);
 
@@ -30,6 +33,7 @@ class EmailContactGroupController extends MobileController
 
     public function store(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
 
         $validated = $request->validate([
@@ -48,6 +52,7 @@ class EmailContactGroupController extends MobileController
 
     public function update(Request $request, EmailContactGroup $group): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $group = $this->emailContactGroupService->findForWorkspace($workspace, $group->id);
 
@@ -63,6 +68,7 @@ class EmailContactGroupController extends MobileController
 
     public function destroy(EmailContactGroup $group): JsonResponse
     {
+        $this->authorizeEmailUse(request());
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $group = $this->emailContactGroupService->findForWorkspace($workspace, $group->id);
         $this->emailContactGroupService->delete($group);
@@ -72,6 +78,7 @@ class EmailContactGroupController extends MobileController
 
     public function syncMembers(Request $request, EmailContactGroup $group): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $group = $this->emailContactGroupService->findForWorkspace($workspace, $group->id);
 

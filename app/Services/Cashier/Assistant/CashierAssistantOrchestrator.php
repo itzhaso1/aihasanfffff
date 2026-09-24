@@ -1,0 +1,202 @@
+<?php
+
+namespace App\Services\Cashier\Assistant;
+
+use App\Models\User;
+use App\Models\Workspace;
+use App\Services\AI\AiUsageAccountant;
+use App\Services\Audit\AuditLogService;
+use App\Services\Feature\FeatureAccessService;
+use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
+
+final class CashierAssistantOrchestrator
+{
+    public function __construct(
+        private readonly CashierAssistantLlmPlanner $planner,
+        private readonly CashierAssistantHeuristicPlanner $heuristicPlanner,
+        private readonly CashierAssistantToolExecutor $executor,
+        private readonly CashierAssistantAnswerComposer $answerComposer,
+        private readonly CashierAssistantQuestionSemantics $semantics,
+        private readonly FeatureAccessService $featureAccess,
+        private readonly AiUsageAccountant $usageAccountant,
+        private readonly AuditLogService $auditLogService,
+    ) {}
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function ask(Workspace $workspace, User $user, string $question, string $locale = 'ar'): array
+    {
+        $started = microtime(true);
+        $question = trim($question);
+        if ($question === '') {
+            throw new InvalidArgumentException('Question is required.');
+        }
+
+        $this->featureAccess->assertWithinLimit($workspace, 'ai_usage', 1);
+        $this->featureAccess->assertWithinLimit($workspace, 'ai_tokens', 256);
+
+        $semanticBlock = $this->semantics->evaluate($question);
+        if ($semanticBlock !== null) {
+            return $this->semanticBlockResponse($workspace, $user, $question, $locale, $semanticBlock, $started);
+        }
+
+        $plans = $this->shouldUseHeuristicPlanner()
+            ? $this->heuristicPlanner->plan($question)
+            : $this->planner->plan($workspace, $question, $locale);
+
+        $maxTools = max(1, (int) config('cashier_assistant.max_tools_per_request', 5));
+        if (count($plans) > $maxTools) {
+            throw new InvalidArgumentException('Too many tools requested for one question.');
+        }
+
+        $results = [];
+        foreach ($plans as $plan) {
+            $results[] = $this->executor->execute($workspace, $user, $plan);
+        }
+
+        if ($plans === []) {
+            $answer = $locale === 'ar'
+                ? 'لا أستطيع الإجابة من السجلات المتاحة. جرّب سؤالًا عن المبيعات، المصاريف، الربح، المخزون، أو التنبيهات.'
+                : 'I cannot answer from available records. Try asking about sales, expenses, profit, inventory, or alerts.';
+        } else {
+            $answer = $this->answerComposer->compose($workspace, $question, $results, $locale);
+        }
+
+        $eventKey = 'cashier-assistant:'.sha1($workspace->id.'|'.$user->id.'|'.$question.'|'.now()->toDateString());
+        if ($this->usageAccountant->claim((int) $workspace->id, $eventKey)) {
+            $this->featureAccess->consumeUsage($workspace, 'ai_usage', 1, enforce: true);
+        }
+
+        $facts = array_map(fn (CashierAssistantToolResult $result): array => $result->toFactArray(), $results);
+        $period = $this->resolveOverallPeriod($facts);
+        $toolsUsed = array_values(array_unique(array_map(fn (CashierAssistantToolResult $r): string => $r->tool, $results)));
+
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        Log::info('cashier.assistant.ask', [
+            'workspace_id' => $workspace->id,
+            'user_id' => $user->id,
+            'tools' => $toolsUsed,
+            'duration_ms' => $durationMs,
+            'success' => true,
+        ]);
+
+        $this->auditLogService->log(
+            action: 'cashier.assistant.ask',
+            entityType: Workspace::class,
+            entityId: (int) $workspace->id,
+            actor: $user,
+            meta: [
+                'tools' => $toolsUsed,
+                'duration_ms' => $durationMs,
+                'question_length' => mb_strlen($question),
+            ],
+            workspaceId: (int) $workspace->id,
+        );
+
+        return [
+            'answer' => $answer,
+            'facts' => $facts,
+            'tools_used' => $toolsUsed,
+            'period' => $period,
+        ];
+    }
+
+    /**
+     * @param  array{type: string, tool: string, reason: string, requested_period?: array{from: string, to: string, label: string}, answer_ar: string, answer_en: string}  $block
+     * @return array<string, mixed>
+     */
+    private function semanticBlockResponse(
+        Workspace $workspace,
+        User $user,
+        string $question,
+        string $locale,
+        array $block,
+        float $started,
+    ): array {
+        $extra = [];
+        if (isset($block['requested_period'])) {
+            $extra['requested_period'] = $block['requested_period'];
+        }
+
+        $result = CashierAssistantToolResult::unavailable(
+            $block['tool'],
+            $block['reason'],
+            $extra,
+        );
+
+        $answer = $locale === 'ar' ? $block['answer_ar'] : $block['answer_en'];
+        $facts = [$result->toFactArray()];
+        $period = isset($block['requested_period'])
+            ? [
+                'from' => $block['requested_period']['from'],
+                'to' => $block['requested_period']['to'],
+            ]
+            : null;
+
+        $eventKey = 'cashier-assistant:'.sha1($workspace->id.'|'.$user->id.'|'.$question.'|'.now()->toDateString());
+        if ($this->usageAccountant->claim((int) $workspace->id, $eventKey)) {
+            $this->featureAccess->consumeUsage($workspace, 'ai_usage', 1, enforce: true);
+        }
+
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
+        Log::info('cashier.assistant.ask', [
+            'workspace_id' => $workspace->id,
+            'user_id' => $user->id,
+            'tools' => [],
+            'semantic_block' => $block['reason'],
+            'duration_ms' => $durationMs,
+            'success' => true,
+        ]);
+
+        $this->auditLogService->log(
+            action: 'cashier.assistant.ask',
+            entityType: Workspace::class,
+            entityId: (int) $workspace->id,
+            actor: $user,
+            meta: [
+                'tools' => [],
+                'semantic_block' => $block['reason'],
+                'duration_ms' => $durationMs,
+                'question_length' => mb_strlen($question),
+            ],
+            workspaceId: (int) $workspace->id,
+        );
+
+        return [
+            'answer' => $answer,
+            'facts' => $facts,
+            'tools_used' => [],
+            'period' => $period,
+        ];
+    }
+
+    private function shouldUseHeuristicPlanner(): bool
+    {
+        if (config('cashier_assistant.planner') === 'heuristic') {
+            return true;
+        }
+
+        return app()->environment('testing') && (bool) config('cashier_assistant.heuristic_planner_in_testing', true);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $facts
+     * @return array{from: ?string, to: ?string}|null
+     */
+    private function resolveOverallPeriod(array $facts): ?array
+    {
+        foreach ($facts as $fact) {
+            $period = $fact['data']['period'] ?? null;
+            if (is_array($period) && isset($period['from'], $period['to'])) {
+                return [
+                    'from' => (string) $period['from'],
+                    'to' => (string) $period['to'],
+                ];
+            }
+        }
+
+        return null;
+    }
+}

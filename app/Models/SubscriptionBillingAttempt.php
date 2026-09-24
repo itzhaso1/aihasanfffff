@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'provider_event_id',
     'payment_reference',
     'period_key',
+    'active_period_guard',
     'expires_at',
     'verified_at',
     'failed_at',

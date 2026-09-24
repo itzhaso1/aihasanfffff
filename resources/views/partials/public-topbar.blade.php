@@ -1,15 +1,12 @@
 @php
     $homeUrl = url('/');
-    $onDownloads = request()->routeIs('downloads');
+    $onDownloads = request()->routeIs('downloads', 'downloads.app');
 @endphp
 <header x-data="{ open: false }" class="sticky top-0 z-40 border-b border-slate-200/70 bg-white/95 backdrop-blur">
     <div class="mx-auto grid h-[4.25rem] max-w-7xl grid-cols-[auto_1fr_auto] items-center gap-3 px-4 sm:px-6 lg:grid-cols-[1fr_auto_1fr] lg:px-8">
         <a href="{{ $homeUrl }}" class="flex items-center gap-2.5 justify-self-start">
             <x-hasim-logo variant="mark" size="md" />
-            <span>
-                <span class="block text-sm font-extrabold leading-none text-[#0f172a]">حاسم الذكي</span>
-                <span class="mt-1 block text-[10px] font-bold tracking-[0.18em] text-slate-500">HASIM SMART</span>
-            </span>
+            @include('partials.site-brand-lockup')
         </a>
 
         <nav class="hidden items-center justify-center gap-5 text-sm font-bold text-slate-600 xl:gap-7 lg:flex">

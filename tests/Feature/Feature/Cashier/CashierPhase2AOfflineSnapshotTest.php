@@ -280,6 +280,9 @@ class CashierPhase2AOfflineSnapshotTest extends TestCase
 
     public function test_invalid_snapshots_are_rejected_without_catalog_fallback(): void
     {
+        // Client tax/total mismatches are not in this list: P0-2 treats them as
+        // untrusted metadata and recomputes server totals. See
+        // test_client_inconsistent_total_is_ignored_and_server_totals_win.
         [$token, $workspace, $item] = $this->bootCashier(catalogPrice: 12);
         $this->registerDevice($token, $workspace, 'POS-2A');
 
@@ -328,13 +331,6 @@ class CashierPhase2AOfflineSnapshotTest extends TestCase
                 'currency' => '12$',
                 'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1, 'unit_price' => 10]],
             ],
-            'inconsistent_total' => [
-                'subtotal_amount' => 10,
-                'discount_amount' => 0,
-                'tax_amount' => 1,
-                'total_amount' => 99,
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1, 'unit_price' => 10]],
-            ],
         ];
 
         foreach ($cases as $name => $data) {
@@ -379,6 +375,45 @@ class CashierPhase2AOfflineSnapshotTest extends TestCase
 
         $httpCurrency->assertStatus(422);
         $this->assertSame(0, $this->inWorkspace($workspace, fn () => Order::query()->where('client_reference', 'http-bad-currency')->count()));
+    }
+
+    public function test_client_inconsistent_total_is_ignored_and_server_totals_win(): void
+    {
+        [$token, $workspace, $item] = $this->bootCashier(catalogPrice: 12);
+
+        $result = $this->pushOrder($token, $workspace, 'POS-2A', [
+            'id' => 'op-inconsistent-total',
+            'type' => 'order.created',
+            'data' => [
+                'order_type' => 'takeaway',
+                'client_reference' => 'inconsistent-total',
+                'subtotal_amount' => 10,
+                'discount_amount' => 0,
+                'tax_amount' => 1,
+                'total_amount' => 99,
+                'items' => [[
+                    'pos_menu_item_id' => $item->id,
+                    'quantity' => 1,
+                    'unit_price' => 10,
+                ]],
+            ],
+        ]);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame('applied', $result['accepted'][0]['status'] ?? null);
+
+        $order = $this->inWorkspace($workspace, fn () => Order::query()->where('client_reference', 'inconsistent-total')->with('items')->firstOrFail());
+        $line = $order->items->first();
+
+        $this->assertSame(10.0, (float) $line->unit_price);
+        $this->assertNotSame(12.0, (float) $line->unit_price);
+        $this->assertSame(10.0, (float) $order->subtotal);
+        $this->assertSame(1.50, (float) $order->tax_amount);
+        $this->assertSame(11.50, (float) $order->total_amount);
+        $this->assertNotSame(99.0, (float) $order->total_amount);
+        $this->assertSame(99.0, (float) data_get($order->metadata, 'untrusted_client_totals.total_amount'));
+        $this->assertSame(1.0, (float) data_get($order->metadata, 'untrusted_client_totals.tax_amount'));
+        $this->assertSame(10.0, (float) data_get($order->metadata, 'untrusted_client_totals.subtotal'));
     }
 
     /**

@@ -4,7 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/core/theme/app_theme.dart';
+import 'package:hasim/core/theme/hasim_tokens.dart';
+import 'package:hasim/core/utils/relative_time.dart';
+import 'package:hasim/core/widgets/hasim_primary_button.dart';
 import 'package:hasim/features/email/presentation/email_compose_screen.dart';
+import 'package:hasim/features/email/presentation/widgets/email_detail_cards.dart';
 
 class EmailDetailScreen extends ConsumerStatefulWidget {
   const EmailDetailScreen({super.key, required this.id});
@@ -15,11 +20,13 @@ class EmailDetailScreen extends ConsumerStatefulWidget {
 
 class _EmailDetailScreenState extends ConsumerState<EmailDetailScreen> {
   EmailMessageModel? _mail;
+  List<EmailAccountModel> _accounts = const [];
   String? _error;
   bool _loading = true;
   bool _senderInContacts = true;
   bool _checkingContact = false;
   bool _addingContact = false;
+  bool _starring = false;
 
   @override
   void initState() {
@@ -34,8 +41,14 @@ class _EmailDetailScreenState extends ConsumerState<EmailDetailScreen> {
     });
     try {
       final mail = await ref.read(emailRepositoryProvider).show(widget.id);
+      List<EmailAccountModel> accounts = const [];
+      try {
+        accounts = await ref.read(emailRepositoryProvider).accounts();
+      } catch (_) {}
+      if (!mounted) return;
       setState(() {
         _mail = mail;
+        _accounts = accounts;
         _loading = false;
       });
       if (!mail.isRead) {
@@ -45,11 +58,13 @@ class _EmailDetailScreenState extends ConsumerState<EmailDetailScreen> {
       }
       await _checkSenderContact(mail.sender);
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _error = 'تعذر فتح الرسالة.';
         _loading = false;
@@ -87,6 +102,35 @@ class _EmailDetailScreenState extends ConsumerState<EmailDetailScreen> {
     return candidate;
   }
 
+  String _accountLabel(EmailMessageModel mail) {
+    if (mail.emailAccountId == null) return '';
+    for (final account in _accounts) {
+      if (account.id == mail.emailAccountId) {
+        return account.email.isNotEmpty ? account.email : account.name;
+      }
+    }
+    return '${mail.emailAccountId}';
+  }
+
+  String _visibleBody(EmailMessageModel mail) {
+    final raw = mail.body ?? mail.preview ?? '';
+    final trimmed = raw.trim();
+    if (!RegExp(r'</?[a-zA-Z]').hasMatch(trimmed)) {
+      return raw;
+    }
+    return trimmed
+        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'</p>', caseSensitive: false), '\n\n')
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll(RegExp(r'[ \t]+\n'), '\n')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
+  }
+
   Future<void> _addSenderContact() async {
     final mail = _mail;
     if (mail == null) return;
@@ -118,7 +162,6 @@ class _EmailDetailScreenState extends ConsumerState<EmailDetailScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _addingContact = false);
-      // Duplicate → treat as already present
       if (e.statusCode == 422) {
         setState(() => _senderInContacts = true);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -143,61 +186,138 @@ class _EmailDetailScreenState extends ConsumerState<EmailDetailScreen> {
     );
   }
 
+  void _forward() {
+    final mail = _mail;
+    if (mail == null) return;
+    final subject = mail.subject?.trim().isNotEmpty == true ? mail.subject! : '(بدون موضوع)';
+    final quoted = _visibleBody(mail);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => EmailComposeScreen(
+          accountId: mail.emailAccountId,
+          prefillSubject: subject.toLowerCase().startsWith('fwd:') ? subject : 'Fwd: $subject',
+          prefillBody: quoted.isEmpty ? null : '---------- الرسالة المحوّلة ----------\n$quoted',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleStar() async {
+    final mail = _mail;
+    if (mail == null || _starring) return;
+    setState(() => _starring = true);
+    try {
+      await ref.read(emailRepositoryProvider).star(mail.id);
+      if (!mounted) return;
+      await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر تحديث النجمة')));
+      }
+    } finally {
+      if (mounted) setState(() => _starring = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final mint = HasimTokens.pageBg(context);
+    final mail = _mail;
+
     return Scaffold(
+      backgroundColor: mint,
       appBar: AppBar(
-        title: const Text('تفاصيل الرسالة'),
+        automaticallyImplyLeading: false,
+        backgroundColor: mint,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          tooltip: 'رجوع',
+          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_forward_rounded),
+        ),
+        title: Text(
+          'تفاصيل الرسالة',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: HasimTokens.inkColor(context),
+              ),
+        ),
         actions: [
           IconButton(
-            tooltip: 'رد',
-            onPressed: _mail == null ? null : _reply,
-            icon: const Icon(Icons.reply),
+            tooltip: 'إعادة توجيه',
+            onPressed: mail == null ? null : _forward,
+            icon: const Icon(Icons.reply_rounded),
           ),
           IconButton(
-            onPressed: _mail == null
-                ? null
-                : () async {
-                    await ref.read(emailRepositoryProvider).star(_mail!.id);
-                    await _load();
-                  },
-            icon: Icon(_mail?.isStarred == true ? Icons.star : Icons.star_border),
+            tooltip: mail?.isStarred == true ? 'إزالة النجمة' : 'تمييز بنجمة',
+            onPressed: mail == null || _starring ? null : _toggleStar,
+            icon: Icon(
+              mail?.isStarred == true ? Icons.star_rounded : Icons.star_border_rounded,
+              color: mail?.isStarred == true ? const Color(0xFFE6B325) : null,
+            ),
           ),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_error!, textAlign: TextAlign.center),
+                        const SizedBox(height: 12),
+                        HasimPrimaryButton(label: 'إعادة المحاولة', onPressed: _load),
+                      ],
+                    ),
+                  ),
+                )
               : ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, HasimTokens.pageBottom),
                   children: [
-                    Text(
-                      _mail!.subject ?? '(بدون موضوع)',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                    MessageInfoCard(
+                      subject: mail!.subject?.isNotEmpty == true ? mail.subject! : '(بدون موضوع)',
+                      sender: mail.sender,
+                      recipient: mail.recipient,
+                      accountLabel: _accountLabel(mail),
+                      timeLabel: relativeTimeAr(mail.createdAt),
                     ),
-                    const SizedBox(height: 8),
-                    Text('من: ${_mail!.sender}'),
-                    Text('إلى: ${_mail!.recipient}'),
-                    if (_mail!.emailAccountId != null)
-                      Text('حساب: ${_mail!.emailAccountId}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                    const Divider(height: 24),
-                    Text(_mail!.body ?? _mail!.preview ?? '', style: const TextStyle(height: 1.5)),
-                    const SizedBox(height: 24),
-                    FilledButton.icon(
+                    const SizedBox(height: 14),
+                    MessageBodyCard(body: _visibleBody(mail)),
+                    const SizedBox(height: 22),
+                    HasimPrimaryButton(
+                      label: 'رد',
+                      icon: Icons.reply_rounded,
+                      expanded: true,
                       onPressed: _reply,
-                      icon: const Icon(Icons.reply),
-                      label: const Text('رد'),
                     ),
-                    if (!_senderInContacts && !_checkingContact)
-                      OutlinedButton.icon(
-                        onPressed: _addingContact ? null : _addSenderContact,
-                        icon: const Icon(Icons.person_add_alt),
-                        label: Text(_addingContact ? 'جارٍ الإضافة...' : 'إضافة إلى جهات الاتصال'),
+                    if (!_senderInContacts && !_checkingContact) ...[
+                      const SizedBox(height: 10),
+                      HasimOutlineButton(
+                        label: _addingContact ? 'جارٍ الإضافة...' : 'إضافة إلى جهات الاتصال',
+                        icon: Icons.person_add_alt_1_rounded,
+                        expanded: true,
+                        enabled: !_addingContact,
+                        busy: _addingContact,
+                        onPressed: _addSenderContact,
                       ),
-                    TextButton(
-                      onPressed: () => context.push('/email/compose'),
-                      child: const Text('رسالة جديدة'),
+                    ],
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton(
+                        onPressed: () => context.push('/email/compose'),
+                        child: const Text(
+                          'رسالة جديدة',
+                          style: TextStyle(
+                            color: AppTheme.brand,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),

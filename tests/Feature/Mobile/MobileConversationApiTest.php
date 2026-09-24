@@ -157,6 +157,80 @@ class MobileConversationApiTest extends TestCase
         $this->assertNotEquals(200, $response->status());
     }
 
+    public function test_archive_mute_and_filters_use_user_state(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [$user, $workspace, $token] = $this->authMember('archive-mute@example.com');
+        $conversation = $this->makeConversation($workspace);
+        $headers = ['X-Workspace-Id' => (string) $workspace->id];
+
+        $this->withToken($token)
+            ->withHeaders($headers)
+            ->postJson("/api/mobile/v1/conversations/{$conversation->id}/archive", ['archived' => true])
+            ->assertOk();
+
+        $this->withToken($token)
+            ->withHeaders($headers)
+            ->getJson('/api/mobile/v1/conversations?filter=all')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        $archived = $this->withToken($token)
+            ->withHeaders($headers)
+            ->getJson('/api/mobile/v1/conversations?filter=archived')
+            ->assertOk();
+        $archived->assertJsonPath('data.0.id', $conversation->id);
+        $this->assertTrue((bool) $archived->json('data.0.archived'));
+
+        $this->withToken($token)
+            ->withHeaders($headers)
+            ->postJson("/api/mobile/v1/conversations/{$conversation->id}/archive", ['archived' => false])
+            ->assertOk();
+
+        $this->withToken($token)
+            ->withHeaders($headers)
+            ->getJson('/api/mobile/v1/conversations?filter=all')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $conversation->id);
+
+        $this->withToken($token)
+            ->withHeaders($headers)
+            ->postJson("/api/mobile/v1/conversations/{$conversation->id}/mute", ['muted' => true])
+            ->assertOk();
+
+        $muted = $this->withToken($token)
+            ->withHeaders($headers)
+            ->getJson("/api/mobile/v1/conversations/{$conversation->id}")
+            ->assertOk();
+        $this->assertTrue((bool) $muted->json('data.muted'));
+
+        $this->withToken($token)
+            ->withHeaders($headers)
+            ->postJson("/api/mobile/v1/conversations/{$conversation->id}/mute", ['muted' => false])
+            ->assertOk();
+
+        $unmuted = $this->withToken($token)
+            ->withHeaders($headers)
+            ->getJson("/api/mobile/v1/conversations/{$conversation->id}")
+            ->assertOk();
+        $this->assertFalse((bool) $unmuted->json('data.muted'));
+    }
+
+    public function test_archive_on_foreign_workspace_conversation_is_forbidden(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [$userA, $workspaceA, $tokenA] = $this->authMember('archive-a@example.com');
+        [$userB, $workspaceB] = $this->makeMember('archive-b@example.com');
+        $conversationB = $this->makeConversation($workspaceB);
+
+        $response = $this->withToken($tokenA)
+            ->withHeader('X-Workspace-Id', (string) $workspaceA->id)
+            ->postJson("/api/mobile/v1/conversations/{$conversationB->id}/archive", ['archived' => true]);
+
+        $this->assertContains($response->status(), [403, 404]);
+        $this->assertNotEquals(200, $response->status());
+    }
+
     public function test_device_push_token_register_and_revoke(): void
     {
         $this->seed(FoundationSeeder::class);

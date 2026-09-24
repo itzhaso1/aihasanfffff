@@ -6,6 +6,7 @@ use App\EInvoicing\QR\QrEncodingException;
 use App\EInvoicing\Security\Exceptions\ProductionCryptographicProfileException;
 use App\EInvoicing\Xml\EInvoiceXmlMappingException;
 use App\Exceptions\Api\ApiApplicationException;
+use App\Exceptions\Finance\ZatcaRequiredIssueBlockedException;
 use App\Exceptions\Api\ApiErrorCode;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -59,7 +60,12 @@ final class FinanceApiErrorRenderer
 
     public static function application(ApiApplicationException $exception): JsonResponse
     {
-        return self::payload($exception->getMessage(), $exception->errorCode, $exception->status);
+        $extra = [];
+        if ($exception instanceof ZatcaRequiredIssueBlockedException) {
+            $extra['compliance'] = $exception->compliancePayload();
+        }
+
+        return self::payload($exception->getMessage(), $exception->errorCode, $exception->status, extra: $extra);
     }
 
     public static function fromThrowable(\Throwable $exception): ?JsonResponse
@@ -132,6 +138,7 @@ final class FinanceApiErrorRenderer
         ApiErrorCode $code,
         int $status,
         array $errors = [],
+        array $extra = [],
     ): JsonResponse {
         $payload = [
             'success' => false,
@@ -141,6 +148,10 @@ final class FinanceApiErrorRenderer
 
         if ($errors !== []) {
             $payload['errors'] = $errors;
+        }
+
+        if ($extra !== []) {
+            $payload = [...$payload, ...$extra];
         }
 
         return response()->json($payload, $status);

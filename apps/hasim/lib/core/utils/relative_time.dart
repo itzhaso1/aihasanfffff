@@ -1,3 +1,17 @@
+import 'package:intl/intl.dart';
+
+/// Clock-style inbox time (matches the reference conversation list).
+String inboxListTimeAr(DateTime? value, {DateTime? now}) {
+  if (value == null) return '';
+  final n = now ?? DateTime.now();
+  final local = value.toLocal();
+  final sameDay = local.year == n.year && local.month == n.month && local.day == n.day;
+  if (sameDay) {
+    return DateFormat('HH:mm').format(local);
+  }
+  return relativeTimeAr(value, now: n);
+}
+
 /// Arabic relative time labels for list rows.
 String relativeTimeAr(DateTime? value, {DateTime? now}) {
   if (value == null) return '';

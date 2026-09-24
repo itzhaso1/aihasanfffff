@@ -5,10 +5,12 @@ namespace App\Models\Finance;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\User;
 use App\Models\WorkspaceScopedModel;
+use App\Support\Storage\PrivateDocumentDisk;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 #[Fillable([
     'workspace_id',
@@ -68,5 +70,22 @@ class FinanceExpense extends WorkspaceScopedModel
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function attachmentDownloadResponse(?string $filename = null): StreamedResponse
+    {
+        abort_unless(filled($this->attachment_path), 404);
+
+        return PrivateDocumentDisk::download(
+            (string) $this->attachment_path,
+            $filename ?? basename((string) $this->attachment_path),
+        );
+    }
+
+    public function deleteAttachmentFile(): void
+    {
+        if (filled($this->attachment_path)) {
+            PrivateDocumentDisk::delete((string) $this->attachment_path);
+        }
     }
 }

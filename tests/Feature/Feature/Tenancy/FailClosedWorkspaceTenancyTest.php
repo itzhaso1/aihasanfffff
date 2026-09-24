@@ -11,10 +11,12 @@ use App\Models\Product;
 use App\Models\User;
 use App\Models\WebhookEvent;
 use App\Models\Workspace;
+use App\Services\AI\AiOutputValidator;
 use App\Services\AI\AIService;
+use App\Services\AI\Inbox\AiReplyEligibility;
+use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Feature\FeatureAccessService;
 use App\Services\Payment\PaymentService;
-use App\Services\WhatsApp\WhatsAppOutboundService;
 use App\Services\WhatsApp\WhatsAppService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -249,7 +251,9 @@ class FailClosedWorkspaceTenancyTest extends TestCase
 
         (new ProcessAIResponse(999_999, 999_999))->handle(
             app(AIService::class),
-            app(WhatsAppOutboundService::class),
+            app(ChannelOutboundService::class),
+            app(AiReplyEligibility::class),
+            app(AiOutputValidator::class),
         );
 
         (new CreatePaymentLink(999_999))->handle(app(PaymentService::class));

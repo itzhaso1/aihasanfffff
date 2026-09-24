@@ -15,7 +15,6 @@ use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class QuoteController extends FinanceApiController
@@ -200,10 +199,7 @@ class QuoteController extends FinanceApiController
         $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'quotes.view');
         abort_unless((int) $attachment->quote_id === (int) $quote->id, 404);
 
-        return Storage::disk('public')->download(
-            $attachment->file_path,
-            $attachment->file_name ?: ('quote-attachment-'.$attachment->id)
-        );
+        return $attachment->downloadResponse();
     }
 
     public function destroyAttachment(Request $request, FinanceQuote $quote, FinanceQuoteAttachment $attachment): JsonResponse

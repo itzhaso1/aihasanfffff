@@ -96,7 +96,9 @@ class MobileEmailService
      */
     public function send(Workspace $workspace, User $actor, array $data): EmailMessage
     {
-        $emailAccount = EmailAccount::query()->findOrFail($data['email_account_id']);
+        $emailAccount = EmailAccount::query()
+            ->where('workspace_id', $workspace->id)
+            ->findOrFail($data['email_account_id']);
         $replyToMessage = null;
 
         if (! empty($data['reply_to_message_id'])) {

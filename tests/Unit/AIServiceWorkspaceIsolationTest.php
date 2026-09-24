@@ -24,6 +24,8 @@ class AIServiceWorkspaceIsolationTest extends TestCase
 
     public function test_ai_service_builds_product_context_from_same_workspace_only(): void
     {
+        config(['ai.inbox_agent.enabled' => false]);
+
         $fake = new FakeAiProvider;
         $this->app->instance(GoogleAiStudioProvider::class, $fake);
         $this->app->instance(OpenAiProvider::class, $fake);

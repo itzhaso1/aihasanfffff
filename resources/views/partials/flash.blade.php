@@ -1,4 +1,4 @@
-<div class="pointer-events-none fixed left-4 top-20 z-[70] w-full max-w-sm space-y-2">
+<div class="pointer-events-none fixed inset-x-4 top-20 z-[70] mx-auto w-full max-w-sm space-y-2 sm:inset-x-auto sm:end-4 sm:start-auto sm:mx-0">
     @if(session('success'))
         <div
             x-data="{ open: true }"
@@ -37,7 +37,7 @@
             role="alert"
         >
             <p class="font-semibold">يرجى مراجعة البيانات</p>
-            <ul class="mt-1 list-disc space-y-1 pr-5">
+            <ul class="mt-1 list-disc space-y-1 ps-5">
                 @foreach($errors->all() as $error)
                     <li>{{ $error }}</li>
                 @endforeach

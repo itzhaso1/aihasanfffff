@@ -24,6 +24,7 @@ use App\Models\Workspace;
 use App\Models\WorkspaceFeatureFlag;
 use App\Services\Finance\AccountingService;
 use App\Services\Finance\ChartOfAccountsService;
+use App\Services\Finance\InvoicePdfAccessService;
 use App\Services\Finance\InvoiceService;
 use App\Services\Finance\PayrollService;
 use App\Services\Finance\TaxService;
@@ -666,10 +667,11 @@ class FinancialCoreTest extends TestCase
             ->assertRedirect();
 
         $invoice = FinanceInvoice::withoutGlobalScopes()->firstOrFail();
+        $pdfQuery = app(InvoicePdfAccessService::class)->query($invoice, $user);
 
         $response = $this->actingAs($user)
             ->withSession(['current_workspace_id' => $workspace->id])
-            ->get(route('workspace.finance.invoices.pdf', $invoice));
+            ->get(route('workspace.finance.invoices.pdf', ['invoice' => $invoice] + $pdfQuery));
 
         $response->assertOk();
         $this->assertStringContainsString('application/pdf', (string) $response->headers->get('content-type'));

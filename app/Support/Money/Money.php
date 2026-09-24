@@ -118,6 +118,44 @@ final class Money
         return self::fromMinor($cents);
     }
 
+    /**
+     * Calculates tax using a fixed-scale percentage string (for example, "15.00").
+     *
+     * This avoids introducing binary floating-point arithmetic into checkout flows.
+     */
+    public static function percentOfFixedRate(int|float|string $amount, string $rate): string
+    {
+        $rateHundredths = self::percentageHundredths($rate);
+
+        if ($rateHundredths < 0) {
+            throw new InvalidArgumentException('النسبة المئوية لا يمكن أن تكون سالبة.');
+        }
+
+        return self::fromMinor(
+            self::divideAndRoundHalfUp(self::minor($amount) * $rateHundredths, 10_000),
+        );
+    }
+
+    /**
+     * Extracts inclusive tax using a fixed-scale percentage string.
+     */
+    public static function extractInclusiveTaxFixedRate(
+        int|float|string $inclusiveAmount,
+        string $rate,
+    ): string {
+        $rateHundredths = self::percentageHundredths($rate);
+        if ($rateHundredths <= 0) {
+            return self::fromMinor(0);
+        }
+
+        return self::fromMinor(
+            self::divideAndRoundHalfUp(
+                self::minor($inclusiveAmount) * $rateHundredths,
+                10_000 + $rateHundredths,
+            ),
+        );
+    }
+
     public static function cmp(int|float|string $left, int|float|string $right): int
     {
         return self::minor($left) <=> self::minor($right);
@@ -141,5 +179,29 @@ final class Money
         }
 
         return $value;
+    }
+
+    private static function percentageHundredths(string $rate): int
+    {
+        $normalized = self::normalizeString($rate);
+        $negative = str_starts_with($normalized, '-');
+        $normalized = ltrim($normalized, '+-');
+
+        if (! preg_match('/^\d+(\.\d{1,2})?$/', $normalized)) {
+            throw new InvalidArgumentException('Invalid percentage.');
+        }
+
+        [$whole, $fraction] = array_pad(explode('.', $normalized, 2), 2, '00');
+        $hundredths = ((int) $whole) * 100 + (int) str_pad($fraction, 2, '0');
+
+        return $negative ? -$hundredths : $hundredths;
+    }
+
+    private static function divideAndRoundHalfUp(int $numerator, int $denominator): int
+    {
+        $negative = $numerator < 0;
+        $rounded = intdiv(abs($numerator) + intdiv($denominator, 2), $denominator);
+
+        return $negative ? -$rounded : $rounded;
     }
 }

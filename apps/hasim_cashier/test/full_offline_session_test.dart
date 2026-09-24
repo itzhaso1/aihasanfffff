@@ -218,7 +218,7 @@ void main() {
       orderLocalId: 'tw-1',
       paymentMethod: 'cash',
     );
-    expect(invoice['invoice_number'], startsWith('LOCAL-'));
+    expect(invoice['invoice_number'], startsWith('INV-'));
     expect(invoice['total_amount'], 20);
 
     final pending = await queue.pendingForWorkspace(1);

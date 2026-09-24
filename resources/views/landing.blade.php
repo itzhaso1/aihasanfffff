@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ config('app.name', 'HASEM') }} | حاسم الذكي</title>
+    <title>{{ ($publicSite ?? \App\Support\Site\PublicSite::current())->appName() }} | {{ ($publicSite ?? \App\Support\Site\PublicSite::current())->nameAr() }}</title>
+    @include('partials.public-site-head')
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=cairo:400,500,600,700,800&display=swap" rel="stylesheet" />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -240,7 +241,7 @@
             <div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
                 <div class="hs-landing-fade">
                     <span class="inline-flex rounded-full border border-[#BDEFE5] bg-[#E8FAF6] px-3 py-1 text-xs font-bold text-[#067e6b]">
-                        منصة حاسم لإدارة الأعمال والمحادثات الذكية
+                        منصة {{ ($publicSite ?? \App\Support\Site\PublicSite::current())->nameAr() }} لإدارة الأعمال والمحادثات الذكية
                     </span>
                     <h1 class="mt-5 text-4xl font-extrabold leading-[1.3] text-[#0f172a] sm:text-5xl">
                         حوّل محادثاتك وعملاءك
@@ -574,7 +575,7 @@
                                 </p>
                                 <p class="mt-1 text-xs font-semibold text-slate-600">الفترة: {{ $plan->billing_period === 'yearly' ? 'سنوي' : ($plan->billing_period === 'monthly' ? 'شهري' : $plan->billing_period) }}</p>
                                 <div class="mt-3 flex flex-wrap gap-1">
-                                    @foreach(array_slice($plan->features ?? [], 0, 4) as $feature)
+                                    @foreach(\App\Support\Plans\PlanCardHighlights::labels($plan) as $feature)
                                         <span class="rounded-md bg-white/80 px-2 py-1 text-[11px] font-semibold text-slate-700">{{ $feature }}</span>
                                     @endforeach
                                 </div>
@@ -604,7 +605,7 @@
         <section class="bg-[#06C2A4] px-4 py-16 text-center sm:px-6 lg:px-8">
             <div class="mx-auto max-w-3xl">
                 <h2 class="text-3xl font-extrabold text-white sm:text-4xl">جاهز تدير محادثاتك ومبيعاتك من مكان واحد؟</h2>
-                <p class="mx-auto mt-4 max-w-xl text-sm font-medium leading-7 text-white/90">ابدأ باستخدام حاسم الذكي واجعل فريقك أكثر تنظيمًا وسرعة.</p>
+                <p class="mx-auto mt-4 max-w-xl text-sm font-medium leading-7 text-white/90">ابدأ باستخدام {{ ($publicSite ?? \App\Support\Site\PublicSite::current())->nameAr() }} واجعل فريقك أكثر تنظيمًا وسرعة.</p>
                 <div class="mt-8">
                     @auth
                         <a href="{{ route('workspace.dashboard') }}" class="inline-flex items-center justify-center rounded-full bg-white px-8 py-3 text-sm font-extrabold text-[#067e6b] shadow-sm">الانتقال إلى لوحة التحكم</a>

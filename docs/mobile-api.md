@@ -153,6 +153,38 @@ Workspace-context routes (Bearer + `X-Workspace-Id`).
 | GET | `/customers/{id}` |
 | GET | `/customers/{id}/conversations` |
 
+## Commerce carts and orders
+
+Workspace-context Commerce endpoints require the dedicated `commerce.cart.*` or
+`commerce.orders.*` permission and the `products` and `orders` workspace
+features. They are staff-facing transaction APIs, not payment or delivery APIs.
+
+| Method | URL | Notes |
+|--------|-----|-------|
+| POST | `/commerce/carts` | Optional `customer_id`, `currency`, `channel`, `expires_at`, `metadata` |
+| GET | `/commerce/carts/{cart}` | Cart and server-resolved line snapshots |
+| POST | `/commerce/carts/{cart}/items` | `chat_catalog_item_id`, optional variant ID, `quantity`, selected options |
+| PATCH | `/commerce/carts/{cart}/items/{cartItem}` | Replace `quantity` |
+| DELETE | `/commerce/carts/{cart}/items/{cartItem}` | Remove line |
+| POST | `/commerce/carts/{cart}/clear` | Remove all lines |
+| POST | `/commerce/carts/{cart}/validate` | Returns structured availability problems |
+| POST | `/commerce/carts/{cart}/cancel` | Cancels an active cart |
+| POST | `/commerce/carts/{cart}/order-preview` | Returns authoritative totals and validation result |
+| POST | `/commerce/carts/{cart}/convert` | Creates an idempotent `pending_payment` order |
+| GET | `/commerce/orders` | Commerce orders only |
+| GET | `/commerce/orders/{order}` | Immutable line snapshots, seller summaries, reservation state |
+| POST | `/commerce/orders/{order}/cancel` | Cancels an unpaid Commerce order |
+
+`/convert` requires an `Idempotency-Key` header or `idempotency_key` body value
+(8–128 characters). Cart item requests never accept seller or price fields:
+the server resolves seller, price, currency, tax, stock, and digital
+availability from the current Chat Catalog state. Responses never include
+digital secrets, encrypted values, credentials, or private inventory paths.
+
+Commerce conversion stops at `pending_payment`; it does not create payment
+links, invoke HyperPay, confirm payment, deliver digital inventory, or book
+services.
+
 ## Notifications
 
 | Method | URL |
@@ -164,12 +196,25 @@ Workspace-context routes (Bearer + `X-Workspace-Id`).
 
 ## AI
 
-Respects plan feature `ai`.
+Respects plan feature `ai`. Settings require `canManageAiSettings` (owner/admin/manager or `ai.manage`).
 
 | Method | URL | Body |
 |--------|-----|------|
+| GET | `/ai/settings` | Workspace AI assistant config (`AiSetting`). `meta.ai_roles` + `meta.persona_catalog` list allowed enum values. |
+| PUT | `/ai/settings` | Partial update: `name`, `ai_role`, `instructions`, `tone`, `rules`, structured `agent_persona`, … |
 | POST | `/ai/suggest-reply` | `conversation_id`, optional `content` |
 | POST | `/ai/summarize-conversation` | `conversation_id` |
+
+## Chat catalog settings
+
+Requires workspace feature `products` and `chat.catalog.view` / `chat.catalog.manage` as implemented in controllers.
+
+| Method | URL | Notes |
+|--------|-----|-------|
+| GET | `/catalog/settings` | Full `ChatCatalogResource` including SEO, search_weights, availability_schedule, customer_service_policy, communication profile |
+| PATCH | `/catalog/settings` | `UpdateChatCatalogSettingsRequest` fields |
+| PATCH | `/catalog/settings/communication` | Communication profile |
+| POST | `/catalog/settings/publish\|draft\|pause\|archive` | Catalog lifecycle |
 
 Does not invent Meta/HyperPay behavior.
 

@@ -10,7 +10,13 @@ use App\Models\EmailAttachment;
 use App\Models\EmailContact;
 use App\Models\EmailLog;
 use App\Models\EmailMessage;
+use App\Services\Email\CustomerMailboxErrorClassifier;
+use App\Services\Email\CustomerSmtpMailer;
+use App\Services\Email\ImapSyncService;
 use App\Services\Email\WorkspaceEmailSender;
+use App\Support\Authorization\WorkspaceAccess;
+use App\Support\Email\CustomerMailboxEncryption;
+use App\Support\Network\MailboxHostValidator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,6 +38,8 @@ class EmailController extends Controller
 
     public function inbox(Request $request): View
     {
+        $this->authorizeEmailUse($request);
+
         $accounts = EmailAccount::query()->latest('id')->get();
         $currentAccount = $this->resolveCurrentAccount($request, $accounts);
         $search = trim((string) $request->string('search', ''));
@@ -50,6 +58,8 @@ class EmailController extends Controller
 
     public function sent(Request $request): View
     {
+        $this->authorizeEmailUse($request);
+
         $accounts = EmailAccount::query()->latest('id')->get();
         $currentAccount = $this->resolveCurrentAccount($request, $accounts);
         $search = trim((string) $request->string('search', ''));
@@ -68,6 +78,8 @@ class EmailController extends Controller
 
     public function showMessage(Request $request, EmailMessage $emailMessage): View
     {
+        $this->authorizeEmailUse($request);
+
         $emailMessage->load(['account', 'attachments']);
         $threadKey = $emailMessage->thread_key ?: ($emailMessage->in_reply_to ?: $emailMessage->message_id ?: (string) $emailMessage->id);
         $threadMessages = EmailMessage::query()
@@ -94,8 +106,9 @@ class EmailController extends Controller
         ]);
     }
 
-    public function showLog(EmailLog $emailLog): JsonResponse
+    public function showLog(Request $request, EmailLog $emailLog): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $this->assertSameWorkspace($emailLog->workspace_id);
 
         return response()->json([
@@ -110,16 +123,18 @@ class EmailController extends Controller
         ]);
     }
 
-    public function destroyLog(EmailLog $emailLog): JsonResponse
+    public function destroyLog(Request $request, EmailLog $emailLog): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $this->assertSameWorkspace($emailLog->workspace_id);
         $emailLog->delete();
 
         return response()->json(['data' => ['deleted' => true]]);
     }
 
-    public function downloadAttachment(EmailAttachment $emailAttachment)
+    public function downloadAttachment(Request $request, EmailAttachment $emailAttachment)
     {
+        $this->authorizeEmailUse($request);
         $this->assertSameWorkspace($emailAttachment->workspace_id);
         try {
             $path = $emailAttachment->assertSafeStoragePath();
@@ -132,13 +147,14 @@ class EmailController extends Controller
         return $disk->download($path, basename($path));
     }
 
-    public function previewAttachment(EmailAttachment $emailAttachment)
+    public function previewAttachment(Request $request, EmailAttachment $emailAttachment)
     {
-        return $this->downloadAttachment($emailAttachment);
+        return $this->downloadAttachment($request, $emailAttachment);
     }
 
-    public function destroyAttachment(EmailAttachment $emailAttachment): JsonResponse
+    public function destroyAttachment(Request $request, EmailAttachment $emailAttachment): JsonResponse
     {
+        $this->authorizeEmailUse($request);
         $this->assertSameWorkspace($emailAttachment->workspace_id);
         $emailAttachment->deleteStoredFile();
         $emailAttachment->delete();
@@ -148,6 +164,8 @@ class EmailController extends Controller
 
     public function compose(Request $request): View
     {
+        $this->authorizeEmailUse($request);
+
         $accounts = EmailAccount::query()->latest('name')->get();
         $currentAccount = $this->resolveCurrentAccount($request, $accounts);
         $draft = $this->resolveComposeDraft($request, $currentAccount);
@@ -186,6 +204,8 @@ class EmailController extends Controller
 
     public function clearComposeDraft(Request $request): RedirectResponse
     {
+        $this->authorizeEmailUse($request);
+
         $request->session()->forget('emails.compose_draft');
 
         return redirect()
@@ -197,6 +217,8 @@ class EmailController extends Controller
 
     public function accounts(Request $request): View
     {
+        $this->authorizeEmailManage($request);
+
         $accounts = EmailAccount::query()->latest('id')->get();
         $editingAccount = null;
         if ($request->filled('account_id')) {
@@ -211,6 +233,8 @@ class EmailController extends Controller
 
     public function contacts(Request $request): View
     {
+        $this->authorizeEmailUse($request);
+
         $search = trim((string) $request->string('search', ''));
         $contacts = EmailContact::query()
             ->when($search !== '', function ($query) use ($search): void {
@@ -239,6 +263,8 @@ class EmailController extends Controller
 
     public function storeContact(Request $request): RedirectResponse
     {
+        $this->authorizeEmailUse($request);
+
         $workspace = $this->currentWorkspace();
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -272,6 +298,8 @@ class EmailController extends Controller
 
     public function updateContact(Request $request, EmailContact $emailContact): RedirectResponse
     {
+        $this->authorizeEmailUse($request);
+
         $workspace = $this->currentWorkspace();
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -303,8 +331,10 @@ class EmailController extends Controller
             ->with('success', 'تم تحديث جهة الاتصال بنجاح.');
     }
 
-    public function destroyContact(EmailContact $emailContact): RedirectResponse
+    public function destroyContact(Request $request, EmailContact $emailContact): RedirectResponse
     {
+        $this->authorizeEmailUse($request);
+
         $emailContact->delete();
 
         return redirect()
@@ -314,6 +344,8 @@ class EmailController extends Controller
 
     public function searchContacts(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
+
         $query = trim((string) $request->string('q', ''));
         $contacts = EmailContact::query()
             ->when($query !== '', function ($builder) use ($query): void {
@@ -341,6 +373,8 @@ class EmailController extends Controller
 
     public function lookupContact(Request $request): JsonResponse
     {
+        $this->authorizeEmailUse($request);
+
         $email = trim((string) $request->string('email', ''));
         $contact = $this->findContactByEmail($email);
 
@@ -362,26 +396,17 @@ class EmailController extends Controller
         ]);
     }
 
-    public function storeAccount(Request $request): RedirectResponse
+    public function storeAccount(Request $request, CustomerSmtpMailer $customerSmtpMailer): RedirectResponse
     {
+        $this->authorizeEmailManage($request);
+
         $workspace = $this->currentWorkspace();
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => [
-                'required',
-                'email',
-                'max:255',
-                Rule::unique('email_accounts', 'email')->where(fn ($query) => $query->where('workspace_id', $workspace->id)),
-            ],
-            'password' => ['required', 'string', 'max:255'],
-            'imap_host' => ['required', 'string', 'max:255'],
-            'imap_port' => ['required', 'integer', 'min:1', 'max:65535'],
-            'smtp_host' => ['required', 'string', 'max:255'],
-            'smtp_port' => ['required', 'integer', 'min:1', 'max:65535'],
-            'brand_color' => ['nullable', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/'],
-            'logo' => ['nullable', 'image', 'max:4096'],
-            'aliases' => ['nullable', 'string'],
-        ]);
+        $validated = $request->validate($this->accountRules($workspace->id));
+        $this->validateMailboxHosts($validated);
+
+        if ($request->input('intent') === 'test_smtp') {
+            return $this->runSmtpTestFromRequest($request, $validated, null, $customerSmtpMailer);
+        }
 
         $logoPath = null;
         if ($request->hasFile('logo')) {
@@ -395,8 +420,12 @@ class EmailController extends Controller
             'password' => $validated['password'],
             'imap_host' => $validated['imap_host'],
             'imap_port' => $validated['imap_port'],
+            'imap_encryption' => CustomerMailboxEncryption::normalize($validated['imap_encryption'] ?? null),
+            'imap_username' => $this->nullableString($validated['imap_username'] ?? null),
             'smtp_host' => $validated['smtp_host'],
             'smtp_port' => $validated['smtp_port'],
+            'smtp_encryption' => CustomerMailboxEncryption::normalize($validated['smtp_encryption'] ?? null),
+            'smtp_username' => $this->nullableString($validated['smtp_username'] ?? null),
             'logo_path' => $logoPath,
             'brand_color' => $validated['brand_color'] ?: '#06C2A4',
             'aliases' => $this->parseAliases((string) ($validated['aliases'] ?? '')),
@@ -405,37 +434,30 @@ class EmailController extends Controller
         return redirect()->route('workspace.emails.accounts.index')->with('success', 'تم حفظ حساب الشركة بنجاح.');
     }
 
-    public function updateAccount(Request $request, EmailAccount $emailAccount): RedirectResponse
+    public function updateAccount(Request $request, EmailAccount $emailAccount, CustomerSmtpMailer $customerSmtpMailer): RedirectResponse
     {
+        $this->authorizeEmailManage($request);
+        abort_unless((int) $emailAccount->workspace_id === (int) $this->currentWorkspace()->id, 404);
+
         $workspace = $this->currentWorkspace();
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => [
-                'required',
-                'email',
-                'max:255',
-                Rule::unique('email_accounts', 'email')
-                    ->where(fn ($query) => $query->where('workspace_id', $workspace->id))
-                    ->ignore($emailAccount->id),
-            ],
-            'password' => ['nullable', 'string', 'max:255'],
-            'imap_host' => ['required', 'string', 'max:255'],
-            'imap_port' => ['required', 'integer', 'min:1', 'max:65535'],
-            'smtp_host' => ['required', 'string', 'max:255'],
-            'smtp_port' => ['required', 'integer', 'min:1', 'max:65535'],
-            'brand_color' => ['nullable', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/'],
-            'logo' => ['nullable', 'image', 'max:4096'],
-            'remove_logo' => ['nullable', 'boolean'],
-            'aliases' => ['nullable', 'string'],
-        ]);
+        $validated = $request->validate($this->accountRules($workspace->id, $emailAccount, passwordRequired: false));
+        $this->validateMailboxHosts($validated);
+
+        if ($request->input('intent') === 'test_smtp') {
+            return $this->runSmtpTestFromRequest($request, $validated, $emailAccount, $customerSmtpMailer);
+        }
 
         $payload = [
             'name' => $validated['name'],
             'email' => $validated['email'],
             'imap_host' => $validated['imap_host'],
             'imap_port' => $validated['imap_port'],
+            'imap_encryption' => CustomerMailboxEncryption::normalize($validated['imap_encryption'] ?? null),
+            'imap_username' => $this->nullableString($validated['imap_username'] ?? null),
             'smtp_host' => $validated['smtp_host'],
             'smtp_port' => $validated['smtp_port'],
+            'smtp_encryption' => CustomerMailboxEncryption::normalize($validated['smtp_encryption'] ?? null),
+            'smtp_username' => $this->nullableString($validated['smtp_username'] ?? null),
             'brand_color' => $validated['brand_color'] ?: '#06C2A4',
             'aliases' => $this->parseAliases((string) ($validated['aliases'] ?? '')),
         ];
@@ -463,8 +485,11 @@ class EmailController extends Controller
             ->with('success', 'تم تحديث بيانات الحساب بنجاح.');
     }
 
-    public function destroyAccount(EmailAccount $emailAccount): RedirectResponse
+    public function destroyAccount(Request $request, EmailAccount $emailAccount): RedirectResponse
     {
+        $this->authorizeEmailManage($request);
+        abort_unless((int) $emailAccount->workspace_id === (int) $this->currentWorkspace()->id, 404);
+
         $attachments = EmailAttachment::query()
             ->whereIn('message_id', EmailMessage::query()
                 ->where('email_account_id', $emailAccount->id)
@@ -490,9 +515,16 @@ class EmailController extends Controller
             ->with('success', 'تم حذف حساب البريد وكل ملفاته المرتبطة.');
     }
 
-    public function syncAccount(EmailAccount $emailAccount): RedirectResponse
+    public function syncAccount(Request $request, EmailAccount $emailAccount, ImapSyncService $imapSyncService): RedirectResponse
     {
+        $this->authorizeEmailManage($request);
         abort_unless((int) $emailAccount->workspace_id === (int) $this->currentWorkspace()->id, 404);
+
+        if (! $imapSyncService->extensionAvailable()) {
+            return redirect()
+                ->route('workspace.emails.accounts.index', ['account_id' => $emailAccount->id])
+                ->with('error', 'تعذر مزامنة الوارد. امتداد IMAP غير مفعّل على الخادم.');
+        }
 
         SyncEmailInboxJob::dispatch($emailAccount->id, (int) $emailAccount->workspace_id)->onQueue('emails');
 
@@ -501,8 +533,18 @@ class EmailController extends Controller
             ->with('success', 'تم جدولة مزامنة البريد في الخلفية.');
     }
 
+    public function testAccountSmtp(Request $request, EmailAccount $emailAccount, CustomerSmtpMailer $customerSmtpMailer): RedirectResponse
+    {
+        $this->authorizeEmailManage($request);
+        abort_unless((int) $emailAccount->workspace_id === (int) $this->currentWorkspace()->id, 404);
+
+        return $this->runSmtpTest($emailAccount, $customerSmtpMailer);
+    }
+
     public function sendMessage(Request $request, WorkspaceEmailSender $workspaceEmailSender): RedirectResponse
     {
+        $this->authorizeEmailUse($request);
+
         $workspace = $this->currentWorkspace();
         $validated = $request->validate([
             'email_account_id' => [
@@ -579,10 +621,10 @@ class EmailController extends Controller
             'recipient_contact_ids' => $selectedContactIds,
         ]);
 
-        $sender = $emailAccount->email;
-        if (! empty($validated['sender_alias'])) {
-            $sender = trim($validated['sender_alias']).' <'.$emailAccount->email.'>';
-        }
+        $alias = $this->sanitizeSenderAlias((string) ($validated['sender_alias'] ?? ''));
+        $sender = $alias !== ''
+            ? $alias.' <'.$emailAccount->email.'>'
+            : $emailAccount->email;
 
         $threadKey = $replyToMessage?->thread_key ?: ($replyToMessage?->message_id ?: Str::uuid()->toString());
 
@@ -618,31 +660,31 @@ class EmailController extends Controller
         });
 
         try {
-            $emailLog = $workspaceEmailSender->send($message);
-            $message->forceFill([
-                'delivery_status' => 'sent',
-                'delivery_error' => null,
-                'delivered_at' => now(),
-                'message_id' => $emailLog?->provider_message_id ?: $message->message_id,
-            ])->save();
+            $workspaceEmailSender->send($message);
 
             return redirect()
                 ->route('workspace.emails.compose', ['account_id' => $emailAccount->id])
                 ->with('success', 'تم إرسال الرسالة بنجاح.');
         } catch (\Throwable $exception) {
+            $classifier = app(CustomerMailboxErrorClassifier::class);
+            $safeError = $classifier->safeStoredError($exception, 'send');
+            $classifier->wrap($exception, 'send', $emailAccount, $message);
+
             $message->forceFill([
                 'delivery_status' => 'failed',
-                'delivery_error' => 'Email delivery failed.',
+                'delivery_error' => $safeError,
             ])->save();
 
             return redirect()
                 ->route('workspace.emails.compose', ['account_id' => $emailAccount->id])
-                ->with('error', 'تعذر إرسال الرسالة حاليًا. يرجى المحاولة لاحقًا.');
+                ->with('error', $classifier->userMessage('send'));
         }
     }
 
     public function destroyMessage(Request $request, EmailMessage $emailMessage): RedirectResponse
     {
+        $this->authorizeEmailUse($request);
+
         $attachments = $emailMessage->attachments;
 
         DB::transaction(function () use ($emailMessage): void {
@@ -816,7 +858,7 @@ class EmailController extends Controller
     private function parseAliases(string $aliasesRaw): array
     {
         $aliases = collect(preg_split('/[\r\n,]+/', $aliasesRaw) ?: [])
-            ->map(fn (string $alias): string => trim($alias))
+            ->map(fn (string $alias): string => $this->sanitizeSenderAlias($alias))
             ->filter()
             ->unique()
             ->take(50)
@@ -824,5 +866,165 @@ class EmailController extends Controller
             ->all();
 
         return $aliases;
+    }
+
+    private function sanitizeSenderAlias(string $alias): string
+    {
+        $alias = trim($alias);
+        $alias = preg_replace('/<[^>]*>/', '', $alias) ?? '';
+        $alias = trim($alias);
+        if ($alias !== '' && filter_var($alias, FILTER_VALIDATE_EMAIL)) {
+            return '';
+        }
+
+        return mb_substr($alias, 0, 255);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function accountRules(int $workspaceId, ?EmailAccount $existing = null, bool $passwordRequired = true): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => $existing
+                ? [
+                    'required',
+                    'email',
+                    'max:255',
+                    Rule::unique('email_accounts', 'email')
+                        ->where(fn ($query) => $query->where('workspace_id', $workspaceId))
+                        ->ignore($existing->id),
+                ]
+                : [
+                    'required',
+                    'email',
+                    'max:255',
+                    Rule::unique('email_accounts', 'email')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+                ],
+            'password' => [$passwordRequired ? 'required' : 'nullable', 'string', 'max:255'],
+            'imap_host' => ['required', 'string', 'max:255'],
+            'imap_port' => ['required', 'integer', 'min:1', 'max:65535'],
+            'imap_encryption' => ['nullable', 'string', Rule::in(CustomerMailboxEncryption::values())],
+            'imap_username' => ['nullable', 'string', 'max:255'],
+            'smtp_host' => ['required', 'string', 'max:255'],
+            'smtp_port' => ['required', 'integer', 'min:1', 'max:65535'],
+            'smtp_encryption' => ['nullable', 'string', Rule::in(CustomerMailboxEncryption::values())],
+            'smtp_username' => ['nullable', 'string', 'max:255'],
+            'brand_color' => ['nullable', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/'],
+            'logo' => ['nullable', 'image', 'max:4096'],
+            'remove_logo' => ['nullable', 'boolean'],
+            'aliases' => ['nullable', 'string'],
+            'intent' => ['nullable', 'string', Rule::in(['test_smtp'])],
+        ];
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        $trimmed = trim((string) $value);
+
+        return $trimmed !== '' ? $trimmed : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function runSmtpTestFromRequest(
+        Request $request,
+        array $validated,
+        ?EmailAccount $existing,
+        CustomerSmtpMailer $customerSmtpMailer,
+    ): RedirectResponse {
+        $account = $existing ? $existing->replicate() : new EmailAccount;
+        $account->forceFill([
+            'workspace_id' => $existing?->workspace_id ?? $this->currentWorkspace()->id,
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'imap_host' => $validated['imap_host'],
+            'imap_port' => $validated['imap_port'],
+            'imap_encryption' => CustomerMailboxEncryption::normalize($validated['imap_encryption'] ?? null),
+            'imap_username' => $this->nullableString($validated['imap_username'] ?? null),
+            'smtp_host' => $validated['smtp_host'],
+            'smtp_port' => $validated['smtp_port'],
+            'smtp_encryption' => CustomerMailboxEncryption::normalize($validated['smtp_encryption'] ?? null),
+            'smtp_username' => $this->nullableString($validated['smtp_username'] ?? null),
+        ]);
+
+        if ($existing) {
+            $account->id = $existing->id;
+            $account->exists = true;
+        }
+
+        if (! empty($validated['password'])) {
+            $account->password = $validated['password'];
+        } elseif ($existing) {
+            $account->password = $existing->password;
+        }
+
+        return $this->runSmtpTest($account, $customerSmtpMailer, $request);
+    }
+
+    private function runSmtpTest(EmailAccount $account, CustomerSmtpMailer $customerSmtpMailer, ?Request $request = null): RedirectResponse
+    {
+        $redirect = redirect()
+            ->route('workspace.emails.accounts.index', array_filter([
+                'account_id' => $account->exists ? $account->id : null,
+            ]));
+
+        if ($request) {
+            $redirect = $redirect->withInput($request->except(['password', 'logo', 'intent']));
+        }
+
+        try {
+            $customerSmtpMailer->testConnection($account);
+            if ($account->exists) {
+                $account->markSmtpTest('connected');
+            }
+
+            return $redirect->with('success', 'اتصال SMTP ناجح.');
+        } catch (\Throwable $exception) {
+            $classifier = app(CustomerMailboxErrorClassifier::class);
+            $wrapped = $classifier->wrap($exception, 'test', $account->exists ? $account : null);
+            if ($account->exists) {
+                $status = in_array($wrapped->category, [
+                    CustomerMailboxErrorClassifier::TIMEOUT,
+                    CustomerMailboxErrorClassifier::CONNECTION_REFUSED,
+                    CustomerMailboxErrorClassifier::TLS,
+                    CustomerMailboxErrorClassifier::PROVIDER_REJECTED,
+                ], true) ? 'needs_attention' : 'failed';
+                $account->markSmtpTest($status);
+            }
+
+            return $redirect->with('error', $classifier->userMessage('test'));
+        }
+    }
+
+    private function authorizeEmailUse(Request $request): void
+    {
+        $user = $request->user();
+        $workspace = $this->currentWorkspace();
+        abort_unless(
+            $user && app(WorkspaceAccess::class)->canUseEmail($user, $workspace),
+            403
+        );
+    }
+
+    private function authorizeEmailManage(Request $request): void
+    {
+        $user = $request->user();
+        $workspace = $this->currentWorkspace();
+        abort_unless(
+            $user && app(WorkspaceAccess::class)->canManageEmailAccounts($user, $workspace),
+            403
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function validateMailboxHosts(array $validated): void
+    {
+        MailboxHostValidator::assertAllowed((string) $validated['imap_host'], 'imap_host');
+        MailboxHostValidator::assertAllowed((string) $validated['smtp_host'], 'smtp_host');
     }
 }

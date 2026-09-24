@@ -193,12 +193,27 @@ void main() {
     final contract = ContractRecord.fromJson({
       'id': 8,
       'title': 'عقد صيانة',
+      'description': 'وصف العقد',
+      'payment_terms': '30 يوم',
+      'project_id': 3,
+      'project_name': 'مشروع أ',
+      'signature_status': 'partial',
       'terms': 'شروط عربية',
       'notes': 'ملاحظات',
       'value': '1200.00',
       'currency': 'SAR',
       'items': [
-        {'id': 1, 'title': 'صيانة شهرية', 'quantity': '1', 'unit_price': '100.00', 'total': '100.00'},
+        {
+          'id': 1,
+          'title': 'صيانة شهرية',
+          'item_kind': 'service',
+          'unit': 'شهر',
+          'quantity': '1',
+          'unit_price': '100.00',
+          'discount': '0.00',
+          'tax_rate': '15.00',
+          'total': '100.00',
+        },
       ],
       'billing_schedules': [
         {
@@ -221,7 +236,13 @@ void main() {
       ],
     });
     expect(contract.terms, 'شروط عربية');
+    expect(contract.description, 'وصف العقد');
+    expect(contract.paymentTerms, '30 يوم');
+    expect(contract.projectId, 3);
+    expect(contract.signatureStatus, 'partial');
     expect(contract.items.single.title, 'صيانة شهرية');
+    expect(contract.items.single.itemKind, 'service');
+    expect(contract.items.single.taxRate, '15.00');
     expect(contract.scheduleRecords.single.amount, '100.00');
     expect(contract.scheduleRecords.single.nextRunOn, '2026-10-01');
     expect(contract.billingSummary['outstanding'], '100.00');

@@ -9,7 +9,11 @@ use App\Http\Requests\Message\StoreMessageRequest;
 use App\Jobs\ProcessAIResponse;
 use App\Models\Conversation;
 use App\Models\Customer;
+use App\Models\Message;
+use App\Models\MessageAttachment;
 use App\Services\Conversation\ConversationService;
+use App\Services\Mobile\MessageAttachmentService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -51,8 +55,15 @@ class ConversationController extends Controller
                     return;
                 }
 
-                $query->where('channel', 'manual')
-                    ->where('metadata->channel_source', $channelFilter);
+                $query->where(function ($channelQuery) use ($channelFilter): void {
+                    $channelQuery
+                        ->where('channel', $channelFilter)
+                        ->orWhere(function ($legacyQuery) use ($channelFilter): void {
+                            $legacyQuery
+                                ->where('channel', 'manual')
+                                ->where('metadata->channel_source', $channelFilter);
+                        });
+                });
             })
             ->when($search, function ($query, $search): void {
                 $query->where(function ($innerQuery) use ($search): void {
@@ -89,7 +100,16 @@ class ConversationController extends Controller
                 ->values()
         );
 
+        $workspaceId = (int) $this->currentWorkspace()->id;
+        $sessionKey = 'inbox.last_conversation.'.$workspaceId;
+
         $activeConversationId = $request->integer('conversation');
+        if (! $activeConversationId && ! $request->has('conversation')) {
+            $remembered = (int) $request->session()->get($sessionKey, 0);
+            if ($remembered > 0) {
+                $activeConversationId = $remembered;
+            }
+        }
 
         $activeConversation = null;
         if ($activeConversationId) {
@@ -98,7 +118,7 @@ class ConversationController extends Controller
                     'customer.notes' => fn ($query) => $query->latest()->limit(8),
                     'customer.tags',
                     'customer.orders' => fn ($query) => $query->latest()->limit(8),
-                    'messages' => fn ($query) => $query->with('user')->latest()->limit(80),
+                    'messages' => fn ($query) => $query->with(['user', 'attachments'])->latest()->limit(80),
                 ])
                 ->find($activeConversationId);
 
@@ -120,6 +140,10 @@ class ConversationController extends Controller
                     'messages',
                     $activeConversation->messages->sortBy('created_at')->values()
                 );
+
+                $request->session()->put($sessionKey, $activeConversation->id);
+            } elseif ($activeConversationId > 0) {
+                $request->session()->forget($sessionKey);
             }
         }
 
@@ -131,6 +155,8 @@ class ConversationController extends Controller
                 'whatsapp' => 'WhatsApp',
                 'instagram' => 'Instagram',
                 'facebook_messenger' => 'Facebook Messenger',
+                'tiktok' => 'TikTok',
+                'telegram' => 'Telegram',
                 'email' => 'Email',
                 'web' => 'Web',
                 'manual' => 'Manual',
@@ -201,7 +227,7 @@ class ConversationController extends Controller
         return redirect()->route('workspace.conversations.index')->with('success', 'تم حذف المحادثة.');
     }
 
-    public function storeMessage(StoreMessageRequest $request, Conversation $conversation): RedirectResponse
+    public function storeMessage(StoreMessageRequest $request, Conversation $conversation): RedirectResponse|JsonResponse
     {
         $this->authorize('update', $conversation);
 
@@ -212,14 +238,59 @@ class ConversationController extends Controller
         $payload['metadata'] = $this->parseJsonField($request, 'metadata_json');
 
         $sentMessage = $this->conversationService->addMessage($conversation, $payload, $request->user());
+        $conversation = $conversation->fresh() ?? $conversation;
 
         if ($sentMessage->direction === 'inbound' && $conversation->ai_enabled) {
-            ProcessAIResponse::dispatch($conversation->id, $sentMessage->id);
+            ProcessAIResponse::dispatch($conversation->id, $sentMessage->id, (int) $conversation->workspace_id);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $this->serializeMessageForInbox($sentMessage),
+                'conversation' => [
+                    'id' => $conversation->id,
+                    'ai_enabled' => (bool) $conversation->ai_enabled,
+                    'human_handoff' => (bool) (($conversation->metadata['human_handoff'] ?? false)),
+                ],
+            ]);
         }
 
         return redirect()->route('workspace.conversations.index', [
             'conversation' => $conversation->id,
         ])->with('success', 'تم إرسال الرسالة.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeMessageForInbox(Message $message): array
+    {
+        $message->loadMissing('attachments');
+
+        return [
+            'id' => $message->id,
+            'conversation_id' => $message->conversation_id,
+            'direction' => $message->direction,
+            'message_type' => $message->message_type,
+            'content' => $message->content,
+            'ai_generated' => (bool) $message->ai_generated,
+            'created_at' => optional($message->created_at)?->toIso8601String(),
+            'attachments' => $message->attachments->map(function ($attachment): array {
+                $ready = ($attachment->status ?? 'stored') === MessageAttachment::STATUS_STORED;
+
+                return [
+                    'id' => $attachment->id,
+                    'kind' => $attachment->kind,
+                    'original_name' => $attachment->original_name,
+                    'mime_type' => $attachment->mime_type,
+                    'size_bytes' => $attachment->size_bytes,
+                    'status' => $attachment->status,
+                    'download_url' => $ready
+                        ? app(MessageAttachmentService::class)->workspaceDownloadUrl($attachment)
+                        : null,
+                ];
+            })->values()->all(),
+        ];
     }
 
     private function normalizeChannelFilter(string $channel): ?string

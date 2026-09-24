@@ -19,6 +19,8 @@ class PaymentController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', Payment::class);
+
         $payments = Payment::query()
             ->with(['order', 'gateway'])
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
@@ -30,7 +32,11 @@ class PaymentController extends Controller
 
     public function store(CreatePaymentLinkRequest $request): JsonResponse
     {
+        $this->authorize('create', Payment::class);
+
         $order = Order::query()->findOrFail($request->integer('order_id'));
+        $this->authorize('view', $order);
+
         $gateway = $request->filled('payment_gateway_id')
             ? PaymentGateway::query()->findOrFail($request->integer('payment_gateway_id'))
             : null;

@@ -335,22 +335,31 @@ final class UblMapper
         $taxTotal = $builder->cac($root, 'TaxTotal');
         $builder->money($taxTotal, 'TaxAmount', $document->tax->amount, $document->currency);
 
+        foreach ((new TaxSubtotalProjector)->project($document) as $row) {
+            $this->mapTaxSubtotal($builder, $taxTotal, $document, $row);
+        }
+    }
+
+    private function mapTaxSubtotal(
+        XmlBuilder $builder,
+        DOMElement $taxTotal,
+        EInvoiceDocument $document,
+        TaxSubtotalRow $row,
+    ): void {
         $subtotal = $builder->cac($taxTotal, 'TaxSubtotal');
-        $builder->money($subtotal, 'TaxableAmount', $document->totals->taxableAmount, $document->currency);
-        $builder->money($subtotal, 'TaxAmount', $document->tax->amount, $document->currency);
+        $builder->money($subtotal, 'TaxableAmount', $row->taxableAmount, $document->currency);
+        $builder->money($subtotal, 'TaxAmount', $row->taxAmount, $document->currency);
 
         $category = $builder->cac($subtotal, 'TaxCategory');
-        $mapped = UblTaxCategory::fromClassification($document->tax->classification);
+        $mapped = UblTaxCategory::fromClassification($row->classification);
         $builder->cbc($category, 'ID', $mapped->value);
-        $builder->cbc($category, 'Percent', $document->tax->rate);
+        $builder->cbc($category, 'Percent', $row->rate);
 
-        $exemptionCode = $this->exemptionCode($document);
-        if ($exemptionCode !== null && UblTaxCategory::isOfficialExemptionCode($exemptionCode)) {
-            $builder->cbc($category, 'TaxExemptionReasonCode', $exemptionCode);
+        if ($row->exemptionCode !== null && UblTaxCategory::isOfficialExemptionCode($row->exemptionCode)) {
+            $builder->cbc($category, 'TaxExemptionReasonCode', $row->exemptionCode);
         }
-        $exemptionReason = $this->exemptionReason($document);
-        if ($exemptionReason !== null) {
-            $builder->cbc($category, 'TaxExemptionReason', $exemptionReason);
+        if ($row->exemptionReason !== null) {
+            $builder->cbc($category, 'TaxExemptionReason', $row->exemptionReason);
         }
 
         $scheme = $builder->cac($category, 'TaxScheme');

@@ -8,6 +8,7 @@ use App\Models\Finance\FinanceJournalEntry;
 use App\Models\Finance\FinanceSupplier;
 use App\Models\Finance\FinanceTreasuryAccount;
 use App\Models\Workspace;
+use App\Support\Storage\PrivateDocumentDisk;
 use App\Support\Uploads\SecureUpload;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -81,7 +82,7 @@ class ExpenseService
                 $attachmentPath = app(SecureUpload::class)->store(
                     $attachment,
                     'workspaces/'.$workspace->id.'/finance/expenses',
-                    'public',
+                    PrivateDocumentDisk::DISK,
                     4096
                 );
             }
@@ -149,12 +150,12 @@ class ExpenseService
             $attachmentPath = $locked->attachment_path;
             if (($payload['attachment_file'] ?? null) instanceof UploadedFile) {
                 if ($attachmentPath) {
-                    app(SecureUpload::class)->delete($attachmentPath);
+                    PrivateDocumentDisk::delete($attachmentPath);
                 }
                 $attachmentPath = app(SecureUpload::class)->store(
                     $payload['attachment_file'],
                     'workspaces/'.$locked->workspace_id.'/finance/expenses',
-                    'public',
+                    PrivateDocumentDisk::DISK,
                     4096
                 );
             }
@@ -252,7 +253,7 @@ class ExpenseService
             }
 
             if ($locked->attachment_path) {
-                app(SecureUpload::class)->delete($locked->attachment_path);
+                PrivateDocumentDisk::delete($locked->attachment_path);
                 $locked->attachment_path = null;
             }
 

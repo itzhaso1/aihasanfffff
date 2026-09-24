@@ -70,7 +70,11 @@ return [
             'queue' => env('REDIS_QUEUE', 'default'),
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 270),
             'block_for' => null,
-            'after_commit' => false,
+            // Production Redis: defer push until the active DB transaction commits.
+            'after_commit' => filter_var(
+                env('REDIS_QUEUE_AFTER_COMMIT', env('APP_ENV') === 'production'),
+                FILTER_VALIDATE_BOOL
+            ),
         ],
 
         'deferred' => [

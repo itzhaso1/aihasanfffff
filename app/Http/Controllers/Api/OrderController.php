@@ -18,7 +18,10 @@ class OrderController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', Order::class);
+
         $orders = Order::query()
+            ->where('source', '!=', 'commerce')
             ->with(['customer', 'items', 'table', 'tableSession', 'financeInvoice', 'posCashierInvoice'])
             ->when($request->string('search')->toString(), function ($query, $search): void {
                 $query->where('order_number', 'like', '%'.$search.'%');
@@ -33,6 +36,8 @@ class OrderController extends Controller
 
     public function store(StoreOrderRequest $request): JsonResponse
     {
+        $this->authorize('create', Order::class);
+
         $order = $this->orderService->create($request->validated(), $request->user());
 
         return response()->json(['data' => $order], 201);

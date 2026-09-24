@@ -492,7 +492,7 @@ void main() {
   );
 
   test(
-    'R invalid product server id still completes checkout but skips queue',
+    'R product without a server id still checks out and waits in the queue',
     () async {
       final result = await sellTakeaway(
         clientReference: 'tw-no-server-product',
@@ -502,11 +502,15 @@ void main() {
       final order = await (db.select(
         db.localOrders,
       )..where((t) => t.localId.equals('tw-no-server-product'))).getSingle();
-      expect(order.syncStatus, 'local');
+      expect(order.syncStatus, 'pending');
       final queued = await (db.select(
         db.syncQueueItems,
       )..where((t) => t.entityType.equals('order'))).get();
-      expect(queued, isEmpty);
+      expect(queued, hasLength(1));
+      final payload = jsonDecode(queued.single.payloadJson) as Map;
+      final items = payload['items'] as List;
+      expect(items.single['product_local_id'], productLocalId);
+      expect(items.single['pos_menu_item_id'], isNull);
     },
   );
 

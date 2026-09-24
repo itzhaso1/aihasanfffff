@@ -3,7 +3,10 @@
 namespace App\Mail;
 
 use App\Models\EmailAccount;
+use App\Models\EmailBranding;
 use App\Models\EmailMessage;
+use App\Services\Email\EmailBrandingHtmlBuilder;
+use App\Support\Email\EmailBrandInlineImages;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Address;
@@ -19,6 +22,9 @@ class WorkspaceBrandedEmail extends Mailable
 {
     use Queueable, SerializesModels;
 
+    /** @var array<string, mixed>|null */
+    private ?array $outboundViewData = null;
+
     public function __construct(
         public readonly EmailMessage $emailMessage,
         public readonly EmailAccount $emailAccount,
@@ -26,18 +32,32 @@ class WorkspaceBrandedEmail extends Mailable
 
     public function envelope(): Envelope
     {
+        $fromName = $this->emailAccount->senderDisplayName($this->emailMessage->sender);
+
         return new Envelope(
-            from: new Address($this->emailAccount->email, $this->emailAccount->name),
+            from: new Address($this->emailAccount->email, $fromName),
+            replyTo: [
+                new Address($this->emailAccount->email, $fromName),
+            ],
             subject: $this->emailMessage->subject ?: '(بدون عنوان)',
             using: [
                 function (Email $email): void {
                     if ($this->emailMessage->in_reply_to) {
-                        $email->getHeaders()->addIdHeader('In-Reply-To', $this->emailMessage->in_reply_to);
-                        $email->getHeaders()->addTextHeader('References', $this->emailMessage->in_reply_to);
+                        $replyId = $this->normalizeHeaderId((string) $this->emailMessage->in_reply_to);
+                        $email->getHeaders()->addIdHeader('In-Reply-To', $replyId);
+                        $email->getHeaders()->addTextHeader('References', '<'.$replyId.'>');
                     }
 
                     if ($this->emailMessage->message_id) {
-                        $email->getHeaders()->addIdHeader('Message-ID', $this->emailMessage->message_id);
+                        $email->getHeaders()->addIdHeader('Message-ID', $this->normalizeHeaderId((string) $this->emailMessage->message_id));
+                    }
+
+                    foreach (EmailBrandInlineImages::embeds(
+                        (int) $this->emailMessage->workspace_id,
+                        $this->logoStoragePath(),
+                        $this->outboundViewData()['socialLinks'] ?? [],
+                    ) as $embed) {
+                        $email->embedFromPath($embed['path'], $embed['cid'], $embed['mime']);
                     }
                 },
             ],
@@ -48,14 +68,11 @@ class WorkspaceBrandedEmail extends Mailable
     {
         return new Content(
             view: 'emails.workspace-branded',
-            with: [
-                'subject' => $this->emailMessage->subject,
-                'body' => $this->emailMessage->body,
-                'brandColor' => $this->emailAccount->brand_color ?: '#06C2A4',
-                'logoUrl' => $this->emailAccount->logo_path ? Storage::disk('public')->url($this->emailAccount->logo_path) : null,
-                'accountName' => $this->emailAccount->name,
-                'companyName' => $this->emailAccount->name,
-            ]
+            with: EmailBrandInlineImages::withCids(
+                $this->outboundViewData(),
+                (int) $this->emailMessage->workspace_id,
+                $this->logoStoragePath(),
+            ),
         );
     }
 
@@ -90,5 +107,35 @@ class WorkspaceBrandedEmail extends Mailable
             ->filter()
             ->values()
             ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function outboundViewData(): array
+    {
+        return $this->outboundViewData ??= app(EmailBrandingHtmlBuilder::class)
+            ->forOutbound($this->emailMessage, $this->emailAccount);
+    }
+
+    private function logoStoragePath(): ?string
+    {
+        $workspaceId = (int) $this->emailMessage->workspace_id;
+        if ($workspaceId < 1 || (int) $this->emailAccount->workspace_id !== $workspaceId) {
+            return null;
+        }
+
+        $branding = EmailBranding::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->first();
+
+        $path = $branding?->logo_path ?: $this->emailAccount->logo_path;
+
+        return is_string($path) && $path !== '' ? $path : null;
+    }
+
+    private function normalizeHeaderId(string $id): string
+    {
+        return trim($id, " \t\n\r\0\x0B<>");
     }
 }

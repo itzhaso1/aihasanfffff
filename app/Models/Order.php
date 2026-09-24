@@ -2,6 +2,11 @@
 
 namespace App\Models;
 
+use App\Enums\Commerce\CommerceOrderStatus;
+use App\Models\Commerce\CommerceCart;
+use App\Models\Commerce\CommerceInventoryReservation;
+use App\Models\Commerce\Seller;
+use App\Models\Commerce\SellerAllocation;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Finance\FinanceInvoice;
 use Database\Factories\OrderFactory;
@@ -14,6 +19,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'workspace_id',
     'customer_id',
+    'commerce_seller_id',
+    'commerce_cart_id',
     'dining_table_id',
     'table_session_id',
     'finance_invoice_id',
@@ -22,6 +29,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'client_reference',
     'source',
     'order_type',
+    'commerce_status',
+    'commerce_channel',
     'status',
     'pos_status',
     'payment_status',
@@ -60,6 +69,7 @@ class Order extends WorkspaceScopedModel
             'tax_rate' => 'decimal:2',
             'shipping_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
+            'commerce_status' => CommerceOrderStatus::class,
             'placed_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'metadata' => 'array',
@@ -69,6 +79,19 @@ class Order extends WorkspaceScopedModel
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    /**
+     * Optional primary commerce seller (multi-seller lines use order_items.commerce_seller_id).
+     */
+    public function commerceSeller(): BelongsTo
+    {
+        return $this->belongsTo(Seller::class, 'commerce_seller_id');
+    }
+
+    public function commerceCart(): BelongsTo
+    {
+        return $this->belongsTo(CommerceCart::class, 'commerce_cart_id');
     }
 
     public function table(): BelongsTo
@@ -99,6 +122,16 @@ class Order extends WorkspaceScopedModel
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function sellerAllocations(): HasMany
+    {
+        return $this->hasMany(SellerAllocation::class);
+    }
+
+    public function inventoryReservations(): HasMany
+    {
+        return $this->hasMany(CommerceInventoryReservation::class);
     }
 
     public function posReturns(): HasMany

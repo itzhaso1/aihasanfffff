@@ -3,6 +3,8 @@
 namespace App\Services\AI;
 
 use App\Exceptions\FeatureNotAvailableException;
+use App\Exceptions\MissingWorkspaceContextException;
+use App\Exceptions\UsageLimitExceededException;
 use App\Jobs\UpdateAIUsage;
 use App\Models\AiLog;
 use App\Models\AiSetting;
@@ -11,8 +13,12 @@ use App\Models\Message;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Workspace;
+use App\Services\AI\Inbox\InboxAgentException;
+use App\Services\AI\Inbox\InboxAgentOrchestrator;
+use App\Services\AI\Inbox\InboxAgentResult;
 use App\Services\Feature\FeatureAccessService;
 use App\Support\Tenancy\WorkspaceContext;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AIService
@@ -22,13 +28,14 @@ class AIService
         private readonly FeatureAccessService $featureAccess,
         private readonly AiSafety $safety,
         private readonly AiUsageAccountant $usageAccountant,
+        private readonly InboxAgentOrchestrator $inboxAgentOrchestrator,
     ) {}
 
     public function generateReply(Conversation $conversation, Message $message): string
     {
         $workspace = Workspace::query()->find($conversation->workspace_id);
         if (! $workspace) {
-            throw \App\Exceptions\MissingWorkspaceContextException::forQuery(Conversation::class);
+            throw MissingWorkspaceContextException::forQuery(Conversation::class);
         }
 
         return app(WorkspaceContext::class)->runFor($workspace, function () use ($conversation, $message, $workspace): string {
@@ -37,17 +44,81 @@ class AIService
             $this->featureAccess->assertWithinLimit($workspace, 'ai_usage', 1);
             $this->featureAccess->assertWithinLimit($workspace, 'ai_tokens', 256);
 
-        $setting = AiSetting::withoutGlobalScopes()
+            $setting = $this->resolveSetting($conversation);
+
+            if ($this->inboxAgentEnabled()) {
+                try {
+                    $agentResult = $this->inboxAgentOrchestrator->run($workspace, $conversation, $message, $setting);
+
+                    if ($agentResult->isSuccessful()) {
+                        return $this->finalizeGeneration($workspace, $conversation, $message, $agentResult, $setting);
+                    }
+
+                    $this->writeAgentFailureLog($conversation, $message, $setting, $agentResult);
+
+                    if ($this->inboxAgentFallbackEnabled()) {
+                        Log::warning('inbox.agent.fallback', [
+                            'conversation_id' => $conversation->id,
+                            'message_id' => $message->exists ? $message->id : null,
+                            'reason' => $agentResult->failureReason ?? 'agent_failed',
+                            'iterations' => $agentResult->iterations,
+                        ]);
+
+                        return $this->finalizeLegacyGeneration($workspace, $conversation, $message, $setting, [
+                            'inbox_agent_fallback' => true,
+                            'inbox_agent_failure' => $agentResult->failureReason,
+                        ]);
+                    }
+
+                    return $this->controlledAgentFailureMessage();
+                } catch (InboxAgentException $exception) {
+                    $this->writeAgentExceptionLog($conversation, $message, $setting, $exception);
+
+                    if ($this->inboxAgentFallbackEnabled()) {
+                        Log::warning('inbox.agent.fallback', [
+                            'conversation_id' => $conversation->id,
+                            'message_id' => $message->exists ? $message->id : null,
+                            'reason' => $exception->getMessage(),
+                        ]);
+
+                        return $this->finalizeLegacyGeneration($workspace, $conversation, $message, $setting, [
+                            'inbox_agent_fallback' => true,
+                            'inbox_agent_failure' => $exception->getMessage(),
+                        ]);
+                    }
+
+                    return $this->controlledAgentFailureMessage();
+                }
+            }
+
+            return $this->finalizeLegacyGeneration($workspace, $conversation, $message, $setting);
+        });
+    }
+
+    private function resolveSetting(Conversation $conversation): AiSetting
+    {
+        return AiSetting::withoutGlobalScopes()
             ->where('workspace_id', $conversation->workspace_id)
             ->first() ?? new AiSetting([
-            'name' => 'AI Assistant',
-            'instructions' => 'كن مساعدًا مهذبًا ومختصرًا.',
-            'provider' => config('ai.default_provider', 'google_ai_studio'),
-            'model' => $this->defaultModel(config('ai.default_provider', 'google_ai_studio')),
-            'temperature' => $this->defaultTemperature(config('ai.default_provider', 'google_ai_studio')),
-            'max_tokens' => $this->defaultMaxTokens(config('ai.default_provider', 'google_ai_studio')),
-        ]);
+                'name' => 'AI Assistant',
+                'instructions' => 'كن مساعدًا مهذبًا ومختصرًا.',
+                'provider' => config('ai.default_provider', 'google_ai_studio'),
+                'model' => $this->defaultModel(config('ai.default_provider', 'google_ai_studio')),
+                'temperature' => $this->defaultTemperature(config('ai.default_provider', 'google_ai_studio')),
+                'max_tokens' => $this->defaultMaxTokens(config('ai.default_provider', 'google_ai_studio')),
+            ]);
+    }
 
+    /**
+     * @param  array<string, mixed>  $logExtra
+     */
+    private function finalizeLegacyGeneration(
+        Workspace $workspace,
+        Conversation $conversation,
+        Message $message,
+        AiSetting $setting,
+        array $logExtra = [],
+    ): string {
         $providerName = $this->safety->resolveProvider($setting->provider);
         $provider = $this->providerManager->resolve($providerName);
         $model = $this->safety->resolveModel($providerName, $setting->model);
@@ -92,17 +163,17 @@ class AIService
             ],
             [
                 'role' => 'user',
-                'content' => $userContent,
+                'content' => $this->safety->wrapUntrustedUserContent($userContent),
             ],
         ];
 
-        $logMeta = $this->safety->logMetadata($providerName, $model, mb_strlen($userContent), 'pending', [
+        $logMeta = $this->safety->logMetadata($providerName, $model, mb_strlen($userContent), 'pending', array_merge([
             'product_names' => array_values(array_filter(array_map(
                 static fn (array $row): string => (string) ($row['name'] ?? ''),
                 $products
             ))),
             'conversation_id' => $conversation->id,
-        ]);
+        ], $logExtra));
 
         try {
             $result = $provider->generate(
@@ -116,25 +187,146 @@ class AIService
             $reply = $this->safety->sanitizeReply((string) ($result['content'] ?? '')) ?: 'تعذر إنشاء رد مناسب حالياً.';
 
             $this->writeLog($conversation, $message, $logMeta, 'success', $tokensUsed, $messages, $result['raw'] ?? []);
-
-            $usageEventKey = 'aiservice:'.$conversation->id.':'.($message->exists ? (string) $message->id : 'ephemeral:'.sha1($userContent));
-            if ($this->usageAccountant->claim((int) $workspace->id, $usageEventKey)) {
-                $this->featureAccess->consumeUsage($workspace, 'ai_usage', 1, enforce: true);
-                if ($tokensUsed > 0) {
-                    $this->featureAccess->consumeUsage($workspace, 'ai_tokens', $tokensUsed, enforce: true);
-                }
-            }
-            UpdateAIUsage::dispatch($workspace->id, 0, $usageEventKey);
+            $this->recordUsage($workspace, $conversation, $message, $userContent, $tokensUsed);
 
             return $reply;
-        } catch (FeatureNotAvailableException|\App\Exceptions\UsageLimitExceededException $exception) {
+        } catch (FeatureNotAvailableException|UsageLimitExceededException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
             $this->writeLog($conversation, $message, $logMeta, 'failed', 0, $messages, [], $exception->getMessage());
 
             return 'تعذر إنشاء الرد الآن. حاول مرة أخرى لاحقًا.';
         }
-        });
+    }
+
+    private function finalizeGeneration(
+        Workspace $workspace,
+        Conversation $conversation,
+        Message $message,
+        InboxAgentResult $agentResult,
+        AiSetting $setting,
+    ): string {
+        $providerName = $this->safety->resolveProvider($setting->provider);
+        $model = $this->safety->resolveModel($providerName, $setting->model);
+        $userContent = $this->safety->truncateInput((string) ($message->content ?? ''));
+
+        $logMeta = $this->safety->logMetadata($providerName, $model, mb_strlen($userContent), 'pending', array_merge(
+            $agentResult->metadata,
+            [
+                'agent_status' => $agentResult->status,
+            ],
+        ));
+
+        $this->writeLog(
+            $conversation,
+            $message,
+            $logMeta,
+            'success',
+            (int) ($agentResult->tokensUsed ?? 0),
+            $agentResult->messages,
+            $agentResult->raw,
+        );
+        $this->recordUsage($workspace, $conversation, $message, $userContent, (int) ($agentResult->tokensUsed ?? 0));
+
+        return $agentResult->reply;
+    }
+
+    private function writeAgentFailureLog(
+        Conversation $conversation,
+        Message $message,
+        AiSetting $setting,
+        InboxAgentResult $agentResult,
+    ): void {
+        $providerName = $this->safety->resolveProvider($setting->provider);
+        $model = $this->safety->resolveModel($providerName, $setting->model);
+        $userContent = $this->safety->truncateInput((string) ($message->content ?? ''));
+
+        $logMeta = $this->safety->logMetadata($providerName, $model, mb_strlen($userContent), 'pending', array_merge(
+            $agentResult->metadata,
+            [
+                'agent_status' => 'failed',
+                'failure_reason' => $agentResult->failureReason,
+            ],
+        ));
+
+        if ($agentResult->tokensUsed === null) {
+            $logMeta['agent_tokens_unknown'] = true;
+        }
+
+        $this->writeLog(
+            $conversation,
+            $message,
+            $logMeta,
+            'failed',
+            (int) ($agentResult->tokensUsed ?? 0),
+            $agentResult->messages,
+            [],
+            $agentResult->failureReason,
+        );
+    }
+
+    private function writeAgentExceptionLog(
+        Conversation $conversation,
+        Message $message,
+        AiSetting $setting,
+        InboxAgentException $exception,
+    ): void {
+        $providerName = $this->safety->resolveProvider($setting->provider);
+        $model = $this->safety->resolveModel($providerName, $setting->model);
+        $userContent = $this->safety->truncateInput((string) ($message->content ?? ''));
+
+        $logMeta = $this->safety->logMetadata($providerName, $model, mb_strlen($userContent), 'pending', [
+            'inbox_agent' => true,
+            'agent_status' => 'failed',
+            'failure_reason' => $exception->getMessage(),
+            'provider' => $providerName,
+            'model' => $model,
+            'conversation_id' => $conversation->id,
+            'agent_tokens_unknown' => true,
+        ]);
+
+        $this->writeLog(
+            $conversation,
+            $message,
+            $logMeta,
+            'failed',
+            0,
+            [],
+            [],
+            $exception->getMessage(),
+        );
+    }
+
+    /**
+     * User-visible message when the Inbox agent fails and legacy fallback is disabled.
+     */
+    private function controlledAgentFailureMessage(): string
+    {
+        return 'تعذر إنشاء الرد الآن. حاول مرة أخرى لاحقًا.';
+    }
+
+    /**
+     * Records plan usage once per inbound message. Retries and agent→legacy fallback
+     * share the same event key so internal consumption cannot double-bill.
+     *
+     * Note: a failed provider HTTP call may still consume vendor tokens even when
+     * {@see InboxAgentResult::$tokensUsed} is null; we only bill tokens reported on success.
+     */
+    private function recordUsage(
+        Workspace $workspace,
+        Conversation $conversation,
+        Message $message,
+        string $userContent,
+        int $tokensUsed,
+    ): void {
+        $usageEventKey = 'aiservice:'.$conversation->id.':'.($message->exists ? (string) $message->id : 'ephemeral:'.sha1($userContent));
+        if ($this->usageAccountant->claim((int) $workspace->id, $usageEventKey)) {
+            $this->featureAccess->consumeUsage($workspace, 'ai_usage', 1, enforce: true);
+            if ($tokensUsed > 0) {
+                $this->featureAccess->consumeUsage($workspace, 'ai_tokens', $tokensUsed, enforce: true);
+            }
+        }
+        UpdateAIUsage::dispatch($workspace->id, 0, $usageEventKey);
     }
 
     /**
@@ -212,6 +404,16 @@ class AIService
                 message: __('ميزة الذكاء الاصطناعي غير متاحة في باقتك الحالية.'),
             );
         }
+    }
+
+    private function inboxAgentEnabled(): bool
+    {
+        return (bool) config('ai.inbox_agent.enabled', true);
+    }
+
+    private function inboxAgentFallbackEnabled(): bool
+    {
+        return (bool) config('ai.inbox_agent.fallback_enabled', true);
     }
 
     private function defaultModel(string $provider): string

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToWorkspace;
+use Database\Factories\PosMenuItemFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,7 +28,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class PosMenuItem extends WorkspaceScopedModel
 {
-    /** @use HasFactory<\Database\Factories\PosMenuItemFactory> */
+    /** @use HasFactory<PosMenuItemFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
 
     protected function casts(): array
@@ -45,7 +46,8 @@ class PosMenuItem extends WorkspaceScopedModel
     }
 
     /**
-     * Optional link to catalog Product for inventory sync.
+     * Optional inventory mapping to a Finance/Commerce Product.
+     * This is not catalog inheritance: a POS item is not a Finance or Chat product.
      * When null, PosOrderService skips inventory adjustments.
      */
     public function product(): BelongsTo

@@ -27,7 +27,7 @@
 
 @once
 <style>
-    .hs-plan-card { border-radius: 32px; background: #fff; box-shadow: 0 10px 30px rgba(15, 23, 42, .05); }
+    .hs-plan-card { min-width: 0; width: 100%; max-width: 100%; border-radius: 32px; background: #fff; box-shadow: 0 10px 30px rgba(15, 23, 42, .05); }
     .hs-plan-card-current { border: 2px solid #06C2A4; background: #F3FCFA; }
     .hs-plan-card-normal { border: 1px solid #EEF2F6; }
     .hs-plan-icon { width: 44px; height: 44px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; }
@@ -44,7 +44,7 @@
 </style>
 @endonce
 
-<article {{ $attributes->merge(['class' => 'relative flex min-h-[460px] flex-col p-6 '.$cardClass]) }}>
+<article {{ $attributes->merge(['class' => 'relative flex min-h-[380px] min-w-0 w-full flex-col p-6 '.$cardClass]) }}>
     @if($card['is_popular'] || $card['is_recommended'])
         <span class="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full px-4 py-1 text-[11px] font-bold text-white" style="background:#06C2A4;">
             {{ $card['is_recommended'] ? __('الباقة المقترحة') : __('الأكثر شيوعاً') }}

@@ -4,6 +4,8 @@
     $customer = $activeConversation->customer;
     $customerName = $customer?->name ?? 'عميل بدون اسم';
     $initial = mb_substr($customerName, 0, 1);
+    $metadata = is_array($activeConversation->metadata) ? $activeConversation->metadata : [];
+    $humanHandoff = ($metadata['human_handoff'] ?? false) === true;
     $backQuery = array_filter([
         'search' => request('search'),
         'channel' => request('channel'),
@@ -12,7 +14,7 @@
     ], fn ($value) => $value !== null && $value !== '');
 @endphp
 
-<section class="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[#FCFFFE]">
+<section class="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#FCFFFE]">
     <div class="flex items-center gap-3 border-b border-slate-200 bg-white px-3 py-3 sm:px-4">
         <a
             href="{{ route('workspace.conversations.index', $backQuery) }}"
@@ -36,6 +38,9 @@
                     <span>External ID: #{{ $activeConversation->external_id }}</span>
                 @endif
                 <span class="{{ $activeChannelChip['badge'] }} rounded-full px-2 py-0.5 font-semibold">{{ $activeChannelChip['label'] }}</span>
+                @if($humanHandoff)
+                    <span class="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">بانتظار موظف</span>
+                @endif
             </div>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-2">
@@ -71,7 +76,7 @@
         </div>
     </div>
 
-    <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-5">
+    <div id="inbox-message-list" class="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-5">
         @forelse($activeConversation->messages as $message)
             @php
                 $outbound = in_array($message->direction, ['outbound', 'internal_note'], true);
@@ -79,23 +84,62 @@
                     ? 'ملاحظة داخلية'
                     : ($outbound ? 'صادرة' : 'واردة');
             @endphp
-            <div class="flex {{ $outbound ? 'justify-end' : 'justify-start' }}">
+            <div @class([
+                    'hs-inbox-message-row',
+                    $outbound ? 'hs-inbox-message-row--sent' : 'hs-inbox-message-row--received',
+                ]) data-message-id="{{ $message->id }}">
                 <div @class([
-                    'max-w-[82%] rounded-2xl px-4 py-2 shadow-sm',
+                    'hs-inbox-message-bubble max-w-[78%] rounded-2xl px-3 py-1.5 shadow-sm',
                     'rounded-es-md bg-[#DDF6F1] text-slate-900' => $outbound && $message->direction !== 'internal_note',
                     'rounded-es-md border border-amber-200 bg-amber-50 text-slate-900' => $message->direction === 'internal_note',
                     'rounded-ee-md border border-slate-200 bg-white text-slate-800' => ! $outbound,
                 ])>
-                    <p class="text-sm leading-6">{{ $message->content ?: '—' }}</p>
-                    <div class="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
-                        <span>{{ $statusLabel }}</span>
-                        <span>•</span>
-                        <span>{{ $message->created_at?->format('h:i a') }}</span>
-                        @if($message->ai_generated)
-                            <span>•</span>
-                            <span>AI</span>
-                        @endif
-                    </div>
+                    @if($message->attachments && $message->attachments->isNotEmpty())
+                        <div class="mb-2 space-y-2">
+                            @foreach($message->attachments as $attachment)
+                                @php
+                                    $attachmentReady = ($attachment->status ?? 'stored') === \App\Models\MessageAttachment::STATUS_STORED;
+                                @endphp
+                                @if($attachmentReady && $attachment->kind === 'image')
+                                    <img
+                                        src="{{ route('workspace.message-attachments.download', $attachment) }}"
+                                        alt="{{ $attachment->original_name }}"
+                                        class="max-h-56 rounded-lg border border-slate-200 object-cover"
+                                        loading="lazy"
+                                    />
+                                @elseif($attachmentReady && $attachment->kind === 'audio')
+                                    <audio controls preload="none" class="w-full max-w-xs">
+                                        <source src="{{ route('workspace.message-attachments.download', $attachment) }}" type="{{ $attachment->mime_type ?: 'audio/mpeg' }}">
+                                    </audio>
+                                @elseif($attachmentReady && $attachment->kind === 'video')
+                                    <video controls preload="metadata" class="max-h-56 w-full rounded-lg">
+                                        <source src="{{ route('workspace.message-attachments.download', $attachment) }}" type="{{ $attachment->mime_type ?: 'video/mp4' }}">
+                                    </video>
+                                @elseif($attachmentReady)
+                                    <a
+                                        href="{{ route('workspace.message-attachments.download', $attachment) }}"
+                                        class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        <span>{{ $attachment->original_name ?: 'ملف' }}</span>
+                                        @if($attachment->size_bytes)
+                                            <span class="text-slate-400">({{ number_format($attachment->size_bytes / 1024, 1) }} KB)</span>
+                                        @endif
+                                    </a>
+                                @else
+                                    <span class="text-xs text-slate-500">جاري تجهيز المرفق…</span>
+                                @endif
+                            @endforeach
+                        </div>
+                    @endif
+                    <p class="text-sm leading-snug">
+                        {{ $message->content ?: '—' }}
+                        <span class="hs-inbox-message-meta text-slate-500">
+                            <span>{{ $message->created_at?->format('h:i a') }}</span>
+                            @if($message->ai_generated)
+                                <span>· AI</span>
+                            @endif
+                        </span>
+                    </p>
                 </div>
             </div>
         @empty
@@ -106,7 +150,7 @@
     </div>
 
     <div class="border-t border-slate-200 bg-white px-3 py-3 sm:px-4">
-        <form method="POST" action="{{ route('workspace.conversations.messages.store', $activeConversation) }}" class="space-y-2">
+        <form id="inbox-compose-form" method="POST" action="{{ route('workspace.conversations.messages.store', $activeConversation) }}" class="space-y-2">
             @csrf
             <input type="hidden" name="conversation_id" value="{{ $activeConversation->id }}">
             <input type="hidden" name="customer_id" value="{{ $activeConversation->customer_id }}">
@@ -114,7 +158,7 @@
             <div class="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <select name="direction" class="rounded-xl border-slate-300 text-xs focus:border-[#06C2A4] focus:ring-[#06C2A4]">
                     @foreach(['outbound' => 'صادرة', 'inbound' => 'واردة', 'internal_note' => 'ملاحظة'] as $direction => $directionLabel)
-                        <option value="{{ $direction }}">{{ $directionLabel }}</option>
+                        <option value="{{ $direction }}" @selected($direction === 'outbound')>{{ $directionLabel }}</option>
                     @endforeach
                 </select>
                 <select name="message_type" class="rounded-xl border-slate-300 text-xs focus:border-[#06C2A4] focus:ring-[#06C2A4]">

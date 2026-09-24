@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Commerce\SellerAllocation;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Finance\FinanceInvoice;
 use Database\Factories\PaymentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'workspace_id',
@@ -64,6 +66,11 @@ class Payment extends WorkspaceScopedModel
         return $this->billable_type === self::BILLABLE_FINANCE_INVOICE
             && $this->billable_id
             && $this->order_id === null;
+    }
+
+    public function sellerAllocations(): HasMany
+    {
+        return $this->hasMany(SellerAllocation::class);
     }
 
     public function financeInvoice(): ?FinanceInvoice

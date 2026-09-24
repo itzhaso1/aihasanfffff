@@ -11,6 +11,8 @@ class FinanceScaffold extends StatelessWidget {
     this.floatingActionButton,
     this.primaryAction,
     this.showBack = false,
+    this.endDrawer,
+    this.scaffoldKey,
   });
 
   final String title;
@@ -20,10 +22,14 @@ class FinanceScaffold extends StatelessWidget {
   final Widget? floatingActionButton;
   final Widget? primaryAction;
   final bool showBack;
+  final Widget? endDrawer;
+  final GlobalKey<ScaffoldState>? scaffoldKey;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: scaffoldKey,
+      endDrawer: endDrawer,
       floatingActionButton: floatingActionButton,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -17,11 +17,18 @@ abstract class WorkspaceScopedModel extends Model
     {
         $this->ensureWorkspaceContextForBinding();
 
-        $workspaceId = app(WorkspaceContext::class)->workspaceId();
+        $context = app(WorkspaceContext::class);
+        $workspaceId = $context->workspaceId();
         $user = $this->bindingUser();
 
-        if ($user && $workspaceId === null && ! app(WorkspaceContext::class)->isBypassingTenantScope()) {
+        if ($user && $workspaceId === null && ! $context->isBypassingTenantScope() && ! $this->shouldBindWithoutTenantScope()) {
             return null;
+        }
+
+        if ($this->shouldBindWithoutTenantScope()) {
+            return static::withoutGlobalScope('workspace')
+                ->where($field ?? $this->getRouteKeyName(), $value)
+                ->first();
         }
 
         return parent::resolveRouteBinding($value, $field);
@@ -31,11 +38,18 @@ abstract class WorkspaceScopedModel extends Model
     {
         $this->ensureWorkspaceContextForBinding();
 
-        $workspaceId = app(WorkspaceContext::class)->workspaceId();
+        $context = app(WorkspaceContext::class);
+        $workspaceId = $context->workspaceId();
         $user = $this->bindingUser();
 
-        if ($user && $workspaceId === null && ! app(WorkspaceContext::class)->isBypassingTenantScope()) {
+        if ($user && $workspaceId === null && ! $context->isBypassingTenantScope() && ! $this->shouldBindWithoutTenantScope()) {
             return null;
+        }
+
+        if ($this->shouldBindWithoutTenantScope()) {
+            return static::withoutGlobalScope('workspace')
+                ->where($field ?? $this->getRouteKeyName(), $value)
+                ->first();
         }
 
         return parent::resolveChildRouteBinding($childType, $value, $field);
@@ -52,6 +66,10 @@ abstract class WorkspaceScopedModel extends Model
 
     private function ensureWorkspaceContextForBinding(): void
     {
+        if ($this->shouldBindWithoutTenantScope()) {
+            return;
+        }
+
         $context = app(WorkspaceContext::class);
         $user = $this->bindingUser();
 
@@ -76,13 +94,32 @@ abstract class WorkspaceScopedModel extends Model
         }
     }
 
-    private function bindingUser(): mixed
+    private function bindingUser(): ?User
     {
         $request = request();
 
-        return $request->user()
-            ?? Auth::guard('web')->user()
-            ?? Auth::guard('sanctum')->user();
+        foreach ([$request->user(), Auth::guard('web')->user(), Auth::guard('sanctum')->user()] as $user) {
+            if ($user instanceof User) {
+                return $user;
+            }
+        }
+
+        return null;
+    }
+
+    private function shouldBindWithoutTenantScope(): bool
+    {
+        $context = app(WorkspaceContext::class);
+        if ($context->isBypassingTenantScope()) {
+            return true;
+        }
+
+        $request = request();
+        if ($request->is('platform/*') && Auth::guard('platform_admin')->check()) {
+            return true;
+        }
+
+        return false;
     }
 
     protected static function booted(): void

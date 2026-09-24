@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/widgets/hasim_more_menu.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
 
@@ -13,56 +14,74 @@ class HasimShellHeader extends ConsumerWidget implements PreferredSizeWidget {
     this.showBrand = true,
     this.extraActions = const [],
     this.backgroundColor,
+    this.brandLeading,
+    this.toolbarHeight = kToolbarHeight,
   });
 
   final bool showBrand;
   final List<Widget> extraActions;
   final Color? backgroundColor;
+  final Widget? brandLeading;
+  final double toolbarHeight;
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => Size.fromHeight(toolbarHeight);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
     final theme = Theme.of(context);
 
+    final showBrandOnBar = showBrand && HasimLayout.isCompact(context);
+    final brand = showBrandOnBar
+        ? InkWell(
+            onTap: () => context.push('/profile'),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'حاسم',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: theme.colorScheme.primary,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  if (auth.workspace != null && auth.workspaces.length > 1)
+                    Text(
+                      auth.workspace!.name,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+          )
+        : null;
+
     return AppBar(
       automaticallyImplyLeading: false,
       centerTitle: false,
-      titleSpacing: 16,
+      toolbarHeight: toolbarHeight,
+      titleSpacing: 12,
       backgroundColor: backgroundColor,
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: backgroundColor != null ? 0 : null,
-      title: showBrand
-          ? InkWell(
-              onTap: () => context.push('/profile'),
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'حاسم',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                    if (auth.workspace != null && auth.workspaces.length > 1)
-                      Text(
-                        auth.workspace!.name,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
-                ),
-              ),
+      title: brandLeading != null || brand != null
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (brandLeading != null) brandLeading!,
+                if (brandLeading != null && brand != null) const SizedBox(width: 8),
+                if (brand != null) Flexible(child: brand),
+              ],
             )
           : null,
       // في RTL: actions تظهر يسار الشاشة → ⋮

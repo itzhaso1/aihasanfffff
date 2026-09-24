@@ -427,7 +427,7 @@ class FinanceFlutterFeatureParityTest extends TestCase
         ]);
         app(WorkspaceContext::class)->set($workspace);
 
-        foreach (['finance', 'pos', 'products', 'orders', 'customers', 'payments', 'payment_gateway'] as $feature) {
+        foreach (['finance', 'pos', 'products', 'orders', 'customers', 'payments', 'payment_gateway', 'ai'] as $feature) {
             WorkspaceFeatureFlag::withoutGlobalScopes()->updateOrCreate(
                 ['workspace_id' => $workspace->id, 'feature_key' => $feature],
                 ['workspace_id' => $workspace->id, 'feature_key' => $feature, 'enabled' => true, 'source' => 'manual']

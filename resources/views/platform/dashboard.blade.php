@@ -9,6 +9,7 @@
             <div>
                 <h1 class="text-xl font-bold text-gray-900">لوحة المنصة</h1>
                 <p class="mt-1 text-sm text-gray-600">إحصاءات حقيقية فقط — بدون أرقام وهمية.</p>
+                <a href="{{ route('platform.site.edit') }}" class="mt-3 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">تعديل الموقع العام</a>
             </div>
 
             <div class="grid gap-4 md:grid-cols-3">

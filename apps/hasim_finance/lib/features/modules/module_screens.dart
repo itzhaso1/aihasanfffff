@@ -1,12 +1,10 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hasim_finance/core/theme/theme_controllers.dart';
 import 'package:hasim_finance/core/theme/finance_tokens.dart';
 import 'package:hasim_finance/core/layout/finance_layout.dart';
 import 'package:hasim_finance/core/providers/catalog_provider.dart';
@@ -23,6 +21,8 @@ import 'package:hasim_finance/features/shared/paged.dart';
 import 'package:hasim_finance/features/shared/supplier_select.dart';
 import 'package:hasim_finance/features/reports/report_view.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
+
+export 'package:hasim_finance/features/settings/settings_screen.dart';
 
 class PaymentsScreen extends ConsumerStatefulWidget {
   const PaymentsScreen({super.key});
@@ -838,18 +838,26 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 StatusChip(label: c.status ?? '', tone: toneFor(c.status)),
+                if (c.contractNumber != null) InfoRow(label: l.invoiceNumber, value: c.contractNumber),
                 Text('${c.startDate} → ${c.endDate}'),
-                Text(c.value),
+                Text('${c.value} ${c.currency}'),
+                if (c.description != null && c.description!.isNotEmpty) InfoRow(label: l.description, value: c.description),
+                if (c.paymentTerms != null && c.paymentTerms!.isNotEmpty) InfoRow(label: l.paymentTerms, value: c.paymentTerms),
+                if (c.projectName != null) InfoRow(label: l.project, value: c.projectName),
+                if (c.signatureStatus != null && c.signatureStatus != 'unsigned')
+                  InfoRow(label: l.signContract, value: c.signatureStatus),
                 InfoRow(label: l.notesField, value: c.notes),
                 InfoRow(label: l.terms, value: c.terms),
                 if (c.billingSummary.isNotEmpty)
                   TotalsCard(
-                    subtotal: '${c.billingSummary['invoiced_total'] ?? c.value}',
-                    tax: '${c.billingSummary['tax_total'] ?? '0.00'}',
+                    subtotal: '${c.billingSummary['contract_value'] ?? c.value}',
+                    tax: '${c.billingSummary['invoiced_total'] ?? c.value}',
                     total: '${c.billingSummary['invoiced_total'] ?? c.value}',
                     paid: '${c.billingSummary['paid_total'] ?? ''}',
                     due: '${c.billingSummary['outstanding'] ?? ''}',
                   ),
+                if (c.billingSummary['unbilled'] != null)
+                  InfoRow(label: 'غير مفوتر', value: '${c.billingSummary['unbilled']}'),
                 FormSection(
                   title: l.lines,
                   child: c.items.isEmpty
@@ -861,7 +869,11 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                                 dense: true,
                                 contentPadding: EdgeInsets.zero,
                                 title: Text(item.title ?? item.description ?? ''),
-                                subtitle: Text('${l.quantity}: ${item.quantity} · ${l.price}: ${item.unitPrice}'),
+                                subtitle: Text(
+                                  '${item.itemKind ?? ''} · ${l.quantity}: ${item.quantity} · ${l.price}: ${item.unitPrice}'
+                                  '${item.discount != null && item.discount != '0.00' ? ' · ${l.discount}: ${item.discount}' : ''}'
+                                  '${item.taxRate != null && item.taxRate != '0.00' ? ' · ${l.taxRate}: ${item.taxRate}%' : ''}',
+                                ),
                                 trailing: Text(item.total ?? ''),
                               ),
                           ],
@@ -1015,7 +1027,111 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                 ),
                 Wrap(spacing: 8, children: [
                   if (c.status == 'draft') FilledButton(onPressed: () => context.push('/contracts/${c.id}/edit'), child: Text(l.edit)),
-                  if (c.status == 'draft') FilledButton(onPressed: () async { await ref.read(financeApiProvider).contractAction(c.id, 'activate'); await _load(); }, child: Text(l.signContract)),
+                  if (c.status == 'draft')
+                    FilledButton(
+                      onPressed: () async {
+                        await ref.read(financeApiProvider).contractAction(c.id, 'activate');
+                        await _load();
+                      },
+                      child: const Text('تفعيل العقد'),
+                    ),
+                  if (c.status == 'open' || c.status == 'draft')
+                    OutlinedButton(
+                      onPressed: () async {
+                        String party = 'customer';
+                        final signer = TextEditingController();
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: Text(l.signContract),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                DropdownButtonFormField<String>(
+                                  isExpanded: true,
+                                  // ignore: deprecated_member_use
+                                  value: party,
+                                  items: const [
+                                    DropdownMenuItem(value: 'customer', child: Text('توقيع العميل')),
+                                    DropdownMenuItem(value: 'company', child: Text('توقيع الشركة')),
+                                  ],
+                                  onChanged: (v) => party = v ?? 'customer',
+                                ),
+                                TextField(
+                                  controller: signer,
+                                  decoration: const InputDecoration(labelText: 'اسم الموقّع'),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+                              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.save)),
+                            ],
+                          ),
+                        );
+                        if (ok != true) return;
+                        try {
+                          await ref.read(financeApiProvider).signContract(c.id, {
+                            'party': party,
+                            if (signer.text.trim().isNotEmpty) 'signer_name': signer.text.trim(),
+                          });
+                          await _load();
+                        } catch (e) {
+                          if (context.mounted) showFormError(context, e);
+                        }
+                      },
+                      child: Text(l.signContract),
+                    ),
+                  if (c.status == 'open' || c.status == 'expired')
+                    OutlinedButton(
+                      onPressed: () async {
+                        final start = TextEditingController(text: isoDate());
+                        final end = TextEditingController(text: c.endDate ?? '');
+                        var copySchedules = true;
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => StatefulBuilder(
+                            builder: (ctx, setLocal) => AlertDialog(
+                              title: const Text('تجديد العقد'),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  TextField(controller: start, decoration: InputDecoration(labelText: l.from)),
+                                  TextField(controller: end, decoration: InputDecoration(labelText: l.to)),
+                                  SwitchListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: const Text('نسخ جداول الفوترة'),
+                                    value: copySchedules,
+                                    onChanged: (v) => setLocal(() => copySchedules = v),
+                                  ),
+                                ],
+                              ),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+                                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.save)),
+                              ],
+                            ),
+                          ),
+                        );
+                        if (ok != true) return;
+                        try {
+                          final renewed = await ref.read(financeApiProvider).renewContract(c.id, {
+                            'start_date': start.text.trim(),
+                            if (end.text.trim().isNotEmpty) 'end_date': end.text.trim(),
+                            'copy_schedules': copySchedules,
+                          });
+                          if (context.mounted) context.go('/contracts/${renewed.id}');
+                        } catch (e) {
+                          if (context.mounted) showFormError(context, e);
+                        }
+                      },
+                      child: const Text('تجديد'),
+                    ),
+                  if (ref.watch(authControllerProvider).permissions.invoicesCreate && c.status == 'open')
+                    FilledButton.tonal(
+                      onPressed: () => context.push('/invoices/new?contract_id=${c.id}'),
+                      child: Text(l.newInvoice),
+                    ),
                   if (c.status == 'open') OutlinedButton(onPressed: () async { await ref.read(financeApiProvider).contractAction(c.id, 'close'); await _load(); }, child: Text(l.closeContract)),
                   OutlinedButton(onPressed: () async { await ref.read(financeApiProvider).contractAction(c.id, 'cancel'); await _load(); }, child: Text(l.cancel)),
                   FilledButton.tonal(
@@ -1033,36 +1149,53 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                     onPressed: () async {
                       final title = TextEditingController(text: l.billingSchedule);
                       final start = TextEditingController(text: isoDate());
+                      final end = TextEditingController();
+                      final amount = TextEditingController(text: c.value);
                       String frequency = 'monthly';
                       final occurrences = TextEditingController(text: '12');
+                      var autoIssue = false;
                       final ok = await showDialog<bool>(
                         context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: Text(l.addSchedule),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextField(controller: title, decoration: InputDecoration(labelText: l.fieldName)),
-                              TextField(controller: start, decoration: InputDecoration(labelText: l.from)),
-                              TextField(controller: occurrences, decoration: InputDecoration(labelText: l.generatedCount)),
-                              DropdownButtonFormField(
-                                isExpanded: true,
-                                // ignore: deprecated_member_use
-                                value: frequency,
-                                items: const [
-                                  DropdownMenuItem(value: 'weekly', child: Text('weekly')),
-                                  DropdownMenuItem(value: 'monthly', child: Text('monthly')),
-                                  DropdownMenuItem(value: 'quarterly', child: Text('quarterly')),
-                                  DropdownMenuItem(value: 'yearly', child: Text('yearly')),
+                        builder: (ctx) => StatefulBuilder(
+                          builder: (ctx, setLocal) => AlertDialog(
+                            title: Text(l.addSchedule),
+                            content: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  TextField(controller: title, decoration: InputDecoration(labelText: l.fieldName)),
+                                  TextField(controller: start, decoration: InputDecoration(labelText: l.from)),
+                                  TextField(controller: end, decoration: InputDecoration(labelText: l.to)),
+                                  TextField(controller: amount, decoration: InputDecoration(labelText: l.amount)),
+                                  TextField(controller: occurrences, decoration: InputDecoration(labelText: l.generatedCount)),
+                                  DropdownButtonFormField(
+                                    isExpanded: true,
+                                    // ignore: deprecated_member_use
+                                    value: frequency,
+                                    items: const [
+                                      DropdownMenuItem(value: 'weekly', child: Text('أسبوعي')),
+                                      DropdownMenuItem(value: 'monthly', child: Text('شهري')),
+                                      DropdownMenuItem(value: 'quarterly', child: Text('ربع سنوي')),
+                                      DropdownMenuItem(value: 'semi_annual', child: Text('نصف سنوي')),
+                                      DropdownMenuItem(value: 'yearly', child: Text('سنوي')),
+                                      DropdownMenuItem(value: 'installment', child: Text('دفعات')),
+                                    ],
+                                    onChanged: (v) => setLocal(() => frequency = v ?? 'monthly'),
+                                  ),
+                                  SwitchListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(l.autoIssue),
+                                    value: autoIssue,
+                                    onChanged: (v) => setLocal(() => autoIssue = v),
+                                  ),
                                 ],
-                                onChanged: (v) => frequency = v ?? 'monthly',
                               ),
+                            ),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+                              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.save)),
                             ],
                           ),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
-                            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.save)),
-                          ],
                         ),
                       );
                       if (ok != true) return;
@@ -1071,7 +1204,10 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                           'title': title.text.trim(),
                           'frequency': frequency,
                           'start_date': start.text.trim(),
+                          if (end.text.trim().isNotEmpty) 'end_date': end.text.trim(),
+                          if (amount.text.trim().isNotEmpty) 'amount': amount.text.trim(),
                           'total_occurrences': int.tryParse(occurrences.text.trim()) ?? 12,
+                          'auto_issue': autoIssue,
                         });
                         await _load();
                       } catch (e) {
@@ -1083,147 +1219,6 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                 ]),
               ],
             ),
-    );
-  }
-}
-
-class ContractFormScreen extends ConsumerStatefulWidget {
-  const ContractFormScreen({super.key, this.id});
-  final int? id;
-  @override
-  ConsumerState<ContractFormScreen> createState() => _ContractFormScreenState();
-}
-
-class _ContractFormScreenState extends ConsumerState<ContractFormScreen> {
-  final _title = TextEditingController();
-  int? _customerId;
-  final _value = TextEditingController(text: '0');
-  final _currency = TextEditingController(text: 'SAR');
-  final _start = TextEditingController(text: isoDate());
-  final _end = TextEditingController();
-  final _notes = TextEditingController();
-  final _terms = TextEditingController();
-  final List<PlatformFile> _pendingFiles = [];
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.id != null) {
-      ref.read(financeApiProvider).contract(widget.id!).then((c) {
-        _title.text = c.title ?? '';
-        _customerId = c.customerId;
-        _value.text = c.value;
-        _currency.text = c.currency;
-        _start.text = c.startDate ?? isoDate();
-        _end.text = c.endDate ?? '';
-        _notes.text = c.notes ?? '';
-        _terms.text = c.terms ?? '';
-        if (mounted) setState(() {});
-      }).catchError((Object error) {
-        if (mounted) showApiError(context, error);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _title.dispose();
-    _value.dispose();
-    _currency.dispose();
-    _start.dispose();
-    _end.dispose();
-    _notes.dispose();
-    _terms.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    return FinanceScaffold(
-        title: l.contracts,
-        showBack: true,
-        body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          FormSection(
-            title: l.headerSection,
-            child: Column(
-              children: [
-                TextField(controller: _title, decoration: InputDecoration(labelText: l.fieldName)),
-                CustomerSelectField(
-                  selectedId: _customerId,
-                  onSelected: (id) => setState(() => _customerId = id),
-                  compact: true,
-                ),
-                FormGrid(children: [
-                  TextField(controller: _value, decoration: InputDecoration(labelText: l.amount)),
-                  TextField(controller: _currency, decoration: InputDecoration(labelText: l.currency)),
-                  TextField(controller: _start, decoration: InputDecoration(labelText: l.from)),
-                  TextField(controller: _end, decoration: InputDecoration(labelText: l.to)),
-                ]),
-              ],
-            ),
-          ),
-          TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 2),
-          TextField(controller: _terms, decoration: InputDecoration(labelText: l.terms), maxLines: 2),
-          FormSection(
-            title: l.attachment,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final file in _pendingFiles)
-                  ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(file.name)),
-                OutlinedButton(
-                  onPressed: () async {
-                    final result = await FilePicker.platform.pickFiles(
-                      allowMultiple: true,
-                      type: FileType.custom,
-                      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'],
-                    );
-                    if (result == null || result.files.isEmpty) return;
-                    setState(() => _pendingFiles.addAll(result.files));
-                  },
-                  child: Text(l.attachment),
-                ),
-              ],
-            ),
-          ),
-          FilledButton(
-            onPressed: _customerId == null
-                ? null
-                : () async {
-                    try {
-                      final saved = await ref.read(financeApiProvider).saveContract({
-                        'title': _title.text.trim(),
-                        'customer_id': _customerId,
-                        'value': _value.text.trim(),
-                        'currency': _currency.text.trim(),
-                        'start_date': _start.text.trim(),
-                        'end_date': _end.text.trim(),
-                        'notes': _notes.text.trim(),
-                        'terms': _terms.text.trim(),
-                      }, id: widget.id);
-                      if (_pendingFiles.isNotEmpty) {
-                        final form = FormData();
-                        for (final file in _pendingFiles) {
-                          final part = await multipartFromPicked(file);
-                          if (part == null) continue;
-                          form.files.add(MapEntry('attachments[]', part));
-                        }
-                        if (form.files.isNotEmpty) {
-                          await ref.read(financeApiProvider).uploadContractAttachments(saved.id, form);
-                        }
-                      }
-                      if (context.mounted) context.go('/contracts/${saved.id}');
-                    } catch (e) {
-                      if (context.mounted) showFormError(context, e);
-                    }
-                  },
-            child: Text(l.save),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1830,8 +1825,11 @@ class _PurchaseDetailScreenState extends ConsumerState<PurchaseDetailScreen> {
                   FilledButton.tonal(
                     onPressed: () async {
                       try {
-                        final bytes = await ref.read(financeApiProvider).pdf('purchases/${invoice.id}/pdf');
-                        await saveAndOpenBytes(bytes, 'purchase-${invoice.invoiceNumber}.pdf');
+                        final bytes = await ref.read(financeApiProvider).pdf(
+                          'purchases/${invoice.id}/pdf',
+                          query: invoice.pdfDownloadQuery,
+                        );
+                        await saveAndOpenBytes(bytes, invoice.pdfLocalFileName);
                       } catch (e) {
                         if (context.mounted) showApiError(context, e);
                       }
@@ -2255,509 +2253,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class SettingsScreen extends ConsumerStatefulWidget {
-  const SettingsScreen({super.key});
-  @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final _host = TextEditingController();
-  final _company = TextEditingController();
-  final _companyAr = TextEditingController();
-  final _vat = TextEditingController();
-  final _cr = TextEditingController();
-  final _phone = TextEditingController();
-  final _email = TextEditingController();
-  final _website = TextEditingController();
-  final _address = TextEditingController();
-  final _building = TextEditingController();
-  final _street = TextEditingController();
-  final _district = TextEditingController();
-  final _city = TextEditingController();
-  final _postal = TextEditingController();
-  final _currency = TextEditingController();
-  final _vatRate = TextEditingController();
-  final _terms = TextEditingController();
-  final _prefix = TextEditingController();
-  final _color = TextEditingController(text: '#06C2A4');
-  final _footer = TextEditingController();
-  final _country = TextEditingController(text: 'SA');
-  final _taxName = TextEditingController();
-  final _taxCode = TextEditingController();
-  final _taxPct = TextEditingController(text: '15');
-  String _taxType = 'standard';
-  bool _taxDefault = false;
-  bool _taxActive = true;
-  bool _allowManual = false;
-  final _treasuryName = TextEditingController();
-  final _iban = TextEditingController();
-  final _bankName = TextEditingController();
-  final _accountNumber = TextEditingController();
-  final _openingBal = TextEditingController();
-  final _currentBal = TextEditingController();
-  String _treasuryType = 'bank';
-  int? _linkedAccountId;
-  Map<String, dynamic>? _settings;
-  Uint8List? _logoBytes;
-  bool _logoBusy = false;
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _host.text = ref.read(prefsStoreProvider).apiBaseOverride ?? '';
-    _reloadSettings();
-  }
-
-  Future<void> _reloadSettings() async {
-    try {
-      final next = await ref.read(financeApiProvider).settings();
-      _applySettings(next);
-      if (mounted) setState(() { _loading = false; _error = null; });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = e is ApiException ? e.message : e.toString();
-        });
-      }
-    }
-  }
-
-  List<Map<String, dynamic>> _maps(String key) {
-    final raw = _settings?[key];
-    if (raw is! List) return const [];
-    return [
-      for (final row in raw)
-        if (row is Map) Map<String, dynamic>.from(row),
-    ];
-  }
-
-  void _applySettings(Map<String, dynamic> s) {
-    _company.text = '${s['company_name'] ?? ''}';
-    _companyAr.text = '${s['company_name_ar'] ?? ''}';
-    _vat.text = '${s['vat_number'] ?? ''}';
-    _cr.text = '${s['commercial_registration'] ?? ''}';
-    _phone.text = '${s['phone'] ?? ''}';
-    _email.text = '${s['email'] ?? ''}';
-    _website.text = '${s['website'] ?? ''}';
-    _address.text = '${s['address_line'] ?? ''}';
-    _building.text = '${s['building_number'] ?? ''}';
-    _street.text = '${s['street'] ?? ''}';
-    _district.text = '${s['district'] ?? ''}';
-    _city.text = '${s['city'] ?? ''}';
-    _postal.text = '${s['postal_code'] ?? ''}';
-    _currency.text = '${s['currency'] ?? 'SAR'}';
-    _vatRate.text = '${s['default_vat_rate'] ?? ''}';
-    _terms.text = '${s['default_payment_terms'] ?? ''}';
-    _prefix.text = '${s['invoice_prefix'] ?? ''}';
-    _color.text = '${s['invoice_primary_color'] ?? '#06C2A4'}';
-    _footer.text = '${s['invoice_footer_text'] ?? ''}';
-    _country.text = '${s['country_code'] ?? 'SA'}';
-    _allowManual = s['allow_manual_invoice_numbers'] == true;
-    if (mounted) setState(() => _settings = s);
-    _loadLogo(s['has_logo'] == true);
-  }
-
-  Future<void> _loadLogo(bool hasLogo) async {
-    if (!hasLogo) {
-      if (mounted) setState(() => _logoBytes = null);
-      return;
-    }
-    try {
-      final bytes = await ref.read(financeApiProvider).downloadCompanyLogo();
-      if (mounted) setState(() => _logoBytes = bytes);
-    } catch (_) {
-      if (mounted) setState(() => _logoBytes = null);
-    }
-  }
-
-  @override
-  void dispose() {
-    _host.dispose();
-    _company.dispose();
-    _companyAr.dispose();
-    _vat.dispose();
-    _cr.dispose();
-    _phone.dispose();
-    _email.dispose();
-    _website.dispose();
-    _address.dispose();
-    _building.dispose();
-    _street.dispose();
-    _district.dispose();
-    _city.dispose();
-    _postal.dispose();
-    _currency.dispose();
-    _vatRate.dispose();
-    _terms.dispose();
-    _prefix.dispose();
-    _color.dispose();
-    _footer.dispose();
-    _country.dispose();
-    _taxName.dispose();
-    _taxCode.dispose();
-    _taxPct.dispose();
-    _treasuryName.dispose();
-    _iban.dispose();
-    _bankName.dispose();
-    _accountNumber.dispose();
-    _openingBal.dispose();
-    _currentBal.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    final auth = ref.watch(authControllerProvider);
-    return FinanceScaffold(
-        title: l.settings,
-        showBack: true,
-        body: FinancePage(
-        child: AsyncBody(
-          loading: _loading,
-          error: _error,
-          onRetry: _reloadSettings,
-          child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          ListTile(contentPadding: EdgeInsets.zero, title: Text(l.workspace), subtitle: Text(auth.workspace?.name ?? '-')),
-          if (auth.workspaces.length > 1)
-            DropdownButtonFormField<int>(
-              isExpanded: true,
-              // ignore: deprecated_member_use
-              value: auth.workspace?.id,
-              items: [
-                for (final w in auth.workspaces) DropdownMenuItem(value: w.id, child: Text(w.name)),
-              ],
-              onChanged: (id) {
-                if (id != null) ref.read(authControllerProvider.notifier).switchWorkspace(id);
-              },
-            ),
-          TextField(controller: _host, decoration: InputDecoration(labelText: l.apiHost)),
-          FilledButton.tonal(
-            onPressed: () async {
-              await ref.read(prefsStoreProvider).setApiBaseOverride(_host.text.trim().isEmpty ? null : _host.text.trim());
-              ref.read(apiClientProvider).updateBaseUrl(_host.text.trim().isEmpty ? 'http://127.0.0.1:8000' : _host.text.trim());
-              if (context.mounted) showSnack(context, l.success);
-            },
-            child: Text(l.save),
-          ),
-          const Divider(),
-          Text(l.language, style: Theme.of(context).textTheme.titleMedium),
-          Wrap(spacing: 8, children: [
-            ChoiceChip(label: Text(l.arabic), selected: Localizations.localeOf(context).languageCode == 'ar', onSelected: (_) => ref.read(localeProvider.notifier).setLocale('ar')),
-            ChoiceChip(label: Text(l.english), selected: Localizations.localeOf(context).languageCode == 'en', onSelected: (_) => ref.read(localeProvider.notifier).setLocale('en')),
-          ]),
-          const SizedBox(height: 8),
-          Text(l.theme, style: Theme.of(context).textTheme.titleMedium),
-          Wrap(spacing: 8, children: [
-            ChoiceChip(label: const Text('System'), selected: ref.watch(themeModeProvider) == ThemeMode.system, onSelected: (_) => ref.read(themeModeProvider.notifier).setMode(ThemeMode.system)),
-            ChoiceChip(label: const Text('Light'), selected: ref.watch(themeModeProvider) == ThemeMode.light, onSelected: (_) => ref.read(themeModeProvider.notifier).setMode(ThemeMode.light)),
-            ChoiceChip(label: const Text('Dark'), selected: ref.watch(themeModeProvider) == ThemeMode.dark, onSelected: (_) => ref.read(themeModeProvider.notifier).setMode(ThemeMode.dark)),
-          ]),
-          if (_settings != null) ...[
-            FormSection(
-              title: l.headerSection,
-              child: FormGrid(children: [
-                TextField(controller: _company, decoration: InputDecoration(labelText: l.company)),
-                TextField(controller: _companyAr, decoration: InputDecoration(labelText: l.companyNameAr)),
-                TextField(controller: _vat, decoration: InputDecoration(labelText: l.vatNumber)),
-                TextField(controller: _cr, decoration: InputDecoration(labelText: l.crNumber)),
-                TextField(controller: _phone, decoration: InputDecoration(labelText: l.phone)),
-                TextField(controller: _email, decoration: InputDecoration(labelText: l.email)),
-                TextField(controller: _website, decoration: InputDecoration(labelText: l.website)),
-              ]),
-            ),
-            if (auth.permissions.settings)
-              FormSection(
-                title: l.companyLogo,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_logoBytes != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Image.memory(_logoBytes!, height: 72, fit: BoxFit.contain),
-                      )
-                    else
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Text(l.empty, style: Theme.of(context).textTheme.bodySmall),
-                      ),
-                    if (_logoBusy) const LinearProgressIndicator(),
-                    Wrap(spacing: 8, runSpacing: 8, children: [
-                      FilledButton.tonal(
-                        onPressed: _logoBusy
-                            ? null
-                            : () async {
-                                final result = await FilePicker.platform.pickFiles(type: FileType.image);
-                                if (result == null || result.files.isEmpty) return;
-                                final part = await multipartFromPicked(result.files.first);
-                                if (part == null) return;
-                                setState(() => _logoBusy = true);
-                                try {
-                                  final form = FormData();
-                                  form.files.add(MapEntry('logo', part));
-                                  final next = await ref.read(financeApiProvider).uploadCompanyLogo(form);
-                                  _applySettings(next);
-                                  if (context.mounted) showSnack(context, l.success);
-                                } catch (e) {
-                                  if (context.mounted) showApiError(context, e);
-                                } finally {
-                                  if (mounted) setState(() => _logoBusy = false);
-                                }
-                              },
-                        child: Text(_logoBytes == null ? l.chooseLogo : l.replaceLogo),
-                      ),
-                      if (_logoBytes != null)
-                        OutlinedButton(
-                          onPressed: _logoBusy
-                              ? null
-                              : () => confirmAndRun(context, () async {
-                                    setState(() => _logoBusy = true);
-                                    try {
-                                      final next = await ref.read(financeApiProvider).removeCompanyLogo();
-                                      _applySettings(next);
-                                    } finally {
-                                      if (mounted) setState(() => _logoBusy = false);
-                                    }
-                                  }),
-                          child: Text(l.removeLogo),
-                        ),
-                    ]),
-                  ],
-                ),
-              ),
-            FormSection(
-              title: l.addressLine,
-              child: FormGrid(children: [
-                TextField(controller: _address, decoration: InputDecoration(labelText: l.addressLine)),
-                TextField(controller: _building, decoration: InputDecoration(labelText: l.buildingNumber)),
-                TextField(controller: _street, decoration: InputDecoration(labelText: l.street)),
-                TextField(controller: _district, decoration: InputDecoration(labelText: l.district)),
-                TextField(controller: _city, decoration: InputDecoration(labelText: l.city)),
-                TextField(controller: _postal, decoration: InputDecoration(labelText: l.postalCode)),
-                TextField(controller: _country, decoration: InputDecoration(labelText: l.countryCode)),
-              ]),
-            ),
-            FormSection(
-              title: l.datesSection,
-              child: FormGrid(children: [
-                TextField(controller: _currency, decoration: InputDecoration(labelText: l.currency)),
-                TextField(controller: _vatRate, decoration: InputDecoration(labelText: l.defaultVatRate)),
-                TextField(controller: _terms, decoration: InputDecoration(labelText: l.paymentTerms)),
-                TextField(controller: _prefix, decoration: InputDecoration(labelText: l.invoicePrefix)),
-                TextField(controller: _color, decoration: InputDecoration(labelText: l.invoiceColor)),
-              ]),
-            ),
-            TextField(controller: _footer, decoration: InputDecoration(labelText: l.invoiceFooter), maxLines: 2),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(l.allowManualNumbers),
-              value: _allowManual,
-              onChanged: (v) => setState(() => _allowManual = v),
-            ),
-            InfoRow(label: l.zatcaMode, value: '${_settings!['zatca_integration_mode'] ?? ''}'),
-            if (auth.permissions.settings)
-              FilledButton.tonal(
-                onPressed: () async {
-                  try {
-                    final next = await ref.read(financeApiProvider).updateSettings({
-                      'company_name': _company.text.trim(),
-                      'company_name_ar': _companyAr.text.trim(),
-                      'vat_number': _vat.text.trim(),
-                      'commercial_registration': _cr.text.trim(),
-                      'phone': _phone.text.trim(),
-                      'email': _email.text.trim(),
-                      'website': _website.text.trim(),
-                      'address_line': _address.text.trim(),
-                      'building_number': _building.text.trim(),
-                      'street': _street.text.trim(),
-                      'district': _district.text.trim(),
-                      'city': _city.text.trim(),
-                      'postal_code': _postal.text.trim(),
-                      'country_code': _country.text.trim(),
-                      'currency': _currency.text.trim(),
-                      'default_vat_rate': _vatRate.text.trim(),
-                      'default_payment_terms': _terms.text.trim(),
-                      'invoice_prefix': _prefix.text.trim(),
-                      'invoice_primary_color': _color.text.trim(),
-                      'invoice_footer_text': _footer.text.trim(),
-                      'allow_manual_invoice_numbers': _allowManual,
-                    });
-                    _applySettings(next);
-                    if (context.mounted) showSnack(context, l.success);
-                  } catch (e) {
-                    if (context.mounted) showApiError(context, e);
-                  }
-                },
-                child: Text(l.save),
-              ),
-            if (auth.permissions.settings) ...[
-              const SizedBox(height: 12),
-              FormSection(
-                title: l.taxRates,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_maps('tax_rates').isEmpty)
-                      Text(l.empty, style: Theme.of(context).textTheme.bodySmall),
-                    for (final rate in _maps('tax_rates'))
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text('${rate['name'] ?? ''}'),
-                        subtitle: Text('${rate['code'] ?? ''} · ${rate['type'] ?? ''} · ${rate['rate'] ?? ''}%'),
-                        trailing: Text([
-                          if (rate['is_default'] == true) l.isDefault,
-                          if (rate['is_active'] == true) l.isActive,
-                        ].join(' · ')),
-                      ),
-                    const SizedBox(height: 8),
-                    FormGrid(children: [
-                      TextField(controller: _taxName, decoration: InputDecoration(labelText: l.fieldName)),
-                      TextField(controller: _taxCode, decoration: InputDecoration(labelText: l.sku)),
-                      TextField(controller: _taxPct, decoration: InputDecoration(labelText: l.taxRate)),
-                      DropdownButtonFormField(
-                        isExpanded: true,
-                        // ignore: deprecated_member_use
-                        value: _taxType,
-                        decoration: InputDecoration(labelText: l.taxProfile),
-                        items: [
-                          DropdownMenuItem(value: 'standard', child: Text(l.standardTax)),
-                          DropdownMenuItem(value: 'zero_rated', child: Text(l.zeroRated)),
-                          DropdownMenuItem(value: 'exempt', child: Text(l.exempt)),
-                          DropdownMenuItem(value: 'out_of_scope', child: Text(l.outOfScope)),
-                        ],
-                        onChanged: (v) => setState(() => _taxType = v ?? 'standard'),
-                      ),
-                    ]),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l.isDefault),
-                      value: _taxDefault,
-                      onChanged: (v) => setState(() => _taxDefault = v),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l.isActive),
-                      value: _taxActive,
-                      onChanged: (v) => setState(() => _taxActive = v),
-                    ),
-                    FilledButton.tonal(
-                      onPressed: () async {
-                        try {
-                          await ref.read(financeApiProvider).storeTaxRate({
-                            'name': _taxName.text.trim(),
-                            'code': _taxCode.text.trim(),
-                            'type': _taxType,
-                            'rate': _taxPct.text.trim(),
-                            'is_default': _taxDefault,
-                            'is_active': _taxActive,
-                          });
-                          await _reloadSettings();
-                          if (context.mounted) showSnack(context, l.success);
-                        } catch (e) {
-                          if (context.mounted) showFormError(context, e);
-                        }
-                      },
-                      child: Text(l.createTaxRate),
-                    ),
-                  ],
-                ),
-              ),
-              FormSection(
-                title: l.createTreasuryAccount,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_maps('treasury_accounts').isEmpty)
-                      Text(l.empty, style: Theme.of(context).textTheme.bodySmall),
-                    for (final account in _maps('treasury_accounts'))
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text('${account['name'] ?? ''}'),
-                        subtitle: Text([
-                          account['type'] == 'cash' ? l.cashAccount : l.bankAccount,
-                          '${account['current_balance'] ?? '0.00'} ${account['currency'] ?? ''}',
-                          if ((account['linked_account_code'] ?? '').toString().isNotEmpty)
-                            '${account['linked_account_code']} ${account['linked_account_name'] ?? ''}',
-                        ].join(' · ')),
-                      ),
-                    const SizedBox(height: 8),
-                    FormGrid(children: [
-                      TextField(controller: _treasuryName, decoration: InputDecoration(labelText: l.fieldName)),
-                      DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        // ignore: deprecated_member_use
-                        value: _treasuryType,
-                        decoration: InputDecoration(labelText: l.accountType),
-                        items: [
-                          DropdownMenuItem(value: 'cash', child: Text(l.cashAccount)),
-                          DropdownMenuItem(value: 'bank', child: Text(l.bankAccount)),
-                        ],
-                        onChanged: (v) => setState(() => _treasuryType = v ?? 'bank'),
-                      ),
-                      TextField(controller: _openingBal, decoration: InputDecoration(labelText: l.openingBalance)),
-                      TextField(controller: _currentBal, decoration: InputDecoration(labelText: l.currentBalance)),
-                      TextField(controller: _bankName, decoration: InputDecoration(labelText: l.bankName)),
-                      TextField(controller: _iban, decoration: InputDecoration(labelText: l.iban)),
-                      TextField(controller: _accountNumber, decoration: InputDecoration(labelText: l.accountNumber)),
-                      OptionPicker(
-                        label: l.linkedLedgerAccount,
-                        options: [
-                          for (final account in _maps('finance_accounts'))
-                            NamedOption(
-                              id: int.parse('${account['id']}'),
-                              name: '${account['code'] ?? ''} ${account['name'] ?? ''}'.trim(),
-                            ),
-                        ],
-                        value: _linkedAccountId,
-                        onChanged: (id) => setState(() => _linkedAccountId = id),
-                      ),
-                    ]),
-                    FilledButton.tonal(
-                      onPressed: () async {
-                        try {
-                          await ref.read(financeApiProvider).storeTreasuryAccount({
-                            'name': _treasuryName.text.trim(),
-                            'type': _treasuryType,
-                            'currency': _currency.text.trim().isEmpty ? 'SAR' : _currency.text.trim(),
-                            if (_openingBal.text.trim().isNotEmpty) 'opening_balance': _openingBal.text.trim(),
-                            if (_currentBal.text.trim().isNotEmpty) 'current_balance': _currentBal.text.trim(),
-                            'iban': _iban.text.trim(),
-                            'bank_name': _bankName.text.trim(),
-                            'account_number': _accountNumber.text.trim(),
-                            if (_linkedAccountId != null) 'linked_finance_account_id': _linkedAccountId,
-                          });
-                          await _reloadSettings();
-                          if (context.mounted) showSnack(context, l.success);
-                        } catch (e) {
-                          if (context.mounted) showFormError(context, e);
-                        }
-                      },
-                      child: Text(l.createTreasuryAccount),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-          const Divider(),
-          FilledButton(onPressed: () => ref.read(authControllerProvider.notifier).logout(), child: Text(l.logout)),
-        ],
-          ),
         ),
       ),
     );
