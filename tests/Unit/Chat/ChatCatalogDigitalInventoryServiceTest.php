@@ -7,9 +7,9 @@ use App\Enums\ChatCatalog\ChatCatalogDigitalUnitType;
 use App\Http\Resources\Mobile\ChatCatalogDigitalUnitResource;
 use App\Models\AuditLog;
 use App\Models\ChatCatalogDigitalInventoryUnit;
+use App\Models\ChatCatalogItem;
 use App\Models\Workspace;
 use App\Services\Chat\ChatCatalogDigitalInventoryService;
-use App\Services\Chat\ChatCatalogService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -25,15 +25,7 @@ class ChatCatalogDigitalInventoryServiceTest extends TestCase
         $workspace = Workspace::factory()->create(['type' => 'company']);
 
         $this->inWorkspace($workspace, function () use ($workspace): void {
-            $catalog = app(ChatCatalogService::class);
-            $item = $catalog->createItem($workspace, [
-                'name' => 'ترخيص آمن',
-                'price' => '19.00',
-                'currency' => 'SAR',
-                'classification' => 'digital',
-                'digital_subtype' => 'license',
-                'inventory_policy' => 'digital_pool',
-            ]);
+            $item = $this->legacyDigitalItem($workspace, 'ترخيص آمن', 'license');
             $inventory = app(ChatCatalogDigitalInventoryService::class);
             $pool = $inventory->createPool($workspace, $item, 'تراخيص');
             $unit = $inventory->importSecretUnit($pool, ChatCatalogDigitalUnitType::License, 'TOP-SECRET-LICENSE');
@@ -57,14 +49,7 @@ class ChatCatalogDigitalInventoryServiceTest extends TestCase
         $workspace = Workspace::factory()->create(['type' => 'company']);
 
         $this->inWorkspace($workspace, function () use ($workspace): void {
-            $item = app(ChatCatalogService::class)->createItem($workspace, [
-                'name' => 'كود لعبة',
-                'price' => '10.00',
-                'currency' => 'SAR',
-                'classification' => 'digital',
-                'digital_subtype' => 'code',
-                'inventory_policy' => 'digital_pool',
-            ]);
+            $item = $this->legacyDigitalItem($workspace, 'كود لعبة');
             $inventory = app(ChatCatalogDigitalInventoryService::class);
             $pool = $inventory->createPool($workspace, $item, 'أكواد');
             $inventory->importSecretUnit($pool, ChatCatalogDigitalUnitType::Code, 'GAME-KEY-1');
@@ -87,14 +72,7 @@ class ChatCatalogDigitalInventoryServiceTest extends TestCase
         $workspace = Workspace::factory()->create(['type' => 'company']);
         $other = Workspace::factory()->create(['type' => 'company']);
 
-        $item = $this->inWorkspace($workspace, fn () => app(ChatCatalogService::class)->createItem($workspace, [
-            'name' => 'كود',
-            'price' => '5.00',
-            'currency' => 'SAR',
-            'classification' => 'digital',
-            'digital_subtype' => 'code',
-            'inventory_policy' => 'digital_pool',
-        ]));
+        $item = $this->inWorkspace($workspace, fn () => $this->legacyDigitalItem($workspace, 'كود'));
 
         $this->inWorkspace($workspace, function () use ($workspace, $other, $item): void {
             $inventory = app(ChatCatalogDigitalInventoryService::class);
@@ -124,13 +102,7 @@ class ChatCatalogDigitalInventoryServiceTest extends TestCase
         $workspace = Workspace::factory()->create(['type' => 'company']);
 
         $this->inWorkspace($workspace, function () use ($workspace): void {
-            $item = app(ChatCatalogService::class)->createItem($workspace, [
-                'name' => 'مخزون مؤقت',
-                'price' => '10.00',
-                'classification' => 'digital',
-                'digital_subtype' => 'code',
-                'inventory_policy' => 'digital_pool',
-            ]);
+            $item = $this->legacyDigitalItem($workspace, 'مخزون مؤقت');
             $inventory = app(ChatCatalogDigitalInventoryService::class);
             $pool = $inventory->createPool($workspace, $item, 'مؤقت', reservationTimeoutSeconds: 60);
             $inventory->importSecretUnit($pool, ChatCatalogDigitalUnitType::Code, 'TIMEOUT-KEY');
@@ -149,13 +121,7 @@ class ChatCatalogDigitalInventoryServiceTest extends TestCase
         $workspace = Workspace::factory()->create(['type' => 'company']);
 
         $this->inWorkspace($workspace, function () use ($workspace): void {
-            $item = app(ChatCatalogService::class)->createItem($workspace, [
-                'name' => 'ملف خاص',
-                'price' => '10.00',
-                'classification' => 'digital',
-                'digital_subtype' => 'file',
-                'inventory_policy' => 'digital_pool',
-            ]);
+            $item = $this->legacyDigitalItem($workspace, 'ملف خاص', 'file');
             $inventory = app(ChatCatalogDigitalInventoryService::class);
             $pool = $inventory->createPool($workspace, $item, 'ملفات');
             $path = 'workspaces/'.$workspace->id.'/chat-catalog/digital/guide.pdf';
@@ -185,13 +151,7 @@ class ChatCatalogDigitalInventoryServiceTest extends TestCase
         $workspace = Workspace::factory()->create(['type' => 'company']);
 
         $this->inWorkspace($workspace, function () use ($workspace): void {
-            $item = app(ChatCatalogService::class)->createItem($workspace, [
-                'name' => 'كود للحذف',
-                'price' => '10.00',
-                'classification' => 'digital',
-                'digital_subtype' => 'code',
-                'inventory_policy' => 'digital_pool',
-            ]);
+            $item = $this->legacyDigitalItem($workspace, 'كود للحذف');
             $inventory = app(ChatCatalogDigitalInventoryService::class);
             $pool = $inventory->createPool($workspace, $item, 'حوض الحذف');
             $reserved = $inventory->importSecretUnit($pool, ChatCatalogDigitalUnitType::Code, 'KEEP-RESERVED');
@@ -219,5 +179,21 @@ class ChatCatalogDigitalInventoryServiceTest extends TestCase
             $inventory->deletePool($pool->fresh());
             $this->assertNull($pool->fresh());
         });
+    }
+
+    private function legacyDigitalItem(Workspace $workspace, string $name, string $subtype = 'code'): ChatCatalogItem
+    {
+        return ChatCatalogItem::query()->create([
+            'workspace_id' => $workspace->id,
+            'name' => $name,
+            'slug' => str()->slug($name).'-'.str()->random(6),
+            'price' => '10.00',
+            'currency' => 'SAR',
+            'classification' => 'digital',
+            'digital_subtype' => $subtype,
+            'inventory_policy' => 'digital_pool',
+            'is_active' => true,
+            'is_visible' => true,
+        ]);
     }
 }

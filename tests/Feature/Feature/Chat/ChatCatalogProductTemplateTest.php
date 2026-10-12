@@ -171,7 +171,7 @@ class ChatCatalogProductTemplateTest extends TestCase
             'sku' => 'DIG-1',
             'price' => '10.00',
             'currency' => 'SAR',
-            'classification' => 'digital',
+            'classification' => 'physical',
             'inventory_policy' => 'unlimited',
         ]));
 
@@ -202,7 +202,7 @@ class ChatCatalogProductTemplateTest extends TestCase
             'sku' => 'REG-1',
             'price' => '5.00',
             'currency' => 'SAR',
-            'classification' => 'digital',
+            'classification' => 'physical',
             'inventory_policy' => 'unlimited',
             'product_template_id' => $template->id,
         ]));

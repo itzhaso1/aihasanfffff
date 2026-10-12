@@ -54,8 +54,8 @@
         const schema = this.templateSchemas[this.productTemplateId];
         return schema && Array.isArray(schema.fields) ? schema.fields : [];
     },
-    classification: '{{ old('classification', $item?->classification?->value ?? 'physical') }}',
-    inventoryPolicy: '{{ old('inventory_policy', $item?->inventory_policy?->value) === 'backorder' ? 'finite_stock' : old('inventory_policy', $item?->inventory_policy?->value ?? 'finite_stock') }}',
+    classification: '{{ old('classification', $item?->classification?->value === 'digital' ? 'physical' : ($item?->classification?->value ?? 'physical')) }}',
+    inventoryPolicy: '{{ in_array(old('inventory_policy', $item?->inventory_policy?->value), ['digital_pool', 'file_asset', 'backorder'], true) ? (old('inventory_policy', $item?->inventory_policy?->value) === 'backorder' ? 'finite_stock' : 'not_tracked') : old('inventory_policy', $item?->inventory_policy?->value ?? 'finite_stock') }}',
     variants: {{ json_encode(old('variants', $item?->variants->map(fn($v) => [
         'id' => $v->id,
         'name' => $v->name,
@@ -146,7 +146,7 @@
                 <label class="mb-1 block text-sm font-medium text-slate-700">الطبيعة التجاریة</label>
                 <select name="tangibility" class="w-full rounded-lg border-slate-300 text-sm focus:border-slate-500 focus:ring-slate-500">
                     <option value="tangible" @selected(old('tangibility', $item?->tangibility ?? 'tangible') === 'tangible')>ملموس (Tangible)</option>
-                    <option value="intangible" @selected(old('tangibility', $item?->tangibility) === 'intangible')>غير ملموس / رقمي (Intangible)</option>
+                    <option value="intangible" @selected(old('tangibility', $item?->tangibility) === 'intangible')>غير ملموس (Intangible)</option>
                 </select>
                 <x-input-error :messages="$errors->get('tangibility')" class="mt-1" />
             </div>
@@ -154,20 +154,9 @@
                 <label class="mb-1 block text-sm font-medium text-slate-700">التصنيف التشغيلي</label>
                 <select name="classification" x-model="classification" class="w-full rounded-lg border-slate-300 text-sm focus:border-slate-500 focus:ring-slate-500">
                     <option value="physical">مادي (Physical)</option>
-                    <option value="digital">رقمي (Digital)</option>
                     <option value="service">خدمة (Service)</option>
                 </select>
                 <x-input-error :messages="$errors->get('classification')" class="mt-1" />
-            </div>
-            <div x-show="classification === 'digital'">
-                <label class="mb-1 block text-sm font-medium text-slate-700">نوع المنتج الرقمي</label>
-                <select name="digital_subtype" class="w-full rounded-lg border-slate-300 text-sm focus:border-slate-500 focus:ring-slate-500">
-                    <option value="">اختر النوع الرقمي</option>
-                    @foreach(['file'=>'ملف (File)','code'=>'كود / رمز (Code)','license'=>'ترخيص (License)','credential'=>'بيانات دخول (Credential)','account'=>'حساب (Account)','subscription'=>'اشتراك (Subscription)','digital_bundle'=>'حزمة رقمية (Bundle)','custom_digital'=>'مخصص (Custom)'] as $val => $lbl)
-                        <option value="{{ $val }}" @selected(old('digital_subtype', $item?->digital_subtype) === $val)>{{ $lbl }}</option>
-                    @endforeach
-                </select>
-                <x-input-error :messages="$errors->get('digital_subtype')" class="mt-1" />
             </div>
             <div>
                 <label class="mb-1 block text-sm font-medium text-slate-700">الترتيب</label>

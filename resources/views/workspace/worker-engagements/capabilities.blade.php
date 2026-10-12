@@ -84,6 +84,7 @@
 
                 <div class="mt-6 divide-y">
                     @forelse($capabilities as $capability)
+                        @continue($capability->capability_key === 'commerce.payment_links.create')
                         @php($permission = $permissions->get($capability->capability_key))
                         @php($presentation = $capabilityPresentation[$capability->capability_key] ?? [
                             'title' => 'صلاحية تشغيلية إضافية',

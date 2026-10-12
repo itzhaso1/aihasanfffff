@@ -9,6 +9,7 @@ use App\Models\PaymentGateway;
 use App\Models\WebhookEvent;
 use App\Models\Workspace;
 use App\Services\Merchant\MerchantPaymentEligibilityService;
+use App\Support\Commerce\RetiredCustomerCheckout;
 use App\Support\Http\WebhookHeaderSanitizer;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Database\QueryException;
@@ -28,6 +29,8 @@ class PaymentService
         ?PaymentGateway $gateway = null,
         string $paymentContext = 'merchant_order',
     ): Payment {
+        RetiredCustomerCheckout::assertPaymentLinksEnabled();
+
         if ($order->source === 'commerce') {
             throw new RuntimeException('Commerce payment execution is not enabled in this phase.');
         }

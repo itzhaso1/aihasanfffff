@@ -44,7 +44,7 @@ class CommercePaymentBoundaryTest extends TestCase
         $this->assertNull($order->finance_invoice_id);
         $this->assertNull($order->pos_cashier_invoice_id);
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Commerce payment execution is not enabled in this phase.');
+        $this->expectExceptionMessage('Customer payment links are disabled.');
         app(PaymentService::class)->createPaymentLink($order);
     }
 

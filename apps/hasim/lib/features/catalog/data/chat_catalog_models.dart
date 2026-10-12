@@ -14,8 +14,6 @@ const chatCatalogInventoryPolicies = [
   'finite_stock',
   'unlimited',
   'on_request',
-  'digital_pool',
-  'file_asset',
   'service_capacity',
 ];
 

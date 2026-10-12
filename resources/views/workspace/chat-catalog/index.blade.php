@@ -3,7 +3,7 @@
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <h2 class="text-xl font-semibold text-slate-800">المنتجات والمخزون</h2>
-                <p class="mt-0.5 text-xs text-slate-500">مستقل عن المالية والكاشير — مخصص لإجابات الذكاء الاصطناعي والمبيعات المباشرة عبر الشات.</p>
+                <p class="mt-0.5 text-xs text-slate-500">مرجع للذكاء الاصطناعي عند الإجابة عن أسئلة العملاء. مستقل عن المالية والكاشير، وليس لبيع المنتجات أو تسليمها عبر الشات.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 @can('view', $catalog)
@@ -11,9 +11,6 @@
                         الإعدادات
                     </a>
                 @endcan
-                <a href="{{ route('workspace.chat-catalog.digital-inventory.index') }}" class="rounded-xl bg-indigo-50 border border-indigo-200 px-3.5 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-100 shadow-sm transition">
-                    المخزون الرقمي
-                </a>
                 @can('create', App\Models\ChatCatalogItem::class)
                     <a href="{{ route('workspace.chat-catalog.create') }}" class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-slate-800 shadow-sm transition">
                         + إضافة منتج جديد
@@ -92,7 +89,6 @@
                             <select name="classification" class="w-full rounded-xl border-slate-300 text-xs focus:border-slate-500 focus:ring-slate-500">
                                 <option value="">كل الأنواع</option>
                                 <option value="physical" @selected(request('classification')==='physical')>مادي</option>
-                                <option value="digital" @selected(request('classification')==='digital')>رقمي</option>
                                 <option value="service" @selected(request('classification')==='service')>خدمة</option>
                             </select>
                         </div>
@@ -151,10 +147,9 @@
                                     <td class="px-4 py-3 font-medium text-slate-800">{{ $item->category?->name ?? '—' }}</td>
                                     <td class="px-4 py-3">
                                         <span class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium
-                                            @if($item->classification?->value === 'digital') bg-purple-50 text-purple-700
-                                            @elseif($item->classification?->value === 'service') bg-sky-50 text-sky-700
+                                            @if($item->classification?->value === 'service') bg-sky-50 text-sky-700
                                             @else bg-slate-100 text-slate-700 @endif">
-                                            {{ $item->classification?->value ?? $item->item_kind }}
+                                            {{ $item->classification?->value === 'service' ? 'service' : 'physical' }}
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 font-semibold text-slate-900">
@@ -163,8 +158,8 @@
                                     <td class="px-4 py-3">
                                         @if(in_array($item->inventory_policy?->value, ['finite_stock', 'backorder'], true))
                                             <span class="font-medium text-slate-800">{{ $item->stock ?? 0 }} وحدة</span>
-                                        @elseif($item->inventory_policy?->value === 'digital_pool')
-                                            <span class="inline-flex rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">أكواد أو تراخيص</span>
+                                        @elseif(in_array($item->inventory_policy?->value, ['digital_pool', 'file_asset'], true))
+                                            <span class="text-slate-500">{{ \App\Enums\ChatCatalog\ChatCatalogInventoryPolicy::NotTracked->label() }}</span>
                                         @else
                                             <span class="text-slate-500">{{ $item->inventory_policy?->label() ?? '—' }}</span>
                                         @endif

@@ -65,7 +65,9 @@ final class ProductTemplateService
             'product_template_schema_version' => (int) $template->schema_version,
         ]);
 
-        if ($template->classification_hint !== null && $item->classification === null) {
+        if ($template->classification_hint !== null
+            && $item->classification === null
+            && $template->classification_hint !== 'digital') {
             $item->update(['classification' => $template->classification_hint]);
         }
 

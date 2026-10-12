@@ -186,7 +186,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         id: _SettingsId.chatCatalog,
         icon: Icons.tune_outlined,
         title: 'إعدادات المنتجات',
-        subtitle: 'إدارة المنتجات والتصنيفات والمخزون الرقمي',
+        subtitle: 'إدارة المنتجات والتصنيفات كمرجع للذكاء الاصطناعي',
         route: '/chat-catalog-settings',
       ),
       const _SettingsItem(
@@ -1318,7 +1318,7 @@ class _CatalogSettingsDetail extends StatelessWidget {
               padding: EdgeInsets.fromLTRB(24, 16, 24, 12),
               child: HasimPageHeader(
                 title: 'إعدادات المنتجات',
-                subtitle: 'إدارة المنتجات والتصنيفات والمخزون الرقمي',
+                subtitle: 'إدارة المنتجات والتصنيفات كمرجع للذكاء الاصطناعي',
                 icon: Icons.layers_outlined,
               ),
             ),

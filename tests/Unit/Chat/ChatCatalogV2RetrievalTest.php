@@ -36,8 +36,7 @@ class ChatCatalogV2RetrievalTest extends TestCase
                 'aliases' => ['سينمائي'],
                 'search_phrases' => ['netflix', 'اشتراك نتفلكس'],
                 'tags' => ['ترفيه'],
-                'classification' => 'digital',
-                'digital_subtype' => 'subscription',
+                'classification' => 'physical',
                 'inventory_policy' => 'unlimited',
             ]);
         });
@@ -268,13 +267,19 @@ class ChatCatalogV2RetrievalTest extends TestCase
         $roots->forWorkspace($workspace);
 
         $this->inWorkspace($workspace, function () use ($workspace): void {
-            $catalog = app(ChatCatalogService::class);
-            $item = $catalog->createItem($workspace, [
+            $item = ChatCatalogItem::query()->create([
+                'workspace_id' => $workspace->id,
                 'name' => 'كود آمن',
+                'slug' => 'safe-code-'.str()->random(6),
                 'price' => '20.00',
+                'currency' => 'SAR',
                 'classification' => 'digital',
                 'digital_subtype' => 'code',
                 'inventory_policy' => 'digital_pool',
+                'is_active' => true,
+                'is_visible' => true,
+                'is_searchable' => true,
+                'publication_status' => 'published',
             ]);
             $inventory = app(ChatCatalogDigitalInventoryService::class);
             $pool = $inventory->createPool($workspace, $item, 'أكواد');

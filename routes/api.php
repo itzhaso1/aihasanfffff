@@ -41,7 +41,8 @@ Route::middleware(['auth:sanctum', 'workspace.resolve', 'workspace.member', 'thr
         Route::get('/messages', [MessageController::class, 'index']);
         Route::post('/messages', [MessageController::class, 'store'])->middleware('throttle:mobile-messages');
         Route::get('/messages/{message}', [MessageController::class, 'show']);
-        Route::apiResource('/payments', PaymentController::class)->only(['index', 'store', 'show']);
+        Route::apiResource('/payments', PaymentController::class)->only(['index', 'show']);
+        Route::post('/payments', [PaymentController::class, 'store'])->middleware('retired.payment-links');
         Route::get('/subscriptions', [SubscriptionController::class, 'index']);
         Route::get('/subscriptions/plans', [SubscriptionController::class, 'plans']);
         Route::get('/subscriptions/current', [SubscriptionController::class, 'current']);

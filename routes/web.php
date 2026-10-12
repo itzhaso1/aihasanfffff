@@ -238,7 +238,7 @@ Route::middleware(['auth'])->group(function (): void {
     Route::get('/workspaces/choose', [WorkspaceSelectionController::class, 'choose'])->name('workspace.choose');
     Route::post('/workspaces/{workspace}/switch', [WorkspaceSelectionController::class, 'switch'])->name('workspace.switch');
     Route::redirect('/subscription', '/workspace/subscriptions')->name('subscription.page');
-    Route::redirect('/billing', '/workspace/payments/create')->name('billing.page');
+    Route::redirect('/billing', '/workspace/subscriptions')->name('billing.page');
     Route::redirect('/settings', '/profile')->name('settings.page');
     Route::redirect('/security', '/profile')->name('security.page');
 });
@@ -328,10 +328,12 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         Route::post('chat-catalog/settings/draft', [ChatCatalogSettingsController::class, 'draft'])->name('chat-catalog.settings.draft');
         Route::post('chat-catalog/settings/pause', [ChatCatalogSettingsController::class, 'pause'])->name('chat-catalog.settings.pause');
         Route::post('chat-catalog/settings/archive', [ChatCatalogSettingsController::class, 'archive'])->name('chat-catalog.settings.archive');
-        Route::get('chat-catalog/digital-inventory', [ChatCatalogDigitalInventoryController::class, 'index'])->name('chat-catalog.digital-inventory.index');
-        Route::post('chat-catalog/digital-inventory/pools', [ChatCatalogDigitalInventoryController::class, 'storePool'])->name('chat-catalog.digital-inventory.pools.store');
-        Route::post('chat-catalog/digital-inventory/pools/{pool}/import', [ChatCatalogDigitalInventoryController::class, 'import'])->name('chat-catalog.digital-inventory.pools.import');
-        Route::delete('chat-catalog/digital-inventory/pools/{pool}', [ChatCatalogDigitalInventoryController::class, 'destroyPool'])->name('chat-catalog.digital-inventory.pools.destroy');
+        Route::middleware('retired.digital-products')->group(function (): void {
+            Route::get('chat-catalog/digital-inventory', [ChatCatalogDigitalInventoryController::class, 'index'])->name('chat-catalog.digital-inventory.index');
+            Route::post('chat-catalog/digital-inventory/pools', [ChatCatalogDigitalInventoryController::class, 'storePool'])->name('chat-catalog.digital-inventory.pools.store');
+            Route::post('chat-catalog/digital-inventory/pools/{pool}/import', [ChatCatalogDigitalInventoryController::class, 'import'])->name('chat-catalog.digital-inventory.pools.import');
+            Route::delete('chat-catalog/digital-inventory/pools/{pool}', [ChatCatalogDigitalInventoryController::class, 'destroyPool'])->name('chat-catalog.digital-inventory.pools.destroy');
+        });
         Route::get('chat-catalog/create', [ChatCatalogController::class, 'create'])->name('chat-catalog.create');
         Route::post('chat-catalog', [ChatCatalogController::class, 'store'])->name('chat-catalog.store');
         Route::get('chat-catalog/{item}/edit', [ChatCatalogController::class, 'edit'])->name('chat-catalog.edit');
@@ -344,15 +346,19 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         Route::delete('chat-catalog/categories/{category}', [ChatCatalogController::class, 'destroyCategory'])->name('chat-catalog.categories.destroy');
 
         Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
-        Route::get('payments/create', [PaymentController::class, 'create'])->name('payments.create');
-        Route::post('payments', [PaymentController::class, 'store'])->name('payments.store');
+        Route::middleware('retired.payment-links')->group(function (): void {
+            Route::get('payments/create', [PaymentController::class, 'create'])->name('payments.create');
+            Route::post('payments', [PaymentController::class, 'store'])->name('payments.store');
+        });
         Route::get('payments/merchant', [MerchantPaymentController::class, 'show'])->name('payments.merchant.show');
         Route::post('payments/merchant/request', [MerchantPaymentController::class, 'requestVerification'])->name('payments.merchant.request');
         Route::post('payments/merchant/upload', [MerchantPaymentController::class, 'uploadDocument'])->name('payments.merchant.upload');
         Route::post('payments/merchant/submit', [MerchantPaymentController::class, 'submit'])->name('payments.merchant.submit');
         Route::get('payments/merchant/documents/{document}', [MerchantPaymentController::class, 'downloadDocument'])->name('payments.merchant.documents.download');
 
-        Route::resource('payment-gateways', PaymentGatewayController::class)->except(['show']);
+        Route::middleware('retired.payment-links')->group(function (): void {
+            Route::resource('payment-gateways', PaymentGatewayController::class)->except(['show']);
+        });
 
         Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
         Route::get('subscriptions/compare', [SubscriptionController::class, 'compare'])->name('subscriptions.compare');

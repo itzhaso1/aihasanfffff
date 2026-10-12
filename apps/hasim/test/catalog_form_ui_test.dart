@@ -11,7 +11,6 @@ import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/features/catalog/data/chat_catalog_models.dart';
 import 'package:hasim/features/catalog/data/chat_catalog_repository.dart';
 import 'package:hasim/features/catalog/presentation/catalog_form_screen.dart';
-import 'package:hasim/features/catalog/presentation/catalog_product_type_selection_screen.dart';
 import 'package:hasim/features/catalog/presentation/chat_catalog_settings_screen.dart';
 import 'package:hasim/features/catalog/providers/chat_catalog_categories_controller.dart';
 import 'package:hasim/l10n/app_localizations.dart';
@@ -257,7 +256,7 @@ void main() {
     expect(find.text('أدخل وصف الصنف...'), findsOneWidget);
     expect(find.text('المرجع / SKU'), findsOneWidget);
     expect(find.text('أدخل المرجع أو رمز الصنف...'), findsOneWidget);
-    expect(find.text('نوع المنتج: منتج عادي'), findsOneWidget);
+    expect(find.text('مرجع لمعلومات الذكاء الاصطناعي'), findsOneWidget);
     expect(find.text('النوع'), findsNothing);
     expect(find.text('الطبيعة'), findsNothing);
     expect(find.text('السعر'), findsOneWidget);
@@ -382,58 +381,45 @@ void main() {
     }
   });
 
-  testWidgets('digital add uses the digital product title', (tester) async {
-    final repo = _FakeCatalogRepository(api);
-    await pumpForm(tester, repo: repo, digital: true);
-    expect(find.text('إضافة منتج رقمي'), findsOneWidget);
-    expect(find.text('إضافة منتج'), findsNothing);
-  });
-
-  testWidgets('digital form keeps the type fixed and hides physical controls', (
+  testWidgets('add form is a knowledge product, not a digital product', (
     tester,
   ) async {
     final repo = _FakeCatalogRepository(api);
     await pumpForm(tester, repo: repo, digital: true);
-
-    expect(find.text('نوع المنتج: منتج رقمي'), findsOneWidget);
-    expect(find.byKey(const Key('catalog-stock')), findsNothing);
-    expect(find.byKey(const Key('catalog-worker-min-price')), findsNothing);
-    expect(find.byKey(const Key('catalog-variant-add')), findsNothing);
-    expect(find.text('النوع'), findsNothing);
-    expect(find.text('الطبيعة'), findsNothing);
+    expect(find.text('إضافة منتج'), findsOneWidget);
+    expect(find.text('إضافة منتج رقمي'), findsNothing);
+    expect(find.text('مرجع لمعلومات الذكاء الاصطناعي'), findsOneWidget);
+    expect(find.byKey(const Key('catalog-worker-min-price')), findsOneWidget);
+    expect(find.text('الأكواد والتراخيص والملفات الرقمية تُدار من المخزون الرقمي بعد حفظ المنتج.'), findsNothing);
   });
 
-  testWidgets(
-    'product type selector offers separate normal and digital cards',
-    (tester) async {
-      bool? selectedDigital;
-      await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('ar'),
-          home: CatalogProductTypeSelectionScreen(
-            onSelected: (digital) => selectedDigital = digital,
+  testWidgets('catalog settings hide digital inventory and type picker', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPrefsProvider.overrideWithValue(prefs),
+          secureStoreProvider.overrideWithValue(_MemorySecureStore()),
+          apiClientProvider.overrideWithValue(api),
+          chatCatalogCategoriesControllerProvider.overrideWith(
+            (ref) => _StubCategoriesController(ref),
           ),
+        ],
+        child: const MaterialApp(
+          locale: Locale('ar'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChatCatalogSettingsScreen(),
         ),
-      );
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('اختر نوع المنتج'), findsNWidgets(2));
-      expect(find.text('منتج عادي'), findsOneWidget);
-      expect(find.text('منتج رقمي'), findsOneWidget);
-      expect(
-        find.byKey(const Key('catalog-product-type-normal')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('catalog-product-type-digital')),
-        findsOneWidget,
-      );
-
-      await tester.tap(find.byKey(const Key('catalog-product-type-normal')));
-      expect(selectedDigital, isFalse);
-      await tester.tap(find.byKey(const Key('catalog-product-type-digital')));
-      expect(selectedDigital, isTrue);
-    },
-  );
+    expect(find.text('المخزون الرقمي'), findsNothing);
+    expect(find.text('منتج رقمي'), findsNothing);
+    expect(find.text('إضافة منتج'), findsWidgets);
+  });
 
   testWidgets('mobile catalog flow hides the selected form name', (
     tester,
@@ -462,15 +448,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('اختر نوع المنتج'), findsOneWidget);
-    expect(find.text('نوع المنتج: منتج عادي'), findsNothing);
-
-    await tester.tap(find.byKey(const Key('catalog-product-type-normal')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('إضافة منتج'), findsNothing);
-    expect(find.text('إضافة تصنيف'), findsNothing);
-    expect(find.text('نوع المنتج: منتج عادي'), findsNothing);
+    expect(find.text('اختر نوع المنتج'), findsNothing);
+    expect(find.text('المخزون الرقمي'), findsNothing);
     expect(find.text('صورة المنتج'), findsOneWidget);
     expect(find.text('النوع'), findsNothing);
     expect(find.text('الطبيعة'), findsNothing);
@@ -485,7 +464,7 @@ void main() {
     final repo = _FakeCatalogRepository(api);
     await pumpForm(tester, repo: repo);
 
-    expect(find.text('نوع المنتج: منتج عادي'), findsOneWidget);
+    expect(find.text('مرجع لمعلومات الذكاء الاصطناعي'), findsOneWidget);
     expect(find.text('النوع'), findsNothing);
     expect(find.text('الطبيعة'), findsNothing);
   });

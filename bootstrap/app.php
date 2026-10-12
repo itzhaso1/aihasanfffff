@@ -2,6 +2,8 @@
 
 use App\Exceptions\Api\ApiApplicationException;
 use App\Exceptions\MissingWorkspaceContextException;
+use App\Http\Middleware\AbortRetiredCustomerPaymentLinks;
+use App\Http\Middleware\AbortRetiredDigitalProductCommerce;
 use App\Http\Middleware\AssignCorrelationId;
 use App\Http\Middleware\AuthorizeMobileInboxWorkspace;
 use App\Http\Middleware\EnsureFeatureAccess;
@@ -77,6 +79,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'platform.admin' => EnsurePlatformAdmin::class,
             'mobile.idempotency' => EnsureIdempotency::class,
             'assign.correlation' => AssignCorrelationId::class,
+            'retired.digital-products' => AbortRetiredDigitalProductCommerce::class,
+            'retired.payment-links' => AbortRetiredCustomerPaymentLinks::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

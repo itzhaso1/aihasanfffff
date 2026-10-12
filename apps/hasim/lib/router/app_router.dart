@@ -6,9 +6,7 @@ import 'package:hasim/features/catalog/data/chat_catalog_models.dart';
 import 'package:hasim/features/catalog/presentation/catalog_categories_screen.dart';
 import 'package:hasim/features/catalog/presentation/catalog_category_form_screen.dart';
 import 'package:hasim/features/catalog/presentation/catalog_form_screen.dart';
-import 'package:hasim/features/catalog/presentation/catalog_digital_screen.dart';
 import 'package:hasim/features/catalog/presentation/catalog_list_screen.dart';
-import 'package:hasim/features/catalog/presentation/catalog_product_type_selection_screen.dart';
 import 'package:hasim/features/catalog/presentation/chat_catalog_settings_screen.dart';
 import 'package:hasim/features/auth/presentation/forgot_password_screen.dart';
 import 'package:hasim/features/auth/presentation/login_screen.dart';
@@ -365,26 +363,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               final item = state.extra is ChatCatalogItemModel
                   ? state.extra as ChatCatalogItemModel
                   : null;
-              final digitalQuery = state.uri.queryParameters['digital'];
-              if (item == null && digitalQuery == null) {
-                return const CatalogProductTypeSelectionScreen();
-              }
-              final itemIsDigital =
-                  item?.itemKind == 'digital' ||
-                  item?.tangibility == 'intangible';
-              return CatalogFormScreen(
-                item: item,
-                digital: digitalQuery == '1' || itemIsDigital,
-              );
+              return CatalogFormScreen(item: item);
             },
           ),
           GoRoute(
             path: '/chat-catalog-settings',
             builder: (context, state) => const ChatCatalogSettingsScreen(),
-          ),
-          GoRoute(
-            path: '/catalog/digital',
-            builder: (context, state) => const CatalogDigitalScreen(),
           ),
           GoRoute(
             path: '/catalog/categories',

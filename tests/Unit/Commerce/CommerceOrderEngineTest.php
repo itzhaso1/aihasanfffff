@@ -174,27 +174,18 @@ class CommerceOrderEngineTest extends TestCase
         ));
 
         $carts = app(CommerceCartService::class);
-        $cart = $carts->addItem($workspace, $carts->create($workspace, currency: 'SAR'), $item->id, null, 1);
-        $order = app(CommerceOrderService::class)->createDraftFromCart($workspace, $cart, 'conversion-key-0004');
+        $cart = $carts->create($workspace, currency: 'SAR');
 
-        $reservation = $order->inventoryReservations->firstOrFail();
-        $this->assertSame('digital', $reservation->reservation_kind);
-        $this->assertSame($unit->id, $reservation->chat_catalog_digital_inventory_unit_id);
-        $this->assertArrayNotHasKey('encrypted_secret', $reservation->metadata ?? []);
-        $this->assertSame(
-            'reserved',
-            ChatCatalogDigitalInventoryUnit::withoutGlobalScopes()->findOrFail($unit->id)->status->value,
-        );
+        try {
+            $carts->addItem($workspace, $cart, $item->id, null, 1);
+            $this->fail('Expected digital products to be rejected.');
+        } catch (CommerceCartValidationException $exception) {
+            $this->assertSame('digital_products_disabled', $exception->problems[0]['code']);
+        }
 
-        $cancelled = app(CommerceOrderService::class)->cancelDraft($workspace, $order);
-        $this->assertSame(CommerceOrderStatus::Cancelled, $cancelled->commerce_status);
         $this->assertSame(
             'available',
             ChatCatalogDigitalInventoryUnit::withoutGlobalScopes()->findOrFail($unit->id)->status->value,
-        );
-        $this->assertSame(
-            CommerceReservationStatus::Released,
-            CommerceInventoryReservation::withoutGlobalScopes()->findOrFail($reservation->id)->status,
         );
     }
 
@@ -219,7 +210,7 @@ class CommerceOrderEngineTest extends TestCase
             $carts->addItem($workspace, $cart, $item->id, null, 1);
             $this->fail('Expected unavailable digital inventory.');
         } catch (CommerceCartValidationException $exception) {
-            $this->assertSame('digital_inventory_insufficient', $exception->problems[0]['code']);
+            $this->assertSame('digital_products_disabled', $exception->problems[0]['code']);
         }
     }
 

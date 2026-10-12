@@ -140,7 +140,7 @@ void main() {
     expect(body.containsKey('digital_subtype'), isFalse);
   });
 
-  test('digital product payload excludes physical inventory fields', () async {
+  test('create never sends digital classification even if asked', () async {
     final setup = await repository();
     await setup.repo.create(
       name: 'ترخيص',
@@ -150,44 +150,33 @@ void main() {
       workerMinimumPrice: 22,
       currency: 'SAR',
       stock: 5,
-      inventoryPolicy: 'digital_pool',
-      variants: const [ChatCatalogVariantModel(id: 0, name: 'غير مطلوب')],
+      inventoryPolicy: 'not_tracked',
     );
 
     final body = Map<String, dynamic>.from(setup.calls.single.data as Map);
     expect(body['item_kind'], 'product');
-    expect(body['classification'], 'digital');
+    expect(body['classification'], 'physical');
     expect(body['tangibility'], 'intangible');
-    expect(body['inventory_policy'], 'digital_pool');
-    expect(body.containsKey('stock'), isFalse);
-    expect(body.containsKey('worker_min_price'), isFalse);
-    expect(body.containsKey('variants'), isFalse);
+    expect(body.containsKey('digital_subtype'), isFalse);
   });
 
-  test(
-    'digital update keeps the existing type and excludes physical fields',
-    () async {
-      final setup = await repository();
-      await setup.repo.update(
-        44,
-        itemKind: 'digital',
-        tangibility: 'intangible',
-        price: 90,
-        workerMinimumPrice: 22,
-        stock: 5,
-        inventoryPolicy: 'file_asset',
-        variants: const [ChatCatalogVariantModel(id: 9, name: 'غير مطلوب')],
-      );
+  test('update never sends digital classification', () async {
+    final setup = await repository();
+    await setup.repo.update(
+      44,
+      itemKind: 'digital',
+      tangibility: 'intangible',
+      price: 90,
+      workerMinimumPrice: 22,
+      stock: 5,
+      inventoryPolicy: 'not_tracked',
+    );
 
-      final body = Map<String, dynamic>.from(setup.calls.single.data as Map);
-      expect(body['classification'], 'digital');
-      expect(body['tangibility'], 'intangible');
-      expect(body['inventory_policy'], 'file_asset');
-      expect(body.containsKey('stock'), isFalse);
-      expect(body.containsKey('worker_min_price'), isFalse);
-      expect(body.containsKey('variants'), isFalse);
-    },
-  );
+    final body = Map<String, dynamic>.from(setup.calls.single.data as Map);
+    expect(body['classification'], 'physical');
+    expect(body['tangibility'], 'intangible');
+    expect(body.containsKey('digital_subtype'), isFalse);
+  });
 
   test('delete uses the existing catalog destroy route', () async {
     final setup = await repository();
@@ -196,28 +185,24 @@ void main() {
     expect(setup.calls.single.path, 'catalog/44');
   });
 
-  test('digital reserve release consume match the mobile contract', () async {
+  test('digital inventory APIs are retired', () async {
     final setup = await repository();
-    await setup.repo.reserveDigitalUnit(
-      7,
-      reservationKey: 'hold-44',
-      ttlSeconds: 900,
+    expect(
+      () => setup.repo.reserveDigitalUnit(
+        7,
+        reservationKey: 'hold-44',
+        ttlSeconds: 900,
+      ),
+      throwsUnsupportedError,
     );
-    await setup.repo.releaseDigitalUnit(12, reservationKey: 'hold-44');
-    await setup.repo.consumeDigitalUnit(12, reservationKey: 'hold-44');
-
-    expect(setup.calls, hasLength(3));
-    expect(setup.calls[0].method, 'POST');
-    expect(setup.calls[0].path, 'catalog/digital-pools/7/reserve');
-    expect(setup.calls[0].data, {
-      'reservation_key': 'hold-44',
-      'ttl_seconds': 900,
-    });
-    expect(setup.calls[1].method, 'POST');
-    expect(setup.calls[1].path, 'catalog/digital-units/12/release');
-    expect(setup.calls[1].data, {'reservation_key': 'hold-44'});
-    expect(setup.calls[2].method, 'POST');
-    expect(setup.calls[2].path, 'catalog/digital-units/12/consume');
-    expect(setup.calls[2].data, {'reservation_key': 'hold-44'});
+    expect(
+      () => setup.repo.releaseDigitalUnit(12, reservationKey: 'hold-44'),
+      throwsUnsupportedError,
+    );
+    expect(
+      () => setup.repo.consumeDigitalUnit(12, reservationKey: 'hold-44'),
+      throwsUnsupportedError,
+    );
+    expect(setup.calls, isEmpty);
   });
 }

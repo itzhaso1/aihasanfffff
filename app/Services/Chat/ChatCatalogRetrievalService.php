@@ -321,8 +321,6 @@ class ChatCatalogRetrievalService
                         'unavailable_catalog_message',
                         'backorder_message',
                         'low_stock_message',
-                        'digital_delivery_notice',
-                        'payment_required_notice',
                         'support_contact_instructions',
                     ]),
                 ),

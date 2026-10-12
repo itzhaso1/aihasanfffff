@@ -60,7 +60,7 @@ class ChatCatalogItemBooleanInputTest extends TestCase
         $registrar->setPermissionsTeamId(null);
     }
 
-    public function test_workspace_store_accepts_checkbox_style_booleans_for_digital_subscription(): void
+    public function test_workspace_store_accepts_checkbox_style_booleans_for_a_knowledge_product(): void
     {
         $response = $this->actingAs($this->user)
             ->withSession(['current_workspace_id' => $this->workspace->id])
@@ -69,10 +69,9 @@ class ChatCatalogItemBooleanInputTest extends TestCase
                 'sku' => 'NETFLIX-1M',
                 'price' => 5,
                 'item_kind' => 'product',
-                'tangibility' => 'intangible',
-                'classification' => 'digital',
-                'digital_subtype' => 'subscription',
-                'inventory_policy' => 'digital_pool',
+                'tangibility' => 'tangible',
+                'classification' => 'physical',
+                'inventory_policy' => 'not_tracked',
                 'is_active' => '1',
                 'is_visible' => '1',
                 'is_searchable' => '1',
@@ -87,8 +86,7 @@ class ChatCatalogItemBooleanInputTest extends TestCase
         $this->assertDatabaseHas('chat_catalog_items', [
             'workspace_id' => $this->workspace->id,
             'sku' => 'NETFLIX-1M',
-            'classification' => 'digital',
-            'digital_subtype' => 'subscription',
+            'classification' => 'physical',
             'is_active' => 1,
             'is_visible' => 1,
             'is_searchable' => 1,
@@ -110,10 +108,9 @@ class ChatCatalogItemBooleanInputTest extends TestCase
                 'price' => '5.00',
                 'currency' => 'SAR',
                 'item_kind' => 'product',
-                'tangibility' => 'intangible',
-                'classification' => 'digital',
-                'digital_subtype' => 'subscription',
-                'inventory_policy' => 'digital_pool',
+                'tangibility' => 'tangible',
+                'classification' => 'physical',
+                'inventory_policy' => 'not_tracked',
                 'is_active' => 'true',
                 'is_visible' => 'true',
                 'is_searchable' => 'true',
@@ -142,11 +139,10 @@ class ChatCatalogItemBooleanInputTest extends TestCase
 
         $created = $this->actingAsMobile($this->user, $this->workspace)
             ->postJson('/api/mobile/v1/catalog', [
-                'name' => 'كود رقمي',
+                'name' => 'كود معرفة',
                 'price' => 10,
                 'currency' => 'SAR',
-                'classification' => 'digital',
-                'digital_subtype' => 'code',
+                'classification' => 'physical',
                 'is_active' => true,
                 'is_visible' => true,
                 'is_searchable' => true,
@@ -203,11 +199,11 @@ class ChatCatalogItemBooleanInputTest extends TestCase
             ->assertCreated();
     }
 
-    public function test_mobile_accepts_digital_item_kind_alias_from_hasim_form(): void
+    public function test_mobile_rejects_digital_item_kind_alias_from_hasim_form(): void
     {
         $this->enableWorkspaceFeature($this->workspace, 'products');
 
-        $created = $this->actingAsMobile($this->user, $this->workspace)
+        $this->actingAsMobile($this->user, $this->workspace)
             ->postJson('/api/mobile/v1/catalog', [
                 'name' => 'كتاب رقمي',
                 'price' => '12.50',
@@ -218,12 +214,8 @@ class ChatCatalogItemBooleanInputTest extends TestCase
                 'inventory_policy' => 'not_tracked',
                 'is_active' => true,
             ])
-            ->assertCreated();
-
-        $item = $this->inWorkspace($this->workspace, fn () => ChatCatalogItem::query()->findOrFail((int) $created->json('data.id')));
-        $this->assertSame('product', $item->item_kind);
-        $this->assertSame('intangible', $item->tangibility);
-        $this->assertSame('digital', $item->classification?->value);
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['item_kind', 'classification']);
     }
 
     private function actingAsMobile(User $user, Workspace $workspace): static

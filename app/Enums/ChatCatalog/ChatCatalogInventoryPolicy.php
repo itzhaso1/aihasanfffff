@@ -15,7 +15,7 @@ enum ChatCatalogInventoryPolicy: string
 
     public function isSelectable(): bool
     {
-        return $this !== self::Backorder;
+        return ! in_array($this, [self::Backorder, self::DigitalPool, self::FileAsset], true);
     }
 
     /**

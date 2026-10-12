@@ -65,8 +65,7 @@
         [
             'title' => 'الفوترة',
             'links' => [
-                ['label' => 'المدفوعات', 'route' => 'workspace.payments.index', 'active' => 'workspace.payments.*', 'icon' => 'wallet'],
-                ['label' => 'بوابات الدفع', 'route' => 'workspace.payment-gateways.index', 'active' => 'workspace.payment-gateways.*', 'icon' => 'bank'],
+                ['label' => 'سجل المدفوعات', 'route' => 'workspace.payments.index', 'active' => 'workspace.payments.*', 'icon' => 'wallet'],
                 ['label' => 'الاشتراكات', 'route' => 'workspace.subscriptions.index', 'active' => 'workspace.subscriptions.*', 'icon' => 'spark'],
             ],
         ],

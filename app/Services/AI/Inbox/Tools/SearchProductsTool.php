@@ -29,7 +29,7 @@ final class SearchProductsTool implements InboxAgentSecuredTool
 
     public function description(): string
     {
-        return 'Search active chat catalog products for the current workspace using a customer query.';
+        return 'Search the live chat catalog for this workspace. Products are a knowledge reference (name, description, price, features, terms). Do not use results to sell, send payment links, or deliver files.';
     }
 
     public function securityProfile(): InboxAgentToolSecurityProfile

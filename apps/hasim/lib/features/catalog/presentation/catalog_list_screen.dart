@@ -20,7 +20,7 @@ class CatalogListScreen extends ConsumerStatefulWidget {
     this.embedded = false,
   });
 
-  /// catalog | products | digital
+  /// catalog | products
   final String mode;
   final bool embedded;
 
@@ -62,9 +62,7 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
 
   Future<void> _load({required bool reset}) async {
     final repo = ref.read(chatCatalogRepositoryProvider);
-    final kind = widget.mode == 'digital'
-        ? 'digital'
-        : (widget.mode == 'products' ? 'product' : null);
+    final kind = widget.mode == 'products' ? 'product' : null;
     if (reset) {
       final cached = await repo.cachedItems(search: _search.text.trim(), itemKind: kind);
       if (!mounted) return;
@@ -84,9 +82,7 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
           .list(
             cursor: reset ? null : _nextCursor,
             search: _search.text.trim(),
-            itemKind: widget.mode == 'digital'
-                ? 'digital'
-                : (widget.mode == 'products' ? 'product' : null),
+            itemKind: widget.mode == 'products' ? 'product' : null,
           );
       if (!mounted) return;
       final visible = result.items.where(_matchesMode).toList();
@@ -115,20 +111,13 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
   }
 
   bool _matchesMode(ChatCatalogItemModel item) {
-    final digital =
-        item.itemKind == 'digital' || item.tangibility == 'intangible';
     return switch (widget.mode) {
-      'digital' => digital,
-      'products' => item.itemKind == 'product' && !digital,
+      'products' => item.itemKind == 'product',
       _ => item.itemKind != 'service',
     };
   }
 
-  String get _title => switch (widget.mode) {
-    'digital' => 'المنتجات الرقمية',
-    'products' => 'المنتجات',
-    _ => 'المنتجات',
-  };
+  String get _title => 'المنتجات';
 
   bool get _editorOpen => _creating || _selected != null;
 
@@ -201,10 +190,6 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
   }
 
   Widget _editorPane({required bool showClose}) {
-    final digital = _creating
-        ? widget.mode == 'digital'
-        : (_selected?.itemKind == 'digital' ||
-              _selected?.tangibility == 'intangible');
     return Column(
       children: [
         if (showClose)
@@ -222,7 +207,6 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
               _creating ? 'catalog-create' : 'catalog-edit-${_selected?.id}',
             ),
             item: _selected,
-            digital: digital,
             embedded: true,
             onSaved: (saved) {
               setState(() {
@@ -257,9 +241,7 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
     }
     if (_items.isEmpty) {
       return EmptyState(
-        title: widget.mode == 'digital'
-            ? 'لا توجد منتجات رقمية'
-            : 'لا توجد منتجات',
+        title: 'لا توجد منتجات',
         subtitle: 'أضف منتجاً من إضافة منتج.',
         icon: Icons.inventory_2_outlined,
       );

@@ -42,8 +42,6 @@ final class ChatCatalogDataSanitizer
             'unavailable',
             'out_of_stock',
             'low_stock',
-            'digital_delivery_pending',
-            'digital_delivery_ready',
             'business_closed',
             'support_contact',
             'order_followup',

@@ -197,6 +197,41 @@ class SearchProductsToolTest extends TestCase
         $this->assertArrayHasKey('name', $result->payload['products'][0]);
     }
 
+    public function test_search_products_reflects_live_catalog_updates_and_removals(): void
+    {
+        [$workspace, $conversation, $message, $setting] = $this->seedFixtures();
+        $context = app(InboxAgentContextBuilder::class)->build($workspace, $conversation, $message, $setting);
+
+        $first = app(SearchProductsTool::class)->execute($context, ['query' => 'فستان']);
+        $this->assertTrue($first->success);
+        $this->assertSame('فستان أسود', $first->payload['products'][0]['name']);
+
+        app(WorkspaceContext::class)->runFor($workspace, function (): void {
+            ChatCatalogItem::query()->where('sku', 'DRESS-SEARCH')->firstOrFail()->update([
+                'name' => 'فستان أحمر محدّث',
+                'description' => 'وصف جديد للمرجع',
+                'price' => 99,
+            ]);
+        });
+
+        $updated = app(SearchProductsTool::class)->execute($context, ['query' => 'فستان']);
+        $this->assertTrue($updated->success);
+        $this->assertSame('فستان أحمر محدّث', $updated->payload['products'][0]['name']);
+        $this->assertSame('وصف جديد للمرجع', $updated->payload['products'][0]['description']);
+        $this->assertSame(99, (int) $updated->payload['products'][0]['price']);
+
+        app(WorkspaceContext::class)->runFor($workspace, function (): void {
+            ChatCatalogItem::query()->where('sku', 'DRESS-SEARCH')->firstOrFail()->update([
+                'is_active' => false,
+                'archived_at' => now(),
+            ]);
+        });
+
+        $removed = app(SearchProductsTool::class)->execute($context, ['query' => 'فستان']);
+        $this->assertTrue($removed->success);
+        $this->assertSame(0, $removed->payload['count']);
+    }
+
     /**
      * @return array{0: Workspace, 1: Conversation, 2: Message, 3: AiSetting}
      */

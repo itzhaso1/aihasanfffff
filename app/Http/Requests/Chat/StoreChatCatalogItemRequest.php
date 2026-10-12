@@ -88,10 +88,10 @@ class StoreChatCatalogItemRequest extends FormRequest
             'highlights.*' => ['string', 'max:500'],
             'warnings' => ['nullable', 'string', 'max:5000'],
             'terms' => ['nullable', 'string', 'max:5000'],
-            'item_kind' => ['nullable', 'in:product,service,digital'],
+            'item_kind' => ['nullable', 'in:product,service'],
             'tangibility' => ['nullable', 'in:tangible,intangible'],
-            'classification' => ['nullable', 'in:physical,digital,service'],
-            'digital_subtype' => ['nullable', 'in:file,code,license,credential,account,subscription,digital_bundle,custom_digital'],
+            'classification' => ['nullable', 'in:physical,service'],
+            'digital_subtype' => ['prohibited'],
             'service_type' => ['nullable', 'in:consultation,appointment,booking,implementation,custom_service'],
             'price' => ['required', 'decimal:0,2', 'min:0'],
             'worker_min_price' => [

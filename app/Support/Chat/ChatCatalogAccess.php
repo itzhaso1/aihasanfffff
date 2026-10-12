@@ -118,8 +118,8 @@ final class ChatCatalogAccess
             'items_manage' => $this->canManageItems($user, $workspace),
             'categories_manage' => $this->canManageCategories($user, $workspace),
             'inventory_manage' => $this->canManageInventory($user, $workspace),
-            'digital_inventory_view' => $this->canViewDigitalInventory($user, $workspace),
-            'digital_inventory_manage' => $this->canManageDigitalInventory($user, $workspace),
+            'digital_inventory_view' => false,
+            'digital_inventory_manage' => false,
         ];
     }
 

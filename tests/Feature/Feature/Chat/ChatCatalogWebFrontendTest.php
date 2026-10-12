@@ -3,7 +3,6 @@
 namespace Tests\Feature\Feature\Chat;
 
 use App\Models\ChatCatalogCategory;
-use App\Models\ChatCatalogDigitalInventoryPool;
 use App\Models\ChatCatalogItem;
 use App\Models\ChatCatalogItemVariant;
 use App\Models\User;
@@ -57,11 +56,13 @@ class ChatCatalogWebFrontendTest extends TestCase
         $response->assertSee('متاح دائمًا');
         $response->assertSee('كمية محددة');
         $response->assertSee('يُجهز عند الطلب');
-        $response->assertSee('أكواد أو تراخيص');
-        $response->assertSee('ملف للتحميل');
+        $response->assertDontSee('أكواد أو تراخيص');
+        $response->assertDontSee('ملف للتحميل');
         $response->assertSee('حدد عدد الوحدات المتاحة للبيع.');
         $response->assertDontSee('طلب مسبق');
         $response->assertDontSee('value="backorder"', false);
+        $response->assertDontSee('value="digital_pool"', false);
+        $response->assertDontSee('value="file_asset"', false);
         $response->assertDontSee('سياسة المخزون');
 
         $storeResponse = $this->actingAs($this->user)
@@ -234,68 +235,19 @@ class ChatCatalogWebFrontendTest extends TestCase
         ]);
     }
 
-    public function test_digital_inventory_index_and_bulk_secret_import(): void
+    public function test_digital_inventory_http_surface_is_retired(): void
     {
-        $item = app(WorkspaceContext::class)->runFor($this->workspace, fn () => ChatCatalogItem::query()->create([
-            'workspace_id' => $this->workspace->id,
-            'name' => 'بطاقة شحن 50 ريال',
-            'slug' => 'card-50',
-            'classification' => 'digital',
-            'digital_subtype' => 'code',
-            'inventory_policy' => 'digital_pool',
-            'price' => 50,
-            'currency' => 'SAR',
-        ]));
-
-        $indexResponse = $this->actingAs($this->user)
+        $this->actingAs($this->user)
             ->withSession(['current_workspace_id' => $this->workspace->id])
-            ->get(route('workspace.chat-catalog.digital-inventory.index'));
+            ->get(route('workspace.chat-catalog.digital-inventory.index'))
+            ->assertStatus(410);
 
-        $indexResponse->assertOk();
-
-        // Create Pool
-        $poolResponse = $this->actingAs($this->user)
+        $this->actingAs($this->user)
             ->withSession(['current_workspace_id' => $this->workspace->id])
             ->post(route('workspace.chat-catalog.digital-inventory.pools.store'), [
-                'chat_catalog_item_id' => $item->id,
-                'name' => 'حوض أكواد 50 ريال',
-                'low_stock_threshold' => 3,
-            ]);
-
-        $poolResponse->assertRedirect();
-        $poolResponse->assertSessionHas('success');
-
-        $pool = ChatCatalogDigitalInventoryPool::withoutGlobalScopes()
-            ->where('workspace_id', $this->workspace->id)
-            ->where('name', 'حوض أكواد 50 ريال')
-            ->firstOrFail();
-
-        // Bulk Secret Import
-        $importResponse = $this->actingAs($this->user)
-            ->withSession(['current_workspace_id' => $this->workspace->id])
-            ->post(route('workspace.chat-catalog.digital-inventory.pools.import', $pool), [
-                'unit_type' => 'code',
-                'secrets_text' => "SECRET-CODE-001\nSECRET-CODE-002\nSECRET-CODE-003",
-            ]);
-
-        $importResponse->assertRedirect();
-        $importResponse->assertSessionHas('success');
-
-        $unitsCount = app(WorkspaceContext::class)->runFor($this->workspace, fn () => $pool->availableUnits()->count());
-        $this->assertEquals(3, $unitsCount);
-
-        $indexResponse = $this->actingAs($this->user)
-            ->withSession(['current_workspace_id' => $this->workspace->id])
-            ->get(route('workspace.chat-catalog.digital-inventory.index'));
-        $indexResponse->assertOk()->assertSee('حذف الحوض');
-
-        $deleteResponse = $this->actingAs($this->user)
-            ->withSession(['current_workspace_id' => $this->workspace->id])
-            ->delete(route('workspace.chat-catalog.digital-inventory.pools.destroy', $pool));
-        $deleteResponse->assertRedirect();
-        $deleteResponse->assertSessionHas('success');
-        $this->assertDatabaseMissing('chat_catalog_digital_inventory_pools', [
-            'id' => $pool->id,
-        ]);
+                'chat_catalog_item_id' => 1,
+                'name' => 'حوض أكواد',
+            ])
+            ->assertStatus(410);
     }
 }

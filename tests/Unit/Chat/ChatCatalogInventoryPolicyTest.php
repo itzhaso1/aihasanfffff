@@ -14,11 +14,11 @@ class ChatCatalogInventoryPolicyTest extends TestCase
             'finite_stock',
             'unlimited',
             'on_request',
-            'digital_pool',
-            'file_asset',
             'service_capacity',
         ], ChatCatalogInventoryPolicy::selectableValues());
         $this->assertFalse(ChatCatalogInventoryPolicy::Backorder->isSelectable());
+        $this->assertFalse(ChatCatalogInventoryPolicy::DigitalPool->isSelectable());
+        $this->assertFalse(ChatCatalogInventoryPolicy::FileAsset->isSelectable());
         $this->assertSame('backorder', ChatCatalogInventoryPolicy::Backorder->value);
     }
 

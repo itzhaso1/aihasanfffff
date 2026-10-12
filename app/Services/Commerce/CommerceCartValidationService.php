@@ -6,10 +6,7 @@ use App\Enums\ChatCatalog\ChatCatalogInventoryPolicy;
 use App\Enums\Commerce\CommerceCartStatus;
 use App\Enums\Commerce\CommerceReservationStatus;
 use App\Models\ChatCatalog;
-use App\Models\ChatCatalogDigitalInventoryPool;
-use App\Models\ChatCatalogDigitalInventoryUnit;
 use App\Models\ChatCatalogItem;
-use App\Models\ChatCatalogItemDigitalProfile;
 use App\Models\ChatCatalogItemVariant;
 use App\Models\Commerce\CommerceCart;
 use App\Models\Commerce\CommerceCartItem;
@@ -18,8 +15,6 @@ use App\Models\Commerce\Seller;
 use App\Models\Customer;
 use App\Models\Workspace;
 use App\Services\Chat\CatalogAvailabilityService;
-use App\Services\Chat\ChatCatalogDigitalInventoryService;
-use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 
 /**
@@ -33,7 +28,6 @@ final class CommerceCartValidationService
     public function __construct(
         private readonly CommercePricingService $pricing,
         private readonly CatalogAvailabilityService $availability,
-        private readonly ChatCatalogDigitalInventoryService $digitalInventory,
     ) {}
 
     public function validate(
@@ -326,43 +320,13 @@ final class CommerceCartValidationService
             }
         }
 
-        if ($policy === ChatCatalogInventoryPolicy::DigitalPool->value
+        if ($item->classification?->value === 'digital'
+            || $policy === ChatCatalogInventoryPolicy::DigitalPool->value
             || $policy === ChatCatalogInventoryPolicy::FileAsset->value) {
-            if ($item->classification?->value !== 'digital') {
-                return [
-                    'code' => 'digital_policy_invalid',
-                    'message' => 'Digital inventory policy requires a digital catalog item.',
-                ];
-            }
-
-            $profile = $this->digitalProfile($workspace, $item, $variant);
-            if (! $profile) {
-                return [
-                    'code' => 'digital_profile_missing',
-                    'message' => 'Digital item profile is missing.',
-                ];
-            }
-            $pool = $this->digitalPool($workspace, $item, $variant);
-            if (! $pool) {
-                return [
-                    'code' => 'digital_pool_missing',
-                    'message' => 'Digital inventory pool is missing.',
-                ];
-            }
-            if ($this->digitalInventory->countAvailableUnits($pool, $profile->unit_type) < $quantity) {
-                return [
-                    'code' => 'digital_inventory_insufficient',
-                    'message' => 'Insufficient available digital inventory.',
-                ];
-            }
-            if ($policy === ChatCatalogInventoryPolicy::FileAsset->value
-                && ($profile->unit_type?->value !== 'file'
-                    || ! $this->hasAvailableFileAssets($pool, $quantity))) {
-                return [
-                    'code' => 'digital_file_missing',
-                    'message' => 'Digital file asset is unavailable.',
-                ];
-            }
+            return [
+                'code' => 'digital_products_disabled',
+                'message' => 'Digital product selling and delivery are disabled.',
+            ];
         }
 
         if ($policy === ChatCatalogInventoryPolicy::ServiceCapacity->value
@@ -395,71 +359,6 @@ final class CommerceCartValidationService
                 fn ($query) => $query->whereNull('chat_catalog_item_variant_id'),
             )
             ->sum('quantity');
-    }
-
-    private function digitalProfile(
-        Workspace $workspace,
-        ChatCatalogItem $item,
-        ?ChatCatalogItemVariant $variant,
-    ): ?ChatCatalogItemDigitalProfile {
-        return ChatCatalogItemDigitalProfile::withoutGlobalScopes()
-            ->where('workspace_id', $workspace->id)
-            ->where('chat_catalog_item_id', $item->id)
-            ->when(
-                $variant,
-                fn ($query) => $query->where('chat_catalog_item_variant_id', $variant->id),
-                fn ($query) => $query->whereNull('chat_catalog_item_variant_id'),
-            )
-            ->first();
-    }
-
-    private function digitalPool(
-        Workspace $workspace,
-        ChatCatalogItem $item,
-        ?ChatCatalogItemVariant $variant,
-    ): ?ChatCatalogDigitalInventoryPool {
-        return ChatCatalogDigitalInventoryPool::withoutGlobalScopes()
-            ->where('workspace_id', $workspace->id)
-            ->where('chat_catalog_item_id', $item->id)
-            ->when(
-                $variant,
-                fn ($query) => $query->where('chat_catalog_item_variant_id', $variant->id),
-                fn ($query) => $query->whereNull('chat_catalog_item_variant_id'),
-            )
-            ->first();
-    }
-
-    private function hasAvailableFileAssets(ChatCatalogDigitalInventoryPool $pool, int $quantity): bool
-    {
-        $units = ChatCatalogDigitalInventoryUnit::withoutGlobalScopes()
-            ->where('workspace_id', $pool->workspace_id)
-            ->where('chat_catalog_digital_inventory_pool_id', $pool->id)
-            ->where('unit_type', 'file')
-            ->where('status', 'available')
-            ->where(function ($query): void {
-                $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })
-            ->orderBy('id')
-            ->limit($quantity)
-            ->get();
-        if ($units->count() !== $quantity) {
-            return false;
-        }
-
-        return $units->every(function (ChatCatalogDigitalInventoryUnit $unit): bool {
-            $disk = (string) data_get($unit->metadata, 'disk', '');
-            $path = (string) data_get($unit->metadata, 'path', '');
-
-            if ($disk === '' || $path === '' || str_contains($path, '..')) {
-                return false;
-            }
-
-            try {
-                return Storage::disk($disk)->exists($path);
-            } catch (\Throwable) {
-                return false;
-            }
-        });
     }
 
     /**

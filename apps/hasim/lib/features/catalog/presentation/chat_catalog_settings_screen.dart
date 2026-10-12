@@ -3,10 +3,8 @@ import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
 import 'package:hasim/features/catalog/presentation/catalog_categories_screen.dart';
-import 'package:hasim/features/catalog/presentation/catalog_digital_screen.dart';
 import 'package:hasim/features/catalog/presentation/catalog_form_screen.dart';
 import 'package:hasim/features/catalog/presentation/catalog_list_screen.dart';
-import 'package:hasim/features/catalog/presentation/catalog_product_type_selection_screen.dart';
 
 class ChatCatalogSettingsScreen extends StatefulWidget {
   const ChatCatalogSettingsScreen({
@@ -25,21 +23,15 @@ class ChatCatalogSettingsScreen extends StatefulWidget {
 
 class _ChatCatalogSettingsScreenState extends State<ChatCatalogSettingsScreen> {
   int _index = 0;
-  bool? _selectedProductIsDigital;
   bool _mobileMenuVisible = true;
 
   static const _items = <_CatalogEntry>[
     _CatalogEntry(
       Icons.add_box_outlined,
       'إضافة منتج',
-      'اختر منتجاً عادياً أو رقمياً',
+      'مرجع لمعلومات الذكاء الاصطناعي',
     ),
     _CatalogEntry(Icons.folder_outlined, 'إضافة تصنيف', 'تصنيفات المنتجات'),
-    _CatalogEntry(
-      Icons.vpn_key_outlined,
-      'المخزون الرقمي',
-      'أحواض الأكواد والوحدات',
-    ),
     _CatalogEntry(Icons.inventory_2_outlined, 'المنتجات', 'المنتجات المحفوظة'),
   ];
 
@@ -49,20 +41,14 @@ class _ChatCatalogSettingsScreenState extends State<ChatCatalogSettingsScreen> {
       setState(() {
         _index = index;
         _mobileMenuVisible = false;
-        if (index == 0) {
-          _selectedProductIsDigital = null;
-        }
       });
       return;
     }
-    if (_index == index && (index != 0 || _selectedProductIsDigital == null)) {
+    if (_index == index) {
       return;
     }
     setState(() {
       _index = index;
-      if (index == 0) {
-        _selectedProductIsDigital = null;
-      }
     });
   }
 
@@ -70,9 +56,6 @@ class _ChatCatalogSettingsScreenState extends State<ChatCatalogSettingsScreen> {
     if (!_mobileMenuVisible) {
       setState(() {
         _mobileMenuVisible = true;
-        if (_index == 0) {
-          _selectedProductIsDigital = null;
-        }
       });
       return;
     }
@@ -81,40 +64,15 @@ class _ChatCatalogSettingsScreenState extends State<ChatCatalogSettingsScreen> {
 
   Widget _detail() {
     return switch (_index) {
-      0 =>
-        _selectedProductIsDigital == null
-            ? CatalogProductTypeSelectionScreen(
-                key: const ValueKey('catalog-product-type-selection'),
-                embedded: true,
-                onSelected: (digital) {
-                  setState(() {
-                    _selectedProductIsDigital = digital;
-                    if (HasimLayout.isCompact(context) && !widget.embedded) {
-                      _mobileMenuVisible = false;
-                    }
-                  });
-                },
-              )
-            : CatalogFormScreen(
-                key: ValueKey(
-                  _selectedProductIsDigital!
-                      ? 'catalog-digital-form'
-                      : 'catalog-product-form',
-                ),
-                digital: _selectedProductIsDigital!,
-                embedded: true,
-                onCancel: () =>
-                    setState(() => _selectedProductIsDigital = null),
-              ),
+      0 => CatalogFormScreen(
+        key: const ValueKey('catalog-product-form'),
+        embedded: true,
+      ),
       1 => const CatalogCategoriesScreen(
         key: ValueKey('catalog-categories'),
         embedded: true,
       ),
-      2 => const CatalogDigitalScreen(
-        key: ValueKey('catalog-digital-stock'),
-        embedded: true,
-      ),
-      3 => const CatalogListScreen(
+      2 => const CatalogListScreen(
         key: ValueKey('catalog-products'),
         embedded: true,
       ),
@@ -195,7 +153,7 @@ class _ChatCatalogSettingsScreenState extends State<ChatCatalogSettingsScreen> {
                     ),
                   ),
                   Text(
-                    'إدارة المنتجات والتصنيفات والمخزون الرقمي',
+                    'إدارة المنتجات والتصنيفات كمرجع للذكاء الاصطناعي',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(

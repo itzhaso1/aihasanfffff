@@ -64,9 +64,7 @@ class ChatCatalogRepository {
         query: {
           'cursor': ?cursor,
           if (search != null && search.isNotEmpty) 'q': search,
-          if (itemKind == 'digital') 'classification': 'digital',
-          if (itemKind != null && itemKind.isNotEmpty && itemKind != 'digital')
-            'item_kind': itemKind,
+          if (itemKind != null && itemKind.isNotEmpty) 'item_kind': itemKind,
           'category_id': ?categoryId,
           if (activeOnly != null) 'active_only': activeOnly ? 1 : 0,
           'per_page': perPage,
@@ -232,7 +230,6 @@ class ChatCatalogRepository {
     bool clearCategory = false,
     List<ChatCatalogVariantModel>? variants,
   }) async {
-    final digital = itemKind == 'digital' || tangibility == 'intangible';
     final res = await _api.patch(
       '/catalog/$id',
       body: {
@@ -242,16 +239,15 @@ class ChatCatalogRepository {
         if (itemKind != null || tangibility != null)
           ..._kindFields(itemKind ?? 'product', tangibility ?? 'tangible'),
         if (price != null) 'price': price.toStringAsFixed(2),
-        if (!digital)
-          'worker_min_price': workerMinimumPrice?.toStringAsFixed(2),
+        'worker_min_price': workerMinimumPrice?.toStringAsFixed(2),
         'currency': ?currency,
-        if (!digital) 'stock': ?stock,
+        'stock': ?stock,
         'inventory_policy': ?inventoryPolicy,
         'is_active': ?isActive,
         if (clearCategory) 'chat_catalog_category_id': null,
         if (!clearCategory && categoryId != null)
           'chat_catalog_category_id': categoryId,
-        if (!digital && variants != null)
+        if (variants != null)
           'variants': variants.map((v) => v.toWriteJson()).toList(),
       },
     );
@@ -322,24 +318,19 @@ class ChatCatalogRepository {
     );
   }
 
+  Never _retiredDigitalInventory() {
+    throw UnsupportedError(
+      'Digital product inventory is retired. Products are an AI knowledge reference only.',
+    );
+  }
+
   Future<({List<Map<String, dynamic>> items, String? nextCursor})>
   digitalPools({String? cursor}) async {
-    final res = await _api.get(
-      '/catalog/digital-pools',
-      query: {'cursor': ?cursor, 'per_page': 30},
-    );
-    final items = asMapList(res.data);
-    final workspaceId = _workspace;
-    if (workspaceId != null) {
-      await _local?.upsertDigitalPools(workspaceId, items);
-    }
-    return (items: items, nextCursor: res.nextCursor);
+    _retiredDigitalInventory();
   }
 
   Future<List<Map<String, dynamic>>> cachedDigitalPools() async {
-    final workspaceId = _workspace;
-    if (workspaceId == null || _local == null) return const [];
-    return _local.digitalPools(workspaceId);
+    return const [];
   }
 
   Future<Map<String, dynamic>> createDigitalPool({
@@ -347,49 +338,26 @@ class ChatCatalogRepository {
     required String name,
     int? variantId,
   }) async {
-    final res = await _api.post(
-      '/catalog/digital-pools',
-      idempotent: true,
-      body: {
-        'chat_catalog_item_id': itemId,
-        'name': name,
-        'chat_catalog_item_variant_id': ?variantId,
-      },
-    );
-    final map = asMap(res.data);
-    if (map == null) {
-      throw ApiException(res.message ?? 'تعذر إنشاء المخزون الرقمي.');
-    }
-    return map;
+    _retiredDigitalInventory();
   }
 
   Future<List<Map<String, dynamic>>> digitalUnits(int poolId) async {
-    final res = await _api.get('/catalog/digital-pools/$poolId/units');
-    final items = asMapList(res.data);
-    final workspaceId = _workspace;
-    if (workspaceId != null) {
-      await _local?.upsertDigitalUnits(workspaceId, poolId, items);
-    }
-    return items;
+    _retiredDigitalInventory();
   }
 
   Future<void> importDigitalSecrets(
     int poolId, {
     required List<String> secrets,
   }) async {
-    await _api.post(
-      '/catalog/digital-pools/$poolId/units/import',
-      idempotent: true,
-      body: {'unit_type': 'code', 'secrets': secrets},
-    );
+    _retiredDigitalInventory();
   }
 
   Future<void> deleteDigitalPool(int poolId) async {
-    await _api.delete('/catalog/digital-pools/$poolId');
+    _retiredDigitalInventory();
   }
 
   Future<void> deleteDigitalUnit(int unitId) async {
-    await _api.delete('/catalog/digital-units/$unitId');
+    _retiredDigitalInventory();
   }
 
   Future<void> reserveDigitalUnit(
@@ -397,53 +365,35 @@ class ChatCatalogRepository {
     required String reservationKey,
     int? ttlSeconds,
   }) async {
-    await _api.post(
-      '/catalog/digital-pools/$poolId/reserve',
-      idempotent: true,
-      body: {'reservation_key': reservationKey, 'ttl_seconds': ?ttlSeconds},
-    );
+    _retiredDigitalInventory();
   }
 
   Future<void> releaseDigitalUnit(
     int unitId, {
     required String reservationKey,
   }) async {
-    await _api.post(
-      '/catalog/digital-units/$unitId/release',
-      idempotent: true,
-      body: {'reservation_key': reservationKey},
-    );
+    _retiredDigitalInventory();
   }
 
   Future<void> consumeDigitalUnit(
     int unitId, {
     required String reservationKey,
   }) async {
-    await _api.post(
-      '/catalog/digital-units/$unitId/consume',
-      idempotent: true,
-      body: {'reservation_key': reservationKey},
-    );
+    _retiredDigitalInventory();
   }
 
   Future<void> replaceDigitalSecret(
     int unitId, {
     required String secret,
   }) async {
-    await _api.patch(
-      '/catalog/digital-units/$unitId/secret',
-      body: {'secret': secret},
-    );
+    _retiredDigitalInventory();
   }
 
   Future<void> updateDigitalUnitStatus(
     int unitId, {
     required String status,
   }) async {
-    await _api.patch(
-      '/catalog/digital-units/$unitId/status',
-      body: {'status': status},
-    );
+    _retiredDigitalInventory();
   }
 
   Future<ChatCatalogSettingsModel> fetchSettings() async {
@@ -492,7 +442,6 @@ class ChatCatalogRepository {
     int? categoryId,
     List<ChatCatalogVariantModel>? variants,
   }) {
-    final digital = itemKind == 'digital' || tangibility == 'intangible';
     return {
       'name': name,
       if (description != null && description.isNotEmpty)
@@ -500,21 +449,20 @@ class ChatCatalogRepository {
       if (sku != null && sku.isNotEmpty) 'sku': sku,
       ..._kindFields(itemKind, tangibility),
       'price': price.toStringAsFixed(2),
-      if (!digital && workerMinimumPrice != null)
+      if (workerMinimumPrice != null)
         'worker_min_price': workerMinimumPrice.toStringAsFixed(2),
       'currency': currency,
-      if (!digital) 'stock': ?stock,
+      'stock': ?stock,
       if (inventoryPolicy != null && inventoryPolicy.isNotEmpty)
         'inventory_policy': inventoryPolicy,
       'is_active': isActive,
       'chat_catalog_category_id': ?categoryId,
-      if (!digital && variants != null && variants.isNotEmpty)
+      if (variants != null && variants.isNotEmpty)
         'variants': variants.map((v) => v.toWriteJson()).toList(),
     };
   }
 
-  /// The API accepts item_kind product|service only. Digital products use
-  /// classification=digital and tangibility=intangible.
+  /// The API accepts item_kind product|service only.
   Map<String, String> _kindFields(String itemKind, String tangibility) {
     if (itemKind == 'service') {
       return {
@@ -523,17 +471,10 @@ class ChatCatalogRepository {
         'tangibility': tangibility,
       };
     }
-    if (itemKind == 'digital' || tangibility == 'intangible') {
-      return {
-        'item_kind': 'product',
-        'classification': 'digital',
-        'tangibility': 'intangible',
-      };
-    }
     return {
       'item_kind': 'product',
       'classification': 'physical',
-      'tangibility': tangibility,
+      'tangibility': tangibility == 'intangible' ? 'intangible' : 'tangible',
     };
   }
 }

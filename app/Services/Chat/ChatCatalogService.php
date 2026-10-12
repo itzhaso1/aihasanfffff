@@ -2,6 +2,7 @@
 
 namespace App\Services\Chat;
 
+use App\Enums\ChatCatalog\ChatCatalogInventoryPolicy;
 use App\Models\ChatCatalogCategory;
 use App\Models\ChatCatalogCategorySearchTerm;
 use App\Models\ChatCatalogItem;
@@ -12,6 +13,7 @@ use App\Models\Commerce\Seller;
 use App\Models\Workspace;
 use App\Support\Chat\ArabicSearchNormalizer;
 use App\Support\Chat\ChatCatalogDefaults;
+use App\Support\Commerce\RetiredCustomerCheckout;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -20,7 +22,6 @@ class ChatCatalogService
 {
     public function __construct(
         private readonly ChatCatalogDataSanitizer $sanitizer,
-        private readonly ChatCatalogDigitalInventoryService $digitalInventory,
         private readonly ChatCatalogRootService $catalogRoot,
         private readonly ProductTemplateService $productTemplates,
         private readonly ProductTemplateValidationService $productTemplateValidation,
@@ -34,9 +35,6 @@ class ChatCatalogService
     {
         return DB::transaction(function () use ($workspace, $data): ChatCatalogItem {
             $item = ChatCatalogItem::query()->create($this->itemPayload($workspace, $data));
-            if ($item->classification?->value === 'digital') {
-                $this->digitalInventory->ensureDigitalProfile($item, null);
-            }
 
             if (! empty($data['product_template_id'])) {
                 $template = $this->productTemplates->resolveForWorkspace((int) $data['product_template_id'], $workspace);
@@ -69,15 +67,8 @@ class ChatCatalogService
 
         return DB::transaction(function () use ($item, $workspace, $data): ChatCatalogItem {
             $item->update($this->itemPayload($workspace, $data, $item));
-            if ($item->classification?->value === 'digital') {
-                $this->digitalInventory->ensureDigitalProfile($item, null);
-            } else {
-                if ($item->digitalPools()->exists() || $item->variants()->whereHas('digitalPools')->exists()) {
-                    throw new InvalidArgumentException('A catalog item with digital inventory cannot stop being digital.');
-                }
-                $item->digitalProfile()?->delete();
-                $item->variants()->each(fn (ChatCatalogItemVariant $variant) => $variant->digitalProfile()?->delete());
-            }
+            $item->digitalProfile()?->delete();
+            $item->variants()->each(fn (ChatCatalogItemVariant $variant) => $variant->digitalProfile()?->delete());
 
             if (array_key_exists('variants', $data)) {
                 $this->syncVariants($workspace, $item, is_array($data['variants']) ? $data['variants'] : []);
@@ -688,13 +679,17 @@ class ChatCatalogService
 
         $classification = $data['classification'] ?? $existing?->classification?->value;
         $classification ??= ($data['tangibility'] ?? $existing?->tangibility) === 'intangible'
-            ? 'digital'
+            && ($existing?->classification?->value === 'service' || ($data['item_kind'] ?? $existing?->item_kind) === 'service')
+            ? 'service'
             : 'physical';
-        $digitalSubtype = array_key_exists('digital_subtype', $data) ? $data['digital_subtype'] : $existing?->digital_subtype;
-        $serviceType = array_key_exists('service_type', $data) ? $data['service_type'] : $existing?->service_type;
-        if ($classification !== 'digital' && $digitalSubtype !== null) {
-            throw new InvalidArgumentException('Digital subtype requires a digital catalog item.');
+        if ($existing === null && $this->requestsRetiredDigitalCommerce($data)) {
+            throw new InvalidArgumentException(RetiredCustomerCheckout::DIGITAL_PRODUCTS_USER_MESSAGE);
         }
+        if ($classification === 'digital') {
+            $classification = 'physical';
+        }
+        $digitalSubtype = null;
+        $serviceType = array_key_exists('service_type', $data) ? $data['service_type'] : $existing?->service_type;
         if ($classification !== 'service' && $serviceType !== null) {
             throw new InvalidArgumentException('Service type requires a service catalog item.');
         }
@@ -750,7 +745,9 @@ class ChatCatalogService
             'price_valid_from' => array_key_exists('price_valid_from', $data) ? $data['price_valid_from'] : $existing?->price_valid_from,
             'price_valid_until' => array_key_exists('price_valid_until', $data) ? $data['price_valid_until'] : $existing?->price_valid_until,
             'stock' => array_key_exists('stock', $data) ? $data['stock'] : $existing?->stock,
-            'inventory_policy' => $data['inventory_policy'] ?? $existing?->inventory_policy?->value ?? ChatCatalogDefaults::defaultItemInventoryPolicy()->value,
+            'inventory_policy' => $this->knowledgeInventoryPolicy(
+                $data['inventory_policy'] ?? $existing?->inventory_policy?->value ?? ChatCatalogDefaults::defaultItemInventoryPolicy()->value
+            ),
             'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : ($existing?->is_active ?? true),
             'is_featured' => array_key_exists('is_featured', $data) ? (bool) $data['is_featured'] : ($existing?->is_featured ?? false),
             'is_bestseller' => array_key_exists('is_bestseller', $data) ? (bool) $data['is_bestseller'] : ($existing?->is_bestseller ?? false),
@@ -770,10 +767,6 @@ class ChatCatalogService
             'aliases' => array_key_exists('aliases', $data) ? $this->stringList($data['aliases']) : ($existing?->aliases ?? []),
             'search_phrases' => array_key_exists('search_phrases', $data) ? $this->stringList($data['search_phrases']) : ($existing?->search_phrases ?? []),
         ];
-
-        if ($classification === 'digital') {
-            $payload['tangibility'] = 'intangible';
-        }
 
         $payload['slug'] = array_key_exists('slug', $data)
             ? $this->uniqueSlug($workspace, (string) $data['slug'], $name, $existing?->id)
@@ -873,6 +866,35 @@ class ChatCatalogService
         $value = strtolower(trim((string) $kind));
 
         return in_array($value, ['product', 'service'], true) ? $value : 'product';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function requestsRetiredDigitalCommerce(array $data): bool
+    {
+        $policy = $data['inventory_policy'] ?? null;
+
+        return ($data['classification'] ?? null) === 'digital'
+            || ($data['item_kind'] ?? null) === 'digital'
+            || filled($data['digital_subtype'] ?? null)
+            || in_array($policy, [
+                ChatCatalogInventoryPolicy::DigitalPool->value,
+                ChatCatalogInventoryPolicy::FileAsset->value,
+            ], true);
+    }
+
+    private function knowledgeInventoryPolicy(mixed $policy): string
+    {
+        $value = is_string($policy) ? $policy : (string) $policy;
+        if (in_array($value, [
+            ChatCatalogInventoryPolicy::DigitalPool->value,
+            ChatCatalogInventoryPolicy::FileAsset->value,
+        ], true)) {
+            return ChatCatalogInventoryPolicy::NotTracked->value;
+        }
+
+        return $value !== '' ? $value : ChatCatalogDefaults::defaultItemInventoryPolicy()->value;
     }
 
     private function normalizeTangibility(mixed $tangibility): string

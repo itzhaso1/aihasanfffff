@@ -28,7 +28,7 @@ class CatalogFormScreen extends ConsumerStatefulWidget {
   });
 
   final ChatCatalogItemModel? item;
-  final bool digital;
+  final bool digital; // ignored: products are knowledge items only
   final bool embedded;
   final VoidCallback? onCancel;
   final ValueChanged<ChatCatalogItemModel>? onSaved;
@@ -71,10 +71,6 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
   ChatCatalogItemModel? get _currentItem => _persistedItem ?? widget.item;
 
   bool get _editing => _currentItem != null;
-  bool get _isDigital =>
-      widget.digital ||
-      _currentItem?.itemKind == 'digital' ||
-      _currentItem?.tangibility == 'intangible';
 
   @override
   void initState() {
@@ -92,7 +88,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
     _persistedItem = item;
     _inventoryPolicy = selectableInventoryPolicy(
       item?.inventoryPolicy,
-      fallback: _isDigital ? 'digital_pool' : 'not_tracked',
+      fallback: 'not_tracked',
     );
     _categoryId = item?.categoryId;
     _variants = [...(item?.variants ?? const [])];
@@ -353,12 +349,9 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
     final l10n = AppLocalizations.of(context);
     try {
       final repo = ref.read(chatCatalogRepositoryProvider);
-      final digital = _isDigital;
       final price = num.tryParse(_price.text.trim()) ?? 0;
-      final workerMinimumPrice = digital
-          ? null
-          : num.tryParse(_workerMinimumPrice.text.trim());
-      final stock = digital ? null : int.tryParse(_stock.text.trim());
+      final workerMinimumPrice = num.tryParse(_workerMinimumPrice.text.trim());
+      final stock = int.tryParse(_stock.text.trim());
       final current = _currentItem;
       final saved = current != null
           ? await repo.update(
@@ -366,8 +359,8 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
               name: _name.text.trim(),
               description: _description.text.trim(),
               sku: _sku.text.trim(),
-              itemKind: digital ? 'digital' : 'product',
-              tangibility: digital ? 'intangible' : 'tangible',
+              itemKind: 'product',
+              tangibility: 'tangible',
               price: price,
               workerMinimumPrice: workerMinimumPrice,
               currency: _currency.text.trim().toUpperCase(),
@@ -376,14 +369,14 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
               isActive: _active,
               categoryId: _categoryId,
               clearCategory: _categoryId == null,
-              variants: digital ? null : _variants,
+              variants: _variants,
             )
           : await repo.create(
               name: _name.text.trim(),
               description: _description.text.trim(),
               sku: _sku.text.trim(),
-              itemKind: digital ? 'digital' : 'product',
-              tangibility: digital ? 'intangible' : 'tangible',
+              itemKind: 'product',
+              tangibility: 'tangible',
               price: price,
               workerMinimumPrice: workerMinimumPrice,
               currency: _currency.text.trim().toUpperCase(),
@@ -391,7 +384,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
               inventoryPolicy: _inventoryPolicy,
               isActive: _active,
               categoryId: _categoryId,
-              variants: digital ? null : _variants,
+              variants: _variants,
             );
       if (!mounted) return;
       if (_imageBytes != null) {
@@ -437,13 +430,9 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
     );
     final page = HasimTokens.pageBg(context);
     final compact = HasimLayout.isCompact(context);
-    final title = _editing
-        ? (_isDigital ? 'تعديل منتج رقمي' : 'تعديل منتج')
-        : (_isDigital ? 'إضافة منتج رقمي' : 'إضافة منتج');
-    final subtitle = _isDigital ? 'منتج رقمي مع أدواته' : 'أدخل تفاصيل المنتج';
-    final headerIcon = _isDigital
-        ? Icons.cloud_outlined
-        : Icons.shopping_bag_outlined;
+    final title = _editing ? 'تعديل منتج' : 'إضافة منتج';
+    const subtitle = 'أدخل تفاصيل المنتج';
+    const headerIcon = Icons.shopping_bag_outlined;
 
     final basics = CatalogFormSection(
       title: 'معلومات المنتج الأساسية',
@@ -515,7 +504,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
     );
 
     final details = CatalogFormSection(
-      title: _isDigital ? 'تسعير المنتج الرقمي' : 'تفاصيل المنتج',
+      title: 'تفاصيل المنتج',
       icon: Icons.inventory_2_outlined,
       child: Column(
         children: [
@@ -537,73 +526,43 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
               decoration: catalogInputDecoration(context, hint: '0'),
             ),
           ),
-          if (!_isDigital) ...[
-            const SizedBox(height: 6),
-            CatalogFieldCard(
-              dense: true,
-              label: 'الحد الأدنى للعامل',
-              icon: Icons.arrow_downward_rounded,
-              child: TextFormField(
-                key: const Key('catalog-worker-min-price'),
-                controller: _workerMinimumPrice,
-                textAlign: TextAlign.start,
-                style: _valueStyle(context),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return null;
-                  return num.tryParse(value.trim()) == null
-                      ? 'أدخل سعراً صحيحاً'
-                      : null;
-                },
-                decoration: catalogInputDecoration(context, hint: 'غير محدد'),
+          const SizedBox(height: 6),
+          CatalogFieldCard(
+            dense: true,
+            label: 'الحد الأدنى للعامل',
+            icon: Icons.arrow_downward_rounded,
+            child: TextFormField(
+              key: const Key('catalog-worker-min-price'),
+              controller: _workerMinimumPrice,
+              textAlign: TextAlign.start,
+              style: _valueStyle(context),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) return null;
+                return num.tryParse(value.trim()) == null
+                    ? 'أدخل سعراً صحيحاً'
+                    : null;
+              },
+              decoration: catalogInputDecoration(context, hint: 'غير محدد'),
             ),
-          ],
+          ),
         ],
       ),
     );
 
-    final inventoryPolicies = _isDigital
-        ? const ['not_tracked', 'unlimited', 'digital_pool', 'file_asset']
-        : const ['not_tracked', 'finite_stock', 'unlimited', 'on_request'];
+    const inventoryPolicies = [
+      'not_tracked',
+      'finite_stock',
+      'unlimited',
+      'on_request',
+    ];
     final extra = CatalogFormSection(
       title: 'تفاصيل إضافية',
       icon: Icons.tune_outlined,
       child: Column(
         children: [
-          if (_isDigital) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: HasimTokens.mintFill(context),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.vpn_key_outlined,
-                    size: 18,
-                    color: HasimTokens.chatGreen,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'الأكواد والتراخيص والملفات الرقمية تُدار من المخزون الرقمي بعد حفظ المنتج.',
-                      style: TextStyle(
-                        color: HasimTokens.inkColor(context),
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
           CatalogSelectField<String>(
             dense: true,
             label: l10n.catalogInventoryPolicy,
@@ -634,7 +593,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
               ),
             ),
           ],
-          if (!_isDigital && _inventoryPolicy == 'finite_stock') ...[
+          if (_inventoryPolicy == 'finite_stock') ...[
             const SizedBox(height: 8),
             CatalogFieldCard(
               dense: true,
@@ -737,7 +696,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'نوع المنتج: ${_isDigital ? 'منتج رقمي' : 'منتج عادي'}',
+                  'مرجع لمعلومات الذكاء الاصطناعي',
                   key: const Key('catalog-product-type-label'),
                   style: TextStyle(
                     color: HasimTokens.chatGreen,
@@ -842,10 +801,8 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
                         const SizedBox(height: 12),
                         primary,
                       ],
-                      if (!_isDigital) ...[
-                        const SizedBox(height: 12),
-                        variants,
-                      ],
+                      const SizedBox(height: 12),
+                      variants,
                     ],
                   );
                 },
