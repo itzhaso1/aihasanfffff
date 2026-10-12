@@ -1,0 +1,579 @@
+PHPUnit Started (PHPUnit 12.5.35 using PHP 8.3.33 (cli) on WINNT)
+Test Runner Configured
+Bootstrap Finished (D:\projects\aihasan\tests/bootstrap.php)
+Event Facade Sealed
+Test Suite Loaded (57 tests)
+Test Runner Started
+Test Suite Sorted
+Test Runner Execution Started (57 tests)
+Test Suite Started (CLI Arguments, 57 tests)
+Test Suite Started (Tests\Feature\AI\Employees\AiEmployeeApiTest, 12 tests)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_owner_can_create_list_show_and_update_employees)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_owner_can_create_list_show_and_update_employees)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_owner_can_create_list_show_and_update_employees)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_owner_can_create_list_show_and_update_employees)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_create_from_preset_with_name_override)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_create_from_preset_with_name_override)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_create_from_preset_with_name_override)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_create_from_preset_with_name_override)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_default_activation_and_deletion_rules)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_default_activation_and_deletion_rules)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_default_activation_and_deletion_rules)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_default_activation_and_deletion_rules)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_validation_errors_are_422_with_the_field)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_validation_errors_are_422_with_the_field)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_validation_errors_are_422_with_the_field)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_validation_errors_are_422_with_the_field)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_other_workspace_employees_are_not_found_on_every_route)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_other_workspace_employees_are_not_found_on_every_route)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_other_workspace_employees_are_not_found_on_every_route)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_other_workspace_employees_are_not_found_on_every_route)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_members_without_ai_permission_are_forbidden)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_members_without_ai_permission_are_forbidden)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_members_without_ai_permission_are_forbidden)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_members_without_ai_permission_are_forbidden)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_ai_feature_gate_applies)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_ai_feature_gate_applies)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_ai_feature_gate_applies)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_ai_feature_gate_applies)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_presets_and_skills_catalogs)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_presets_and_skills_catalogs)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_presets_and_skills_catalogs)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_presets_and_skills_catalogs)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_preview_test_never_sends_or_stores_anything)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_preview_test_never_sends_or_stores_anything)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_preview_test_never_sends_or_stores_anything)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_preview_test_never_sends_or_stores_anything)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_preview_without_a_model_gateway_fails_honestly)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_preview_without_a_model_gateway_fails_honestly)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_preview_without_a_model_gateway_fails_honestly)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_preview_without_a_model_gateway_fails_honestly)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_employee_api_does_not_touch_legacy_ai_settings)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_employee_api_does_not_touch_legacy_ai_settings)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_employee_api_does_not_touch_legacy_ai_settings)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_employee_api_does_not_touch_legacy_ai_settings)
+Test Preparation Started (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_service_rename_keeps_api_identity)
+Before Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_service_rename_keeps_api_identity)
+After Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_service_rename_keeps_api_identity)
+Test Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest::test_service_rename_keeps_api_identity)
+After Last Test Method Called (Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDownAfterClass)
+After Last Test Method Finished:
+- Tests\Feature\AI\Employees\AiEmployeeApiTest::tearDownAfterClass
+Test Suite Finished (Tests\Feature\AI\Employees\AiEmployeeApiTest, 12 tests)
+Test Suite Started (Tests\Feature\AI\Employees\EmployeePresetTest, 4 tests)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeePresetTest::test_bundled_presets_load_and_validate)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeePresetTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeePresetTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeePresetTest::test_bundled_presets_load_and_validate)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeePresetTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeePresetTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeePresetTest::test_bundled_presets_load_and_validate)
+Test Finished (Tests\Feature\AI\Employees\EmployeePresetTest::test_bundled_presets_load_and_validate)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeePresetTest::test_creating_from_a_preset_makes_independent_employee_records)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeePresetTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeePresetTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeePresetTest::test_creating_from_a_preset_makes_independent_employee_records)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeePresetTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeePresetTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeePresetTest::test_creating_from_a_preset_makes_independent_employee_records)
+Test Finished (Tests\Feature\AI\Employees\EmployeePresetTest::test_creating_from_a_preset_makes_independent_employee_records)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeePresetTest::test_changing_a_preset_file_never_changes_existing_employees)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeePresetTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeePresetTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeePresetTest::test_changing_a_preset_file_never_changes_existing_employees)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeePresetTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeePresetTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeePresetTest::test_changing_a_preset_file_never_changes_existing_employees)
+Test Finished (Tests\Feature\AI\Employees\EmployeePresetTest::test_changing_a_preset_file_never_changes_existing_employees)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeePresetTest::test_invalid_or_unknown_presets_are_rejected)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeePresetTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeePresetTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeePresetTest::test_invalid_or_unknown_presets_are_rejected)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeePresetTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeePresetTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeePresetTest::test_invalid_or_unknown_presets_are_rejected)
+Test Finished (Tests\Feature\AI\Employees\EmployeePresetTest::test_invalid_or_unknown_presets_are_rejected)
+After Last Test Method Called (Tests\Feature\AI\Employees\EmployeePresetTest::tearDownAfterClass)
+After Last Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeePresetTest::tearDownAfterClass
+Test Suite Finished (Tests\Feature\AI\Employees\EmployeePresetTest, 4 tests)
+Test Suite Started (Tests\Feature\AI\Employees\EmployeeResolverTest, 8 tests)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeResolverTest::test_conversation_employee_wins_when_active)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeResolverTest::test_conversation_employee_wins_when_active)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeResolverTest::test_conversation_employee_wins_when_active)
+Test Finished (Tests\Feature\AI\Employees\EmployeeResolverTest::test_conversation_employee_wins_when_active)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeResolverTest::test_inactive_conversation_employee_falls_back_to_default)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeResolverTest::test_inactive_conversation_employee_falls_back_to_default)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeResolverTest::test_inactive_conversation_employee_falls_back_to_default)
+Test Finished (Tests\Feature\AI\Employees\EmployeeResolverTest::test_inactive_conversation_employee_falls_back_to_default)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeResolverTest::test_unbound_conversation_uses_the_default)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeResolverTest::test_unbound_conversation_uses_the_default)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeResolverTest::test_unbound_conversation_uses_the_default)
+Test Finished (Tests\Feature\AI\Employees\EmployeeResolverTest::test_unbound_conversation_uses_the_default)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeResolverTest::test_another_workspace_conversation_or_employee_is_ignored)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeResolverTest::test_another_workspace_conversation_or_employee_is_ignored)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeResolverTest::test_another_workspace_conversation_or_employee_is_ignored)
+Test Finished (Tests\Feature\AI\Employees\EmployeeResolverTest::test_another_workspace_conversation_or_employee_is_ignored)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeResolverTest::test_no_active_employee_fails_resolution_and_the_runtime_reports_it)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeResolverTest::test_no_active_employee_fails_resolution_and_the_runtime_reports_it)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeResolverTest::test_no_active_employee_fails_resolution_and_the_runtime_reports_it)
+Test Finished (Tests\Feature\AI\Employees\EmployeeResolverTest::test_no_active_employee_fails_resolution_and_the_runtime_reports_it)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeResolverTest::test_preview_may_run_a_requested_inactive_employee_but_live_may_not)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeResolverTest::test_preview_may_run_a_requested_inactive_employee_but_live_may_not)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeResolverTest::test_preview_may_run_a_requested_inactive_employee_but_live_may_not)
+Test Finished (Tests\Feature\AI\Employees\EmployeeResolverTest::test_preview_may_run_a_requested_inactive_employee_but_live_may_not)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeResolverTest::test_resolved_employee_is_rendered_into_the_employee_layer_below_the_constitution)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeResolverTest::test_resolved_employee_is_rendered_into_the_employee_layer_below_the_constitution)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeResolverTest::test_resolved_employee_is_rendered_into_the_employee_layer_below_the_constitution)
+Test Finished (Tests\Feature\AI\Employees\EmployeeResolverTest::test_resolved_employee_is_rendered_into_the_employee_layer_below_the_constitution)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeResolverTest::test_binder_assigns_only_unassigned_conversations_of_the_same_workspace)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeResolverTest::test_binder_assigns_only_unassigned_conversations_of_the_same_workspace)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeResolverTest::test_binder_assigns_only_unassigned_conversations_of_the_same_workspace)
+Test Finished (Tests\Feature\AI\Employees\EmployeeResolverTest::test_binder_assigns_only_unassigned_conversations_of_the_same_workspace)
+After Last Test Method Called (Tests\Feature\AI\Employees\EmployeeResolverTest::tearDownAfterClass)
+After Last Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeResolverTest::tearDownAfterClass
+Test Suite Finished (Tests\Feature\AI\Employees\EmployeeResolverTest, 8 tests)
+Test Suite Started (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest, 4 tests)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_arabic_saudi_employee_gets_the_saudi_arabic_rule)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_arabic_saudi_employee_gets_the_saudi_arabic_rule)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_arabic_saudi_employee_gets_the_saudi_arabic_rule)
+Test Finished (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_arabic_saudi_employee_gets_the_saudi_arabic_rule)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_english_employee_with_saudi_dialect_does_not_get_it)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_english_employee_with_saudi_dialect_does_not_get_it)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_english_employee_with_saudi_dialect_does_not_get_it)
+Test Finished (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_english_employee_with_saudi_dialect_does_not_get_it)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_other_dialects_do_not_get_it)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_other_dialects_do_not_get_it)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_other_dialects_do_not_get_it)
+Test Finished (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_other_dialects_do_not_get_it)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_the_employee_name_does_not_affect_training)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_the_employee_name_does_not_affect_training)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_the_employee_name_does_not_affect_training)
+Test Finished (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::test_the_employee_name_does_not_affect_training)
+After Last Test Method Called (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDownAfterClass)
+After Last Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest::tearDownAfterClass
+Test Suite Finished (Tests\Feature\AI\Employees\EmployeeSaudiTrainingTest, 4 tests)
+Test Suite Started (Tests\Feature\AI\Employees\EmployeeServiceTest, 15 tests)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_migrations_create_the_employee_tables_and_nullable_binding_columns)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_migrations_create_the_employee_tables_and_nullable_binding_columns)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_migrations_create_the_employee_tables_and_nullable_binding_columns)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_migrations_create_the_employee_tables_and_nullable_binding_columns)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_first_active_employee_becomes_default_and_later_ones_do_not)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_first_active_employee_becomes_default_and_later_ones_do_not)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_first_active_employee_becomes_default_and_later_ones_do_not)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_first_active_employee_becomes_default_and_later_ones_do_not)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_set_default_moves_the_single_default_slot)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_set_default_moves_the_single_default_slot)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_set_default_moves_the_single_default_slot)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_set_default_moves_the_single_default_slot)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_database_rejects_a_second_default_in_the_same_workspace)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_database_rejects_a_second_default_in_the_same_workspace)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_database_rejects_a_second_default_in_the_same_workspace)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_database_rejects_a_second_default_in_the_same_workspace)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_each_workspace_has_its_own_default)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_each_workspace_has_its_own_default)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_each_workspace_has_its_own_default)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_each_workspace_has_its_own_default)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_inactive_employee_cannot_become_default_and_deactivation_clears_default)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_inactive_employee_cannot_become_default_and_deactivation_clears_default)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_inactive_employee_cannot_become_default_and_deactivation_clears_default)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_inactive_employee_cannot_become_default_and_deactivation_clears_default)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_default_cannot_be_deleted_and_delete_is_soft)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_default_cannot_be_deleted_and_delete_is_soft)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_default_cannot_be_deleted_and_delete_is_soft)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_default_cannot_be_deleted_and_delete_is_soft)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_rename_keeps_the_id_and_bumps_the_config_version)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_rename_keeps_the_id_and_bumps_the_config_version)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_rename_keeps_the_id_and_bumps_the_config_version)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_rename_keeps_the_id_and_bumps_the_config_version)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_update_merges_persona_and_replaces_skills_and_tools)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_update_merges_persona_and_replaces_skills_and_tools)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_update_merges_persona_and_replaces_skills_and_tools)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_update_merges_persona_and_replaces_skills_and_tools)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_persona_and_model_settings_are_stored_on_employee_tables_not_ai_settings)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_persona_and_model_settings_are_stored_on_employee_tables_not_ai_settings)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_persona_and_model_settings_are_stored_on_employee_tables_not_ai_settings)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_persona_and_model_settings_are_stored_on_employee_tables_not_ai_settings)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_invalid_values_are_rejected_from_their_single_sources)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_invalid_values_are_rejected_from_their_single_sources)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_invalid_values_are_rejected_from_their_single_sources)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_invalid_values_are_rejected_from_their_single_sources)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_unknown_model_and_training_profile_are_rejected)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_unknown_model_and_training_profile_are_rejected)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_unknown_model_and_training_profile_are_rejected)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_unknown_model_and_training_profile_are_rejected)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_unknown_training_profile_is_rejected)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_unknown_training_profile_is_rejected)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_unknown_training_profile_is_rejected)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_unknown_training_profile_is_rejected)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_repository_never_returns_another_workspace_employee)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_repository_never_returns_another_workspace_employee)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_repository_never_returns_another_workspace_employee)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_repository_never_returns_another_workspace_employee)
+Test Preparation Started (Tests\Feature\AI\Employees\EmployeeServiceTest::test_config_rows_belong_to_the_employee_workspace)
+Before Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\EmployeeServiceTest::test_config_rows_belong_to_the_employee_workspace)
+After Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\EmployeeServiceTest::test_config_rows_belong_to_the_employee_workspace)
+Test Finished (Tests\Feature\AI\Employees\EmployeeServiceTest::test_config_rows_belong_to_the_employee_workspace)
+After Last Test Method Called (Tests\Feature\AI\Employees\EmployeeServiceTest::tearDownAfterClass)
+After Last Test Method Finished:
+- Tests\Feature\AI\Employees\EmployeeServiceTest::tearDownAfterClass
+Test Suite Finished (Tests\Feature\AI\Employees\EmployeeServiceTest, 15 tests)
+Test Suite Started (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest, 8 tests)
+Test Preparation Started (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_legacy_settings_map_to_one_employee)
+Before Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_legacy_settings_map_to_one_employee)
+After Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_legacy_settings_map_to_one_employee)
+Test Finished (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_legacy_settings_map_to_one_employee)
+Test Preparation Started (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_import_is_idempotent_even_after_soft_delete)
+Before Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_import_is_idempotent_even_after_soft_delete)
+After Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_import_is_idempotent_even_after_soft_delete)
+Test Finished (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_import_is_idempotent_even_after_soft_delete)
+Test Preparation Started (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_dry_run_writes_nothing)
+Before Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_dry_run_writes_nothing)
+After Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_dry_run_writes_nothing)
+Test Finished (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_dry_run_writes_nothing)
+Test Preparation Started (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_generic_or_missing_name_uses_the_neutral_translated_label)
+Before Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_generic_or_missing_name_uses_the_neutral_translated_label)
+After Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_generic_or_missing_name_uses_the_neutral_translated_label)
+Test Finished (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_generic_or_missing_name_uses_the_neutral_translated_label)
+Test Preparation Started (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_inactive_legacy_assistant_imports_as_inactive_without_default)
+Before Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_inactive_legacy_assistant_imports_as_inactive_without_default)
+After Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_inactive_legacy_assistant_imports_as_inactive_without_default)
+Test Finished (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_inactive_legacy_assistant_imports_as_inactive_without_default)
+Test Preparation Started (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_existing_default_is_kept_and_workspace_filter_limits_the_import)
+Before Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_existing_default_is_kept_and_workspace_filter_limits_the_import)
+After Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_existing_default_is_kept_and_workspace_filter_limits_the_import)
+Test Finished (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_existing_default_is_kept_and_workspace_filter_limits_the_import)
+Test Preparation Started (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_command_supports_dry_run)
+Before Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_command_supports_dry_run)
+After Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_command_supports_dry_run)
+Test Finished (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_command_supports_dry_run)
+Test Preparation Started (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_legacy_view_returns_the_old_settings_shape)
+Before Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp)
+Before Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::setUp
+Test Prepared (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_legacy_view_returns_the_old_settings_shape)
+After Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown)
+After Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDown
+Test Passed (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_legacy_view_returns_the_old_settings_shape)
+Test Finished (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::test_legacy_view_returns_the_old_settings_shape)
+After Last Test Method Called (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDownAfterClass)
+After Last Test Method Finished:
+- Tests\Feature\AI\Employees\LegacyAiSettingsImportTest::tearDownAfterClass
+Test Suite Finished (Tests\Feature\AI\Employees\LegacyAiSettingsImportTest, 8 tests)
+Test Suite Started (Tests\Unit\AI\Employees\EmployeeArchitectureTest, 6 tests)
+Test Preparation Started (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_php_code_contains_no_employee_display_names)
+Test Prepared (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_php_code_contains_no_employee_display_names)
+Test Passed (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_php_code_contains_no_employee_display_names)
+Test Finished (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_php_code_contains_no_employee_display_names)
+Test Preparation Started (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_display_names_exist_only_as_preset_data)
+Test Prepared (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_display_names_exist_only_as_preset_data)
+Test Passed (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_display_names_exist_only_as_preset_data)
+Test Finished (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_display_names_exist_only_as_preset_data)
+Test Preparation Started (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_no_code_branches_on_an_employee_name)
+Test Prepared (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_no_code_branches_on_an_employee_name)
+Test Passed (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_no_code_branches_on_an_employee_name)
+Test Finished (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_no_code_branches_on_an_employee_name)
+Test Preparation Started (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_never_writes_ai_settings)
+Test Prepared (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_never_writes_ai_settings)
+Test Passed (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_never_writes_ai_settings)
+Test Finished (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_never_writes_ai_settings)
+Test Preparation Started (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_is_not_wired_into_the_live_inbox)
+Test Prepared (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_is_not_wired_into_the_live_inbox)
+Test Passed (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_is_not_wired_into_the_live_inbox)
+Test Finished (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_is_not_wired_into_the_live_inbox)
+Test Preparation Started (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_contains_no_provider_http_calls)
+Test Prepared (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_contains_no_provider_http_calls)
+Test Passed (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_contains_no_provider_http_calls)
+Test Finished (Tests\Unit\AI\Employees\EmployeeArchitectureTest::test_employee_layer_contains_no_provider_http_calls)
+Test Suite Finished (Tests\Unit\AI\Employees\EmployeeArchitectureTest, 6 tests)
+Test Suite Finished (CLI Arguments, 57 tests)
+Test Runner Execution Finished
+Test Runner Finished
+PHPUnit Finished (Shell Exit Code: 0)

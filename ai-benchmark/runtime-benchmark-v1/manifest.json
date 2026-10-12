@@ -1,0 +1,10 @@
+{
+    "benchmark_version": "v1-fake-model",
+    "selection": "first 30 valid records of each of 50 documented parts",
+    "parts": 50,
+    "per_part": 30,
+    "cases": 1500,
+    "model": "fake_benchmark",
+    "database": "sqlite :memory:",
+    "quality_claim": false
+}

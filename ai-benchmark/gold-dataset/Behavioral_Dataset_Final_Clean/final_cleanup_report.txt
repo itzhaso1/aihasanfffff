@@ -1,0 +1,138 @@
+Behavioral Dataset Final Clean — deletion-only (Parts 02–50)
+No records rewritten. Behavioral_Dataset_Cleaned untouched. Part 01 untouched. No model called.
+
+1. Input record count
+- Combined (Part 01 + Parts 02–50): 23315
+- Parts 02–50 source (Behavioral_Dataset_Cleaned): 22819
+- Part 01 (not in this output): 496
+
+2. Input answer count
+- Combined: 69945
+- Parts 02–50: 68457
+
+3. GI deletion count
+- Remaining GI in source Parts 02–50: 303
+- Failed GI cohort (benchmark generic_reusable_answer / does_not_answer): 238
+- GI deleted: 238
+- GI retained (question-specific answers; not the failed generic-line cohort): 65
+- Did not delete merely because intent=general_inquiry.
+
+4. P1 candidates reviewed
+- Core sample P1 records reviewed: 44
+- Of those, already in failed GI set: 16
+- Non-GI P1 deleted only when answers enact the wrong behavior.
+- Retained borderline P1:
+  - unnecessary_clarification only (A1/A2 still answer): 10 records retained
+  - pickup answers valid despite possible return-policy overlap: الملف_08/Part_01 id=419 retained
+  - price question labeled preparation_time but answers actually quote price: الملف_06/Part_05 id=369 and الملف_07/Part_01 id=339 retained
+
+5. P1 deletion count
+- 15
+
+6. Total deleted
+- 253 (GI_GENERIC_FALLBACK 238 + P1_SEMANTIC_FAILURE 15)
+
+7. Total retained
+- Parts 02–50 output: 22566
+- Combined-equivalent if Part 01 still held aside: 23062
+
+8. Remaining answers
+- 67698
+
+9. Deletion percentage
+- Of Parts 02–50 source: 1.11%
+- Of combined 23,315 inventory: 1.09%
+
+10. Remaining general_inquiry count
+- 65 (in this Parts 02–50 output)
+
+11. Remaining confirmed generic fallback count
+- fallback triples (2+ generic lines): 0
+
+12. Per-Part deletion counts
+- الملف_01/Part_02: deleted=0 retained=501
+- الملف_01/Part_03: deleted=0 retained=501
+- الملف_01/Part_04: deleted=0 retained=501
+- الملف_01/Part_05: deleted=0 retained=501
+- الملف_02/Part_01: deleted=4 retained=468
+- الملف_02/Part_02: deleted=5 retained=444
+- الملف_02/Part_03: deleted=4 retained=422
+- الملف_02/Part_04: deleted=1 retained=472
+- الملف_02/Part_05: deleted=4 retained=439
+- الملف_03/Part_01: deleted=11 retained=412
+- الملف_03/Part_02: deleted=9 retained=428
+- الملف_03/Part_03: deleted=5 retained=448
+- الملف_03/Part_04: deleted=7 retained=422
+- الملف_03/Part_05: deleted=7 retained=395
+- الملف_04/Part_01: deleted=9 retained=437
+- الملف_04/Part_02: deleted=6 retained=442
+- الملف_04/Part_03: deleted=13 retained=426
+- الملف_04/Part_04: deleted=13 retained=424
+- الملف_04/Part_05: deleted=11 retained=442
+- الملف_05/Part_01: deleted=10 retained=444
+- الملف_05/Part_02: deleted=11 retained=440
+- الملف_05/Part_03: deleted=11 retained=440
+- الملف_05/Part_04: deleted=5 retained=443
+- الملف_05/Part_05: deleted=9 retained=437
+- الملف_06/Part_01: deleted=14 retained=425
+- الملف_06/Part_02: deleted=11 retained=421
+- الملف_06/Part_03: deleted=5 retained=432
+- الملف_06/Part_04: deleted=13 retained=427
+- الملف_06/Part_05: deleted=9 retained=423
+- الملف_07/Part_01: deleted=4 retained=466
+- الملف_07/Part_02: deleted=8 retained=427
+- الملف_07/Part_03: deleted=11 retained=429
+- الملف_07/Part_04: deleted=11 retained=431
+- الملف_07/Part_05: deleted=12 retained=428
+- الملف_08/Part_01: deleted=0 retained=502
+- الملف_08/Part_02: deleted=0 retained=502
+- الملف_08/Part_03: deleted=0 retained=502
+- الملف_08/Part_04: deleted=0 retained=502
+- الملف_08/Part_05: deleted=0 retained=502
+- الملف_09/Part_01: deleted=0 retained=502
+- الملف_09/Part_02: deleted=0 retained=502
+- الملف_09/Part_03: deleted=0 retained=502
+- الملف_09/Part_04: deleted=0 retained=502
+- الملف_09/Part_05: deleted=0 retained=501
+- الملف_10/Part_01: deleted=0 retained=502
+- الملف_10/Part_02: deleted=0 retained=502
+- الملف_10/Part_03: deleted=0 retained=502
+- الملف_10/Part_04: deleted=0 retained=502
+- الملف_10/Part_05: deleted=0 retained=501
+
+Deleted by reason
+- GI_GENERIC_FALLBACK: 238
+- P1_SEMANTIC_FAILURE: 15
+
+13. 100-record retention integrity result
+- Method: i_k = floor(k * N / 100) for k=0..99
+- inspected: 100
+- unchanged (question/intent/domain/strategy/behavior/answers): 100
+- failed: 0
+- result: PASS
+
+14. Validation result
+- combined source 23,315 / 69,945: PASS
+- deleted + retained = Parts 02–50 source: PASS
+- retained lines byte-for-byte = source lines: PASS
+- every retained record has 3 answers: PASS
+- IDs unique within Part; (part,id) unique: PASS
+- deleted records absent: PASS
+- no retained failed-GI keys: PASS
+- no retained approved P1 deletes: PASS
+- no generic fallback triple remains: PASS
+- no new generic answers created (deletion-only): PASS
+- DOCX questions = retained: PASS (22566)
+- Part 01 hash unchanged: PASS
+- Behavioral_Dataset_Cleaned hash unchanged: PASS
+- Benchmark findings/sampled hashes unchanged: PASS
+- 100-record integrity: PASS
+- overall: PASS
+
+Outputs
+- C:\Users\حسن\Downloads\بنك_الاسئلة_مقسمة_50_بارت\Behavioral_Dataset_Final_Clean\behavioral_dataset.jsonl
+- C:\Users\حسن\Downloads\بنك_الاسئلة_مقسمة_50_بارت\Behavioral_Dataset_Final_Clean\behavioral_dataset.docx
+- C:\Users\حسن\Downloads\بنك_الاسئلة_مقسمة_50_بارت\Behavioral_Dataset_Final_Clean\deletion_manifest.jsonl
+- C:\Users\حسن\Downloads\بنك_الاسئلة_مقسمة_50_بارت\Behavioral_Dataset_Final_Clean\final_cleanup_report.txt
+
+Note: output is Parts 02–50 only. Part 01 remains in Part_01_Cleaned/ and was not copied here.

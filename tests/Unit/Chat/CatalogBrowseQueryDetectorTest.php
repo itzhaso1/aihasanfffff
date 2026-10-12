@@ -1,0 +1,42 @@
+<?php
+
+namespace Tests\Unit\Chat;
+
+use App\Services\Chat\ChatCatalogRetrievalService;
+use App\Support\Chat\CatalogBrowseQueryDetector;
+use App\Support\Chat\GulfArabicInterpreter;
+use Tests\TestCase;
+
+class CatalogBrowseQueryDetectorTest extends TestCase
+{
+    private CatalogBrowseQueryDetector $detector;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->detector = app(CatalogBrowseQueryDetector::class);
+    }
+
+    public function test_detects_generic_arabic_product_listing(): void
+    {
+        $gulf = app(GulfArabicInterpreter::class);
+        $interpret = $gulf->interpret('وش عندكم منتجات؟');
+
+        $this->assertTrue($this->detector->isBrowseCatalogQuery('وش عندكم منتجات؟', $interpret['search_tokens']));
+    }
+
+    public function test_specific_product_name_is_not_browse_only(): void
+    {
+        $tokens = app(ChatCatalogRetrievalService::class)->tokens('هل عندكم فستان أسود؟');
+
+        $this->assertFalse($this->detector->isBrowseCatalogQuery('هل عندكم فستان أسود؟', $tokens));
+    }
+
+    public function test_service_filter_from_arabic_services_question(): void
+    {
+        $gulf = app(GulfArabicInterpreter::class);
+        $interpret = $gulf->interpret('وش الخدمات عندكم؟');
+
+        $this->assertSame('service', $this->detector->browseItemKindFilter('وش الخدمات عندكم؟', $interpret['search_tokens']));
+    }
+}

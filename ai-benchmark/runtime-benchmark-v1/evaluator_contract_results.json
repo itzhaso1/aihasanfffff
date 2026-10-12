@@ -1,0 +1,56 @@
+[
+    {
+        "id": "known-pass",
+        "status": "PASS",
+        "issues": []
+    },
+    {
+        "id": "semantic-mismatch",
+        "status": "FAIL",
+        "issues": [
+            "wrong_intent"
+        ]
+    },
+    {
+        "id": "unnecessary-clarification",
+        "status": "FAIL",
+        "issues": [
+            "unnecessary_clarification"
+        ]
+    },
+    {
+        "id": "fabricated-fact",
+        "status": "FAIL",
+        "issues": [
+            "fabricated_fact"
+        ]
+    },
+    {
+        "id": "wrong-intent",
+        "status": "FAIL",
+        "issues": [
+            "wrong_intent"
+        ]
+    },
+    {
+        "id": "wrong-domain",
+        "status": "FAIL",
+        "issues": [
+            "wrong_domain"
+        ]
+    },
+    {
+        "id": "wrong-decision",
+        "status": "FAIL",
+        "issues": [
+            "wrong_decision_behavior"
+        ]
+    },
+    {
+        "id": "saudi-mismatch",
+        "status": "FAIL",
+        "issues": [
+            "saudi_style_mismatch"
+        ]
+    }
+]

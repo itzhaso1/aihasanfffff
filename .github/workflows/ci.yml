@@ -1,0 +1,302 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  APP_ENV: testing
+  APP_KEY: base64:2fl+Ktvkfl+Fuz4Qp/A75G2RTiWMs5Cpj4Cp4Ixkc4A=
+  COMPOSER_NO_INTERACTION: "1"
+
+jobs:
+  pint:
+    name: pint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, xml, ctype, json, tokenizer
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-php8.3-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php8.3-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+
+      - name: Pint --test (enforced P0/P1 + CI surface)
+        run: php tests/bin/pint-enforced.php --test
+
+  pint-full:
+    name: pint-full
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, xml, ctype, json, tokenizer
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-php8.3-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php8.3-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+
+      - name: Full-tree Pint --test
+        run: vendor/bin/pint --test
+
+  phpunit-sqlite:
+    name: phpunit-sqlite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ${{ github.workspace }}/database/ci-migrate.sqlite
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, xml, ctype, json, tokenizer, pdo_sqlite, sqlite3, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-php8.3-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php8.3-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Refuse production database
+        run: php tests/bin/assert-not-production-database.php
+
+      - name: Application bootstrap
+        run: php artisan --version
+
+      - name: Migrations on clean SQLite file
+        run: php tests/bin/ci-migrate-fresh.php
+
+      - name: Prepare artifact directory
+        run: mkdir -p storage/logs/ci
+
+      - name: Security regression + critical suite (SQLite)
+        run: >
+          php vendor/bin/phpunit
+          --configuration phpunit.critical.xml
+          --log-junit storage/logs/ci/phpunit-sqlite.xml
+          --testdox-text storage/logs/ci/phpunit-sqlite-testdox.txt
+
+      - name: Upload SQLite test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-sqlite-logs
+          path: storage/logs/ci/
+          if-no-files-found: ignore
+
+  phpunit-sqlite-full:
+    name: phpunit-sqlite-full
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ${{ github.workspace }}/database/ci-migrate.sqlite
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, xml, ctype, json, tokenizer, pdo_sqlite, sqlite3, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-php8.3-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php8.3-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Refuse production database
+        run: php tests/bin/assert-not-production-database.php
+
+      - name: Prepare artifact directory
+        run: mkdir -p storage/logs/ci
+
+      - name: Full PHPUnit (SQLite)
+        run: >
+          php vendor/bin/phpunit
+          --configuration phpunit.xml
+          --log-junit storage/logs/ci/phpunit-sqlite-full.xml
+          --testdox-text storage/logs/ci/phpunit-sqlite-full-testdox.txt
+
+      - name: Upload full SQLite artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-sqlite-full-logs
+          path: storage/logs/ci/
+          if-no-files-found: ignore
+
+  phpunit-mariadb:
+    name: phpunit-mariadb
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: ci
+          MARIADB_DATABASE: hasem_p0_tenancy_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_DATABASE: hasem_p0_tenancy_test
+      DB_USERNAME: root
+      DB_PASSWORD: ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, xml, ctype, json, tokenizer, pdo_mysql, mysqlnd, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-php8.3-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php8.3-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Refuse production database
+        run: php tests/bin/assert-not-production-database.php
+
+      - name: Application bootstrap
+        run: php artisan --version
+
+      - name: Migrations on clean MariaDB
+        run: php tests/bin/ci-migrate-fresh.php
+
+      - name: Prepare artifact directory
+        run: mkdir -p storage/logs/ci
+
+      - name: Critical PHPUnit (MariaDB)
+        run: >
+          php vendor/bin/phpunit
+          --configuration phpunit.critical.mysql.xml
+          --log-junit storage/logs/ci/phpunit-mariadb.xml
+          --testdox-text storage/logs/ci/phpunit-mariadb-testdox.txt
+
+      - name: Upload MariaDB test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-mariadb-logs
+          path: storage/logs/ci/
+          if-no-files-found: ignore
+
+  flutter:
+    name: flutter-${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - hasim
+          - hasim_finance
+          - hasim_cashier
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        working-directory: apps/${{ matrix.app }}
+        run: flutter pub get
+
+      - name: Generate localizations (hasim)
+        if: matrix.app == 'hasim'
+        working-directory: apps/hasim
+        run: flutter gen-l10n
+
+      - name: Flutter analyze
+        working-directory: apps/${{ matrix.app }}
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Flutter test
+        working-directory: apps/${{ matrix.app }}
+        run: flutter test --reporter expanded

@@ -1,0 +1,10 @@
+{
+    "started": 1500,
+    "completed": 1500,
+    "errors": 0,
+    "model_invocations": 1500,
+    "guard_invocations": 1500,
+    "tool_invocations": 0,
+    "duration_ms": 53593,
+    "note": "Infrastructure only. Not an AI quality score."
+}
