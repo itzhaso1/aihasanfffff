@@ -87,11 +87,16 @@ class ConversationRepository {
 
   Stream<List<MessageModel>> watchLatestMessages(
     int workspaceId,
-    int conversationId,
-  ) {
+    int conversationId, {
+    int limit = InboxLocalStore.liveMessageWindow,
+  }) {
     final store = _local;
     if (store == null) return const Stream.empty();
-    return store.watchLatestMessages(workspaceId, conversationId);
+    return store.watchLatestMessages(
+      workspaceId,
+      conversationId,
+      limit: limit,
+    );
   }
 
   Future<void> persistConversations(
@@ -320,6 +325,10 @@ class ConversationRepository {
     if (workspaceId != null) {
       await _local?.markConversationRead(workspaceId, conversationId);
     }
+  }
+
+  Future<void> markReadLocal(int workspaceId, int conversationId) async {
+    await _local?.markConversationRead(workspaceId, conversationId);
   }
 
   Future<HomeSnapshot> overlayHomeUnread(

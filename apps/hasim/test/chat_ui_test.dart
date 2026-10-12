@@ -290,6 +290,53 @@ void main() {
   );
 
   testWidgets(
+    'multi-line suggestion fills the composer and does not send',
+    (tester) async {
+      final controller = TextEditingController();
+      var sent = 0;
+      await tester.pumpWidget(
+        wrap(
+          ChatComposer(
+            controller: controller,
+            sendEnabled: true,
+            onSend: () => sent++,
+            onAttach: () {},
+            onEmoji: () {},
+          ),
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField), 'أهلاً بك\nكيف أقدر أساعدك؟');
+      await tester.pump();
+
+      expect(sent, 0);
+      expect(controller.text.contains('\n'), isFalse);
+      expect(controller.text, 'أهلاً بككيف أقدر أساعدك؟');
+    },
+  );
+
+  testWidgets('enter on the current draft still sends', (tester) async {
+    final controller = TextEditingController(text: 'هلا');
+    var sent = 0;
+    await tester.pumpWidget(
+      wrap(
+        ChatComposer(
+          controller: controller,
+          sendEnabled: true,
+          onSend: () => sent++,
+          onAttach: () {},
+          onEmoji: () {},
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'هلا\n');
+    await tester.pump();
+
+    expect(sent, 1);
+  });
+
+  testWidgets(
     'AI suggestion fills the composer only and send uses the edited suggestion',
     (tester) async {
       final controller = TextEditingController(text: 'مسودة سابقة');

@@ -58,9 +58,12 @@ class ChatComposer extends StatefulWidget {
 }
 
 class _ChatComposerState extends State<ChatComposer> {
+  late String _committedText;
+
   @override
   void initState() {
     super.initState();
+    _committedText = _withoutNewlines(widget.controller.text);
     widget.controller.addListener(_onText);
   }
 
@@ -70,6 +73,7 @@ class _ChatComposerState extends State<ChatComposer> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_onText);
       widget.controller.addListener(_onText);
+      _committedText = _withoutNewlines(widget.controller.text);
     }
   }
 
@@ -82,6 +86,8 @@ class _ChatComposerState extends State<ChatComposer> {
   void _onText() {
     if (mounted) setState(() {});
   }
+
+  String _withoutNewlines(String value) => value.replaceAll('\n', '');
 
   bool get _hasText => widget.controller.text.trim().isNotEmpty;
 
@@ -195,16 +201,25 @@ class _ChatComposerState extends State<ChatComposer> {
                               textAlign: TextAlign.right,
                               textInputAction: TextInputAction.send,
                               onChanged: (value) {
-                                if (!value.contains('\n')) return;
-                                final cleaned = value.replaceAll('\n', '');
+                                if (!value.contains('\n')) {
+                                  _committedText = value;
+                                  return;
+                                }
+                                final cleaned = _withoutNewlines(value);
+                                final enterOnExistingText =
+                                    cleaned == _committedText;
                                 widget.controller.value = TextEditingValue(
                                   text: cleaned,
                                   selection: TextSelection.collapsed(
                                     offset: cleaned.length,
                                   ),
                                 );
+                                _committedText = cleaned;
+                                // Enter on the current draft sends. Pasting or
+                                // inserting an AI suggestion must not.
                                 if (widget.sendEnabled &&
-                                    cleaned.trim().isNotEmpty) {
+                                    cleaned.trim().isNotEmpty &&
+                                    enterOnExistingText) {
                                   widget.onSend();
                                 }
                               },

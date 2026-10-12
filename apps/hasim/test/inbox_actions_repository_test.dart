@@ -147,4 +147,37 @@ void main() {
     expect(setup.calls.single.data, {'worker_engagement_id': 22});
     expect(model.assignedWorkerEngagementId, 22);
   });
+
+  test('resolve handoff posts the mobile contract path', () async {
+    final setup = await repository(
+      data: {
+        'id': 7,
+        'channel': 'whatsapp',
+        'status': 'open',
+        'handoff_status': 'resolved',
+        'ai_enabled': false,
+      },
+    );
+    final model = await setup.repo.resolveHandoff(7);
+    expect(setup.calls.single.method, 'POST');
+    expect(setup.calls.single.path, 'conversations/7/resolve-handoff');
+    expect(model.handoffStatus, 'resolved');
+    expect(model.aiEnabled, isFalse);
+  });
+
+  test('resume AI posts the mobile contract path', () async {
+    final setup = await repository(
+      data: {
+        'id': 7,
+        'channel': 'whatsapp',
+        'status': 'open',
+        'handoff_status': 'none',
+        'ai_enabled': true,
+      },
+    );
+    final model = await setup.repo.resumeAi(7);
+    expect(setup.calls.single.method, 'POST');
+    expect(setup.calls.single.path, 'conversations/7/resume-ai');
+    expect(model.aiEnabled, isTrue);
+  });
 }

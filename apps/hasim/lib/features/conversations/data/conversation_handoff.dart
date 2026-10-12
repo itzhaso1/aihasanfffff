@@ -23,11 +23,32 @@ abstract final class ConversationHandoffValues {
 
   static bool isAllowedReason(String value) => reasons.contains(value);
 
+  static bool isOpen(ConversationModel conversation) =>
+      conversation.status == 'open';
+
   static bool canRequest(ConversationModel conversation) =>
+      isOpen(conversation) &&
       requestableStatuses.contains(conversation.handoffStatus);
 
   static bool canAssign(ConversationModel conversation) =>
+      isOpen(conversation) &&
       assignableStatuses.contains(conversation.handoffStatus);
+
+  static bool canTakeover(ConversationModel conversation) =>
+      isOpen(conversation);
+
+  static bool canResolve(ConversationModel conversation) =>
+      isOpen(conversation) &&
+      const ['requested', 'queued', 'assigned', 'active'].contains(
+        conversation.handoffStatus,
+      );
+
+  static bool canResumeAi(ConversationModel conversation) =>
+      isOpen(conversation) &&
+      !conversation.aiEnabled &&
+      !const ['requested', 'queued', 'assigned', 'active'].contains(
+        conversation.handoffStatus,
+      );
 
   static String reasonLabel(String value) => switch (value) {
     'customer_request' => 'طلب العميل',

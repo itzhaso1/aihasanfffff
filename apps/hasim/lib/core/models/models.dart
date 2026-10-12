@@ -510,11 +510,12 @@ class ConversationModel extends Equatable {
     String? assignedParticipantType,
     bool? aiEnabled,
     bool? canReply,
+    String? status,
   }) {
     return ConversationModel(
       id: id,
       channel: channel,
-      status: status,
+      status: status ?? this.status,
       externalId: externalId,
       aiEnabled: aiEnabled ?? this.aiEnabled,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,

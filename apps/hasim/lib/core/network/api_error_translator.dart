@@ -204,6 +204,15 @@ class ApiErrorTranslator {
         lower == 'validation failed.') {
       return 'بيانات غير صالحة.';
     }
+    if (lower == 'handoff is only allowed on open conversations.') {
+      return 'التحويل مسموح فقط في المحادثات المفتوحة.';
+    }
+    if (lower == 'no active handoff to resolve.') {
+      return 'لا يوجد تحويل نشط لإنهائه.';
+    }
+    if (lower == 'handoff must be resolved before resuming ai.') {
+      return 'يجب إنهاء التحويل قبل تفعيل الذكاء الاصطناعي.';
+    }
 
     return null;
   }

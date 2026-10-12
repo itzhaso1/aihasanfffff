@@ -35,19 +35,22 @@ ConversationModel _conv({
   String payment = 'unpaid',
   String review = 'no_review_needed',
   String handoff = 'none',
+  String status = 'open',
+  bool aiEnabled = false,
   int unread = 3,
   int? assignedUserId,
 }) {
   return ConversationModel(
     id: 7,
     channel: 'whatsapp',
-    status: 'open',
+    status: status,
     unreadCount: unread,
     customerPriority: priority,
     paymentStatus: payment,
     reviewStatus: review,
     handoffStatus: handoff,
     assignedUserId: assignedUserId,
+    aiEnabled: aiEnabled,
     customer: const CustomerModel(id: 2, name: 'أحمد'),
   );
 }
@@ -120,6 +123,9 @@ class _RecordingRepo extends ConversationRepository {
   int classificationCalls = 0;
   int handoffCalls = 0;
   int assignCalls = 0;
+  int resolveCalls = 0;
+  int resumeAiCalls = 0;
+  int takeoverCalls = 0;
   Map<String, dynamic>? lastClassification;
   String? lastHandoffReason;
   int? lastAssignUserId;
@@ -262,6 +268,67 @@ class _RecordingRepo extends ConversationRepository {
       customer: item.customer,
     );
   }
+
+  @override
+  Future<ConversationModel> takeoverHandoff(
+    int conversationId, {
+    int? workspaceId,
+  }) async {
+    takeoverCalls++;
+    await _hold();
+    item = item.copyWith(
+      handoffStatus: 'active',
+      assignedUserId: 9,
+      assignedUserName: 'موظف الشركة',
+      aiEnabled: false,
+    );
+    return ConversationModel(
+      id: item.id,
+      channel: item.channel,
+      status: item.status,
+      handoffStatus: 'active',
+      assignedUserId: 9,
+      assignedUserName: 'موظف الشركة',
+      aiEnabled: false,
+      customer: item.customer,
+    );
+  }
+
+  @override
+  Future<ConversationModel> resolveHandoff(
+    int conversationId, {
+    int? workspaceId,
+  }) async {
+    resolveCalls++;
+    await _hold();
+    item = item.copyWith(handoffStatus: 'resolved', aiEnabled: false);
+    return ConversationModel(
+      id: item.id,
+      channel: item.channel,
+      status: item.status,
+      handoffStatus: 'resolved',
+      aiEnabled: false,
+      customer: item.customer,
+    );
+  }
+
+  @override
+  Future<ConversationModel> resumeAi(
+    int conversationId, {
+    int? workspaceId,
+  }) async {
+    resumeAiCalls++;
+    await _hold();
+    item = item.copyWith(handoffStatus: 'none', aiEnabled: true);
+    return ConversationModel(
+      id: item.id,
+      channel: item.channel,
+      status: item.status,
+      handoffStatus: 'none',
+      aiEnabled: true,
+      customer: item.customer,
+    );
+  }
 }
 
 class _FakeHomeRepository extends HomeRepository {
@@ -376,6 +443,39 @@ void main() {
     expect(ConversationHandoffValues.canRequest(_conv(handoff: 'none')), isTrue);
     expect(
       ConversationHandoffValues.canAssign(_conv(handoff: 'assigned')),
+      isFalse,
+    );
+  });
+
+  test('closed conversations cannot request assign resolve or resume AI', () {
+    final closed = _conv(handoff: 'queued', status: 'closed');
+    expect(ConversationHandoffValues.isOpen(closed), isFalse);
+    expect(ConversationHandoffValues.canRequest(closed), isFalse);
+    expect(ConversationHandoffValues.canAssign(closed), isFalse);
+    expect(ConversationHandoffValues.canTakeover(closed), isFalse);
+    expect(ConversationHandoffValues.canResolve(closed), isFalse);
+    expect(ConversationHandoffValues.canResumeAi(closed), isFalse);
+  });
+
+  test('resolve and resume AI follow open conversation handoff states', () {
+    expect(
+      ConversationHandoffValues.canResolve(_conv(handoff: 'queued')),
+      isTrue,
+    );
+    expect(
+      ConversationHandoffValues.canResolve(_conv(handoff: 'none')),
+      isFalse,
+    );
+    expect(
+      ConversationHandoffValues.canResumeAi(
+        _conv(handoff: 'resolved', aiEnabled: false),
+      ),
+      isTrue,
+    );
+    expect(
+      ConversationHandoffValues.canResumeAi(
+        _conv(handoff: 'queued', aiEnabled: false),
+      ),
       isFalse,
     );
   });
@@ -623,6 +723,77 @@ void main() {
     );
   });
 
+  test('resolve handoff updates status from the server', () async {
+    final h = await _openController(item: _conv(handoff: 'queued'));
+    addTearDown(() async {
+      h.container.dispose();
+      await h.db.close();
+    });
+    h.container.read(chatControllerProvider(7));
+    await waitUntil(
+      () => h.container.read(chatControllerProvider(7)).conversation?.id == 7,
+    );
+    final error = await h.container
+        .read(chatControllerProvider(7).notifier)
+        .resolveHandoff();
+    expect(error, isNull);
+    expect(h.repo.resolveCalls, 1);
+    expect(
+      h.container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'resolved',
+    );
+  });
+
+  test('resolve handoff failure keeps previous status', () async {
+    final h = await _openController(item: _conv(handoff: 'queued'));
+    addTearDown(() async {
+      h.container.dispose();
+      await h.db.close();
+    });
+    h.repo.error = ApiException(
+      'Handoff is only allowed on open conversations.',
+    );
+    h.container.read(chatControllerProvider(7));
+    await waitUntil(
+      () => h.container.read(chatControllerProvider(7)).conversation?.id == 7,
+    );
+    final error = await h.container
+        .read(chatControllerProvider(7).notifier)
+        .resolveHandoff();
+    expect(error, 'التحويل مسموح فقط في المحادثات المفتوحة.');
+    expect(
+      h.container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'queued',
+    );
+  });
+
+  test('resume AI updates enabled flag from the server', () async {
+    final h = await _openController(
+      item: _conv(handoff: 'resolved', aiEnabled: false),
+    );
+    addTearDown(() async {
+      h.container.dispose();
+      await h.db.close();
+    });
+    h.container.read(chatControllerProvider(7));
+    await waitUntil(
+      () => h.container.read(chatControllerProvider(7)).conversation?.id == 7,
+    );
+    final error = await h.container
+        .read(chatControllerProvider(7).notifier)
+        .resumeAi();
+    expect(error, isNull);
+    expect(h.repo.resumeAiCalls, 1);
+    expect(
+      h.container.read(chatControllerProvider(7)).conversation?.aiEnabled,
+      isTrue,
+    );
+    expect(
+      h.container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'none',
+    );
+  });
+
   test('duplicate handoff request while loading is ignored', () async {
     final h = await _openController(item: _conv(handoff: 'none'));
     addTearDown(() async {
@@ -750,12 +921,27 @@ void main() {
       final assign = await h.container
           .read(chatControllerProvider(7).notifier)
           .assignHandoff(userId: 9);
+      final resolve = await h.container
+          .read(chatControllerProvider(7).notifier)
+          .resolveHandoff();
+      final resume = await h.container
+          .read(chatControllerProvider(7).notifier)
+          .resumeAi();
+      final takeover = await h.container
+          .read(chatControllerProvider(7).notifier)
+          .takeoverHandoff();
       expect(classify, 'لا تملك صلاحية تنفيذ هذا الإجراء.');
       expect(request, 'لا تملك صلاحية تنفيذ هذا الإجراء.');
       expect(assign, 'لا تملك صلاحية تنفيذ هذا الإجراء.');
+      expect(resolve, 'لا تملك صلاحية تنفيذ هذا الإجراء.');
+      expect(resume, 'لا تملك صلاحية تنفيذ هذا الإجراء.');
+      expect(takeover, 'لا تملك صلاحية تنفيذ هذا الإجراء.');
       expect(h.repo.classificationCalls, 0);
       expect(h.repo.handoffCalls, 0);
       expect(h.repo.assignCalls, 0);
+      expect(h.repo.resolveCalls, 0);
+      expect(h.repo.resumeAiCalls, 0);
+      expect(h.repo.takeoverCalls, 0);
     },
   );
 
@@ -784,6 +970,7 @@ void main() {
     required _RecordingRepo repo,
     required SharedPreferences prefs,
     required AuthState auth,
+    ConversationModel? initialConversation,
   }) {
     final session = InboxSession();
     final workspaceId = auth.workspace?.id;
@@ -820,7 +1007,10 @@ void main() {
         locale: const Locale('ar'),
         supportedLocales: AppLocalizations.supportedLocales,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
-        home: const ChatScreen(conversationId: 7),
+        home: ChatScreen(
+          conversationId: 7,
+          initialConversation: initialConversation,
+        ),
       ),
     );
   }
@@ -838,6 +1028,37 @@ void main() {
     await tester.tap(find.text('المزيد'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('opening chat with a list seed does not throw during build', (
+    tester,
+  ) async {
+    setPhone(tester);
+    SharedPreferences.setMockInitialValues({'workspace_id': 1});
+    final prefs = await SharedPreferences.getInstance();
+    final db = InboxDatabase.memory();
+    addTearDown(db.close);
+    final initial = _conv(unread: 2);
+    final repo = _RecordingRepo(
+      isolatedTestApiClient(
+        secureStore: _MemorySecureStore(),
+        prefsStore: PrefsStore(prefs),
+      ),
+      InboxLocalStore(db),
+    )..item = initial;
+
+    await tester.pumpWidget(
+      chatApp(
+        repo: repo,
+        prefs: prefs,
+        auth: companyAuth,
+        initialConversation: initial,
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatScreen), findsOneWidget);
+  });
 
   testWidgets('company chat shows current classification and saves it', (
     tester,
@@ -1188,6 +1409,8 @@ void main() {
       );
       expect(find.byKey(const Key('chat-action-assign-handoff')), findsNothing);
       expect(find.text('تولي المحادثة'), findsNothing);
+      expect(find.byKey(const Key('chat-action-resolve-handoff')), findsNothing);
+      expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
       expect(repo.classificationCalls, 0);
       expect(repo.handoffCalls, 0);
       expect(repo.assignCalls, 0);
@@ -1219,5 +1442,84 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('classification-error')), findsOneWidget);
     expect(find.text('تعذر تحديث التصنيف.'), findsOneWidget);
+  });
+
+  testWidgets('closed conversation hides resolve and resume AI actions', (
+    tester,
+  ) async {
+    setPhone(tester);
+    SharedPreferences.setMockInitialValues({'workspace_id': 1});
+    final prefs = await SharedPreferences.getInstance();
+    final db = InboxDatabase.memory();
+    addTearDown(db.close);
+    final repo = _RecordingRepo(
+      isolatedTestApiClient(
+        secureStore: _MemorySecureStore(),
+        prefsStore: PrefsStore(prefs),
+      ),
+      InboxLocalStore(db),
+    )..item = _conv(handoff: 'queued', status: 'closed', aiEnabled: false);
+
+    await tester.pumpWidget(
+      chatApp(repo: repo, prefs: prefs, auth: companyAuth),
+    );
+    await tester.pumpAndSettle();
+    await openMore(tester);
+    expect(find.byKey(const Key('chat-action-resolve-handoff')), findsNothing);
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
+    expect(find.byKey(const Key('chat-action-takeover')), findsNothing);
+    expect(repo.resolveCalls, 0);
+    expect(repo.resumeAiCalls, 0);
+  });
+
+  testWidgets('company chat resolves an open handoff', (tester) async {
+    setPhone(tester);
+    SharedPreferences.setMockInitialValues({'workspace_id': 1});
+    final prefs = await SharedPreferences.getInstance();
+    final db = InboxDatabase.memory();
+    addTearDown(db.close);
+    final repo = _RecordingRepo(
+      isolatedTestApiClient(
+        secureStore: _MemorySecureStore(),
+        prefsStore: PrefsStore(prefs),
+      ),
+      InboxLocalStore(db),
+    )..item = _conv(handoff: 'queued');
+
+    await tester.pumpWidget(
+      chatApp(repo: repo, prefs: prefs, auth: companyAuth),
+    );
+    await tester.pumpAndSettle();
+    await openMore(tester);
+    await tester.tap(find.byKey(const Key('chat-action-resolve-handoff')));
+    await tester.pumpAndSettle();
+    expect(repo.resolveCalls, 1);
+    expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
+  });
+
+  testWidgets('resolve handoff shows backend failure', (tester) async {
+    setPhone(tester);
+    SharedPreferences.setMockInitialValues({'workspace_id': 1});
+    final prefs = await SharedPreferences.getInstance();
+    final db = InboxDatabase.memory();
+    addTearDown(db.close);
+    final repo = _RecordingRepo(
+      isolatedTestApiClient(
+        secureStore: _MemorySecureStore(),
+        prefsStore: PrefsStore(prefs),
+      ),
+      InboxLocalStore(db),
+    )..item = _conv(handoff: 'queued')
+      ..error = ApiException('Handoff is only allowed on open conversations.');
+
+    await tester.pumpWidget(
+      chatApp(repo: repo, prefs: prefs, auth: companyAuth),
+    );
+    await tester.pumpAndSettle();
+    await openMore(tester);
+    await tester.tap(find.byKey(const Key('chat-action-resolve-handoff')));
+    await tester.pumpAndSettle();
+    expect(repo.resolveCalls, 1);
+    expect(find.text('التحويل مسموح فقط في المحادثات المفتوحة.'), findsOneWidget);
   });
 }

@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
+import 'package:hasim/core/local_db/inbox_local_store.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/storage/inbox_scope.dart';
@@ -588,7 +589,11 @@ class ChatController extends StateNotifier<ChatState> {
     final repo = _ref.read(conversationRepositoryProvider);
     if (workspaceId != null) {
       _messageSub = repo
-          .watchLatestMessages(workspaceId, conversationId)
+          .watchLatestMessages(
+            workspaceId,
+            conversationId,
+            limit: InboxLocalStore.liveMessageWindow,
+          )
           .listen((latest) {
             if (!mounted || _boundWorkspaceId != workspaceId) return;
             final messages = _mergeMessages(_olderMessages, latest);
@@ -611,6 +616,44 @@ class ChatController extends StateNotifier<ChatState> {
       state = state.copyWith(loading: true);
     }
     await refresh(silent: state.messages.isNotEmpty || seeded != null);
+  }
+
+  void seedConversation(ConversationModel conversation) {
+    if (state.conversation != null) return;
+    state = state.copyWith(
+      conversation: conversation,
+      loading: state.messages.isEmpty,
+    );
+  }
+
+  Future<void> _persistOpenedRead(
+    InboxScope scope,
+    int? workspaceId,
+    ConversationModel conversation,
+  ) async {
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+    if (!mounted || !_canCommit(scope)) return;
+    try {
+      final repo = _ref.read(conversationRepositoryProvider);
+      if (workspaceId != null) {
+        await repo.markReadLocal(workspaceId, conversationId);
+      }
+      _clearUnreadAfterSend();
+      bumpInboxLocalRevision(_ref);
+      try {
+        await repo.markRead(conversationId, workspaceId: workspaceId);
+      } catch (_) {
+        // Local unread is already cleared because the user opened the thread.
+      }
+      if (!mounted || !_canCommit(scope) || workspaceId == null) return;
+      final cached = await repo.cachedConversation(workspaceId, conversationId);
+      if (!mounted || !_canCommit(scope)) return;
+      state = state.copyWith(
+        conversation: cached == null
+            ? conversation.copyWith(unreadCount: 0)
+            : conversation.overlayingLocalInbox(cached),
+      );
+    } catch (_) {}
   }
 
   List<MessageModel> _mergeMessages(
@@ -669,39 +712,31 @@ class ChatController extends StateNotifier<ChatState> {
       final page = await messagesFuture;
       if (!_canCommit(scope)) return;
       final workspaceId = scope.workspaceId;
-      final local = workspaceId == null
-          ? page.items.reversed.toList()
-          : state.messages;
+      final fetched = page.items.reversed.toList();
+      var messages = fetched;
+      if (workspaceId != null) {
+        final cached = await repo.cachedMessages(workspaceId, conversationId);
+        if (!_canCommit(scope)) return;
+        messages = _mergeMessages(
+          _olderMessages,
+          _mergeMessages(cached, fetched),
+        );
+      }
+      if (messages.isEmpty && state.messages.isNotEmpty) {
+        messages = state.messages;
+      }
       if (!_canCommit(scope)) return;
       state = state.copyWith(
         loading: false,
         conversation: conversation,
-        messages: local.isNotEmpty ? local : page.items.reversed.toList(),
+        messages: messages,
         nextCursor: page.nextCursor,
         clearCursor: true,
         error: repo.lastReadFromCache
             ? 'تعذر التحديث. تُعرض البيانات المحفوظة على الجهاز.'
             : null,
       );
-      try {
-        await repo.markRead(conversationId, workspaceId: workspaceId);
-        if (!_canCommit(scope)) return;
-        bumpInboxLocalRevision(_ref);
-        if (workspaceId != null) {
-          final cached = await repo.cachedConversation(
-            workspaceId,
-            conversationId,
-          );
-          if (!_canCommit(scope)) return;
-          state = state.copyWith(
-            conversation: cached == null
-                ? conversation.copyWith(unreadCount: 0)
-                : conversation.overlayingLocalInbox(cached),
-          );
-        }
-      } catch (_) {
-        // API failure must not claim local read or unread=0.
-      }
+      unawaited(_persistOpenedRead(scope, workspaceId, conversation));
     } on ApiException catch (e) {
       if (!_canCommit(scope)) return;
       state = state.copyWith(loading: false, error: e.userMessage);
@@ -823,6 +858,8 @@ class ChatController extends StateNotifier<ChatState> {
 
     if (!_canCommit(scope)) return true;
     state = state.copyWith(sending: false, error: null);
+    _clearUnreadAfterSend();
+    unawaited(_persistReadAfterSend(workspaceId));
     unawaited(
       _flushTextSend(
         scope: scope,
@@ -831,6 +868,38 @@ class ChatController extends StateNotifier<ChatState> {
       ),
     );
     return true;
+  }
+
+  void _clearUnreadAfterSend() {
+    Future<void>.microtask(() {
+      if (!mounted) return;
+      _ref
+          .read(conversationsControllerProvider.notifier)
+          .clearUnreadInList(conversationId);
+      final conversation = state.conversation;
+      if (conversation != null && conversation.unreadCount != 0) {
+        state = state.copyWith(
+          conversation: conversation.copyWith(unreadCount: 0),
+        );
+      }
+    });
+  }
+
+  Future<void> _persistReadAfterSend(int? workspaceId) async {
+    if (workspaceId != null) {
+      await _ref
+          .read(conversationRepositoryProvider)
+          .markReadLocal(workspaceId, conversationId);
+    }
+    bumpInboxLocalRevision(_ref);
+    try {
+      await _ref.read(conversationRepositoryProvider).markRead(
+        conversationId,
+        workspaceId: workspaceId,
+      );
+    } catch (_) {
+      // Local unread is already cleared; the next open retries the server.
+    }
   }
 
   Future<void> _flushTextSend({
@@ -982,6 +1051,8 @@ class ChatController extends StateNotifier<ChatState> {
       if (workspaceId != null) {
         await repo.persistMessages(workspaceId, conversationId, state.messages);
       }
+      _clearUnreadAfterSend();
+      unawaited(_persistReadAfterSend(workspaceId));
       return withAttach;
     } catch (e) {
       if (kDebugMode) {
@@ -1062,6 +1133,8 @@ class ChatController extends StateNotifier<ChatState> {
       if (workspaceId != null) {
         await repo.persistMessages(workspaceId, conversationId, state.messages);
       }
+      _clearUnreadAfterSend();
+      unawaited(_persistReadAfterSend(workspaceId));
       return withAttach;
     } catch (e) {
       if (kDebugMode) {
@@ -1284,6 +1357,36 @@ class ChatController extends StateNotifier<ChatState> {
     );
   }
 
+  Future<String?> takeoverHandoff() {
+    if (!_companyInboxWriteAllowed()) {
+      return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
+    }
+    return _applyServerConversation(
+      (repo, workspaceId) =>
+          repo.takeoverHandoff(conversationId, workspaceId: workspaceId),
+    );
+  }
+
+  Future<String?> resolveHandoff() {
+    if (!_companyInboxWriteAllowed()) {
+      return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
+    }
+    return _applyServerConversation(
+      (repo, workspaceId) =>
+          repo.resolveHandoff(conversationId, workspaceId: workspaceId),
+    );
+  }
+
+  Future<String?> resumeAi() {
+    if (!_companyInboxWriteAllowed()) {
+      return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
+    }
+    return _applyServerConversation(
+      (repo, workspaceId) =>
+          repo.resumeAi(conversationId, workspaceId: workspaceId),
+    );
+  }
+
   bool _companyInboxWriteAllowed() {
     return _ref.read(authControllerProvider).isCompanyUser;
   }
@@ -1385,6 +1488,10 @@ class ChatController extends StateNotifier<ChatState> {
       final local = await repo.cachedMessages(workspaceId, conversationId);
       if (!_canCommit(scope)) return;
       state = state.copyWith(messages: local);
+      if (!incoming.isOutbound) {
+        _clearUnreadAfterSend();
+        unawaited(_persistReadAfterSend(workspaceId));
+      }
       return;
     }
     if (state.messages.any((x) {

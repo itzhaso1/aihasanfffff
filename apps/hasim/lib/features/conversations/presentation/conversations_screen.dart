@@ -13,6 +13,7 @@ import 'package:hasim/core/widgets/hasim_search_bar.dart';
 import 'package:hasim/core/widgets/hasim_shell_header.dart';
 import 'package:hasim/core/widgets/skeleton_list.dart';
 import 'package:hasim/core/storage/inbox_scope.dart';
+import 'package:hasim/features/conversations/data/chat_wallpaper_catalog.dart';
 import 'package:hasim/features/conversations/presentation/chat_screen.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_channel_avatar.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_filter_chip.dart';
@@ -102,6 +103,15 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      precacheImage(
+        ChatWallpaperCatalog.decorationImage(
+          ChatWallpaperCatalog.defaultId,
+        ).image,
+        context,
+      );
+    });
     if (_isFolder) return;
     final initial = widget.initialSelectedId;
     if (initial != null) {
@@ -154,10 +164,14 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     if (_actionConversationId != null) {
       setState(() => _actionConversationId = null);
     }
-    _inbox.clearUnreadInList(id);
-    ref.read(chatControllerProvider(id));
     final navRailWidth = HasimLayout.navRailWidth;
-    if (HasimLayout.useConversationSplit(context, navRailWidth: navRailWidth)) {
+    final split = HasimLayout.useConversationSplit(
+      context,
+      navRailWidth: navRailWidth,
+    );
+    if (split) {
+      _inbox.clearUnreadInList(id);
+      ref.read(chatControllerProvider(id));
       if (_isFolder) {
         setState(() => _folderSelectedId = id);
       } else {
@@ -165,6 +179,8 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       }
       return;
     }
+    // Phone: push first. Rebuilding the inbox list or starting ChatController
+    // on this frame contends with the route animation and feels like a freeze.
     context.push('/conversations/$id', extra: initialConversation);
   }
 

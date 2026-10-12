@@ -81,6 +81,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    final initial = widget.initialConversation;
+    if (initial != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref
+            .read(chatControllerProvider(widget.conversationId).notifier)
+            .seedConversation(initial);
+      });
+    }
   }
 
   @override
@@ -487,15 +496,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             value: 'assign_handoff',
             child: Text('تعيين المحادثة'),
           ),
-        if (conversation != null && isCompanyUser)
-          const PopupMenuItem(value: 'takeover', child: Text('تولي المحادثة')),
-        if (conversation != null && isCompanyUser)
+        if (conversation != null &&
+            isCompanyUser &&
+            ConversationHandoffValues.canTakeover(conversation))
           const PopupMenuItem(
+            key: Key('chat-action-takeover'),
+            value: 'takeover',
+            child: Text('تولي المحادثة'),
+          ),
+        if (conversation != null &&
+            isCompanyUser &&
+            ConversationHandoffValues.canResolve(conversation))
+          const PopupMenuItem(
+            key: Key('chat-action-resolve-handoff'),
             value: 'resolve_handoff',
             child: Text('إنهاء التحويل'),
           ),
-        if (conversation != null && isCompanyUser && !conversation.aiEnabled)
-          const PopupMenuItem(value: 'resume_ai', child: Text('تفعيل AI')),
+        if (conversation != null &&
+            isCompanyUser &&
+            ConversationHandoffValues.canResumeAi(conversation))
+          const PopupMenuItem(
+            key: Key('chat-action-resume-ai'),
+            value: 'resume_ai',
+            child: Text('تفعيل AI'),
+          ),
       ],
     );
     if (!mounted || selected == null) return;
@@ -548,32 +572,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (selected == 'takeover' ||
         selected == 'resolve_handoff' ||
         selected == 'resume_ai') {
-      final repo = ref.read(conversationRepositoryProvider);
-      try {
-        final workspaceId = ref.read(activeWorkspaceIdProvider);
-        if (selected == 'takeover') {
-          await repo.takeoverHandoff(
-            widget.conversationId,
-            workspaceId: workspaceId,
-          );
-        } else if (selected == 'resolve_handoff') {
-          await repo.resolveHandoff(
-            widget.conversationId,
-            workspaceId: workspaceId,
-          );
-        } else {
-          await repo.resumeAi(widget.conversationId, workspaceId: workspaceId);
-        }
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          this.context,
-        ).showSnackBar(const SnackBar(content: Text('تم تحديث حالة التحويل')));
-      } on ApiException catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          this.context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
-      }
+      final notifier = ref.read(
+        chatControllerProvider(widget.conversationId).notifier,
+      );
+      final error = selected == 'takeover'
+          ? await notifier.takeoverHandoff()
+          : selected == 'resolve_handoff'
+          ? await notifier.resolveHandoff()
+          : await notifier.resumeAi();
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(content: Text(error ?? 'تم تحديث حالة التحويل')),
+      );
     }
   }
 
@@ -916,7 +926,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     )) {
       return;
     }
-    _controller.text = text!.trim();
+    final draft = text!.trim().replaceAll(RegExp(r'\s*\n+\s*'), ' ');
+    _controller.value = TextEditingValue(
+      text: draft,
+      selection: TextSelection.collapsed(offset: draft.length),
+    );
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('تم إدراج اقتراح الرد.')));

@@ -27,6 +27,7 @@ ConversationModel _conv(
   int unread = 0,
   DateTime? at,
   int? lastMessageId,
+  String lastMessageDirection = 'inbound',
   int? assignedUserId,
   int? assignedWorkerEngagementId,
 }) {
@@ -44,7 +45,7 @@ ConversationModel _conv(
         : MessageModel(
             id: lastMessageId,
             conversationId: id,
-            direction: 'inbound',
+            direction: lastMessageDirection,
             messageType: 'text',
             content: name,
           ),
@@ -109,6 +110,7 @@ class _PagedRepo extends ConversationRepository {
   final InboxLocalStore _store;
   bool markReadShouldFail = false;
   int markReadCalls = 0;
+  List<MessageModel> remoteMessages = const [];
   final page1 = [
     _conv(1, name: 'one', unread: 2, at: DateTime.utc(2026, 1, 1, 12)),
     _conv(2, name: 'two', unread: 0, at: DateTime.utc(2026, 1, 1, 11)),
@@ -148,6 +150,22 @@ class _PagedRepo extends ConversationRepository {
     if (workspaceId != null) {
       await _store.markConversationRead(workspaceId, conversationId);
     }
+  }
+
+  @override
+  Future<({List<MessageModel> items, String? nextCursor})> messages(
+    int conversationId, {
+    String? cursor,
+    int? workspaceId,
+  }) async {
+    if (remoteMessages.isNotEmpty) {
+      return (items: remoteMessages, nextCursor: null);
+    }
+    return super.messages(
+      conversationId,
+      cursor: cursor,
+      workspaceId: workspaceId,
+    );
   }
 }
 
@@ -410,6 +428,213 @@ void main() {
       ),
     ]);
     expect((await h.store.getConversation(1, 1))?.unreadCount, 1);
+  });
+
+  test('same outbound last message after send does not restore unread', () async {
+    final original = DateTime.utc(2026, 1, 1, 12);
+    await h.store.upsertConversations(1, [
+      _conv(1, name: 'one', unread: 5, at: original, lastMessageId: 10),
+    ]);
+    await h.store.enqueueTextSend(
+      workspaceId: 1,
+      conversationId: 1,
+      message: MessageModel(
+        id: -1,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'رد',
+        createdAt: original.add(const Duration(minutes: 1)),
+        clientId: 'send-high-water',
+      ),
+    );
+    await h.store.completeOutbox(
+      workspaceId: 1,
+      clientId: 'send-high-water',
+      server: MessageModel(
+        id: 12,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'رد',
+        createdAt: original.add(const Duration(minutes: 1)),
+        clientId: 'send-high-water',
+      ),
+    );
+
+    await h.store.upsertConversations(1, [
+      _conv(
+        1,
+        name: 'one',
+        unread: 5,
+        at: original.add(const Duration(minutes: 1)),
+        lastMessageId: 12,
+        lastMessageDirection: 'outbound',
+      ),
+    ]);
+    expect((await h.store.getConversation(1, 1))?.unreadCount, 0);
+    expect(await h.store.staleServerUnreadClearedCount(1), 1);
+  });
+
+  test('newer inbound after send restores unread', () async {
+    final original = DateTime.utc(2026, 1, 1, 12);
+    await h.store.upsertConversations(1, [
+      _conv(1, name: 'one', unread: 4, at: original, lastMessageId: 10),
+    ]);
+    await h.store.enqueueTextSend(
+      workspaceId: 1,
+      conversationId: 1,
+      message: MessageModel(
+        id: -1,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'رد',
+        createdAt: original.add(const Duration(minutes: 1)),
+        clientId: 'send-then-inbound',
+      ),
+    );
+    await h.store.completeOutbox(
+      workspaceId: 1,
+      clientId: 'send-then-inbound',
+      server: MessageModel(
+        id: 20,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'رد',
+        createdAt: original.add(const Duration(minutes: 1)),
+        clientId: 'send-then-inbound',
+      ),
+    );
+    expect((await h.store.getConversation(1, 1))?.unreadCount, 0);
+
+    await h.store.upsertConversations(1, [
+      _conv(
+        1,
+        name: 'one',
+        unread: 1,
+        at: original.add(const Duration(minutes: 2)),
+        lastMessageId: 21,
+      ),
+    ]);
+    expect((await h.store.getConversation(1, 1))?.unreadCount, 1);
+  });
+
+  test('newer outbound after inbound activity restores unread', () async {
+    final original = DateTime.utc(2026, 1, 1, 12);
+    await h.store.upsertConversations(1, [
+      _conv(1, name: 'one', unread: 0, at: original, lastMessageId: 20),
+    ]);
+    await h.store.markConversationRead(1, 1);
+
+    await h.store.upsertConversations(1, [
+      _conv(
+        1,
+        name: 'one',
+        unread: 1,
+        at: original.add(const Duration(minutes: 2)),
+        lastMessageId: 22,
+        lastMessageDirection: 'outbound',
+      ),
+    ]);
+    expect((await h.store.getConversation(1, 1))?.unreadCount, 1);
+  });
+
+  test('missing last message still restores unread from a newer timestamp', () async {
+    final original = DateTime.utc(2026, 1, 1, 12);
+    await h.store.upsertConversations(1, [
+      _conv(1, name: 'one', unread: 2, at: original, lastMessageId: 10),
+    ]);
+    await h.store.markConversationRead(1, 1);
+
+    await h.store.upsertConversations(1, [
+      _conv(
+        1,
+        name: 'one',
+        unread: 3,
+        at: original.add(const Duration(minutes: 3)),
+      ),
+    ]);
+    expect((await h.store.getConversation(1, 1))?.unreadCount, 3);
+  });
+
+  test('list last_message is stored so the open chat can show it', () async {
+    await h.store.upsertConversations(1, [
+      _conv(1, name: 'مرحبا من العميل', unread: 1, lastMessageId: 77),
+    ]);
+    final messages = await h.store.getMessages(1, 1);
+    expect(messages.single.id, 77);
+    expect(messages.single.content, 'مرحبا من العميل');
+    expect(messages.single.direction, 'inbound');
+  });
+
+  test('refresh keeps a fetched inbound that the painted list had missed', () async {
+    await h.store.upsertConversations(1, [
+      _conv(1, name: 'قديمة', unread: 1, lastMessageId: 10),
+    ]);
+    await h.store.upsertMessages(1, 1, [
+      const MessageModel(
+        id: 10,
+        conversationId: 1,
+        direction: 'inbound',
+        messageType: 'text',
+        content: 'قديمة',
+      ),
+    ]);
+    h.repo.remoteMessages = [
+      const MessageModel(
+        id: 11,
+        conversationId: 1,
+        direction: 'inbound',
+        messageType: 'text',
+        content: 'جديدة من العميل',
+      ),
+      const MessageModel(
+        id: 10,
+        conversationId: 1,
+        direction: 'inbound',
+        messageType: 'text',
+        content: 'قديمة',
+      ),
+    ];
+
+    h.container.read(chatControllerProvider(1));
+    await waitUntil(
+      () => h.container
+          .read(chatControllerProvider(1))
+          .messages
+          .any((m) => m.id == 10),
+    );
+    await h.container.read(chatControllerProvider(1).notifier).refresh(
+      silent: true,
+    );
+    expect(
+      h.container.read(chatControllerProvider(1)).messages.map((m) => m.id),
+      contains(11),
+    );
+    expect(
+      h.container
+          .read(chatControllerProvider(1))
+          .messages
+          .singleWhere((m) => m.id == 11)
+          .content,
+      'جديدة من العميل',
+    );
+  });
+
+  test('opening a chat clears local unread without sending', () async {
+    await h.store.upsertConversations(1, [
+      _conv(1, name: 'one', unread: 4, lastMessageId: 10),
+    ]);
+    expect((await h.store.getConversation(1, 1))?.unreadCount, 4);
+
+    h.container.read(chatControllerProvider(1));
+    await waitUntil(() {
+      final cached = h.container.read(chatControllerProvider(1)).conversation;
+      return cached != null && cached.unreadCount == 0;
+    });
+    expect((await h.store.getConversation(1, 1))?.unreadCount, 0);
   });
 
   test('unassigned conversations are stored under the workspace', () async {

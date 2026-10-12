@@ -106,6 +106,21 @@ void main() {
     expect(text, ApiErrorTranslator.genericFailure);
   });
 
+  test('handoff open-conversation rejection is Arabic', () {
+    expect(
+      ApiException(
+        'Handoff is only allowed on open conversations.',
+        statusCode: 422,
+      ).userMessage,
+      'التحويل مسموح فقط في المحادثات المفتوحة.',
+    );
+    expect(
+      ApiException('No active handoff to resolve.', statusCode: 422)
+          .userMessage,
+      'لا يوجد تحويل نشط لإنهائه.',
+    );
+  });
+
   test('duplicate email and rate limit stay Arabic', () {
     expect(
       ApiErrorTranslator.format(

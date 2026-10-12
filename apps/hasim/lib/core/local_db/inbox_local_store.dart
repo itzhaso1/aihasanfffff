@@ -84,6 +84,10 @@ class InboxLocalStore {
   /// Newest messages returned for an open chat. Older rows stay in SQLite.
   static const latestMessageWindow = 300;
 
+  /// Live inbox watch window. Smaller than [latestMessageWindow] so opening a
+  /// chat does not remap hundreds of rows on every local write.
+  static const liveMessageWindow = 80;
+
   static const conversationListLimit = 1000;
 
   Future<List<ConversationModel>> getConversations(
@@ -195,7 +199,9 @@ class InboxLocalStore {
     Object? localReadAt = existing?['local_read_at'];
     Object? localReadLast = existing?['local_read_last_message_at'];
     final existingLastId = (existing?['last_message_server_id'] as num?)?.toInt();
-    final incomingLastId = item.lastMessage?.id;
+    final incomingLastId =
+        (item.lastMessage?.id ?? 0) > 0 ? item.lastMessage!.id : null;
+    final incomingOutbound = item.lastMessage?.isOutbound == true;
 
     if (item.unreadCount <= 0) {
       displayUnread = 0;
@@ -207,9 +213,16 @@ class InboxLocalStore {
       final hasNewerTimestamp = incomingLast != null &&
           readUntil != null &&
           incomingLast > readUntil;
+      // After a local send, last_message_server_id is already the outbound id,
+      // so the same outbound row is not "newer". A later inbound — or an
+      // outbound AI reply after that inbound — has a higher id and must restore.
       if (hasNewerMessageId ||
-          (existingLastId == null && hasNewerTimestamp) ||
-          (incomingLastId == null && hasNewerTimestamp)) {
+          (!incomingOutbound &&
+              existingLastId == null &&
+              hasNewerTimestamp) ||
+          (!incomingOutbound &&
+              incomingLastId == null &&
+              hasNewerTimestamp)) {
         localReadAt = null;
         localReadLast = null;
       } else {
@@ -308,6 +321,17 @@ class InboxLocalStore {
         _ms(now),
       ],
     );
+
+    final last = item.lastMessage;
+    if (last != null && last.id > 0) {
+      final existingMsg = await _db.select(
+        'SELECT 1 FROM inbox_messages WHERE workspace_id = ? AND server_id = ? LIMIT 1',
+        [workspaceId, last.id],
+      );
+      if (existingMsg.isEmpty) {
+        await _upsertMessage(workspaceId, item.id, last, now);
+      }
+    }
   }
 
   Future<List<MessageModel>> getMessages(
@@ -557,11 +581,19 @@ class InboxLocalStore {
       await tx.runCustom(
         '''
         UPDATE inbox_conversations
-        SET last_message_preview = ?, last_message_at = ?, updated_at = ?, cached_at = ?
+        SET last_message_preview = ?,
+            last_message_at = ?,
+            unread_count = 0,
+            local_read_at = ?,
+            local_read_last_message_at = ?,
+            updated_at = ?,
+            cached_at = ?
         WHERE workspace_id = ? AND server_id = ?
         ''',
         [
           message.content,
+          _ms(message.createdAt ?? now),
+          _ms(now),
           _ms(message.createdAt ?? now),
           _ms(now),
           _ms(now),
@@ -633,6 +665,31 @@ class InboxLocalStore {
       await tx.runCustom(
         'DELETE FROM inbox_outbox WHERE workspace_id = ? AND client_id = ?',
         [workspaceId, clientId],
+      );
+      await tx.runCustom(
+        '''
+        UPDATE inbox_conversations
+        SET last_message_preview = ?,
+            last_message_at = ?,
+            last_message_server_id = COALESCE(?, last_message_server_id),
+            unread_count = 0,
+            local_read_at = COALESCE(local_read_at, ?),
+            local_read_last_message_at = ?,
+            updated_at = ?,
+            cached_at = ?
+        WHERE workspace_id = ? AND server_id = ?
+        ''',
+        [
+          server.content,
+          _ms(server.createdAt ?? now),
+          server.id > 0 ? server.id : null,
+          _ms(now),
+          _ms(server.createdAt ?? now),
+          _ms(now),
+          _ms(now),
+          workspaceId,
+          server.conversationId,
+        ],
       );
     });
     _changed();
