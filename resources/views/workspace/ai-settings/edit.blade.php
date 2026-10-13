@@ -52,6 +52,52 @@
             <div class="mb-4 flex gap-6 border-b border-[#E5EAEA]">
                 <button type="button" class="pb-3 text-sm font-semibold" :class="tab === 'general' ? 'border-b-2 border-[#00BFAE] text-[#17212B]' : 'text-[#7A858A]'" @click="tab = 'general'">عام</button>
                 <button type="button" class="pb-3 text-sm font-semibold" :class="tab === 'personas' ? 'border-b-2 border-[#00BFAE] text-[#17212B]' : 'text-[#7A858A]'" @click="tab = 'personas'">الشخصيات</button>
+                <button type="button" class="pb-3 text-sm font-semibold" :class="tab === 'company' ? 'border-b-2 border-[#00BFAE] text-[#17212B]' : 'text-[#7A858A]'" @click="tab = 'company'">نبذة عن الشركة</button>
+            </div>
+
+            <div x-show="tab === 'company'" class="space-y-4">
+                <form method="POST" action="{{ route('workspace.ai-settings.company-profile.update') }}" class="rounded-2xl border border-[#E5EAEA] bg-white p-5 space-y-4">
+                    @csrf
+                    @method('PUT')
+                    <div>
+                        <h3 class="text-sm font-semibold text-[#17212B]">نبذة عن الشركة</h3>
+                        <p class="mt-1 text-sm text-[#7A858A]">تساعد هذه المعلومات المساعد على فهم نشاط الشركة عند الرد التلقائي واقتراح الردود. الأسعار والمخزون تُؤخذ من المنتجات، وليست من هذه النبذة.</p>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-[#17212B]">اسم الشركة</label>
+                        <input name="company_name" maxlength="120" value="{{ old('company_name', $companyProfile->company_name) }}" class="w-full rounded-xl border-[#E5EAEA]">
+                        @error('company_name')<p class="mt-1 text-sm text-[#EF4444]">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-[#17212B]">نبذة عن الشركة</label>
+                        <textarea name="about" rows="4" maxlength="2000" class="w-full rounded-xl border-[#E5EAEA]">{{ old('about', $companyProfile->about) }}</textarea>
+                        @error('about')<p class="mt-1 text-sm text-[#EF4444]">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-[#17212B]">ماذا نبيع؟</label>
+                        <textarea name="offerings" rows="3" maxlength="2000" class="w-full rounded-xl border-[#E5EAEA]">{{ old('offerings', $companyProfile->offerings) }}</textarea>
+                        @error('offerings')<p class="mt-1 text-sm text-[#EF4444]">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-[#17212B]">ما الخدمات التي نقدمها؟</label>
+                        <textarea name="services" rows="3" maxlength="2000" class="w-full rounded-xl border-[#E5EAEA]">{{ old('services', $companyProfile->services) }}</textarea>
+                        @error('services')<p class="mt-1 text-sm text-[#EF4444]">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-[#17212B]">من هم عملاؤنا؟ <span class="text-[#7A858A]">(اختياري)</span></label>
+                        <textarea name="audience" rows="2" maxlength="1000" class="w-full rounded-xl border-[#E5EAEA]">{{ old('audience', $companyProfile->audience) }}</textarea>
+                        @error('audience')<p class="mt-1 text-sm text-[#EF4444]">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-[#17212B]">معلومات إضافية وتعليمات للرد <span class="text-[#7A858A]">(اختياري)</span></label>
+                        <textarea name="reply_guidelines" rows="3" maxlength="2000" class="w-full rounded-xl border-[#E5EAEA]">{{ old('reply_guidelines', $companyProfile->reply_guidelines) }}</textarea>
+                        @error('reply_guidelines')<p class="mt-1 text-sm text-[#EF4444]">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                        <button type="submit" class="rounded-xl bg-[#00BFAE] px-4 py-2 text-white">حفظ</button>
+                        <a href="{{ route('workspace.ai-settings.edit', ['tab' => 'company']) }}" class="rounded-xl border border-[#E5EAEA] px-4 py-2 text-[#17212B]">إلغاء</a>
+                    </div>
+                </form>
             </div>
 
             <div x-show="tab === 'general'" class="space-y-4">

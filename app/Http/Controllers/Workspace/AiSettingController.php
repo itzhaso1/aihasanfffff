@@ -16,6 +16,7 @@ use App\Models\AiSetting;
 use App\Services\AI\AiSettingManagementService;
 use App\Services\AI\Inbox\Persona\InboxAgentPersonaValidationException;
 use App\Services\AI\Inbox\Persona\InboxAgentPersonaValidator;
+use App\Services\Workspace\WorkspaceCompanyProfileService;
 use App\Support\Authorization\WorkspaceAccess;
 use App\Support\Chat\ChatAiRole;
 use Illuminate\Http\RedirectResponse;
@@ -33,6 +34,7 @@ class AiSettingController extends Controller
         private readonly EmployeeService $employeeService,
         private readonly EmployeeFactory $employeeFactory,
         private readonly PresetRepository $presets,
+        private readonly WorkspaceCompanyProfileService $companyProfiles,
     ) {}
 
     public function edit(Request $request): View
@@ -42,6 +44,10 @@ class AiSettingController extends Controller
         $employees = $this->employees->listForWorkspace((int) $workspace->id);
         $requested = $request->integer('employee');
         $selected = $employees->firstWhere('id', $requested) ?? $employees->firstWhere(fn (AiEmployee $employee) => $employee->isDefault()) ?? $employees->first();
+        $tab = $request->string('tab')->toString();
+        if (! in_array($tab, ['general', 'personas', 'company'], true)) {
+            $tab = 'general';
+        }
 
         return view('workspace.ai-settings.edit', [
             'employees' => $employees,
@@ -49,7 +55,8 @@ class AiSettingController extends Controller
             'aiRoles' => ChatAiRole::all(),
             'options' => EmployeePersonaOptions::toArray(),
             'presets' => $this->presets->all(),
-            'tab' => $request->string('tab')->toString() === 'personas' ? 'personas' : 'general',
+            'companyProfile' => $this->companyProfiles->forWorkspace($workspace),
+            'tab' => $tab,
         ]);
     }
 

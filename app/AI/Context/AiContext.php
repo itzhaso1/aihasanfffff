@@ -20,11 +20,15 @@ final readonly class AiContext
     /** @var array<string, mixed> */
     public array $workspacePolicyContext;
 
+    /** @var array<string, mixed> */
+    public array $companyProfile;
+
     /**
      * @param  list<ContextMessage>  $recentMessages
      * @param  array<string, mixed>  $customerContext
      * @param  array<string, mixed>  $employeeContext
      * @param  array<string, mixed>  $workspacePolicyContext
+     * @param  array<string, mixed>  $companyProfile
      */
     public function __construct(
         public string $customerMessage,
@@ -36,11 +40,13 @@ final readonly class AiContext
         public ReferenceResolution $references,
         public ConversationState $conversationState,
         array $workspacePolicyContext,
+        array $companyProfile = ['present' => false],
     ) {
         $this->recentMessages = TypedList::of($recentMessages, ContextMessage::class, 'Context messages');
         $this->customerContext = $customerContext;
         $this->employeeContext = $employeeContext;
         $this->workspacePolicyContext = $workspacePolicyContext;
+        $this->companyProfile = $companyProfile;
     }
 
     /**
@@ -58,6 +64,7 @@ final readonly class AiContext
             'references' => $this->references->toArray(),
             'conversation_state' => $this->conversationState->toArray(),
             'workspace_policy_context' => $this->workspacePolicyContext,
+            'company_profile' => $this->companyProfile,
         ];
     }
 }

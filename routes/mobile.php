@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\Mobile\V1\CommerceIntelligenceController;
 use App\Http\Controllers\Api\Mobile\V1\CommerceOrderController;
 use App\Http\Controllers\Api\Mobile\V1\Company\WorkerDiscoveryController;
 use App\Http\Controllers\Api\Mobile\V1\Company\WorkerEngagementCapabilityController;
+use App\Http\Controllers\Api\Mobile\V1\CompanyProfileController;
 use App\Http\Controllers\Api\Mobile\V1\ConversationController;
 use App\Http\Controllers\Api\Mobile\V1\ConversationHandoffController;
 use App\Http\Controllers\Api\Mobile\V1\CustomerController;
@@ -375,6 +376,8 @@ Route::middleware([
     Route::middleware('workspace.feature:ai')->group(function (): void {
         Route::get('/ai/settings', [AiSettingsController::class, 'show']);
         Route::put('/ai/settings', [AiSettingsController::class, 'update'])->middleware('throttle:mobile-write');
+        Route::get('/ai/company-profile', [CompanyProfileController::class, 'show']);
+        Route::put('/ai/company-profile', [CompanyProfileController::class, 'update'])->middleware('throttle:mobile-write');
         Route::post('/ai/probe', [AiSettingsController::class, 'probe'])->middleware('throttle:mobile-ai');
         Route::post('/ai/suggest-reply', [AiController::class, 'suggestReply'])->middleware('throttle:mobile-ai');
         Route::post('/ai/summarize-conversation', [AiController::class, 'summarizeConversation'])

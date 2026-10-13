@@ -75,6 +75,10 @@ void main() {
           builder: (_, _) => const Scaffold(body: Text('شاشة الذكاء')),
         ),
         GoRoute(
+          path: '/ai-settings/company-profile',
+          builder: (_, _) => const Scaffold(body: Text('شاشة نبذة الشركة')),
+        ),
+        GoRoute(
           path: '/conversations',
           builder: (_, _) => const Scaffold(body: Text('المحادثات')),
         ),

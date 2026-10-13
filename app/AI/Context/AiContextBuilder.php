@@ -14,6 +14,7 @@ use App\Models\Message;
 use App\Models\Workspace;
 use App\Services\AI\AiSafety;
 use App\Services\AI\Inbox\Context\InboxAgentMessageWindowBuilder;
+use App\Services\Workspace\WorkspaceCompanyProfileService;
 
 final class AiContextBuilder
 {
@@ -23,6 +24,7 @@ final class AiContextBuilder
         private readonly ReferenceResolver $referenceResolver,
         private readonly AiSafety $safety,
         private readonly EmployeeRepository $employees,
+        private readonly WorkspaceCompanyProfileService $companyProfiles,
     ) {}
 
     public function build(AiRequest $request, ResolvedEmployee $employee): AiContext
@@ -68,6 +70,7 @@ final class AiContextBuilder
             references: $references,
             conversationState: $state,
             workspacePolicyContext: $this->workspacePolicyContext($request),
+            companyProfile: $this->companyProfiles->contextPayload($request->workspaceId),
         );
     }
 

@@ -37,6 +37,7 @@ import 'package:hasim/features/settings/presentation/notification_preferences_sc
 import 'package:hasim/features/settings/presentation/plans_screen.dart';
 import 'package:hasim/features/settings/presentation/profile_screen.dart';
 import 'package:hasim/features/settings/presentation/ai_settings_screen.dart';
+import 'package:hasim/features/settings/presentation/company_profile_screen.dart';
 import 'package:hasim/features/settings/presentation/ai_test_screen.dart';
 import 'package:hasim/features/settings/presentation/company_worker_profile_screen.dart';
 import 'package:hasim/features/privacy/presentation/privacy_lock_settings.dart';
@@ -198,6 +199,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/ai-settings',
             builder: (context, state) => const AiSettingsScreen(),
+          ),
+          GoRoute(
+            path: '/ai-settings/company-profile',
+            builder: (context, state) => const CompanyProfileScreen(),
           ),
           GoRoute(
             path: '/ai-test',

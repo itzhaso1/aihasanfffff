@@ -32,6 +32,7 @@ use App\Http\Controllers\Workspace\Commerce\CommerceCartController as WorkspaceC
 use App\Http\Controllers\Workspace\Commerce\CommerceIntelligenceController as WorkspaceCommerceIntelligenceController;
 use App\Http\Controllers\Workspace\Commerce\CommerceOrderController as WorkspaceCommerceOrderController;
 use App\Http\Controllers\Workspace\Commerce\CommerceTaxSettingController as WorkspaceCommerceTaxSettingController;
+use App\Http\Controllers\Workspace\CompanyProfileController;
 use App\Http\Controllers\Workspace\ConversationController;
 use App\Http\Controllers\Workspace\ConversationHandoffController;
 use App\Http\Controllers\Workspace\CustomerController;
@@ -376,6 +377,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::post('ai-settings/employees/{employee}/activate', [AiSettingController::class, 'activateEmployee'])->whereNumber('employee')->name('ai-settings.employees.activate');
             Route::post('ai-settings/employees/{employee}/deactivate', [AiSettingController::class, 'deactivateEmployee'])->whereNumber('employee')->name('ai-settings.employees.deactivate');
             Route::delete('ai-settings/employees/{employee}', [AiSettingController::class, 'destroyEmployee'])->whereNumber('employee')->name('ai-settings.employees.destroy');
+            Route::put('ai-settings/company-profile', [CompanyProfileController::class, 'update'])->name('ai-settings.company-profile.update');
         });
 
         Route::middleware('workspace.feature:whatsapp')->group(function (): void {

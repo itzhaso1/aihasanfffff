@@ -63,6 +63,15 @@ final class AiContextRenderer
             'context.employee',
             $this->json(['employee' => $context->employeeContext]),
         );
+
+        if (($context->companyProfile['present'] ?? false) === true) {
+            $sections[] = new PromptSection(
+                PromptLayer::Context,
+                'context.company_profile',
+                $this->json(['company_profile' => $context->companyProfile]),
+            );
+        }
+
         $sections[] = new PromptSection(
             PromptLayer::Context,
             'context.workspace_policy',

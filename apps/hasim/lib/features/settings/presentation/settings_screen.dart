@@ -20,6 +20,7 @@ import 'package:hasim/features/more/presentation/security_sessions_screen.dart';
 import 'package:hasim/features/catalog/presentation/catalog_list_screen.dart';
 import 'package:hasim/features/settings/presentation/widgets/display_appearance_settings.dart';
 import 'package:hasim/features/settings/presentation/ai_settings_screen.dart';
+import 'package:hasim/features/settings/presentation/company_profile_screen.dart';
 import 'package:hasim/features/settings/presentation/channels_screen.dart';
 import 'package:hasim/features/settings/presentation/notification_preferences_screen.dart';
 import 'package:hasim/features/settings/presentation/profile_screen.dart';
@@ -55,6 +56,7 @@ enum _SettingsId {
   notifications,
   products,
   ai,
+  companyProfile,
   appearance,
   workerSalesReference,
   workerOffers,
@@ -194,6 +196,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         icon: Icons.smart_toy_outlined,
         title: 'إعدادات الذكاء الاصطناعي',
         route: '/ai-settings',
+      ),
+      const _SettingsItem(
+        id: _SettingsId.companyProfile,
+        icon: Icons.business_outlined,
+        title: 'نبذة عن الشركة',
+        subtitle: 'نشاط الشركة وما تبيعه والتعليمات للرد',
+        route: '/ai-settings/company-profile',
       ),
       _SettingsItem(
         id: _SettingsId.appearance,
@@ -1217,6 +1226,11 @@ class _SettingsDetailPane extends StatelessWidget {
       _SettingsId.ai => const _EmbeddedDetail(
         title: 'إعدادات الذكاء الاصطناعي',
         child: AiSettingsScreen(embedded: true),
+      ),
+      _SettingsId.companyProfile => const _EmbeddedDetail(
+        title: 'نبذة عن الشركة',
+        subtitle: 'نشاط الشركة وما تبيعه والتعليمات للرد',
+        child: CompanyProfileScreen(embedded: true),
       ),
       _SettingsId.workerSalesReference ||
       _SettingsId.workerOffers ||

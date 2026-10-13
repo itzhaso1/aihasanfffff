@@ -7,6 +7,7 @@ import 'package:hasim/features/settings/data/ai_customer_facing_text.dart';
 import 'package:hasim/features/settings/data/ai_employee_model.dart';
 import 'package:hasim/features/settings/data/ai_setting_model.dart';
 import 'package:hasim/features/settings/data/channel_connection.dart';
+import 'package:hasim/features/settings/data/company_profile_model.dart';
 
 Map<String, dynamic> channelCachePayload(Map<String, dynamic> json) {
   final copy = Map<String, dynamic>.from(json);
@@ -238,6 +239,20 @@ class AiRepository {
     final map = asMap(res.data);
     if (map == null) throw ApiException(res.message ?? 'تعذر حفظ إعدادات الذكاء الاصطناعي.');
     return AiSettingModel.fromJson(map);
+  }
+
+  Future<CompanyProfileModel> fetchCompanyProfile() async {
+    final res = await _api.get('/ai/company-profile');
+    final map = asMap(res.data);
+    if (map == null) throw ApiException(res.message ?? 'تعذر تحميل نبذة الشركة.');
+    return CompanyProfileModel.fromJson(map);
+  }
+
+  Future<CompanyProfileModel> updateCompanyProfile(Map<String, dynamic> body) async {
+    final res = await _api.put('/ai/company-profile', body: body);
+    final map = asMap(res.data);
+    if (map == null) throw ApiException(res.message ?? 'تعذر حفظ نبذة الشركة.');
+    return CompanyProfileModel.fromJson(map);
   }
 
   Future<AiProbeResult> probe({String message = 'مرحبا، عرفني بنفسك'}) async {
