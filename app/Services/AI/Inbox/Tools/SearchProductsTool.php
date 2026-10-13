@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Inbox agent catalog search over Chat Catalog (not Finance Product / POS).
+ * Inbox agent inventory search over workspace products/services.
+ * Storefront Chat Catalog publication is not required.
  */
 final class SearchProductsTool implements InboxAgentSecuredTool
 {
@@ -29,7 +30,7 @@ final class SearchProductsTool implements InboxAgentSecuredTool
 
     public function description(): string
     {
-        return 'Search the live chat catalog for this workspace. Products are a knowledge reference (name, description, price, features, terms). Do not use results to sell, send payment links, or deliver files.';
+        return 'Search this workspace\'s products and inventory. An unpublished storefront catalog must not block the search. Results are a knowledge reference (name, description, price, features, terms). Do not invent items. Do not use results to sell, send payment links, or deliver files.';
     }
 
     public function securityProfile(): InboxAgentToolSecurityProfile
@@ -71,7 +72,7 @@ final class SearchProductsTool implements InboxAgentSecuredTool
 
         try {
             $rows = array_values(array_filter(
-                $this->catalogRetrieval->searchForPrompt($context->workspace, $query, $limit),
+                $this->catalogRetrieval->searchForAi($context->workspace, $query, $limit),
                 static fn (array $row): bool => $row !== [],
             ));
 

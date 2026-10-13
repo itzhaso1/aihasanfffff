@@ -35,6 +35,22 @@ class ChatCatalogRetrievalService
     ) {}
 
     /**
+     * Inbox AI lookup of workspace inventory items. Storefront catalog settings
+     * (published status, channel visibility, inquiry_mode, hours) must not hide items.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function searchForAi(Workspace $workspace, string $query, int $limit = 12): array
+    {
+        return app(WorkspaceContext::class)->runFor(
+            $workspace,
+            fn (): array => $this->searchForPromptInWorkspace($workspace, $query, $limit, 'chat', forAi: true),
+        );
+    }
+
+    /**
+     * Storefront / public catalog search. Respects publication, channels, and inquiry mode.
+     *
      * @return list<array<string, mixed>>
      */
     public function searchForPrompt(Workspace $workspace, string $query, int $limit = 12, string $channel = 'chat'): array
@@ -48,31 +64,38 @@ class ChatCatalogRetrievalService
     /**
      * @return list<array<string, mixed>>
      */
-    private function searchForPromptInWorkspace(Workspace $workspace, string $query, int $limit, string $channel): array
-    {
+    private function searchForPromptInWorkspace(
+        Workspace $workspace,
+        string $query,
+        int $limit,
+        string $channel,
+        bool $forAi = false,
+    ): array {
         $catalog = $this->catalogRoot->forWorkspace($workspace);
 
-        if (! $catalog->channelEnabled($channel)) {
-            return [];
-        }
-        if ($channel !== 'web'
-            && ($catalog->customer_service_policy['inquiry_mode'] ?? 'enabled') === 'disabled') {
-            return [];
-        }
+        if (! $forAi) {
+            if (! $catalog->channelEnabled($channel)) {
+                return [];
+            }
+            if ($channel !== 'web'
+                && ($catalog->customer_service_policy['inquiry_mode'] ?? 'enabled') === 'disabled') {
+                return [];
+            }
 
-        if (! $this->availability->customerDiscoveryAllowed($catalog)) {
-            return [];
-        }
+            if (! $this->availability->customerDiscoveryAllowed($catalog)) {
+                return [];
+            }
 
-        if (! $catalog->discoveryEnabled('searchable') || ! $catalog->discoveryEnabled('discoverable')) {
-            return [];
+            if (! $catalog->discoveryEnabled('searchable') || ! $catalog->discoveryEnabled('discoverable')) {
+                return [];
+            }
         }
 
         $tokens = $this->tokens($query);
         if ($this->browseQueries->isBrowseCatalogQuery($query, $tokens)) {
             $itemKind = $this->browseQueries->browseItemKindFilter($query, $tokens);
 
-            return $this->listDiscoverableForPrompt($workspace, $catalog, $limit, $channel, $itemKind);
+            return $this->listDiscoverableForPrompt($workspace, $catalog, $limit, $channel, $itemKind, $forAi);
         }
 
         if ($tokens === []) {
@@ -83,7 +106,7 @@ class ChatCatalogRetrievalService
         $limit = max(1, min(20, $limit));
         $weights = is_array($catalog->search_weights) ? $catalog->search_weights : [];
 
-        $items = $this->discoverableItemsQuery($workspace, $catalog)
+        $items = $this->discoverableItemsQuery($workspace, $catalog, $forAi)
             ->where(function ($builder) use ($searchTokens, $workspace, $catalog): void {
                 foreach ($searchTokens as $token) {
                     $like = '%'.$this->escapeLike($token).'%';
@@ -187,7 +210,7 @@ class ChatCatalogRetrievalService
 
         $ordered = [];
         foreach ($sortedItems as $item) {
-            $row = $this->toPromptRow($catalog, $item);
+            $row = $this->toPromptRow($catalog, $item, $forAi);
             if ($row === []) {
                 continue;
             }
@@ -209,12 +232,13 @@ class ChatCatalogRetrievalService
         int $limit,
         string $channel,
         ?string $itemKind,
+        bool $forAi = false,
     ): array {
         unset($channel);
 
         $limit = max(1, min(20, $limit));
 
-        $items = $this->discoverableItemsQuery($workspace, $catalog)
+        $items = $this->discoverableItemsQuery($workspace, $catalog, $forAi)
             ->when($itemKind !== null, fn ($query) => $query->where('item_kind', $itemKind))
             ->limit(120)
             ->get();
@@ -229,7 +253,7 @@ class ChatCatalogRetrievalService
 
         $ordered = [];
         foreach ($sortedItems as $item) {
-            $row = $this->toPromptRow($catalog, $item);
+            $row = $this->toPromptRow($catalog, $item, $forAi);
             if ($row === []) {
                 continue;
             }
@@ -245,18 +269,18 @@ class ChatCatalogRetrievalService
     /**
      * @return Builder<ChatCatalogItem>
      */
-    private function discoverableItemsQuery(Workspace $workspace, ChatCatalog $catalog)
+    private function discoverableItemsQuery(Workspace $workspace, ChatCatalog $catalog, bool $forAi = false)
     {
         return ChatCatalogItem::withoutGlobalScopes()
             ->where('workspace_id', $workspace->id)
             ->where('is_active', true)
             ->where('is_visible', true)
-            ->where(function ($query): void {
+            ->where(function ($query) use ($forAi): void {
                 $query->whereNull('chat_catalog_category_id')
                     ->orWhereHas('category', fn ($category) => $category
                         ->where('is_active', true)
                         ->where('is_visible', true)
-                        ->where('status', 'published'));
+                        ->when(! $forAi, fn ($published) => $published->where('status', 'published')));
             })
             ->where(function ($builder): void {
                 $builder->whereNull('publication_status')
@@ -266,7 +290,8 @@ class ChatCatalogRetrievalService
                 $builder->whereNull('published_at')->orWhere('published_at', '<=', now());
             })
             ->whereNull('archived_at')
-            ->when($catalog->discoveryEnabled('searchable'), fn ($q) => $q->where('is_searchable', true))
+            ->when(! $forAi && $catalog->discoveryEnabled('searchable'), fn ($q) => $q->where('is_searchable', true))
+            ->when($forAi, fn ($q) => $q->where('is_searchable', true))
             ->with([
                 'category:id,name,workspace_id,aliases',
                 'category.searchTerms',
@@ -567,7 +592,7 @@ class ChatCatalogRetrievalService
     /**
      * @return array<string, mixed>
      */
-    private function toPromptRow(ChatCatalog $catalog, ChatCatalogItem $item): array
+    private function toPromptRow(ChatCatalog $catalog, ChatCatalogItem $item, bool $forAi = false): array
     {
         if (! $item->isDiscoverable()) {
             return [];
@@ -575,7 +600,7 @@ class ChatCatalogRetrievalService
 
         $availability = $this->inventory->forItem($catalog, $item);
         $catalogIsOpen = $this->availability->isCatalogOpenForCustomers($catalog);
-        if ($catalog->status?->value === 'paused' || ! $catalogIsOpen) {
+        if (! $forAi && ($catalog->status?->value === 'paused' || ! $catalogIsOpen)) {
             $availability = [
                 'available' => false,
                 'label' => $catalog->status?->value === 'paused' ? 'catalog_paused' : 'catalog_closed',

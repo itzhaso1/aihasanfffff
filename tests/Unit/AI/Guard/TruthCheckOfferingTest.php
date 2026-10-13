@@ -38,6 +38,16 @@ class TruthCheckOfferingTest extends TestCase
         $this->assertSame(GuardVerdict::Pass, $finding->verdict);
     }
 
+    public function test_clarifying_follow_up_without_catalog_is_allowed(): void
+    {
+        $finding = (new TruthCheck)->inspect(
+            $this->input(AiRunMode::Live, 21),
+            'أكيد، خبرني شو نوع الخدمة اللي بتدور عليها وبساعدك.',
+        );
+
+        $this->assertSame(GuardVerdict::Pass, $finding->verdict);
+    }
+
     public function test_real_catalog_names_are_not_treated_as_invented(): void
     {
         $finding = (new TruthCheck)->inspect(

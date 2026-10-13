@@ -27,6 +27,8 @@ final class CatalogBrowseQueryDetector
         'اللي', 'الي', 'الذي', 'التي', 'من', 'ل', 'لي', 'لك', 'لكم', 'لنا', 'لي', 'علي', 'على',
         'تقدمونها', 'تقدمون', 'تقدم', 'تعرض', 'تعرضون', 'تعرضلي', 'تقدمونها', 'this', 'that', 'the',
         'which', 'who', 'please', 'ممكن', 'please', 'show', 'list', 'display',
+        'شو', 'وش', 'ايش', 'شنو', 'what', 'هل', 'عند', 'عندك', 'عندكم', 'عندنا',
+        'لديكم', 'لدينا', 'لكم',
     ];
 
     public function __construct(
@@ -85,7 +87,12 @@ final class CatalogBrowseQueryDetector
         return array_values(array_unique(array_merge(
             self::PRODUCT_SURFACE_FORMS,
             self::SERVICE_SURFACE_FORMS,
-            ['معينة', 'معين', 'متوفرة', 'متوف', 'available', 'offer', 'offers', 'sell', 'selling'],
+            [
+                'معينة', 'معين',
+                'متوفرة', 'متوفره', 'متوفر', 'متوف',
+                'موجود', 'موجوده', 'موجودة',
+                'available', 'offer', 'offers', 'sell', 'selling',
+            ],
         )));
     }
 

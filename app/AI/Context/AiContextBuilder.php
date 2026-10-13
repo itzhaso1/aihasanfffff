@@ -14,7 +14,6 @@ use App\Models\Message;
 use App\Models\Workspace;
 use App\Services\AI\AiSafety;
 use App\Services\AI\Inbox\Context\InboxAgentMessageWindowBuilder;
-use App\Services\Chat\ChatCatalogRetrievalService;
 
 final class AiContextBuilder
 {
@@ -22,7 +21,6 @@ final class AiContextBuilder
         private readonly InboxAgentMessageWindowBuilder $messageWindowBuilder,
         private readonly IntentResolver $intentResolver,
         private readonly ReferenceResolver $referenceResolver,
-        private readonly ChatCatalogRetrievalService $catalog,
         private readonly AiSafety $safety,
         private readonly EmployeeRepository $employees,
     ) {}
@@ -69,7 +67,7 @@ final class AiContextBuilder
             intent: $intent,
             references: $references,
             conversationState: $state,
-            workspacePolicyContext: $this->workspacePolicyContext($workspace, $request),
+            workspacePolicyContext: $this->workspacePolicyContext($request),
         );
     }
 
@@ -179,43 +177,27 @@ final class AiContextBuilder
     }
 
     /**
-     * Preview has no conversation, so catalog policy is omitted to stay side-effect free
-     * and to keep workspace merchandising from overlaying employee identity.
+     * Inbox replies do not depend on Chat Catalog storefront settings.
+     * Product facts stay not_loaded until a tool returns them.
      *
      * @return array<string, mixed>
      */
-    private function workspacePolicyContext(Workspace $workspace, AiRequest $request): array
+    private function workspacePolicyContext(AiRequest $request): array
     {
-        if ($request->conversationId === null) {
-            return [
-                'catalog_open' => false,
-                'customer_service_policy' => [],
-                'business_capabilities' => $this->businessCapabilities($request),
-            ];
-        }
-
-        $context = $this->catalog->untrustedCommunicationContext($workspace);
-        $policy = is_array($context['customer_service_policy'] ?? null)
-            ? $context['customer_service_policy']
-            : [];
-        $seller = is_array($context['seller'] ?? null) ? $context['seller'] : [];
-
         return [
-            'catalog_open' => (bool) ($context['catalog_open'] ?? false),
-            'customer_service_policy' => $policy,
-            'business_capabilities' => $this->businessCapabilities($request, $policy, $seller),
+            'catalog_open' => false,
+            'catalog_required_for_reply' => false,
+            'customer_service_policy' => [],
+            'business_capabilities' => $this->businessCapabilities($request),
         ];
     }
 
     /**
      * Product, price, and stock facts stay not_loaded until a tool returns them.
-     * Policy and contact slots follow the catalog payload already attached above.
      *
-     * @param  array<string, mixed>  $policy
-     * @param  array<string, mixed>  $seller
      * @return array<string, mixed>
      */
-    private function businessCapabilities(AiRequest $request, array $policy = [], array $seller = []): array
+    private function businessCapabilities(AiRequest $request): array
     {
         $slot = static fn (string $status, ?string $source = null, ?int $count = null): array => [
             'status' => $status,
@@ -223,9 +205,6 @@ final class AiContextBuilder
             'count' => $count,
         ];
         $unloaded = $slot('not_loaded');
-        $contact = $seller['support_contact'] ?? null;
-        $hasContact = (is_string($contact) && trim($contact) !== '')
-            || (is_array($contact) && $contact !== []);
 
         return [
             'mode' => $request->runMode->isSandboxed() ? 'test' : 'live',
@@ -234,12 +213,8 @@ final class AiContextBuilder
             'pricing' => $unloaded,
             'availability' => $unloaded,
             'orders' => $unloaded,
-            'policies' => $request->conversationId === null
-                ? $unloaded
-                : $slot($policy !== [] ? 'loaded' : 'empty', 'catalog.customer_service_policy', count($policy)),
-            'contact' => $request->conversationId === null
-                ? $unloaded
-                : $slot($hasContact ? 'loaded' : 'empty', 'catalog.seller', $hasContact ? 1 : 0),
+            'policies' => $unloaded,
+            'contact' => $unloaded,
             'hours' => $unloaded,
             'location' => $unloaded,
         ];

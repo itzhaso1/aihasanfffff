@@ -42,7 +42,7 @@ final class ReferenceResolver
             return new ReferenceResolution;
         }
 
-        $rows = $this->catalog->searchForPrompt($workspace, $query, 3, $channel);
+        $rows = $this->catalog->searchForAi($workspace, $query, 3);
         $ids = array_values(array_unique(array_map(
             static fn (array $row): int => (int) ($row['catalog_item_id'] ?? 0),
             array_filter($rows, static fn (array $row): bool => is_numeric($row['catalog_item_id'] ?? null) && (int) $row['catalog_item_id'] > 0),

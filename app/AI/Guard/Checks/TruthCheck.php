@@ -224,10 +224,20 @@ final class TruthCheck implements GuardCheck
             return false;
         }
 
+        if ($this->isClarifyingFollowUp($text)) {
+            return false;
+        }
+
         $listsOfferings = preg_match('/عندنا|نقدم|نوفر|خدماتنا/u', $text) === 1
             && (substr_count($text, '،') >= 1 || substr_count($text, ',') >= 1);
 
         return $listsOfferings;
+    }
+
+    private function isClarifyingFollowUp(string $text): bool
+    {
+        return preg_match('/خبرني|قول لي|وش تحتاج|شو تحتاج|شو نوع|كيف أقدر أساعدك/u', $text) === 1
+            && preg_match('/سعر|ريال|SAR|USD|مخزون/u', $text) !== 1;
     }
 
     private function hasCatalogEvidence(GuardInput $input): bool

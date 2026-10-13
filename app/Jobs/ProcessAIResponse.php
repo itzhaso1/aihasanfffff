@@ -9,6 +9,7 @@ use App\Models\Message;
 use App\Services\AI\AiOutputValidator;
 use App\Services\AI\AIService;
 use App\Services\AI\Inbox\AiReplyEligibility;
+use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Observability\OpsMetricsRecorder;
 use App\Support\Tenancy\WorkspaceContext;
@@ -178,13 +179,38 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
         $validated = $outputValidator->validateForOutbound($reply);
         if ($validated === null) {
-            Log::warning('ai.reply.output_rejected', [
+            $emptyGeneration = trim((string) $reply) === '';
+            $fallbackReason = $emptyGeneration ? 'generation_empty' : 'output_rejected';
+            Log::warning('ai.reply.'.$fallbackReason, [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
                 'inbound_message_id' => $incomingMessage->id,
+                'catalog_missing_is_not_a_skip_reason' => true,
             ]);
 
-            return;
+            if (! $emptyGeneration) {
+                return;
+            }
+
+            $validated = $outputValidator->validateForOutbound(
+                app(InboxHonestReplyFallback::class)->forInbound((string) $incomingMessage->content),
+            );
+            if ($validated === null) {
+                Log::warning('ai.reply.fallback_rejected', [
+                    'workspace_id' => $conversation->workspace_id,
+                    'conversation_id' => $conversation->id,
+                    'inbound_message_id' => $incomingMessage->id,
+                ]);
+
+                return;
+            }
+
+            Log::info('ai.reply.honest_fallback', [
+                'workspace_id' => $conversation->workspace_id,
+                'conversation_id' => $conversation->id,
+                'inbound_message_id' => $incomingMessage->id,
+                'reason' => $fallbackReason,
+            ]);
         }
 
         if ($this->existingReply($conversationFresh, $incomingMessage)) {

@@ -99,6 +99,49 @@ class ArabicCatalogSearchTest extends TestCase
         $this->assertSame($first->id, $first->fresh()->id);
     }
 
+    public function test_ai_search_returns_items_when_storefront_catalog_is_draft(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        app(ChatCatalogRootService::class)->forWorkspace($workspace);
+        app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace): void {
+            app(ChatCatalogService::class)->createItem($workspace, [
+                'name' => 'فستان سهرة أسود',
+                'price' => '250.00',
+                'currency' => 'SAR',
+            ]);
+        });
+
+        $this->assertSame([], app(ChatCatalogRetrievalService::class)->searchForPrompt($workspace, 'فساتين'));
+        $this->assertSame(
+            ['فستان سهرة أسود'],
+            collect(app(ChatCatalogRetrievalService::class)->searchForAi($workspace, 'فساتين'))->pluck('name')->all(),
+        );
+    }
+
+    public function test_ai_search_lists_services_for_generic_question_on_draft_catalog(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $roots = app(ChatCatalogRootService::class);
+        app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace): void {
+            app(ChatCatalogService::class)->createItem($workspace, [
+                'name' => 'تنظيف منزل',
+                'price' => '120.00',
+                'currency' => 'SAR',
+                'item_kind' => 'service',
+            ]);
+        });
+        $roots->draft($roots->forWorkspace($workspace));
+
+        $this->assertSame(
+            [],
+            collect(app(ChatCatalogRetrievalService::class)->searchForPrompt($workspace, 'شو الخدمات المتوفرة عندكم؟'))->pluck('name')->all(),
+        );
+        $this->assertSame(
+            ['تنظيف منزل'],
+            collect(app(ChatCatalogRetrievalService::class)->searchForAi($workspace, 'شو الخدمات المتوفرة عندكم؟'))->pluck('name')->all(),
+        );
+    }
+
     public function test_draft_catalog_hides_published_item_from_retrieval(): void
     {
         $workspace = Workspace::factory()->create(['type' => 'company']);

@@ -297,7 +297,7 @@ class AiContextBuilderTest extends TestCase
         );
     }
 
-    public function test_live_policy_slot_follows_loaded_catalog_policy_while_products_stay_unloaded(): void
+    public function test_live_policy_slot_does_not_load_catalog_settings_as_reply_policy(): void
     {
         [$workspace, $conversation, $current] = $this->conversationWithCatalog(['فستان']);
 
@@ -308,8 +308,10 @@ class AiContextBuilderTest extends TestCase
 
         $this->assertSame('not_loaded', $context->workspacePolicyContext['business_capabilities']['products']['status']);
         $this->assertSame('not_loaded', $context->workspacePolicyContext['business_capabilities']['pricing']['status']);
-        $this->assertNotSame('not_loaded', $context->workspacePolicyContext['business_capabilities']['policies']['status']);
-        $this->assertSame('catalog.customer_service_policy', $context->workspacePolicyContext['business_capabilities']['policies']['source']);
+        $this->assertSame('not_loaded', $context->workspacePolicyContext['business_capabilities']['policies']['status']);
+        $this->assertNull($context->workspacePolicyContext['business_capabilities']['policies']['source']);
+        $this->assertFalse($context->workspacePolicyContext['catalog_required_for_reply']);
+        $this->assertSame([], $context->workspacePolicyContext['customer_service_policy']);
     }
 
     /**

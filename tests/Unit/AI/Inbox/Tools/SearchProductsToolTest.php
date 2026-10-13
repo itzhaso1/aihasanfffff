@@ -172,7 +172,7 @@ class SearchProductsToolTest extends TestCase
         $context = app(InboxAgentContextBuilder::class)->build($workspace, $conversation, $message, $setting);
 
         $mock = Mockery::mock(ChatCatalogRetrievalService::class);
-        $mock->shouldReceive('searchForPrompt')->andThrow(new \RuntimeException('SQLSTATE secret details'));
+        $mock->shouldReceive('searchForAi')->andThrow(new \RuntimeException('SQLSTATE secret details'));
         $this->app->instance(ChatCatalogRetrievalService::class, $mock);
         $this->app->forgetInstance(SearchProductsTool::class);
 

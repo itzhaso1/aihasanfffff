@@ -39,4 +39,13 @@ class CatalogBrowseQueryDetectorTest extends TestCase
 
         $this->assertSame('service', $this->detector->browseItemKindFilter('وش الخدمات عندكم؟', $interpret['search_tokens']));
     }
+
+    public function test_levantine_available_services_question_is_browse(): void
+    {
+        $query = 'شو الخدمات المتوفرة عندكم؟';
+        $tokens = app(ChatCatalogRetrievalService::class)->tokens($query);
+
+        $this->assertTrue($this->detector->isBrowseCatalogQuery($query, $tokens));
+        $this->assertSame('service', $this->detector->browseItemKindFilter($query, $tokens));
+    }
 }

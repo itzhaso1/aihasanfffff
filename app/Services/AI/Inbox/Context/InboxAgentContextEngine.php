@@ -48,12 +48,12 @@ final class InboxAgentContextEngine
 
         $messageWindow = $this->messageWindowBuilder->build($conversation, $message);
 
-        $catalogRows = $this->catalogRetrieval->searchForPrompt($workspace, $messageWindow->currentMessage->content);
+        $catalogRows = $this->catalogRetrieval->searchForAi($workspace, $messageWindow->currentMessage->content);
         $matchedFromHistory = false;
         if ($catalogRows === []) {
             $previousQuery = $this->previousProductQuery($messageWindow);
             if ($previousQuery !== null) {
-                $catalogRows = $this->catalogRetrieval->searchForPrompt($workspace, $previousQuery);
+                $catalogRows = $this->catalogRetrieval->searchForAi($workspace, $previousQuery);
                 $matchedFromHistory = $catalogRows !== [];
             }
         }

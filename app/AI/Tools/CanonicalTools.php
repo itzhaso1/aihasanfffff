@@ -31,7 +31,7 @@ final class CanonicalTools
     {
         return new ToolDefinition(
             name: self::SEARCH_PRODUCTS,
-            description: 'Search active chat catalog products for the current workspace using a customer query.',
+            description: 'Search this workspace\'s products and inventory. Unpublished storefront catalog settings must not block the search.',
             category: 'catalog',
             access: ToolAccess::Read,
             risk: ToolRisk::Read,
