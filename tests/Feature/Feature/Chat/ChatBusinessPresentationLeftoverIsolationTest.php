@@ -90,15 +90,14 @@ class ChatBusinessPresentationLeftoverIsolationTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_chat_email_library_keeps_industry_finance_templates(): void
+    public function test_chat_email_library_keeps_industry_template_categories(): void
     {
         $categories = EmailTemplateLibrary::categories();
 
-        $this->assertArrayHasKey('finance', $categories);
         $this->assertArrayHasKey('construction', $categories);
-        $this->assertTrue(EmailTemplateLibrary::exists('finance_welcome'));
-        $this->assertTrue(View::exists('emails.library.finance.welcome'));
-        $this->assertTrue(View::exists('emails.library.finance.invoice'));
+        $this->assertArrayHasKey('ecommerce', $categories);
+        $this->assertTrue(EmailTemplateLibrary::exists('construction_welcome'));
+        $this->assertTrue(View::exists('emails.library.construction.welcome'));
     }
 
     /**

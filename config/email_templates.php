@@ -52,10 +52,6 @@ return [
             'view' => 'emails.templates.payroll-email',
             'subject' => 'إشعار رواتب',
         ],
-        'finance_notification' => [
-            'view' => 'emails.templates.finance-notification',
-            'subject' => 'تنبيه مالي',
-        ],
         'document_email' => [
             'view' => 'emails.templates.document-email',
             'subject' => 'مستند من النظام',

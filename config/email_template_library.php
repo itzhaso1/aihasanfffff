@@ -33,7 +33,6 @@ $categories = [
     'travel' => ['name' => 'السياحة والسفر', 'name_en' => 'Travel', 'description' => 'قوالب السياحة والسفر'],
     'shipping' => ['name' => 'الشحن والتوصيل', 'name_en' => 'Shipping', 'description' => 'قوالب الشحن والتوصيل'],
     'maintenance' => ['name' => 'الصيانة', 'name_en' => 'Maintenance', 'description' => 'قوالب الصيانة والخدمات الميدانية'],
-    'finance' => ['name' => 'التمويل والمحاسبة', 'name_en' => 'Finance', 'description' => 'قوالب التمويل والمحاسبة'],
     'automotive' => ['name' => 'السيارات', 'name_en' => 'Automotive', 'description' => 'قوالب السيارات وخدمات المركبات'],
     'industry' => ['name' => 'الصناعة', 'name_en' => 'Industry', 'description' => 'قوالب الصناعة والتصنيع'],
     'legal' => ['name' => 'العقود والأعمال القانونية', 'name_en' => 'Legal', 'description' => 'قوالب العقود والأعمال القانونية'],
@@ -119,12 +118,6 @@ $catalog = [
         'welcome' => ['name' => 'ترحيب الصيانة', 'name_en' => 'Maintenance Welcome', 'description' => 'ترحيب بعميل صيانة', 'variables' => $shared],
         'notification' => ['name' => 'إشعار الصيانة', 'name_en' => 'Maintenance Notification', 'description' => 'إشعار موعد صيانة', 'variables' => $shared],
         'marketing' => ['name' => 'تسويق الصيانة', 'name_en' => 'Maintenance Marketing', 'description' => 'عرض خدمة صيانة', 'variables' => $shared],
-    ],
-    'finance' => [
-        'welcome' => ['name' => 'ترحيب التمويل', 'name_en' => 'Finance Welcome', 'description' => 'ترحيب بعميل مالي', 'variables' => $shared],
-        'notification' => ['name' => 'إشعار التمويل', 'name_en' => 'Finance Notification', 'description' => 'إشعار مالي عام', 'variables' => $shared],
-        'invoice' => ['name' => 'فاتورة التمويل', 'name_en' => 'Finance Invoice', 'description' => 'إشعار فاتورة أو كشف', 'variables' => $invoice],
-        'marketing' => ['name' => 'تسويق التمويل', 'name_en' => 'Finance Marketing', 'description' => 'عرض خدمة مالية', 'variables' => $shared],
     ],
     'automotive' => [
         'welcome' => ['name' => 'ترحيب السيارات', 'name_en' => 'Automotive Welcome', 'description' => 'ترحيب بعميل سيارات', 'variables' => $shared],

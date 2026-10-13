@@ -30,7 +30,7 @@ class PaymentConfirmedNotification extends Notification implements CentralEmailN
     public function toCentralEmail(object $notifiable): array
     {
         return [
-            'template' => 'finance_notification',
+            'template' => 'general_notification',
             'subject' => 'تم تأكيد عملية الدفع',
             'workspace_id' => $this->payment->workspace_id,
             'data' => [

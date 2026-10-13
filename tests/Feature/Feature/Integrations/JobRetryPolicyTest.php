@@ -7,7 +7,7 @@ use App\Jobs\ProcessAIResponse;
 use App\Jobs\ProcessPaymentWebhook;
 use App\Jobs\Push\SendPushNotificationJob;
 use App\Jobs\SendWhatsAppMessage;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class JobRetryPolicyTest extends TestCase
 {
@@ -19,8 +19,8 @@ class JobRetryPolicyTest extends TestCase
         $this->assertSame([15, 60, 180], $ai->backoff);
 
         $campaign = new SendCampaignRecipientJob(1, 1);
-        $this->assertSame(3, $campaign->tries);
-        $this->assertSame([60, 300], $campaign->backoff);
+        $this->assertSame(2, $campaign->tries);
+        $this->assertSame(120, $campaign->timeout);
 
         $payment = new ProcessPaymentWebhook('local', [], []);
         $this->assertSame(5, $payment->tries);

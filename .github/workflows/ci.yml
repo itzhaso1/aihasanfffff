@@ -272,8 +272,6 @@ jobs:
       matrix:
         app:
           - hasim
-          - hasim_finance
-          - hasim_cashier
     steps:
       - name: Checkout
         uses: actions/checkout@v4

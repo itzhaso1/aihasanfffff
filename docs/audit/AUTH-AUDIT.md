@@ -14,8 +14,6 @@ No authentication bypass was executed live.
 | Social web | `SocialLoginController` google/facebook | Socialite |
 | Core API | `routes/api.php` `/api/auth/*` | Sanctum |
 | Mobile | `routes/mobile.php` | `MobileAuthService` |
-| Cashier | `routes/cashier.php` | same family + PIN locally |
-| Finance Flutter | `routes/api.php` finance auth group | Sanctum + Google start/status |
 | Platform | `routes/platform.php` | `platform_admin` guard |
 
 ---

@@ -35,8 +35,7 @@ There is **no** `static-analysis` job. Do not add a green placeholder.
 - **PR + protected branch SQLite:** blocking critical/security suite (`phpunit.critical.xml`) after `migrate:fresh` on a file SQLite DB. `phpunit-sqlite-full` is informational.
 - **PR + protected branch MariaDB:** the same critical suite (`phpunit.critical.mysql.xml`) after `migrate:fresh` on a clean isolated DB.
 - **Pint:** mandatory `pint` checks `tests/ci/pint-enforced-paths.txt` only. Full-tree Pint is `pint-full` and stays red on ~150 legacy files. That is not a silent skip.
-- Billing / cashier sync tests were hygiene-fixed with `TestCase::inWorkspace()` (`WorkspaceContext::runFor`). Fail-closed tenancy was not weakened.
-- `CashierPhase2AOfflineSnapshotTest::test_invalid_snapshots_are_rejected_without_catalog_fallback` still fails on `inconsistent_total`: P0-2 server-authoritative totals ignore a client `total_amount` of 99 instead of rejecting the op. Assertion not rewritten. Class stays out of the critical suite.
+- Hasim Finance and Hasim Cashier were removed from the repository; critical PHPUnit no longer references finance/cashier/POS test paths.
 - Redis runtime tests skip without Redis and are **not** mandatory in CI.
 - Restore-drill tests are **not** in the MariaDB CI job (they use a separate backup source name and dump binaries).
 
@@ -46,7 +45,7 @@ PHPStan / Larastan is **not** in `require-dev` and has no project config. Introd
 
 ## Flutter = REVIEW / BLOCKED
 
-Apps live under `apps/hasim`, `apps/hasim_finance`, `apps/hasim_cashier`. There is no first-party Flutter workflow. Windows Flutter toolchains in this environment have not been a reliable CI target. Linux `flutter test` is not wired as a required check. Do not treat a missing Flutter job as a green Flutter gate.
+The Flutter app lives under `apps/hasim`. CI includes an optional `flutter-hasim` matrix job when `.github/workflows/ci.yml` is enabled on GitHub. Windows Flutter toolchains in local dev may differ from Linux CI. Do not treat a skipped Flutter job as a green Flutter gate unless it is configured as required on the branch.
 
 ## E2E = REVIEW
 

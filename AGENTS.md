@@ -9,11 +9,7 @@ Laravel 13 / PHP 8.3 modular monolith. One product, one database, `workspace_id`
 | Laravel web (Blade) | `routes/web.php`, `resources/views` | Session auth |
 | Platform admin | `routes/platform.php` | Isolated `platform_admin` guard |
 | Mobile API | `routes/mobile.php` → `/api/mobile/v1` | Sanctum + `X-Workspace-Id` |
-| Finance API | `routes/finance-api.php` → `/api/finance/v1` | Used by `apps/hasim_finance` |
-| Cashier API | `routes/cashier.php` → `/api/cashier/v1` | Used by `apps/hasim_cashier` |
-| Hasim chat app | `apps/hasim` | Inbox / WhatsApp / email / customers |
-| Hasim finance app | `apps/hasim_finance` | No local tax/totals/GL math |
-| Hasim cashier app | `apps/hasim_cashier` | Offline catalog + pending orders |
+| Hasim chat app | `apps/hasim` | Inbox / WhatsApp / email / customers / chat commerce |
 
 ## Read first
 

@@ -377,12 +377,6 @@ class WorkerMobileCompensationTest extends TestCase
         $this->getJson(route('mobile.v1.worker.disputes.index'))
             ->assertOk();
 
-        $this->withHeaders(['X-Workspace-Id' => (string) $workspace->id])
-            ->getJson('/api/finance/v1/dashboard')
-            ->assertNotFound();
-        $this->withHeaders(['X-Workspace-Id' => (string) $workspace->id])
-            ->getJson('/api/cashier/v1/bootstrap')
-            ->assertNotFound();
     }
 
     /**

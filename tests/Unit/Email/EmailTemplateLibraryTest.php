@@ -35,7 +35,7 @@ class EmailTemplateLibraryTest extends TestCase
         $this->assertArrayHasKey('construction', $categories);
         $this->assertArrayHasKey('ecommerce', $categories);
         $this->assertArrayHasKey('generic', $categories);
-        $this->assertCount(20, $categories);
+        $this->assertCount(19, $categories);
 
         $construction = EmailTemplateLibrary::all('construction');
         $this->assertArrayHasKey('construction_welcome', $construction);

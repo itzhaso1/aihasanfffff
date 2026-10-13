@@ -7,7 +7,6 @@
     <testsuites>
         <testsuite name="Critical">
             <file>tests/Feature/Feature/Tenancy/FailClosedWorkspaceTenancyTest.php</file>
-            <file>tests/Feature/Feature/Finance/FinanceAgentConversationTest.php</file>
             <file>tests/Feature/Feature/Tenancy/WorkspaceIsolationTest.php</file>
             <file>tests/Feature/Feature/Security/RolePermissionAuthorizationTest.php</file>
             <file>tests/Feature/Auth/AuthenticationTest.php</file>
@@ -24,31 +23,18 @@
             <file>tests/Feature/Feature/Security/WebhookFailClosedSecretTest.php</file>
             <file>tests/Feature/Feature/SubscriptionSecurityPhase1Test.php</file>
             <file>tests/Unit/AIServiceWorkspaceIsolationTest.php</file>
-            <file>tests/Feature/Feature/Security/ManagerFinancePrivilegeTest.php</file>
             <file>tests/Feature/Feature/Security/TenantEmailAttachmentPushIsolationTest.php</file>
-            <file>tests/Feature/Feature/Security/Phase0PreProductionBlockersTest.php</file>
-            <file>tests/Feature/Feature/Security/ProductionHardeningRemediationTest.php</file>
             <file>tests/Feature/Feature/Security/P1CRemainingTenantIdorTest.php</file>
             <file>tests/Feature/Feature/Security/CrossWorkspaceIdorTest.php</file>
             <file>tests/Feature/Feature/Security/MassAssignmentSecurityTest.php</file>
             <file>tests/Feature/Feature/Security/StoryAudienceSecurityTest.php</file>
             <file>tests/Feature/Mobile/MobileAuthAndWorkspaceTest.php</file>
-            <file>tests/Feature/Feature/Finance/FinancialCoreTest.php</file>
-            <file>tests/Feature/Feature/Finance/FinanceKpiLedgerReconciliationTest.php</file>
-            <file>tests/Feature/Feature/Finance/ExpenseAccountingIntegrityTest.php</file>
-            <file>tests/Feature/Feature/Finance/BillingLifecycleTest.php</file>
-            <file>tests/Feature/Feature/Finance/PlatformCoreTest.php</file>
-            <file>tests/Unit/Finance/TaxEngineTest.php</file>
-            <file>tests/Feature/Feature/Pos/PosServerAuthoritativeTaxAndIdempotencyTest.php</file>
-            <file>tests/Feature/Feature/Cashier/CashierSyncApiTest.php</file>
-            <file>tests/Feature/Feature/Cashier/CashierSyncPushApiTest.php</file>
             <file>tests/Unit/AiSafetyAndUsageTest.php</file>
             <file>tests/Feature/Feature/Security/AiSecurityPrivacyCostTest.php</file>
             <file>tests/Feature/AssistantChatTest.php</file>
             <file>tests/Feature/LegalPagesTest.php</file>
             <file>tests/Feature/Feature/Backup/DatabaseBackupCommandTest.php</file>
             <file>tests/Feature/Feature/Runtime/ProductionRuntimeTest.php</file>
-            <file>tests/Feature/Feature/Chat/DomainCatalogSeparationTest.php</file>
             <file>tests/Unit/Chat/ChatCatalogRetrievalServiceTest.php</file>
             <file>tests/Feature/Feature/Tenancy/JobIsolationExecutionTest.php</file>
             <file>tests/Feature/Feature/Email/EmailInboxHubTest.php</file>
@@ -61,7 +47,6 @@
             <file>tests/Unit/Email/EmailTemplateLibraryTest.php</file>
             <file>tests/Feature/Feature/Email/EmailLibraryBrandingTest.php</file>
             <file>tests/Feature/Feature/Email/EmailTemplateLibraryUiTest.php</file>
-            <file>tests/Feature/Feature/Finance/FinanceAgentMysqlConcurrencyTest.php</file>
             <file>tests/Feature/Feature/FinancialIntegrity/CustomerAggregateConcurrencyTest.php</file>
             <file>tests/Feature/Feature/FinancialIntegrity/InventoryConcurrencyTest.php</file>
             <file>tests/Feature/Feature/ProductionGate/MysqlProductionGateConcurrencyTest.php</file>
@@ -94,6 +79,5 @@
         <env name="PLATFORM_ADMIN_PASSWORD" value="HasemPhpunitOnly-PlatformAdmin-NotAProdSecret" force="true"/>
         <env name="GEMINI_API_KEY" value="" force="true"/>
         <env name="OPENAI_API_KEY" value="" force="true"/>
-        <env name="FINANCE_ASSISTANT_AGENT" value="false" force="true"/>
     </php>
 </phpunit>

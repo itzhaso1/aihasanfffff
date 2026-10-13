@@ -15,15 +15,6 @@ tests/Feature/AssistantChatTest.php
 tests/Feature/Mobile/MobileAuthAndWorkspaceTest.php
 tests/Unit/AiSafetyAndUsageTest.php
 tests/Unit/AIServiceWorkspaceIsolationTest.php
-tests/Feature/Feature/Pos/PosServerAuthoritativeTaxAndIdempotencyTest.php
-tests/Feature/Feature/Finance/FinancialCoreTest.php
-tests/Feature/Feature/Finance/FinanceKpiLedgerReconciliationTest.php
-tests/Feature/Feature/Finance/ExpenseAccountingIntegrityTest.php
-tests/Feature/Feature/Finance/PlatformCoreTest.php
-tests/Feature/Feature/Finance/BillingLifecycleTest.php
-tests/Feature/Feature/Cashier/CashierPhase2AOfflineSnapshotTest.php
-tests/Feature/Feature/Cashier/CashierSyncApiTest.php
-tests/Feature/Feature/Cashier/CashierSyncPushApiTest.php
 tests/Feature/Feature/Backup/DatabaseBackupCommandTest.php
 tests/Feature/Feature/Runtime/ProductionRuntimeTest.php
 app/Support/Chat
