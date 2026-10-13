@@ -56,8 +56,9 @@ class WorkerInboxTest extends TestCase
         $this->companyRequest($owner, $workspace)
             ->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
-            ->assertSee('عامل مستقل')
-            ->assertSee('Independent Assignee');
+            ->assertDontSee('عامل مستقل', false)
+            ->assertDontSee('موظف الشركة', false)
+            ->assertDontSee('Independent Assignee', false);
     }
 
     public function test_worker_with_read_capability_can_read_a_conversation_in_the_workspace(): void
@@ -88,7 +89,8 @@ class WorkerInboxTest extends TestCase
             ]))
             ->assertOk()
             ->assertSee('Visible customer message')
-            ->assertSee('Assigned Worker')
+            ->assertDontSee('عامل مستقل', false)
+            ->assertDontSee('Assigned Worker', false)
             ->assertDontSee($privateEmail);
     }
 

@@ -236,11 +236,7 @@
                         <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
                             <div class="flex flex-wrap gap-1">
                             <span class="{{ $channelChip['badge'] }} rounded-full px-2 py-0.5 text-[10px] font-semibold">{{ $channelChip['label'] }}</span>
-                            @if($assignedType === \App\Enums\WorkforceParticipantType::IndependentWorker)
-                                <span class="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-800">عامل مستقل</span>
-                            @elseif($assignedType === \App\Enums\WorkforceParticipantType::CompanyStaff)
-                                <span class="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-800">موظف الشركة</span>
-                            @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
+                            @if($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
                                 <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">AI Employee</span>
                             @endif
                             @if($handoffStatus !== 'none')

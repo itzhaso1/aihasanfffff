@@ -346,6 +346,8 @@ class ConversationHandoffV2Test extends TestCase
             ->assertDontSee('إنهاء التحويل', false)
             ->assertDontSee('تعيين عامل مستقل', false)
             ->assertDontSee('تولي المحادثة', false)
+            ->assertDontSee('عامل مستقل', false)
+            ->assertDontSee('موظف الشركة', false)
             ->assertDontSee(route('workspace.conversations.handoff.takeover', $conversation), false)
             ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false)
             ->assertDontSee(route('workspace.conversations.handoff.resolve', $conversation), false);
