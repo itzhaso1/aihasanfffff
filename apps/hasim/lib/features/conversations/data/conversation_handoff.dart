@@ -24,7 +24,7 @@ abstract final class ConversationHandoffValues {
   static bool isAllowedReason(String value) => reasons.contains(value);
 
   static bool isOpen(ConversationModel conversation) =>
-      conversation.status == 'open';
+      conversation.status == 'open' && !conversation.archived;
 
   static bool canRequest(ConversationModel conversation) =>
       isOpen(conversation) &&

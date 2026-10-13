@@ -26,6 +26,7 @@
     $inboxAllowsCompanyActions = $inboxAllowsCompanyActions ?? true;
     $inboxCanSend = $inboxCanSend ?? true;
     $inboxMessageAction = $inboxMessageAction ?? route('workspace.conversations.messages.store', $activeConversation);
+    $conversationIsOpen = $activeConversation->status === 'open';
 @endphp
 
 <section class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-[#FCFFFE]">
@@ -91,6 +92,7 @@
         </div>
         </div>
         <div class="hidden max-w-full flex-wrap items-center justify-end gap-2 overflow-x-auto sm:flex">
+            @if($conversationIsOpen)
             @can('manageHandoff', $activeConversation)
                 @if($workerAssignments->isNotEmpty())
                     <form method="POST" action="{{ route('workspace.conversations.handoff.assign', $activeConversation) }}" class="flex items-center gap-2">
@@ -123,6 +125,7 @@
                     <button type="submit" class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">تفعيل AI</button>
                 </form>
             @endcan
+            @endif
             @if($inboxAllowsCompanyActions)
                 <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}" class="flex items-center gap-2">
                     @csrf

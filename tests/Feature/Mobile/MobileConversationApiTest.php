@@ -231,6 +231,7 @@ class MobileConversationApiTest extends TestCase
             ->withHeaders($headers)
             ->postJson("/api/mobile/v1/conversations/{$conversation->id}/archive", ['archived' => true])
             ->assertOk();
+        $this->assertSame('archived', $conversation->fresh()->status);
 
         $this->withToken($token)
             ->withHeaders($headers)
@@ -249,6 +250,7 @@ class MobileConversationApiTest extends TestCase
             ->withHeaders($headers)
             ->postJson("/api/mobile/v1/conversations/{$conversation->id}/archive", ['archived' => false])
             ->assertOk();
+        $this->assertSame('open', $conversation->fresh()->status);
 
         $this->withToken($token)
             ->withHeaders($headers)

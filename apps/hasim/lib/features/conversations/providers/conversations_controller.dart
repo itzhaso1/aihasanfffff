@@ -422,7 +422,10 @@ class ConversationsController extends StateNotifier<ConversationsState> {
         archived: archived,
         workspaceId: workspaceId,
       ),
-      update: (conversation) => conversation.copyWith(archived: archived),
+      update: (conversation) => conversation.copyWith(
+        archived: archived,
+        status: archived ? 'archived' : 'open',
+      ),
     );
   }
 
@@ -1286,7 +1289,10 @@ class ChatController extends StateNotifier<ChatState> {
         archived: archived,
         workspaceId: workspaceId,
       ),
-      update: (conversation) => conversation.copyWith(archived: archived),
+      update: (conversation) => conversation.copyWith(
+        archived: archived,
+        status: archived ? 'archived' : 'open',
+      ),
     );
   }
 
@@ -1432,12 +1438,42 @@ class ChatController extends StateNotifier<ChatState> {
     } on ApiException catch (e) {
       if (!_canCommit(scope)) return e.userMessage;
       state = state.copyWith(mutating: false);
+      unawaited(_syncConversationFromServer(scope));
       return e.userMessage;
     } catch (_) {
       if (!_canCommit(scope)) return 'تعذر تحديث المحادثة.';
       state = state.copyWith(mutating: false);
       return 'تعذر تحديث المحادثة.';
     }
+  }
+
+  Future<void> _syncConversationFromServer(InboxScope scope) async {
+    try {
+      final remote = await _ref.read(conversationRepositoryProvider).getById(
+        conversationId,
+        workspaceId: scope.workspaceId,
+      );
+      if (!_canCommit(scope)) {
+        return;
+      }
+      final current = state.conversation;
+      final next = current == null
+          ? remote
+          : current.applyingServerWrites(remote);
+      if (scope.workspaceId != null) {
+        await _ref.read(conversationRepositoryProvider).persistConversations(
+          scope.workspaceId!,
+          [next],
+        );
+      }
+      if (!_canCommit(scope)) {
+        return;
+      }
+      state = state.copyWith(conversation: next);
+      _ref
+          .read(conversationsControllerProvider.notifier)
+          .applyRemoteConversation(next);
+    } catch (_) {}
   }
 
   Future<String?> _mutateConversation({

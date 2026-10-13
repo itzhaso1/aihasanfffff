@@ -83,4 +83,9 @@ class Conversation extends WorkspaceScopedModel
     {
         return $this->hasMany(Message::class);
     }
+
+    public function isOpen(): bool
+    {
+        return (string) $this->status === 'open';
+    }
 }

@@ -356,7 +356,10 @@ class ConversationRepository {
       final existing = await cachedConversation(workspaceId, conversationId);
       if (existing != null) {
         await _local?.upsertConversations(workspaceId, [
-          existing.copyWith(archived: archived),
+          existing.copyWith(
+            archived: archived,
+            status: archived ? 'archived' : 'open',
+          ),
         ]);
       }
     }

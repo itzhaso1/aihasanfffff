@@ -16,7 +16,7 @@ final class ConversationAiEligibilityService
     {
         $fresh = $conversation->fresh() ?? $conversation;
 
-        if (! in_array($fresh->status, ['open'], true)) {
+        if (! $fresh->isOpen()) {
             return false;
         }
 

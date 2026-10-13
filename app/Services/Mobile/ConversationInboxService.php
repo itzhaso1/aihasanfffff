@@ -235,6 +235,8 @@ class ConversationInboxService
 
         if ($archived) {
             $conversation->update(['status' => 'archived']);
+        } elseif ($conversation->status === 'archived') {
+            $conversation->update(['status' => 'open']);
         }
 
         event(new ConversationUpdated($conversation->fresh()));

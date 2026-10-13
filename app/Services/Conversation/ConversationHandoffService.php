@@ -542,9 +542,11 @@ final class ConversationHandoffService
 
     private function assertOpen(Conversation $conversation): void
     {
-        if (! in_array($conversation->status, ['open'], true)) {
-            throw new InvalidArgumentException('Handoff is only allowed on open conversations.');
+        if ($conversation->isOpen()) {
+            return;
         }
+
+        throw new InvalidArgumentException('Handoff is only allowed on open conversations.');
     }
 
     private function assertWorkerEngagement(

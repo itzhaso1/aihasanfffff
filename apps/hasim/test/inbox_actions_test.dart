@@ -37,6 +37,7 @@ ConversationModel _conv({
   String handoff = 'none',
   String status = 'open',
   bool aiEnabled = false,
+  bool archived = false,
   int unread = 3,
   int? assignedUserId,
 }) {
@@ -51,6 +52,7 @@ ConversationModel _conv({
     handoffStatus: handoff,
     assignedUserId: assignedUserId,
     aiEnabled: aiEnabled,
+    archived: archived,
     customer: const CustomerModel(id: 2, name: 'أحمد'),
   );
 }
@@ -457,6 +459,18 @@ void main() {
     expect(ConversationHandoffValues.canResumeAi(closed), isFalse);
   });
 
+  test('archived conversations cannot takeover or resume AI', () {
+    final archived = _conv(
+      handoff: 'resolved',
+      status: 'open',
+      archived: true,
+      aiEnabled: false,
+    );
+    expect(ConversationHandoffValues.isOpen(archived), isFalse);
+    expect(ConversationHandoffValues.canTakeover(archived), isFalse);
+    expect(ConversationHandoffValues.canResumeAi(archived), isFalse);
+  });
+
   test('resolve and resume AI follow open conversation handoff states', () {
     expect(
       ConversationHandoffValues.canResolve(_conv(handoff: 'queued')),
@@ -764,6 +778,37 @@ void main() {
     expect(
       h.container.read(chatControllerProvider(7)).conversation?.handoffStatus,
       'queued',
+    );
+  });
+
+  test('rejected handoff refreshes stale conversation status', () async {
+    final h = await _openController(item: _conv(handoff: 'none'));
+    addTearDown(() async {
+      h.container.dispose();
+      await h.db.close();
+    });
+    h.container.read(chatControllerProvider(7));
+    await waitUntil(
+      () => h.container.read(chatControllerProvider(7)).conversation?.id == 7,
+    );
+    h.repo.item = _conv(status: 'closed');
+    h.repo.error = ApiException(
+      'Handoff is only allowed on open conversations.',
+    );
+
+    final error = await h.container
+        .read(chatControllerProvider(7).notifier)
+        .takeoverHandoff();
+
+    expect(error, 'التحويل مسموح فقط في المحادثات المفتوحة.');
+    await waitUntil(
+      () =>
+          h.container.read(chatControllerProvider(7)).conversation?.status ==
+          'closed',
+    );
+    expect(
+      h.container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'none',
     );
   });
 
