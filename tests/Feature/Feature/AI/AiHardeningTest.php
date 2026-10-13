@@ -14,6 +14,7 @@ use App\Models\Workspace;
 use App\Services\AI\AiOutputValidator;
 use App\Services\AI\AIService;
 use App\Services\AI\Inbox\AiReplyEligibility;
+use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Channel\Outbound\ChannelOutboundService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -86,7 +87,7 @@ class AiHardeningTest extends TestCase
         $this->assertSame(0, Message::withoutGlobalScopes()->where('ai_generated', true)->count());
     }
 
-    public function test_rejects_internal_failure_strings_as_outbound(): void
+    public function test_rejects_internal_failure_strings_and_sends_honest_fallback(): void
     {
         [$workspace, $conversation, $inbound] = $this->fixtures();
 
@@ -96,7 +97,10 @@ class AiHardeningTest extends TestCase
 
         $this->runAiJob($conversation, $inbound, $workspace);
 
-        $this->assertSame(0, Message::withoutGlobalScopes()->where('ai_generated', true)->count());
+        $outbound = Message::withoutGlobalScopes()->where('ai_generated', true)->first();
+        $this->assertNotNull($outbound);
+        $this->assertSame(InboxHonestReplyFallback::GREETING, $outbound->content);
+        $this->assertStringNotContainsString('تعذر إنشاء الرد', (string) $outbound->content);
     }
 
     public function test_duplicate_ai_job_creates_single_reply(): void

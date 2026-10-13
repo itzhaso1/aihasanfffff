@@ -15,6 +15,7 @@ use App\AI\Core\Prompt\PromptLayer;
 use App\AI\Employees\EmployeeService;
 use App\AI\Evaluation\HasimEvaluator;
 use App\AI\Inbox\HasimInboxRuntime;
+use App\AI\Models\ModelGatewayException;
 use App\Jobs\ProcessAIResponse;
 use App\Models\AiLog;
 use App\Models\Message;
@@ -24,6 +25,8 @@ use App\Services\AI\Inbox\AiReplyEligibility;
 use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Channel\Outbound\ChannelOutboundService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\Support\AI\Core\FakeResponseGuard;
@@ -188,6 +191,34 @@ class HasimInboxRuntimeTest extends TestCase
         $this->assertSame(AiResponseStatus::Failed, $result->response?->status);
         $this->assertSame(AiFailureCode::ModelError, $result->response?->decision->failure?->code);
         $this->assertStringNotContainsString('تعذر إنشاء الرد', $result->reply);
+    }
+
+    public function test_model_gateway_exception_is_logged_with_safe_codes_only(): void
+    {
+        [, $conversation, $message] = $this->seedHasimInbox();
+        $this->bindHasimRuntime(modelScript: [
+            new ModelGatewayException(ModelGatewayException::RATE_LIMITED, 'key=sk-secret-do-not-log', 429),
+        ]);
+        $logs = [];
+        Log::listen(static function (MessageLogged $event) use (&$logs): void {
+            $logs[] = $event;
+        });
+
+        $result = app(HasimInboxRuntime::class)->reply($conversation, $message);
+        $failure = $result->response?->decision->failure?->toArray() ?? [];
+        $failedLogs = array_values(array_filter(
+            $logs,
+            static fn (MessageLogged $event): bool => $event->message === 'hasim.inbox.failed',
+        ));
+
+        $this->assertFalse($result->deliverable);
+        $this->assertSame(AiFailureCode::ModelError, $result->response?->decision->failure?->code);
+        $this->assertSame(ModelGatewayException::RATE_LIMITED, $failure['provider_error_code'] ?? null);
+        $this->assertSame(429, $failure['http_status'] ?? null);
+        $this->assertStringNotContainsString('sk-secret', json_encode($failure) ?: '');
+        $this->assertNotEmpty($failedLogs);
+        $this->assertSame($failure, $failedLogs[0]->context['failure'] ?? null);
+        $this->assertStringNotContainsString('sk-secret', json_encode($failedLogs[0]->context) ?: '');
     }
 
     public function test_guard_rejection_is_not_sent_and_is_logged_as_failure(): void

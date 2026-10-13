@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\AI\Models;
 
+use App\AI\Core\Contracts\StructuredProviderFailure;
 use RuntimeException;
 
-final class ModelGatewayException extends RuntimeException
+final class ModelGatewayException extends RuntimeException implements StructuredProviderFailure
 {
     public const SETTINGS_NOT_FOUND = 'settings_not_found';
 
@@ -77,5 +78,15 @@ final class ModelGatewayException extends RuntimeException
     public static function emptyResponse(): self
     {
         return new self(self::EMPTY_RESPONSE, 'The model provider returned no usable response.');
+    }
+
+    public function providerErrorCode(): string
+    {
+        return $this->errorCode;
+    }
+
+    public function httpStatus(): ?int
+    {
+        return $this->httpStatus;
     }
 }

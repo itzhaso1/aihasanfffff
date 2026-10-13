@@ -81,6 +81,8 @@ class AIService
                 'evaluation_score' => $result->evaluation?->score,
                 'failure_stage' => $failure?->stage->value,
                 'failure_code' => $failure?->code->value,
+                'provider_error_code' => $failure?->providerErrorCode,
+                'http_status' => $failure?->httpStatus,
                 'guard_verdict' => $decision?->metadata['guard_verdict'] ?? null,
                 'conversation_id' => $conversation->id,
             ],

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\AI\Models\ModelGatewayException;
 use App\Exceptions\FeatureNotAvailableException;
 use App\Exceptions\UsageLimitExceededException;
 use App\Models\Conversation;
@@ -109,12 +110,12 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        Log::warning('ai.reply.job_failed', [
-            'workspace_id' => $this->workspaceId,
-            'conversation_id' => $this->conversationId,
-            'message_id' => $this->messageId,
-            'reason' => $exception?->getMessage(),
-        ]);
+        Log::warning('ai.reply.job_failed', $this->safeFailureContext(
+            $exception,
+            workspaceId: $this->workspaceId,
+            conversationId: $this->conversationId,
+            messageId: $this->messageId,
+        ));
 
         app(OpsMetricsRecorder::class)->increment('ai.job_failed');
     }
@@ -143,6 +144,8 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        $fallbackReason = null;
+
         try {
             $reply = $aiService->generateReply($conversationFresh, $incomingMessage);
         } catch (FeatureNotAvailableException|UsageLimitExceededException $exception) {
@@ -155,15 +158,24 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
             return;
         } catch (InvalidArgumentException $exception) {
-            Log::warning('ai.reply.non_retryable', [
-                'workspace_id' => $conversation->workspace_id,
-                'conversation_id' => $conversation->id,
-                'message_id' => $incomingMessage->id,
-                'reason' => $exception->getMessage(),
-            ]);
+            Log::warning('ai.reply.non_retryable', $this->safeFailureContext(
+                $exception,
+                workspaceId: (int) $conversation->workspace_id,
+                conversationId: (int) $conversation->id,
+                messageId: (int) $incomingMessage->id,
+            ));
             $this->fail($exception);
 
             return;
+        } catch (Throwable $exception) {
+            Log::warning('ai.reply.generation_exception', $this->safeFailureContext(
+                $exception,
+                workspaceId: (int) $conversation->workspace_id,
+                conversationId: (int) $conversation->id,
+                messageId: (int) $incomingMessage->id,
+            ));
+            $reply = '';
+            $fallbackReason = 'generation_exception';
         }
 
         $conversationFresh = $conversation->fresh() ?? $conversation;
@@ -179,18 +191,13 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
         $validated = $outputValidator->validateForOutbound($reply);
         if ($validated === null) {
-            $emptyGeneration = trim((string) $reply) === '';
-            $fallbackReason = $emptyGeneration ? 'generation_empty' : 'output_rejected';
+            $fallbackReason ??= trim((string) $reply) === '' ? 'generation_empty' : 'output_rejected';
             Log::warning('ai.reply.'.$fallbackReason, [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
                 'inbound_message_id' => $incomingMessage->id,
                 'catalog_missing_is_not_a_skip_reason' => true,
             ]);
-
-            if (! $emptyGeneration) {
-                return;
-            }
 
             $validated = $outputValidator->validateForOutbound(
                 app(InboxHonestReplyFallback::class)->forInbound((string) $incomingMessage->content),
@@ -281,5 +288,31 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
         app(OpsMetricsRecorder::class)->timing('ai.job_complete_ms', $durationMs);
         app(OpsMetricsRecorder::class)->increment('ai.job_complete');
+    }
+
+    /**
+     * @return array{workspace_id: mixed, conversation_id: mixed, message_id: mixed, exception_type: ?string, provider_error_code?: string, http_status?: int}
+     */
+    private function safeFailureContext(
+        ?Throwable $exception,
+        mixed $workspaceId,
+        mixed $conversationId,
+        mixed $messageId,
+    ): array {
+        $context = [
+            'workspace_id' => $workspaceId,
+            'conversation_id' => $conversationId,
+            'message_id' => $messageId,
+            'exception_type' => $exception !== null ? class_basename($exception::class) : null,
+        ];
+
+        if ($exception instanceof ModelGatewayException) {
+            $context['provider_error_code'] = $exception->errorCode;
+            if ($exception->httpStatus !== null) {
+                $context['http_status'] = $exception->httpStatus;
+            }
+        }
+
+        return $context;
     }
 }

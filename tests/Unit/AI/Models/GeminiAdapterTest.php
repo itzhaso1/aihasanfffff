@@ -17,6 +17,7 @@ use App\AI\Models\Adapters\GeminiAdapter;
 use App\AI\Models\ModelGatewayException;
 use App\AI\Models\ProviderId;
 use App\AI\Models\ResolvedModelSettings;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -127,18 +128,26 @@ class GeminiAdapterTest extends TestCase
         $this->assertSame(ModelFinishReason::Stop, $response->finishReason);
     }
 
-    public function test_missing_api_key_and_http_errors_are_normalized(): void
+    public function test_missing_api_key_is_rejected_before_http(): void
     {
         config(['services.google_ai_studio.key' => '']);
+        Http::fake();
+
         try {
             (new GeminiAdapter)->generate($this->settings(), $this->plainRequest());
             $this->fail('Missing key was accepted.');
         } catch (ModelGatewayException $exception) {
             $this->assertSame(ModelGatewayException::MISSING_API_KEY, $exception->errorCode);
+            $this->assertNull($exception->httpStatus);
+            $this->assertSame('missing_api_key', $exception->providerErrorCode());
         }
 
-        config(['services.google_ai_studio.key' => 'test-gemini-key']);
-        Http::fake(['*' => Http::response(['error' => ['message' => 'nope']], 500)]);
+        Http::assertNothingSent();
+    }
+
+    public function test_http_error_exposes_status_without_provider_body(): void
+    {
+        Http::fake(['*' => Http::response(['error' => ['message' => 'sk-secret-should-not-leak']], 500)]);
 
         try {
             (new GeminiAdapter)->generate($this->settings(), $this->plainRequest());
@@ -146,6 +155,35 @@ class GeminiAdapterTest extends TestCase
         } catch (ModelGatewayException $exception) {
             $this->assertSame(ModelGatewayException::HTTP_ERROR, $exception->errorCode);
             $this->assertSame(500, $exception->httpStatus);
+            $this->assertStringNotContainsString('sk-secret', $exception->getMessage());
+        }
+    }
+
+    public function test_timeout_is_normalized_from_connection_failure(): void
+    {
+        Http::fake(function () {
+            throw new ConnectionException('cURL error 28: Operation timed out');
+        });
+
+        try {
+            (new GeminiAdapter)->generate($this->settings(), $this->plainRequest());
+            $this->fail('Timeout was accepted.');
+        } catch (ModelGatewayException $exception) {
+            $this->assertSame(ModelGatewayException::TIMEOUT, $exception->errorCode);
+            $this->assertNull($exception->httpStatus);
+        }
+    }
+
+    public function test_empty_response_is_rejected(): void
+    {
+        Http::fake(['*' => Http::response('not-json', 200)]);
+
+        try {
+            (new GeminiAdapter)->generate($this->settings(), $this->plainRequest());
+            $this->fail('Empty response was accepted.');
+        } catch (ModelGatewayException $exception) {
+            $this->assertSame(ModelGatewayException::EMPTY_RESPONSE, $exception->errorCode);
+            $this->assertNull($exception->httpStatus);
         }
     }
 
