@@ -126,6 +126,7 @@
                         @endforeach
                     </select>
                     <label class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs">
+                        <input type="hidden" name="ai_enabled" value="0">
                         <input type="checkbox" name="ai_enabled" value="1" @checked($activeConversation->ai_enabled)>
                         <span>AI</span>
                     </label>

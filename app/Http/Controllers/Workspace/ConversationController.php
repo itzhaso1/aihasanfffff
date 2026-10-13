@@ -214,7 +214,7 @@ class ConversationController extends Controller
         $payload = $request->validated();
         $payload['metadata'] = $this->parseJsonField($request, 'metadata_json');
         $payload['status'] = $payload['status'] ?? 'open';
-        $payload['ai_enabled'] = (bool) ($payload['ai_enabled'] ?? true);
+        $payload['ai_enabled'] = $request->boolean('ai_enabled', true);
 
         $conversation = $this->conversationService->create($payload);
 
@@ -238,7 +238,9 @@ class ConversationController extends Controller
 
         $conversation->update([
             'status' => $payload['status'] ?? $conversation->status,
-            'ai_enabled' => array_key_exists('ai_enabled', $payload) ? (bool) $payload['ai_enabled'] : $conversation->ai_enabled,
+            'ai_enabled' => $request->exists('ai_enabled')
+                ? $request->boolean('ai_enabled')
+                : $conversation->ai_enabled,
             'metadata' => $this->parseJsonField($request, 'metadata_json', $conversation->metadata ?? []),
         ]);
 

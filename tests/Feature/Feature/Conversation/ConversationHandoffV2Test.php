@@ -416,6 +416,29 @@ class ConversationHandoffV2Test extends TestCase
             ->assertDontSee(route('workspace.conversations.handoff.takeover', $conversation), false);
     }
 
+    public function test_inbox_update_disables_ai_and_hides_the_reply_badge(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation();
+        $this->assertTrue((bool) $conversation->ai_enabled);
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->put(route('workspace.conversations.update', $conversation), [
+            'status' => $conversation->status,
+            'ai_enabled' => '0',
+            'metadata_json' => json_encode($conversation->metadata ?? []),
+        ])->assertRedirect(route('workspace.conversations.index', [
+            'conversation' => $conversation->id,
+        ]));
+
+        $this->assertFalse((bool) $conversation->fresh()->ai_enabled);
+
+        $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertDontSee('رد AI', false);
+    }
+
     public function test_inbox_shows_end_handoff_when_human_handoff_is_active(): void
     {
         [$user, $workspace, $conversation] = $this->seedConversation();

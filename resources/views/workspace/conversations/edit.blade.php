@@ -17,6 +17,7 @@
                         </select>
                     </div>
                     <label class="inline-flex items-center gap-2 mt-7">
+                        <input type="hidden" name="ai_enabled" value="0">
                         <input type="checkbox" name="ai_enabled" value="1" @checked($conversation->ai_enabled)>
                         <span>AI Enabled</span>
                     </label>

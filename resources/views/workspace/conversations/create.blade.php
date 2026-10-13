@@ -38,6 +38,7 @@
                     </div>
                 </div>
                 <label class="inline-flex items-center gap-2">
+                    <input type="hidden" name="ai_enabled" value="0">
                     <input type="checkbox" name="ai_enabled" value="1" checked />
                     <span>تفعيل AI</span>
                 </label>
