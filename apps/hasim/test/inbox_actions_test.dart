@@ -527,6 +527,24 @@ void main() {
       ),
       isFalse,
     );
+    expect(
+      ConversationHandoffValues.isAiReplying(
+        _conv(handoff: 'none', aiEnabled: true),
+      ),
+      isTrue,
+    );
+    expect(
+      ConversationHandoffValues.isAiReplying(
+        _conv(handoff: 'queued', aiEnabled: true),
+      ),
+      isFalse,
+    );
+    expect(
+      ConversationHandoffValues.isAiReplying(
+        _conv(handoff: 'none', status: 'closed', aiEnabled: true),
+      ),
+      isFalse,
+    );
   });
 
   test(
@@ -1265,11 +1283,12 @@ void main() {
     expect(find.text('تعيين عامل مستقل'), findsNothing);
     expect(find.text('تعيين المحادثة'), findsNothing);
     expect(find.text('تولي المحادثة'), findsNothing);
-    expect(find.text('تشغيل رد AI'), findsOneWidget);
-    expect(find.byKey(const Key('chat-action-toggle-ai')), findsOneWidget);
+    expect(find.text('تحويل إلى AI'), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
   });
 
-  testWidgets('company chat enables AI reply from the more menu', (
+  testWidgets('company chat converts an open conversation to AI', (
     tester,
   ) async {
     setPhone(tester);
@@ -1290,14 +1309,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     await openMore(tester);
-    expect(find.byKey(const Key('chat-action-toggle-ai')), findsOneWidget);
-    expect(find.text('تشغيل رد AI'), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsOneWidget);
+    expect(find.text('تحويل إلى AI'), findsOneWidget);
     expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
-    await tester.tap(find.byKey(const Key('chat-action-toggle-ai')));
+    expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
+    await tester.tap(find.byKey(const Key('chat-action-resume-ai')));
     await tester.pumpAndSettle();
-    expect(repo.setAiEnabledCalls, 1);
-    expect(repo.lastAiEnabled, isTrue);
-    expect(find.text('تم تشغيل رد AI'), findsOneWidget);
+    expect(repo.resumeAiCalls, 1);
+    expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ChatScreen)),
     );
@@ -1305,9 +1324,13 @@ void main() {
       container.read(chatControllerProvider(7)).conversation?.aiEnabled,
       isTrue,
     );
+    expect(
+      container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'none',
+    );
   });
 
-  testWidgets('enabling AI does not show success before backend confirms', (
+  testWidgets('convert to AI does not show success before backend confirms', (
     tester,
   ) async {
     setPhone(tester);
@@ -1324,18 +1347,23 @@ void main() {
             InboxLocalStore(db),
           )
           ..item = _conv(handoff: 'resolved', aiEnabled: false)
-          ..error = ApiException('تعذر تحديث رد الذكاء الاصطناعي.');
+          ..error = ApiException(
+            'Handoff is only allowed on open conversations.',
+          );
 
     await tester.pumpWidget(
       chatApp(repo: repo, prefs: prefs, auth: companyAuth),
     );
     await tester.pumpAndSettle();
     await openMore(tester);
-    await tester.tap(find.byKey(const Key('chat-action-toggle-ai')));
+    await tester.tap(find.byKey(const Key('chat-action-resume-ai')));
     await tester.pumpAndSettle();
-    expect(repo.setAiEnabledCalls, 1);
-    expect(find.text('تم تشغيل رد AI'), findsNothing);
-    expect(find.text('تعذر تحديث رد الذكاء الاصطناعي.'), findsOneWidget);
+    expect(repo.resumeAiCalls, 1);
+    expect(find.text('تم تحديث حالة التحويل'), findsNothing);
+    expect(
+      find.text('التحويل مسموح فقط في المحادثات المفتوحة.'),
+      findsOneWidget,
+    );
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ChatScreen)),
     );
@@ -1346,7 +1374,7 @@ void main() {
   });
 
   testWidgets(
-    'resolved conversation with AI on shows disable instead of end handoff',
+    'resolved conversation with AI on hides convert and end actions',
     (tester) async {
       setPhone(tester);
       SharedPreferences.setMockInitialValues({'workspace_id': 1});
@@ -1366,10 +1394,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       await openMore(tester);
-      expect(find.text('إيقاف رد AI'), findsOneWidget);
-      expect(find.byKey(const Key('chat-action-toggle-ai')), findsOneWidget);
+      expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
       expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
-      expect(repo.setAiEnabledCalls, 0);
+      expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
+      expect(repo.resumeAiCalls, 0);
       expect(repo.takeoverCalls, 0);
     },
   );
@@ -1394,8 +1422,9 @@ void main() {
     await tester.pumpAndSettle();
     await openMore(tester);
     expect(find.text('إنهاء التحويل'), findsOneWidget);
-    expect(find.byKey(const Key('chat-action-toggle-ai')), findsOneWidget);
-    expect(find.text('تشغيل رد AI'), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
+    expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
+    expect(find.text('تعيين عامل مستقل'), findsNothing);
     await tester.tap(find.byKey(const Key('chat-action-end-handoff')));
     await tester.pumpAndSettle();
     expect(repo.resolveCalls, 1);
@@ -1410,7 +1439,7 @@ void main() {
     );
   });
 
-  testWidgets('company chat disables AI reply from the more menu', (
+  testWidgets('company chat ends AI conversion by taking control', (
     tester,
   ) async {
     setPhone(tester);
@@ -1431,14 +1460,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     await openMore(tester);
-    expect(find.text('إيقاف رد AI'), findsOneWidget);
-    expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
-    await tester.tap(find.byKey(const Key('chat-action-toggle-ai')));
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
+    expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
+    expect(find.text('إنهاء التحويل'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('chat-action-end-handoff')));
     await tester.pumpAndSettle();
-    expect(repo.setAiEnabledCalls, 1);
-    expect(repo.lastAiEnabled, isFalse);
-    expect(repo.takeoverCalls, 0);
-    expect(find.text('تم إيقاف رد AI'), findsOneWidget);
+    expect(repo.takeoverCalls, 1);
+    expect(repo.resolveCalls, 0);
+    expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ChatScreen)),
     );
@@ -1448,7 +1477,7 @@ void main() {
     );
     expect(
       container.read(chatControllerProvider(7)).conversation?.handoffStatus,
-      'none',
+      'active',
     );
   });
 
@@ -1540,7 +1569,7 @@ void main() {
     expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
     expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
     expect(find.byKey(const Key('chat-action-takeover')), findsNothing);
-    expect(find.byKey(const Key('chat-action-toggle-ai')), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
     expect(repo.resolveCalls, 0);
     expect(repo.resumeAiCalls, 0);
     expect(repo.setAiEnabledCalls, 0);
@@ -1576,7 +1605,7 @@ void main() {
     await openMore(tester);
     expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
     expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
-    expect(find.byKey(const Key('chat-action-toggle-ai')), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
   });
 
   testWidgets('resolve handoff shows backend failure', (tester) async {

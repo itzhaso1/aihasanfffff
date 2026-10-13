@@ -49,17 +49,15 @@ abstract final class ConversationHandoffValues {
   static bool canResumeAi(ConversationModel conversation) =>
       isOpen(conversation) &&
       !conversation.aiEnabled &&
-      !const [
-        'requested',
-        'queued',
-        'assigned',
-        'active',
-      ].contains(conversation.handoffStatus);
+      !conversation.isHumanHandoffActive;
 
   static bool canEndHandoff(ConversationModel conversation) =>
       isOpen(conversation) &&
       (canResolve(conversation) ||
-          (conversation.aiEnabled && conversation.handoffStatus == 'none'));
+          (conversation.isAiReplying && conversation.handoffStatus == 'none'));
+
+  static bool isAiReplying(ConversationModel conversation) =>
+      conversation.isAiReplying;
 
   static String reasonLabel(String value) => switch (value) {
     'customer_request' => 'طلب العميل',

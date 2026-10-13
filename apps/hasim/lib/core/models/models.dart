@@ -331,6 +331,7 @@ class ConversationModel extends Equatable {
     required this.status,
     this.externalId,
     this.aiEnabled = false,
+    this.aiReplying,
     this.lastMessageAt,
     this.customer,
     this.unreadCount = 0,
@@ -355,6 +356,7 @@ class ConversationModel extends Equatable {
   final String status;
   final String? externalId;
   final bool aiEnabled;
+  final bool? aiReplying;
   final String handoffStatus;
   final String? handoffReason;
   final int? assignedUserId;
@@ -420,6 +422,9 @@ class ConversationModel extends Equatable {
       status: json['status']?.toString() ?? 'open',
       externalId: json['external_id']?.toString(),
       aiEnabled: json['ai_enabled'] == true,
+      aiReplying: json.containsKey('ai_replying')
+          ? json['ai_replying'] == true
+          : null,
       lastMessageAt: DateTime.tryParse(
         json['last_message_at']?.toString() ?? '',
       ),
@@ -441,7 +446,8 @@ class ConversationModel extends Equatable {
           json['classification_source']?.toString() ?? 'system',
       handoffStatus: json['handoff_status']?.toString() ?? 'none',
       handoffReason: json['handoff_reason']?.toString(),
-      assignedUserId: (json['assigned_user_id'] as num?)?.toInt() ??
+      assignedUserId:
+          (json['assigned_user_id'] as num?)?.toInt() ??
           (json['assigned_user'] is Map
               ? ((json['assigned_user'] as Map)['id'] as num?)?.toInt()
               : null),
@@ -458,12 +464,22 @@ class ConversationModel extends Equatable {
   bool get isHumanHandoffActive =>
       handoffStatus != 'none' && handoffStatus != 'resolved';
 
+  /// Backend-effective AI reply state. Falls back to local derivation when
+  /// cached rows predate `ai_replying`.
+  bool get isAiReplying {
+    if (aiReplying != null) {
+      return aiReplying!;
+    }
+    return status == 'open' && !archived && aiEnabled && !isHumanHandoffActive;
+  }
+
   Map<String, dynamic> toCacheJson() => {
     'id': id,
     'channel': channel,
     'status': status,
     'external_id': externalId,
     'ai_enabled': aiEnabled,
+    if (aiReplying != null) 'ai_replying': aiReplying,
     'last_message_at': lastMessageAt?.toIso8601String(),
     'unread_count': unreadCount,
     'muted': muted,
@@ -509,6 +525,7 @@ class ConversationModel extends Equatable {
     int? assignedWorkerEngagementId,
     String? assignedParticipantType,
     bool? aiEnabled,
+    bool? aiReplying,
     bool? canReply,
     String? status,
   }) {
@@ -518,6 +535,7 @@ class ConversationModel extends Equatable {
       status: status ?? this.status,
       externalId: externalId,
       aiEnabled: aiEnabled ?? this.aiEnabled,
+      aiReplying: aiReplying ?? this.aiReplying,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       customer: customer,
       unreadCount: unreadCount ?? this.unreadCount,
@@ -548,6 +566,7 @@ class ConversationModel extends Equatable {
       status: remote.status,
       externalId: remote.externalId ?? externalId,
       aiEnabled: remote.aiEnabled,
+      aiReplying: remote.aiReplying,
       lastMessageAt: remote.lastMessageAt ?? lastMessageAt,
       customer: remote.customer ?? customer,
       unreadCount: unreadCount,
@@ -974,15 +993,15 @@ class ChannelModel extends Equatable {
 
   @override
   List<Object?> get props => [
-        key,
-        status,
-        connected,
-        displayName,
-        phoneNumber,
-        canConnectInApp,
-        canDisconnect,
-        connectionMode,
-      ];
+    key,
+    status,
+    connected,
+    displayName,
+    phoneNumber,
+    canConnectInApp,
+    canDisconnect,
+    connectionMode,
+  ];
 }
 
 class PlanCatalogItem extends Equatable {

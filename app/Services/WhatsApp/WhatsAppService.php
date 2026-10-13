@@ -213,9 +213,6 @@ class WhatsAppService
 
             $conversationMetadata = is_array($conversation->metadata) ? $conversation->metadata : [];
             $conversationMetadata['channel_source'] = 'whatsapp';
-            if ($message->wasRecentlyCreated) {
-                $conversationMetadata['unread_count'] = (int) ($conversationMetadata['unread_count'] ?? 0) + 1;
-            }
             if (is_string($phoneNumberId) && $phoneNumberId !== '') {
                 $conversationMetadata['phone_number_id'] = $phoneNumberId;
             }

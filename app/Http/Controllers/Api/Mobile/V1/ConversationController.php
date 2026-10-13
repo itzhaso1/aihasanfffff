@@ -9,6 +9,7 @@ use App\Http\Resources\Mobile\MessageResource;
 use App\Models\Conversation;
 use App\Models\ConversationUserState;
 use App\Services\Conversation\ConversationClassificationService;
+use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use App\Services\Mobile\ConversationInboxService;
 use App\Services\Mobile\MobileInboxActor;
 use App\Services\Worker\WorkerInboxException;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 
 class ConversationController extends MobileController
 {
@@ -217,18 +219,30 @@ class ConversationController extends MobileController
 
     public function updateAi(Request $request, Conversation $conversation): JsonResponse
     {
-        $this->authorize('update', $conversation);
-
         $validated = $request->validate([
             'ai_enabled' => ['required', 'boolean'],
         ]);
 
         $enabled = (bool) $validated['ai_enabled'];
-        $conversation = $this->conversationInboxService->toggleAi($conversation, $enabled);
+        $this->authorize($enabled ? 'resumeAi' : 'update', $conversation);
+        $actor = $request->user();
+        if (! $actor) {
+            return $this->fail('غير مصرح.', 401);
+        }
+
+        try {
+            $conversation = $this->conversationInboxService->toggleAi(
+                $conversation,
+                $actor,
+                $enabled,
+            );
+        } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
+            return $this->fail($exception->getMessage(), 422);
+        }
 
         return $this->ok(
             new ConversationResource($conversation->load(['customer', 'assignedUser'])),
-            message: $enabled ? 'تم تشغيل رد الذكاء الاصطناعي.' : 'تم إيقاف رد الذكاء الاصطناعي.',
+            message: $enabled ? 'تم تفعيل الذكاء الاصطناعي.' : 'تم إيقاف رد الذكاء الاصطناعي.',
         );
     }
 

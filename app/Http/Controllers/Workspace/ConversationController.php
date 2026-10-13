@@ -15,12 +15,15 @@ use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Services\Conversation\ConversationAiEligibilityService;
 use App\Services\Conversation\ConversationService;
+use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
+use App\Services\Mobile\ConversationInboxService;
 use App\Services\Mobile\MessageAttachmentService;
 use App\Services\Workforce\WorkforceInboxAttribution;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use InvalidArgumentException;
 
 class ConversationController extends Controller
 {
@@ -29,6 +32,7 @@ class ConversationController extends Controller
     public function __construct(
         private readonly ConversationService $conversationService,
         private readonly ConversationAiEligibilityService $aiEligibility,
+        private readonly ConversationInboxService $conversationInboxService,
     ) {}
 
     public function index(Request $request): View
@@ -39,8 +43,11 @@ class ConversationController extends Controller
         $channelFilter = $this->normalizeChannelFilter($request->string('channel')->toString());
 
         $handoffFilter = $request->string('handoff')->toString();
+        $user = $request->user();
+        abort_unless($user !== null, 403);
 
         $conversations = Conversation::query()
+            ->select('conversations.*')
             ->with([
                 'customer',
                 'assignedUser:id,name',
@@ -49,7 +56,11 @@ class ConversationController extends Controller
                 'aiEmployee:id,workspace_id,name,avatar_path,status',
                 'messages' => fn ($query) => $query->latest()->limit(1),
             ])
-            ->withCount('messages')
+            ->withCount('messages');
+
+        $this->conversationInboxService->joinUserState($conversations, $user);
+
+        $conversations = $conversations
             ->when($channelFilter, function ($query, $channelFilter): void {
                 if (in_array($channelFilter, ['whatsapp', 'web'], true)) {
                     $query->where('channel', $channelFilter);
@@ -94,7 +105,7 @@ class ConversationController extends Controller
                 $query->where('status', $request->string('status')->toString());
             })
             ->when($request->boolean('unread'), function ($query): void {
-                $query->where('metadata->unread_count', '>', 0);
+                $this->conversationInboxService->applyUnreadFilter($query, requireInbound: true);
             })
             ->when($handoffFilter === 'ai', function ($query): void {
                 $query->where('ai_enabled', true)->where('handoff_status', 'none');
@@ -115,11 +126,13 @@ class ConversationController extends Controller
 
         $conversations->setCollection(
             $conversations->getCollection()
-                ->map(function (Conversation $conversation) {
+                ->map(function (Conversation $conversation) use ($user) {
                     $displayChannel = $this->resolveDisplayChannel($conversation);
-                    $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
                     $conversation->setAttribute('display_channel', $displayChannel);
-                    $conversation->setAttribute('unread_count', (int) ($metadata['unread_count'] ?? 0));
+                    $conversation->setAttribute(
+                        'unread_count',
+                        $this->conversationInboxService->unreadCountForConversation($conversation, $user),
+                    );
 
                     return $conversation;
                 })
@@ -157,16 +170,11 @@ class ConversationController extends Controller
                 ->find($activeConversationId);
 
             if ($activeConversation) {
-                $metadata = is_array($activeConversation->metadata) ? $activeConversation->metadata : [];
-                if ((int) ($metadata['unread_count'] ?? 0) > 0) {
-                    $metadata['unread_count'] = 0;
-                    // Update only metadata via query to avoid persisting virtual attributes.
-                    Conversation::query()
-                        ->whereKey($activeConversation->id)
-                        ->update(['metadata' => $metadata]);
-                    $activeConversation->setAttribute('metadata', $metadata);
-                    $activeConversation->syncOriginalAttribute('metadata');
-                }
+                $this->conversationInboxService->markRead($activeConversation, $user);
+                $activeConversation->setAttribute(
+                    'unread_count',
+                    $this->conversationInboxService->unreadCountForConversation($activeConversation, $user),
+                );
 
                 $activeConversation->setAttribute('display_channel', $this->resolveDisplayChannel($activeConversation));
 
@@ -235,12 +243,30 @@ class ConversationController extends Controller
     public function update(UpdateConversationRequest $request, Conversation $conversation): RedirectResponse
     {
         $payload = $request->validated();
+        $actor = $request->user();
+        abort_unless($actor !== null, 403);
+
+        if ($request->exists('ai_enabled')) {
+            $wantAi = $request->boolean('ai_enabled');
+            if ($wantAi !== (bool) $conversation->ai_enabled) {
+                if ($wantAi) {
+                    $this->authorize('resumeAi', $conversation);
+                }
+
+                try {
+                    $conversation = $this->conversationInboxService->toggleAi(
+                        $conversation,
+                        $actor,
+                        $wantAi,
+                    );
+                } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
+                    return back()->with('error', $exception->getMessage());
+                }
+            }
+        }
 
         $conversation->update([
             'status' => $payload['status'] ?? $conversation->status,
-            'ai_enabled' => $request->exists('ai_enabled')
-                ? $request->boolean('ai_enabled')
-                : $conversation->ai_enabled,
             'metadata' => $this->parseJsonField($request, 'metadata_json', $conversation->metadata ?? []),
         ]);
 
@@ -281,6 +307,7 @@ class ConversationController extends Controller
                 'conversation' => [
                     'id' => $conversation->id,
                     'ai_enabled' => (bool) $conversation->ai_enabled,
+                    'ai_replying' => $conversation->isAiReplying(),
                     'handoff_status' => $conversation->handoff_status instanceof ConversationHandoffStatus
                         ? $conversation->handoff_status->value
                         : ($conversation->handoff_status ?? 'none'),

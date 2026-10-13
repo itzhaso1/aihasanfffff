@@ -340,6 +340,22 @@ final class ConversationHandoffService
         });
     }
 
+    public function disableAi(Conversation $conversation, User $actor): Conversation
+    {
+        return DB::transaction(function () use ($conversation, $actor): Conversation {
+            $fresh = $conversation->fresh() ?? $conversation;
+            $this->assertWorkspaceMember($fresh, $actor);
+
+            if (! (bool) $fresh->ai_enabled) {
+                return $fresh;
+            }
+
+            $fresh->update(['ai_enabled' => false]);
+
+            return $this->publishAndReturn($fresh->fresh() ?? $fresh);
+        });
+    }
+
     /**
      * @param  array<string, mixed>  $context
      */

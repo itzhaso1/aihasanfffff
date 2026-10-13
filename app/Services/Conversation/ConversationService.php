@@ -40,17 +40,6 @@ class ConversationService
             ]);
 
             $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
-            $unreadCount = (int) ($metadata['unread_count'] ?? 0);
-
-            if ($message->direction === 'inbound') {
-                $unreadCount++;
-            }
-
-            if (in_array($message->direction, ['outbound', 'internal_note'], true)) {
-                $unreadCount = 0;
-            }
-
-            $metadata['unread_count'] = max(0, $unreadCount);
             $metadata['channel_source'] = $metadata['channel_source'] ?? $this->resolveDisplayChannel($conversation);
 
             $conversationAttributes = [

@@ -11,6 +11,7 @@ use App\Models\Conversation;
 use App\Models\User;
 use App\Models\Worker\WorkerEngagement;
 use App\Models\Workspace;
+use App\Services\Mobile\ConversationInboxService;
 use App\Services\Worker\WorkerEngagementAuthorization;
 use App\Services\Worker\WorkerInboxException;
 use App\Services\Worker\WorkerInboxService;
@@ -28,6 +29,7 @@ final class WorkerInboxController extends Controller
     public function __construct(
         private readonly WorkerInboxService $inbox,
         private readonly WorkerEngagementAuthorization $authorization,
+        private readonly ConversationInboxService $conversationInboxService,
     ) {}
 
     public function home(Request $request): View
@@ -171,11 +173,16 @@ final class WorkerInboxController extends Controller
         $handoff = $request->string('handoff')->toString();
         $search = mb_strtolower(trim($request->string('search')->toString()));
 
+        $actor = $request->user();
+        abort_unless($actor instanceof User, 403);
+
         $filtered = $conversations
-            ->map(function (Conversation $conversation): Conversation {
-                $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
+            ->map(function (Conversation $conversation) use ($actor): Conversation {
                 $conversation->setAttribute('display_channel', $this->displayChannel($conversation));
-                $conversation->setAttribute('unread_count', (int) ($metadata['unread_count'] ?? 0));
+                $conversation->setAttribute(
+                    'unread_count',
+                    $this->conversationInboxService->unreadCountForConversation($conversation, $actor),
+                );
 
                 return $conversation;
             })
@@ -233,14 +240,13 @@ final class WorkerInboxController extends Controller
             return null;
         }
 
-        $metadata = is_array($activeConversation->metadata) ? $activeConversation->metadata : [];
-        if ((int) ($metadata['unread_count'] ?? 0) > 0) {
-            $metadata['unread_count'] = 0;
-            Conversation::query()
-                ->whereKey($activeConversation->id)
-                ->update(['metadata' => $metadata]);
-            $activeConversation->setAttribute('metadata', $metadata);
-            $activeConversation->syncOriginalAttribute('metadata');
+        $actor = $request->user();
+        if ($actor instanceof User) {
+            $this->conversationInboxService->markRead($activeConversation, $actor);
+            $activeConversation->setAttribute(
+                'unread_count',
+                $this->conversationInboxService->unreadCountForConversation($activeConversation, $actor),
+            );
         }
 
         $activeConversation->setAttribute('display_channel', $this->displayChannel($activeConversation));
@@ -268,7 +274,7 @@ final class WorkerInboxController extends Controller
             : (string) ($conversation->handoff_status ?? 'none');
 
         return match ($handoff) {
-            'ai' => (bool) $conversation->ai_enabled && $status === 'none',
+            'ai' => $conversation->isAiReplying(),
             'handoff' => in_array($status, ['requested', 'queued', 'assigned', 'active'], true),
             'queued' => $status === 'queued',
             'assigned_me' => $userId !== null

@@ -76,7 +76,7 @@
                     <span class="hidden sm:inline">External ID: #{{ $activeConversation->external_id }}</span>
                 @endif
                 <span class="{{ $activeChannelChip['badge'] }} rounded-full px-2 py-0.5 font-semibold">{{ $activeChannelChip['label'] }}</span>
-                @if($activeConversation->ai_enabled)
+                @if($activeConversation->isAiReplying())
                     <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">رد AI</span>
                 @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
                     <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">

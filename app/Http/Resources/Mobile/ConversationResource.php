@@ -35,6 +35,9 @@ class ConversationResource extends JsonResource
             'classification_reason' => $this->classification_reason,
             'external_id' => $this->external_id,
             'ai_enabled' => (bool) $this->ai_enabled,
+            'ai_replying' => $this->resource instanceof Conversation
+                ? $this->resource->isAiReplying()
+                : false,
             'handoff_status' => $this->handoff_status instanceof ConversationHandoffStatus
                 ? $this->handoff_status->value
                 : ($this->handoff_status ?? 'none'),

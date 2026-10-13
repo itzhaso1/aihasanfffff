@@ -231,7 +231,7 @@ class MobileConversationApiTest extends TestCase
             ->withHeaders($headers)
             ->postJson("/api/mobile/v1/conversations/{$conversation->id}/archive", ['archived' => true])
             ->assertOk();
-        $this->assertSame('archived', $conversation->fresh()->status);
+        $this->assertSame('open', $conversation->fresh()->status);
 
         $this->withToken($token)
             ->withHeaders($headers)
@@ -251,6 +251,11 @@ class MobileConversationApiTest extends TestCase
             ->postJson("/api/mobile/v1/conversations/{$conversation->id}/archive", ['archived' => false])
             ->assertOk();
         $this->assertSame('open', $conversation->fresh()->status);
+        $this->assertDatabaseHas('conversation_user_states', [
+            'conversation_id' => $conversation->id,
+            'user_id' => $user->id,
+            'archived_at' => null,
+        ]);
 
         $this->withToken($token)
             ->withHeaders($headers)
@@ -298,7 +303,9 @@ class MobileConversationApiTest extends TestCase
             ->assertOk();
 
         $this->assertFalse((bool) $disabled->json('data.ai_enabled'));
+        $this->assertFalse((bool) $disabled->json('data.ai_replying'));
         $this->assertFalse((bool) $conversation->fresh()->ai_enabled);
+        $this->assertFalse($conversation->fresh()->isAiReplying());
 
         $enabled = $this->withToken($token)
             ->withHeaders($headers)
@@ -308,7 +315,10 @@ class MobileConversationApiTest extends TestCase
             ->assertOk();
 
         $this->assertTrue((bool) $enabled->json('data.ai_enabled'));
+        $this->assertTrue((bool) $enabled->json('data.ai_replying'));
+        $this->assertSame('none', $enabled->json('data.handoff_status'));
         $this->assertTrue((bool) $conversation->fresh()->ai_enabled);
+        $this->assertTrue($conversation->fresh()->isAiReplying());
     }
 
     public function test_toggle_ai_on_foreign_workspace_conversation_is_forbidden(): void

@@ -251,7 +251,11 @@ class ConversationHandoffV2Test extends TestCase
         $this->inWorkspace($workspace, function () use ($inbox, $conversation, $owner): void {
             $inbox->archive($conversation, $owner, true);
         });
-        $this->assertSame('archived', $conversation->fresh()->status);
+        $this->assertSame('open', $conversation->fresh()->status);
+        $this->assertDatabaseHas('conversation_user_states', [
+            'conversation_id' => $conversation->id,
+            'user_id' => $owner->id,
+        ]);
 
         $this->inWorkspace($workspace, function () use ($inbox, $conversation, $owner): void {
             $inbox->archive($conversation->fresh(), $owner, false);
@@ -532,6 +536,153 @@ class ConversationHandoffV2Test extends TestCase
         $this->assertSame(ConversationHandoffStatus::Resolved, $conversation->handoff_status);
         $this->assertSame('open', $conversation->status);
         $this->assertFalse((bool) $conversation->ai_enabled);
+    }
+
+    public function test_inbox_hides_ai_badge_when_human_handoff_blocks_reply(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => true,
+            'handoff_status' => ConversationHandoffStatus::Queued->value,
+        ]);
+
+        $this->assertFalse($conversation->fresh()->isAiReplying());
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertDontSee('رد AI', false)
+            ->assertSee('إنهاء التحويل', false)
+            ->assertDontSee('تحويل إلى AI', false)
+            ->assertDontSee('تعيين عامل مستقل', false);
+    }
+
+    public function test_mobile_patch_ai_enable_matches_resume_ai(): void
+    {
+        [$owner, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Resolved->value,
+        ]);
+        Sanctum::actingAs($owner);
+
+        $this->withHeader('X-Workspace-Id', (string) $workspace->id)
+            ->patchJson("/api/mobile/v1/conversations/{$conversation->id}/ai", [
+                'ai_enabled' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.ai_enabled', true)
+            ->assertJsonPath('data.ai_replying', true)
+            ->assertJsonPath('data.handoff_status', 'none')
+            ->assertJsonPath('data.status', 'open');
+
+        $conversation->refresh();
+        $this->assertTrue($conversation->ai_enabled);
+        $this->assertSame(ConversationHandoffStatus::None, $conversation->handoff_status);
+
+        $inbound = Message::withoutGlobalScopes()->create([
+            'workspace_id' => $conversation->workspace_id,
+            'conversation_id' => $conversation->id,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'content' => 'مرحبا',
+        ]);
+        $this->assertTrue(app(ConversationAiEligibilityService::class)->mayRespond($conversation, $inbound));
+    }
+
+    public function test_mobile_patch_ai_enable_rejected_during_active_handoff(): void
+    {
+        [$owner, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Queued->value,
+        ]);
+        Sanctum::actingAs($owner);
+
+        $this->withHeader('X-Workspace-Id', (string) $workspace->id)
+            ->patchJson("/api/mobile/v1/conversations/{$conversation->id}/ai", [
+                'ai_enabled' => true,
+            ])
+            ->assertStatus(422);
+
+        $conversation->refresh();
+        $this->assertFalse((bool) $conversation->ai_enabled);
+        $this->assertSame(ConversationHandoffStatus::Queued, $conversation->handoff_status);
+        $this->assertFalse($conversation->isAiReplying());
+    }
+
+    public function test_mobile_patch_ai_enable_rejected_when_closed_or_archived(): void
+    {
+        [$owner, $workspace, $conversation] = $this->seedConversation();
+        Sanctum::actingAs($owner);
+
+        $conversation->update([
+            'status' => 'closed',
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::None->value,
+        ]);
+
+        $this->withHeader('X-Workspace-Id', (string) $workspace->id)
+            ->patchJson("/api/mobile/v1/conversations/{$conversation->id}/ai", [
+                'ai_enabled' => true,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Handoff is only allowed on open conversations.');
+
+        $conversation->update(['status' => 'archived']);
+
+        $this->withHeader('X-Workspace-Id', (string) $workspace->id)
+            ->patchJson("/api/mobile/v1/conversations/{$conversation->id}/ai", [
+                'ai_enabled' => true,
+            ])
+            ->assertStatus(422);
+
+        $this->assertFalse((bool) $conversation->fresh()->ai_enabled);
+    }
+
+    public function test_agent_cannot_enable_ai_via_patch(): void
+    {
+        [, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Resolved->value,
+        ]);
+        $agent = $this->workspaceAgent($workspace);
+        Sanctum::actingAs($agent);
+
+        $this->withHeader('X-Workspace-Id', (string) $workspace->id)
+            ->patchJson("/api/mobile/v1/conversations/{$conversation->id}/ai", [
+                'ai_enabled' => true,
+            ])
+            ->assertForbidden();
+
+        $this->assertFalse((bool) $conversation->fresh()->ai_enabled);
+    }
+
+    public function test_web_checkbox_cannot_enable_ai_during_active_handoff(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Queued->value,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->from(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->put(route('workspace.conversations.update', $conversation), [
+                'status' => 'open',
+                'ai_enabled' => '1',
+                'metadata_json' => json_encode($conversation->metadata ?? []),
+            ])
+            ->assertRedirect();
+
+        $conversation->refresh();
+        $this->assertFalse((bool) $conversation->ai_enabled);
+        $this->assertSame(ConversationHandoffStatus::Queued, $conversation->handoff_status);
     }
 
     public function test_inbox_handoff_filter(): void

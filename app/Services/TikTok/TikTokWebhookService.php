@@ -150,10 +150,6 @@ class TikTokWebhookService
             $conversationMetadata['tiktok_user_id'] = $senderId;
             $conversationMetadata['tiktok_conversation_id'] = $conversationProviderId;
             $conversationMetadata['tiktok_business_open_id'] = $messageData['business_open_id'] ?? null;
-            if ($message->wasRecentlyCreated) {
-                $conversationMetadata['unread_count'] = (int) ($conversationMetadata['unread_count'] ?? 0) + 1;
-            }
-
             $conversationAttributes = [
                 'customer_id' => $conversation->customer_id ?: $customer->id,
                 'channel' => 'tiktok',

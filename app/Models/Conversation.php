@@ -89,6 +89,32 @@ class Conversation extends WorkspaceScopedModel
         return (string) $this->status === 'open';
     }
 
+    public function handoffStatusEnum(): ConversationHandoffStatus
+    {
+        $value = $this->handoff_status;
+        if ($value instanceof ConversationHandoffStatus) {
+            return $value;
+        }
+
+        if (is_string($value) && $value !== '') {
+            return ConversationHandoffStatus::tryFrom($value) ?? ConversationHandoffStatus::None;
+        }
+
+        return ConversationHandoffStatus::None;
+    }
+
+    /**
+     * True when this conversation is in a state where AI auto-reply may run
+     * (open, flag on, and no blocking human handoff). Workspace-level AI
+     * settings are applied separately by ConversationAiEligibilityService.
+     */
+    public function isAiReplying(): bool
+    {
+        return $this->isOpen()
+            && (bool) $this->ai_enabled
+            && ! $this->handoffStatusEnum()->blocksAi();
+    }
+
     /**
      * New customer messages bring archived/closed threads back to the open inbox
      * so auto-reply can run when AI is enabled.

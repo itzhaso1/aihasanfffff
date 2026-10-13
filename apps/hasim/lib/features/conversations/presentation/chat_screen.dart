@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim/core/di/providers.dart';
-import 'package:hasim/core/storage/inbox_scope.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/network/media_auth_headers.dart';
@@ -479,19 +478,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               'تصنيف المحادثة · ${ConversationClassificationValues.priorityLabel(conversation.customerPriority)}',
             ),
           ),
-        if (conversation != null && isCompanyUser)
-          PopupMenuItem(
-            key: const Key('chat-action-toggle-ai'),
-            value: 'toggle_ai',
-            child: Text(conversation.aiEnabled ? 'إيقاف رد AI' : 'تشغيل رد AI'),
-          ),
         if (conversation != null &&
             isCompanyUser &&
-            ConversationHandoffValues.canResolve(conversation))
+            ConversationHandoffValues.canEndHandoff(conversation))
           const PopupMenuItem(
             key: Key('chat-action-end-handoff'),
             value: 'end_handoff',
             child: Text('إنهاء التحويل'),
+          ),
+        if (conversation != null &&
+            isCompanyUser &&
+            ConversationHandoffValues.canResumeAi(conversation))
+          const PopupMenuItem(
+            key: Key('chat-action-resume-ai'),
+            value: 'resume_ai',
+            child: Text('تحويل إلى AI'),
           ),
       ],
     );
@@ -536,36 +537,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (selected == 'classify' && conversation != null) {
       await _openClassification(conversation);
     }
-    if (selected == 'toggle_ai' && conversation != null) {
+    if (selected == 'end_handoff' || selected == 'resume_ai') {
       final notifier = ref.read(
         chatControllerProvider(widget.conversationId).notifier,
       );
       final wasMutating = ref
           .read(chatControllerProvider(widget.conversationId))
           .mutating;
-      final enabling = !conversation.aiEnabled;
-      final error = await notifier.setAiEnabled(enabled: enabling);
-      if (!mounted) return;
-      if (error != null) {
-        ScaffoldMessenger.of(
-          this.context,
-        ).showSnackBar(SnackBar(content: Text(error)));
-        return;
+      final Future<String?> request;
+      if (selected == 'resume_ai') {
+        request = notifier.resumeAi();
+      } else if (ConversationHandoffValues.canResolve(conversation!)) {
+        request = notifier.resolveHandoff();
+      } else {
+        request = notifier.takeoverHandoff();
       }
-      if (wasMutating) return;
-      ScaffoldMessenger.of(this.context).showSnackBar(
-        SnackBar(content: Text(enabling ? 'تم تشغيل رد AI' : 'تم إيقاف رد AI')),
-      );
-      return;
-    }
-    if (selected == 'end_handoff' && conversation != null) {
-      final notifier = ref.read(
-        chatControllerProvider(widget.conversationId).notifier,
-      );
-      final wasMutating = ref
-          .read(chatControllerProvider(widget.conversationId))
-          .mutating;
-      final error = await notifier.resolveHandoff();
+      final error = await request;
       if (!mounted) return;
       if (error != null) {
         ScaffoldMessenger.of(

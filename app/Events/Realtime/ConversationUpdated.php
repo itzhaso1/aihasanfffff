@@ -50,15 +50,12 @@ class ConversationUpdated implements ShouldBroadcast
      */
     public function broadcastWith(): array
     {
-        $metadata = is_array($this->conversation->metadata) ? $this->conversation->metadata : [];
-
         return [
             'id' => $this->conversation->id,
             'workspace_id' => $this->conversation->workspace_id,
             'status' => $this->conversation->status,
             'channel' => $this->conversation->channel,
             'last_message_at' => optional($this->conversation->last_message_at)?->toIso8601String(),
-            'unread_count' => (int) ($metadata['unread_count'] ?? 0),
         ];
     }
 }

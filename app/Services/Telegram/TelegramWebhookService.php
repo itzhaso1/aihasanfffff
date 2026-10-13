@@ -143,10 +143,6 @@ class TelegramWebhookService
             if (isset($messageData['business_connection_id'])) {
                 $conversationMetadata['telegram_business_connection_id'] = $messageData['business_connection_id'];
             }
-            if ($message->wasRecentlyCreated) {
-                $conversationMetadata['unread_count'] = (int) ($conversationMetadata['unread_count'] ?? 0) + 1;
-            }
-
             $conversationAttributes = [
                 'customer_id' => $conversation->customer_id ?: $customer->id,
                 'channel' => 'telegram',

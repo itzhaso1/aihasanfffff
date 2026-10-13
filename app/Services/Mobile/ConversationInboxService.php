@@ -8,6 +8,7 @@ use App\Models\ConversationUserState;
 use App\Models\Message;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Conversation\ConversationHandoffService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Worker\WorkerInboxService;
 use App\Support\Tenancy\WorkspaceContext;
@@ -20,6 +21,7 @@ class ConversationInboxService
 {
     public function __construct(
         private readonly ConversationService $conversationService,
+        private readonly ConversationHandoffService $handoff,
         private readonly MobileInboxActor $inboxActor,
         private readonly WorkerInboxService $workerInbox,
         private readonly WorkspaceContext $workspaceContext,
@@ -206,9 +208,13 @@ class ConversationInboxService
     public function markRead(Conversation $conversation, User $user, ?int $messageId = null): ConversationUserState
     {
         $lastId = $messageId
-            ?? (int) Message::query()->where('conversation_id', $conversation->id)->max('id');
+            ?? (int) Message::withoutGlobalScopes()
+                ->where('workspace_id', $conversation->workspace_id)
+                ->where('conversation_id', $conversation->id)
+                ->max('id');
 
-        $state = ConversationUserState::query()->firstOrNew([
+        $state = ConversationUserState::withoutGlobalScopes()->firstOrNew([
+            'workspace_id' => $conversation->workspace_id,
             'conversation_id' => $conversation->id,
             'user_id' => $user->id,
         ]);
@@ -225,19 +231,14 @@ class ConversationInboxService
 
     public function archive(Conversation $conversation, User $user, bool $archived = true): ConversationUserState
     {
-        $state = ConversationUserState::query()->firstOrNew([
+        $state = ConversationUserState::withoutGlobalScopes()->firstOrNew([
+            'workspace_id' => $conversation->workspace_id,
             'conversation_id' => $conversation->id,
             'user_id' => $user->id,
         ]);
         $state->workspace_id = $conversation->workspace_id;
         $state->archived_at = $archived ? now() : null;
         $state->save();
-
-        if ($archived) {
-            $conversation->update(['status' => 'archived']);
-        } elseif ($conversation->status === 'archived') {
-            $conversation->update(['status' => 'open']);
-        }
 
         event(new ConversationUpdated($conversation->fresh()));
 
@@ -246,7 +247,8 @@ class ConversationInboxService
 
     public function mute(Conversation $conversation, User $user, bool $muted = true): ConversationUserState
     {
-        $state = ConversationUserState::query()->firstOrNew([
+        $state = ConversationUserState::withoutGlobalScopes()->firstOrNew([
+            'workspace_id' => $conversation->workspace_id,
             'conversation_id' => $conversation->id,
             'user_id' => $user->id,
         ]);
@@ -257,12 +259,13 @@ class ConversationInboxService
         return $state;
     }
 
-    public function toggleAi(Conversation $conversation, bool $enabled): Conversation
+    public function toggleAi(Conversation $conversation, User $actor, bool $enabled): Conversation
     {
-        $updated = $this->conversationService->toggleAi($conversation, $enabled);
-        event(new ConversationUpdated($updated));
+        if ($enabled) {
+            return $this->handoff->resumeAi($conversation, $actor);
+        }
 
-        return $updated;
+        return $this->handoff->disableAi($conversation, $actor);
     }
 
     public function messages(Conversation $conversation, int $perPage = 30): CursorPaginator
@@ -276,11 +279,24 @@ class ConversationInboxService
             ->cursorPaginate($perPage);
     }
 
+    public function joinUserState(Builder $query, User $user): void
+    {
+        if ($this->queryHasUserStateJoin($query)) {
+            return;
+        }
+
+        $query->leftJoin('conversation_user_states as cus', function ($join) use ($user): void {
+            $join->on('cus.conversation_id', '=', 'conversations.id')
+                ->where('cus.user_id', '=', $user->id);
+        });
+    }
+
     /**
      * Unread = no read cursor, or read cursor behind latest inbound message.
      * Uses one grouped subquery join instead of a per-row correlated MAX().
+     * Requires {@see joinUserState} on the same query (alias `cus`).
      */
-    private function applyUnreadFilter(Builder $query, bool $requireInbound = false): void
+    public function applyUnreadFilter(Builder $query, bool $requireInbound = false): void
     {
         $inboundMaxSub = Message::query()
             ->selectRaw('conversation_id, MAX(id) as max_inbound_message_id')
@@ -303,12 +319,14 @@ class ConversationInboxService
 
     public function unreadCountForConversation(Conversation $conversation, User $user): int
     {
-        $state = ConversationUserState::query()
+        $state = ConversationUserState::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
             ->where('conversation_id', $conversation->id)
             ->where('user_id', $user->id)
             ->first();
 
-        $query = Message::query()
+        $query = Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
             ->where('conversation_id', $conversation->id)
             ->where('direction', 'inbound');
 
@@ -317,5 +335,18 @@ class ConversationInboxService
         }
 
         return (int) $query->count();
+    }
+
+    private function queryHasUserStateJoin(Builder $query): bool
+    {
+        $joins = $query->getQuery()->joins ?? [];
+
+        foreach ($joins as $join) {
+            if ($join->table === 'conversation_user_states as cus') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -168,10 +168,6 @@ class InstagramWebhookService
             $conversationMetadata['channel_source'] = 'instagram';
             $conversationMetadata['instagram_user_id'] = $senderId;
             $conversationMetadata['instagram_account_id'] = $recipientId;
-            if ($message->wasRecentlyCreated) {
-                $conversationMetadata['unread_count'] = (int) ($conversationMetadata['unread_count'] ?? 0) + 1;
-            }
-
             $conversationAttributes = [
                 'customer_id' => $conversation->customer_id ?: $customer->id,
                 'channel' => 'instagram',

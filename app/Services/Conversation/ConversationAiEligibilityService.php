@@ -2,7 +2,6 @@
 
 namespace App\Services\Conversation;
 
-use App\Enums\ConversationHandoffStatus;
 use App\Models\AiSetting;
 use App\Models\Conversation;
 use App\Models\Message;
@@ -16,15 +15,7 @@ final class ConversationAiEligibilityService
     {
         $fresh = $conversation->fresh() ?? $conversation;
 
-        if (! $fresh->isOpen()) {
-            return false;
-        }
-
-        if (! (bool) $fresh->ai_enabled) {
-            return false;
-        }
-
-        if ($this->handoffStatus($fresh)->blocksAi()) {
+        if (! $fresh->isAiReplying()) {
             return false;
         }
 
@@ -52,25 +43,6 @@ final class ConversationAiEligibilityService
     public function shouldDispatchAiJob(Conversation $conversation, Message $incomingMessage): bool
     {
         return $this->mayRespond($conversation, $incomingMessage);
-    }
-
-    private function handoffStatus(Conversation $conversation): ConversationHandoffStatus
-    {
-        $value = $conversation->handoff_status;
-        if ($value instanceof ConversationHandoffStatus) {
-            return $value;
-        }
-
-        if (is_string($value) && $value !== '') {
-            return ConversationHandoffStatus::tryFrom($value) ?? ConversationHandoffStatus::None;
-        }
-
-        $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
-        if (($metadata['human_handoff'] ?? false) === true && ! $conversation->ai_enabled) {
-            return ConversationHandoffStatus::Queued;
-        }
-
-        return ConversationHandoffStatus::None;
     }
 
     private function workspaceAiSettingActive(int $workspaceId): bool

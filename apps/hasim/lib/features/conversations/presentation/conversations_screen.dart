@@ -974,7 +974,7 @@ class _ConversationsPanel extends StatelessWidget {
                                                     spacing: 4,
                                                     runSpacing: 4,
                                                     children: [
-                                                      if (c.aiEnabled)
+                                                      if (c.isAiReplying)
                                                         _ClassBadge(
                                                           label: 'رد AI',
                                                           key: Key(

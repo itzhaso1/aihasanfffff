@@ -171,10 +171,6 @@ class FacebookWebhookService
             $conversationMetadata['channel_source'] = 'facebook_messenger';
             $conversationMetadata['facebook_user_id'] = $senderId;
             $conversationMetadata['facebook_page_id'] = $recipientId;
-            if ($message->wasRecentlyCreated) {
-                $conversationMetadata['unread_count'] = (int) ($conversationMetadata['unread_count'] ?? 0) + 1;
-            }
-
             $conversationAttributes = [
                 'customer_id' => $conversation->customer_id ?: $customer->id,
                 'channel' => 'facebook_messenger',
