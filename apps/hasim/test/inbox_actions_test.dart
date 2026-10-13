@@ -545,6 +545,18 @@ void main() {
       ),
       isFalse,
     );
+    expect(
+      ConversationHandoffValues.isAiReplying(
+        _conv(handoff: 'resolved', aiEnabled: true),
+      ),
+      isFalse,
+    );
+    expect(
+      ConversationHandoffValues.canResumeAi(
+        _conv(handoff: 'resolved', aiEnabled: true),
+      ),
+      isTrue,
+    );
   });
 
   test(
@@ -1374,7 +1386,7 @@ void main() {
   });
 
   testWidgets(
-    'resolved conversation with AI on hides convert and end actions',
+    'resolved conversation with stale AI flag hides badge and offers convert to AI',
     (tester) async {
       setPhone(tester);
       SharedPreferences.setMockInitialValues({'workspace_id': 1});
@@ -1394,9 +1406,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       await openMore(tester);
-      expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
+      expect(find.text('رد AI'), findsNothing);
+      expect(find.byKey(const Key('chat-action-resume-ai')), findsOneWidget);
+      expect(find.text('تحويل إلى AI'), findsOneWidget);
       expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
       expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
+      expect(find.text('تعيين عامل مستقل'), findsNothing);
       expect(repo.resumeAiCalls, 0);
       expect(repo.takeoverCalls, 0);
     },

@@ -31,9 +31,9 @@
         ? $activeConversation->handoff_status
         : (\App\Enums\ConversationHandoffStatus::tryFrom((string) $handoffStatus) ?? \App\Enums\ConversationHandoffStatus::None);
     $handoffBlocksAi = $handoffEnum->blocksAi();
-    $canConvertToAi = $conversationIsOpen && ! $activeConversation->ai_enabled && ! $handoffBlocksAi;
+    $canConvertToAi = $conversationIsOpen && ! $activeConversation->isAiReplying() && ! $handoffBlocksAi;
     $canEndActiveHandoff = $conversationIsOpen && $handoffBlocksAi;
-    $canTakeControlFromAi = $conversationIsOpen && $activeConversation->ai_enabled && $handoffEnum === \App\Enums\ConversationHandoffStatus::None;
+    $canTakeControlFromAi = $conversationIsOpen && $activeConversation->isAiReplying();
 @endphp
 
 <section class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-[#FCFFFE]">

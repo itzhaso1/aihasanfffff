@@ -18,4 +18,13 @@ enum ConversationHandoffStatus: string
             default => true,
         };
     }
+
+    /**
+     * Auto-reply is allowed only in `none`. Resolved means the human
+     * handoff finished; AI stays off until resumeAi moves the row back to none.
+     */
+    public function allowsAiAutoReply(): bool
+    {
+        return $this === self::None;
+    }
 }

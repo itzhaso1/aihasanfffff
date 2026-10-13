@@ -16,6 +16,7 @@ class ConversationService
 
     public function __construct(
         private readonly ChannelOutboundService $channelOutbound,
+        private readonly ConversationHandoffService $handoff,
     ) {}
 
     /**
@@ -88,11 +89,13 @@ class ConversationService
         return $message;
     }
 
-    public function toggleAi(Conversation $conversation, bool $enabled): Conversation
+    public function toggleAi(Conversation $conversation, User $actor, bool $enabled): Conversation
     {
-        $conversation->update(['ai_enabled' => $enabled]);
+        if ($enabled) {
+            return $this->handoff->resumeAi($conversation, $actor);
+        }
 
-        return $conversation->refresh();
+        return $this->handoff->disableAi($conversation, $actor);
     }
 
     /**

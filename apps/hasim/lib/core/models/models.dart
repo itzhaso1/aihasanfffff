@@ -470,7 +470,10 @@ class ConversationModel extends Equatable {
     if (aiReplying != null) {
       return aiReplying!;
     }
-    return status == 'open' && !archived && aiEnabled && !isHumanHandoffActive;
+    return status == 'open' &&
+        !archived &&
+        aiEnabled &&
+        handoffStatus == 'none';
   }
 
   Map<String, dynamic> toCacheJson() => {

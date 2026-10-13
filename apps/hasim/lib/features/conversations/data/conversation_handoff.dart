@@ -48,7 +48,7 @@ abstract final class ConversationHandoffValues {
 
   static bool canResumeAi(ConversationModel conversation) =>
       isOpen(conversation) &&
-      !conversation.aiEnabled &&
+      !conversation.isAiReplying &&
       !conversation.isHumanHandoffActive;
 
   static bool canEndHandoff(ConversationModel conversation) =>

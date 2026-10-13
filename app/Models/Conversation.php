@@ -105,14 +105,15 @@ class Conversation extends WorkspaceScopedModel
 
     /**
      * True when this conversation is in a state where AI auto-reply may run
-     * (open, flag on, and no blocking human handoff). Workspace-level AI
+     * (open, flag on, and handoff `none`). `resolved` is not a live AI state
+     * even if `ai_enabled` was left true on a legacy row. Workspace-level AI
      * settings are applied separately by ConversationAiEligibilityService.
      */
     public function isAiReplying(): bool
     {
         return $this->isOpen()
             && (bool) $this->ai_enabled
-            && ! $this->handoffStatusEnum()->blocksAi();
+            && $this->handoffStatusEnum()->allowsAiAutoReply();
     }
 
     /**

@@ -6,13 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Conversation\StoreConversationRequest;
 use App\Models\Conversation;
 use App\Services\Conversation\ConversationService;
+use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
+use App\Services\Mobile\ConversationInboxService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use InvalidArgumentException;
 
 class ConversationController extends Controller
 {
     public function __construct(
         private readonly ConversationService $conversationService,
+        private readonly ConversationInboxService $conversationInboxService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -52,13 +56,38 @@ class ConversationController extends Controller
     public function update(Request $request, Conversation $conversation): JsonResponse
     {
         $this->authorize('update', $conversation);
+        $actor = $request->user();
+        abort_unless($actor !== null, 403);
 
         $validated = $request->validate([
             'status' => ['nullable', 'in:open,closed,archived'],
             'ai_enabled' => ['nullable', 'boolean'],
         ]);
 
-        $conversation->update($validated);
+        if (array_key_exists('ai_enabled', $validated)) {
+            $wantAi = (bool) $validated['ai_enabled'];
+            unset($validated['ai_enabled']);
+
+            if ($wantAi !== (bool) $conversation->ai_enabled) {
+                if ($wantAi) {
+                    $this->authorize('resumeAi', $conversation);
+                }
+
+                try {
+                    $conversation = $this->conversationInboxService->toggleAi(
+                        $conversation,
+                        $actor,
+                        $wantAi,
+                    );
+                } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
+                    return response()->json(['message' => $exception->getMessage()], 422);
+                }
+            }
+        }
+
+        if ($validated !== []) {
+            $conversation->update($validated);
+        }
 
         return response()->json(['data' => $conversation->refresh()]);
     }
