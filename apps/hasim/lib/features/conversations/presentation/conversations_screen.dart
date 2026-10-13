@@ -974,6 +974,13 @@ class _ConversationsPanel extends StatelessWidget {
                                                     spacing: 4,
                                                     runSpacing: 4,
                                                     children: [
+                                                      if (c.aiEnabled)
+                                                        _ClassBadge(
+                                                          label: 'رد AI',
+                                                          key: Key(
+                                                            'ai-reply-${c.id}',
+                                                          ),
+                                                        ),
                                                       if (c.customerPriority ==
                                                           'important')
                                                         _ClassBadge(

@@ -388,6 +388,7 @@ class ConversationHandoffV2Test extends TestCase
             ->assertOk()
             ->assertSee('تحويل إلى AI', false)
             ->assertSee(route('workspace.conversations.handoff.resume-ai', $conversation), false)
+            ->assertDontSee('رد AI', false)
             ->assertDontSee('إنهاء التحويل', false)
             ->assertDontSee('تعيين عامل مستقل', false)
             ->assertDontSee('تولي المحادثة', false)
@@ -408,6 +409,7 @@ class ConversationHandoffV2Test extends TestCase
 
         $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
+            ->assertSee('رد AI', false)
             ->assertDontSee('تحويل إلى AI', false)
             ->assertDontSee('إنهاء التحويل', false)
             ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false)

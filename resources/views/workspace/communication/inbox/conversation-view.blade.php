@@ -76,16 +76,18 @@
                     <span class="hidden sm:inline">External ID: #{{ $activeConversation->external_id }}</span>
                 @endif
                 <span class="{{ $activeChannelChip['badge'] }} rounded-full px-2 py-0.5 font-semibold">{{ $activeChannelChip['label'] }}</span>
+                @if($activeConversation->ai_enabled)
+                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">رد AI</span>
+                @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
+                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
+                        AI Employee{{ $activeConversation->aiEmployee?->name ? ': '.$activeConversation->aiEmployee->name : '' }}
+                    </span>
+                @endif
                 @if($handoffStatus !== 'none')
                     <span class="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">{{ $handoffStatus }}</span>
                 @endif
                 @if($handoffReason)
                     <span class="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">{{ $handoffReason }}</span>
-                @endif
-                @if($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
-                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
-                        AI Employee{{ $activeConversation->aiEmployee?->name ? ': '.$activeConversation->aiEmployee->name : '' }}
-                    </span>
                 @endif
             </div>
         </div>
