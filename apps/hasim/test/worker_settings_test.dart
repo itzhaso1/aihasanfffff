@@ -341,7 +341,7 @@ void main() {
     expect(find.text('حسابي'), findsOneWidget);
     expect(find.text('ملفي الشخصي'), findsNothing);
     expect(find.text('القنوات'), findsOneWidget);
-    expect(find.text('إعدادات المنتجات'), findsOneWidget);
+    expect(find.text('إعدادات المنتجات'), findsNothing);
     expect(find.text('إعدادات الذكاء الاصطناعي'), findsOneWidget);
     expect(find.text('تفضيلات الإشعارات'), findsOneWidget);
     await tester.tap(find.text('حسابي'));

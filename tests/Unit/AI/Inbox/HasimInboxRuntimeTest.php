@@ -21,6 +21,7 @@ use App\Models\Message;
 use App\Services\AI\AiOutputValidator;
 use App\Services\AI\AIService;
 use App\Services\AI\Inbox\AiReplyEligibility;
+use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Channel\Outbound\ChannelOutboundService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -207,7 +208,7 @@ class HasimInboxRuntimeTest extends TestCase
         $this->assertSame($this->boundEmployeeId($conversation), (int) $log->ai_employee_id);
     }
 
-    public function test_failed_hasim_run_does_not_create_an_outbound_inbox_message(): void
+    public function test_failed_hasim_run_sends_honest_fallback_without_internal_errors(): void
     {
         [, $conversation, $message] = $this->seedHasimInbox();
         $this->bindHasimRuntime(modelScript: [new RuntimeException('model exploded')]);
@@ -220,11 +221,15 @@ class HasimInboxRuntimeTest extends TestCase
             app(AiOutputValidator::class),
         );
 
-        $this->assertSame(0, Message::withoutGlobalScopes()
+        $outbound = (string) Message::withoutGlobalScopes()
             ->where('workspace_id', $conversation->workspace_id)
             ->where('conversation_id', $conversation->id)
             ->where('ai_generated', true)
-            ->count());
+            ->value('content');
+
+        $this->assertSame(InboxHonestReplyFallback::GENERIC, $outbound);
+        $this->assertStringNotContainsString('model exploded', $outbound);
+        $this->assertStringNotContainsString('RuntimeException', $outbound);
     }
 
     public function test_empty_inbound_text_does_not_invent_a_reply(): void

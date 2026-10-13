@@ -100,7 +100,7 @@ class AiAutoReplyWithoutCatalogTest extends TestCase
         );
     }
 
-    public function test_unpublished_catalog_does_not_hide_inventory_from_ai_search(): void
+    public function test_search_products_stays_empty_when_leftover_inventory_exists(): void
     {
         [$workspace, $conversation, $message] = $this->seedHasimInbox();
         app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace): void {
@@ -142,8 +142,8 @@ class AiAutoReplyWithoutCatalogTest extends TestCase
         )->workspacePolicyContext;
 
         $this->assertTrue($result->success);
-        $this->assertSame(1, $result->payload['count']);
-        $this->assertSame('تنظيف منزل', $result->payload['products'][0]['name']);
+        $this->assertSame(0, $result->payload['count']);
+        $this->assertSame([], $result->payload['products']);
         $this->assertFalse($policy['catalog_required_for_reply']);
         $this->assertSame([], $policy['customer_service_policy']);
     }

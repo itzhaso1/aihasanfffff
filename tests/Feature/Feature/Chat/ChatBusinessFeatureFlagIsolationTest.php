@@ -22,6 +22,7 @@ use App\Support\Feature\ChatBusinessFeatureKeys;
 use Database\Seeders\FoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -53,11 +54,15 @@ class ChatBusinessFeatureFlagIsolationTest extends TestCase
         $this->assertSame('commerce', $order->source);
         $this->assertSame('50.00', $order->total_amount);
         $this->assertNull($order->finance_invoice_id);
+        $this->assertFalse(Route::has('workspace.chat-catalog.index'));
         $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
-            ->get(route('workspace.chat-catalog.index'))
-            ->assertOk()
-            ->assertSee('Published item');
+            ->get('/workspace/chat-catalog')
+            ->assertNotFound();
+        $this->actingAs($owner)
+            ->withSession(['current_workspace_id' => $workspace->id])
+            ->get('/workspace/chat-catalog/settings')
+            ->assertNotFound();
     }
 
     public function test_inbox_and_worker_contract_pricing_work_without_business_features(): void

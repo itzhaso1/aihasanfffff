@@ -31,7 +31,7 @@ final class CanonicalTools
     {
         return new ToolDefinition(
             name: self::SEARCH_PRODUCTS,
-            description: 'Search this workspace\'s products and inventory. Unpublished storefront catalog settings must not block the search.',
+            description: 'Look up products or services for this workspace. There is no product catalog; results are always empty. Do not invent items or prices.',
             category: 'catalog',
             access: ToolAccess::Read,
             risk: ToolRisk::Read,
@@ -60,7 +60,7 @@ final class CanonicalTools
     {
         return new ToolDefinition(
             name: self::GET_PRODUCT_INTELLIGENCE,
-            description: 'Retrieve the authoritative commerce intelligence profile for a chat catalog product.',
+            description: 'Retrieve the authoritative commerce intelligence profile for a stored commerce item when one exists.',
             category: 'catalog',
             access: ToolAccess::Read,
             risk: ToolRisk::Read,
@@ -84,7 +84,7 @@ final class CanonicalTools
     {
         return new ToolDefinition(
             name: self::EVALUATE_PRODUCT_SUITABILITY,
-            description: 'Evaluate whether a chat catalog product is suitable using commerce intelligence and customer context.',
+            description: 'Evaluate whether a stored commerce item is suitable using commerce intelligence and customer context.',
             category: 'catalog',
             access: ToolAccess::Read,
             risk: ToolRisk::Read,

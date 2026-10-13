@@ -27,12 +27,11 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->assertSee('البريد')
             ->assertSee('صندوق البريد')
             ->assertSee('قوالب البريد')
-            ->assertSee('المنتجات')
+            ->assertDontSee('المنتجات والمخزون')
             ->assertDontSee('الفوترة والحسابات')
             ->assertSee('النظام')
             ->assertSee(route('workspace.conversations.index'), false)
             ->assertSee(route('workspace.customers.index'), false)
-            ->assertSee(route('workspace.chat-catalog.index'), false)
             ->assertSee(route('workspace.channels.index'), false)
             ->assertDontSee('/workspace/products', false)
             ->assertDontSee('/workspace/inventory', false)
@@ -47,7 +46,7 @@ class WorkspaceModulesNavigationTest extends TestCase
         $this->assertFalse(Route::has('workspace.products.index'));
     }
 
-    public function test_communication_sidebar_keeps_chat_catalog_and_excludes_finance_catalog(): void
+    public function test_communication_sidebar_excludes_chat_catalog_and_finance_catalog(): void
     {
         [$owner, $workspace] = $this->createWorkspaceOwner('company');
 
@@ -59,7 +58,7 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->assertSee('data-communication-nav="sidebar"', false)
             ->assertSee(route('workspace.conversations.index'), false)
             ->assertSee(route('workspace.customers.index'), false)
-            ->assertSee(route('workspace.chat-catalog.index'), false)
+            ->assertDontSee('/workspace/chat-catalog', false)
             ->assertSee(route('workspace.channels.index'), false)
             ->assertSee(route('workspace.emails.index'), false)
             ->assertSee(route('workspace.whatsapp-accounts.index'), false)
@@ -67,7 +66,7 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->assertSee('data-communication-nav="settings"', false)
             ->assertSee('data-communication-nav="archive"', false)
             ->assertSee(route('workspace.conversations.index', ['status' => 'archived']), false)
-            ->assertSee('المنتجات والمخزون');
+            ->assertDontSee('المنتجات والمخزون');
 
         $labels = CommunicationNav::data()['secondaryLinks']->pluck('label')->all();
         $routes = CommunicationNav::data()['secondaryLinks']->pluck('route')->all();
@@ -78,12 +77,13 @@ class WorkspaceModulesNavigationTest extends TestCase
             'العملاء',
             'القنوات',
             'واتساب',
-            'المنتجات والمخزون',
             'البريد',
         ], $labels);
-        $this->assertSame('workspace.chat-catalog.index', $routes[5]);
+        $this->assertNotContains('workspace.chat-catalog.index', $routes);
         $this->assertNotContains('workspace.products.index', $routes);
         $this->assertNotContains('workspace.inventory.index', $routes);
+        $this->assertFalse(Route::has('workspace.chat-catalog.index'));
+        $this->assertFalse(Route::has('workspace.chat-catalog.settings.edit'));
     }
 
     /**

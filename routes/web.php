@@ -25,10 +25,6 @@ use App\Http\Controllers\Workspace\AiSettingController;
 use App\Http\Controllers\Workspace\AnalyticsController as WorkspaceAnalyticsController;
 use App\Http\Controllers\Workspace\ApiKeyController as WorkspaceApiKeyController;
 use App\Http\Controllers\Workspace\ChannelController;
-use App\Http\Controllers\Workspace\Chat\ChatCatalogController;
-use App\Http\Controllers\Workspace\Chat\ChatCatalogDigitalInventoryController;
-use App\Http\Controllers\Workspace\Chat\ChatCatalogProductTemplateController;
-use App\Http\Controllers\Workspace\Chat\ChatCatalogSettingsController;
 use App\Http\Controllers\Workspace\Commerce\CommerceCartController as WorkspaceCommerceCartController;
 use App\Http\Controllers\Workspace\Commerce\CommerceIntelligenceController as WorkspaceCommerceIntelligenceController;
 use App\Http\Controllers\Workspace\Commerce\CommerceOrderController as WorkspaceCommerceOrderController;
@@ -315,35 +311,6 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         Route::post('conversations/{conversation}/resume-ai', [ConversationHandoffController::class, 'resumeAi'])->name('conversations.handoff.resume-ai');
         Route::get('message-attachments/{attachment}/download', [MessageAttachmentController::class, 'download'])
             ->name('message-attachments.download');
-
-        Route::get('chat-catalog/product-templates', [ChatCatalogProductTemplateController::class, 'index'])->name('chat-catalog.templates.index');
-        Route::get('chat-catalog/product-templates/{template}', [ChatCatalogProductTemplateController::class, 'show'])->name('chat-catalog.templates.show');
-        Route::post('chat-catalog/product-templates', [ChatCatalogProductTemplateController::class, 'store'])->name('chat-catalog.templates.store');
-        Route::post('chat-catalog/product-templates/{template}/clone', [ChatCatalogProductTemplateController::class, 'clone'])->name('chat-catalog.templates.clone');
-        Route::get('chat-catalog', [ChatCatalogController::class, 'index'])->name('chat-catalog.index');
-        Route::get('chat-catalog/settings', [ChatCatalogSettingsController::class, 'edit'])->name('chat-catalog.settings.edit');
-        Route::put('chat-catalog/settings', [ChatCatalogSettingsController::class, 'update'])->name('chat-catalog.settings.update');
-        Route::put('chat-catalog/settings/communication', [ChatCatalogSettingsController::class, 'updateCommunication'])->name('chat-catalog.settings.communication.update');
-        Route::post('chat-catalog/settings/publish', [ChatCatalogSettingsController::class, 'publish'])->name('chat-catalog.settings.publish');
-        Route::post('chat-catalog/settings/draft', [ChatCatalogSettingsController::class, 'draft'])->name('chat-catalog.settings.draft');
-        Route::post('chat-catalog/settings/pause', [ChatCatalogSettingsController::class, 'pause'])->name('chat-catalog.settings.pause');
-        Route::post('chat-catalog/settings/archive', [ChatCatalogSettingsController::class, 'archive'])->name('chat-catalog.settings.archive');
-        Route::middleware('retired.digital-products')->group(function (): void {
-            Route::get('chat-catalog/digital-inventory', [ChatCatalogDigitalInventoryController::class, 'index'])->name('chat-catalog.digital-inventory.index');
-            Route::post('chat-catalog/digital-inventory/pools', [ChatCatalogDigitalInventoryController::class, 'storePool'])->name('chat-catalog.digital-inventory.pools.store');
-            Route::post('chat-catalog/digital-inventory/pools/{pool}/import', [ChatCatalogDigitalInventoryController::class, 'import'])->name('chat-catalog.digital-inventory.pools.import');
-            Route::delete('chat-catalog/digital-inventory/pools/{pool}', [ChatCatalogDigitalInventoryController::class, 'destroyPool'])->name('chat-catalog.digital-inventory.pools.destroy');
-        });
-        Route::get('chat-catalog/create', [ChatCatalogController::class, 'create'])->name('chat-catalog.create');
-        Route::post('chat-catalog', [ChatCatalogController::class, 'store'])->name('chat-catalog.store');
-        Route::get('chat-catalog/{item}/edit', [ChatCatalogController::class, 'edit'])->name('chat-catalog.edit');
-        Route::put('chat-catalog/{item}', [ChatCatalogController::class, 'update'])->name('chat-catalog.update');
-        Route::post('chat-catalog/{item}/activate', [ChatCatalogController::class, 'activate'])->name('chat-catalog.activate');
-        Route::post('chat-catalog/{item}/deactivate', [ChatCatalogController::class, 'deactivate'])->name('chat-catalog.deactivate');
-        Route::delete('chat-catalog/{item}', [ChatCatalogController::class, 'destroy'])->name('chat-catalog.destroy');
-        Route::post('chat-catalog/categories', [ChatCatalogController::class, 'storeCategory'])->name('chat-catalog.categories.store');
-        Route::put('chat-catalog/categories/{category}', [ChatCatalogController::class, 'updateCategory'])->name('chat-catalog.categories.update');
-        Route::delete('chat-catalog/categories/{category}', [ChatCatalogController::class, 'destroyCategory'])->name('chat-catalog.categories.destroy');
 
         Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
         Route::middleware('retired.payment-links')->group(function (): void {

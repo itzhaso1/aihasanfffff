@@ -3,7 +3,6 @@ import 'package:hasim/core/local_db/domain_local_store.dart';
 import 'package:hasim/core/network/api_client.dart';
 import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/features/catalog/data/chat_catalog_models.dart';
-import 'package:hasim/features/catalog/data/chat_catalog_settings_model.dart';
 import 'package:hasim/core/models/models.dart';
 
 class ChatCatalogRepository {
@@ -394,37 +393,6 @@ class ChatCatalogRepository {
     required String status,
   }) async {
     _retiredDigitalInventory();
-  }
-
-  Future<ChatCatalogSettingsModel> fetchSettings() async {
-    final res = await _api.get('/catalog/settings');
-    final map = asMap(res.data);
-    if (map == null) {
-      throw ApiException(res.message ?? 'تعذر تحميل إعدادات المنتجات.');
-    }
-    return ChatCatalogSettingsModel.fromJson(map);
-  }
-
-  Future<ChatCatalogSettingsModel> updateSettings(
-    Map<String, dynamic> body,
-  ) async {
-    final res = await _api.patch('/catalog/settings', body: body);
-    final map = asMap(res.data);
-    if (map == null) {
-      throw ApiException(res.message ?? 'تعذر حفظ إعدادات المنتجات.');
-    }
-    return ChatCatalogSettingsModel.fromJson(map);
-  }
-
-  Future<ChatCatalogSettingsModel> updateCommunication(
-    Map<String, dynamic> body,
-  ) async {
-    final res = await _api.patch('/catalog/settings/communication', body: body);
-    final map = asMap(res.data);
-    if (map == null) {
-      throw ApiException(res.message ?? 'تعذر حفظ إعدادات التواصل.');
-    }
-    return ChatCatalogSettingsModel.fromJson(map);
   }
 
   Map<String, dynamic> _itemBody({

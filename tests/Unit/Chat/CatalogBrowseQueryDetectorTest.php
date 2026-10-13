@@ -2,7 +2,6 @@
 
 namespace Tests\Unit\Chat;
 
-use App\Services\Chat\ChatCatalogRetrievalService;
 use App\Support\Chat\CatalogBrowseQueryDetector;
 use App\Support\Chat\GulfArabicInterpreter;
 use Tests\TestCase;
@@ -27,7 +26,7 @@ class CatalogBrowseQueryDetectorTest extends TestCase
 
     public function test_specific_product_name_is_not_browse_only(): void
     {
-        $tokens = app(ChatCatalogRetrievalService::class)->tokens('هل عندكم فستان أسود؟');
+        $tokens = app(GulfArabicInterpreter::class)->interpret('هل عندكم فستان أسود؟')['search_tokens'];
 
         $this->assertFalse($this->detector->isBrowseCatalogQuery('هل عندكم فستان أسود؟', $tokens));
     }
@@ -43,7 +42,7 @@ class CatalogBrowseQueryDetectorTest extends TestCase
     public function test_levantine_available_services_question_is_browse(): void
     {
         $query = 'شو الخدمات المتوفرة عندكم؟';
-        $tokens = app(ChatCatalogRetrievalService::class)->tokens($query);
+        $tokens = app(GulfArabicInterpreter::class)->interpret($query)['search_tokens'];
 
         $this->assertTrue($this->detector->isBrowseCatalogQuery($query, $tokens));
         $this->assertSame('service', $this->detector->browseItemKindFilter($query, $tokens));

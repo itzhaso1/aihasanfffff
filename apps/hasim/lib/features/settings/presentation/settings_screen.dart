@@ -17,7 +17,6 @@ import 'package:hasim/features/auth/providers/auth_controller.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
 import 'package:hasim/features/home/providers/home_controller.dart';
 import 'package:hasim/features/more/presentation/security_sessions_screen.dart';
-import 'package:hasim/features/catalog/presentation/chat_catalog_settings_screen.dart';
 import 'package:hasim/features/settings/presentation/widgets/display_appearance_settings.dart';
 import 'package:hasim/features/settings/presentation/ai_settings_screen.dart';
 import 'package:hasim/features/settings/presentation/channels_screen.dart';
@@ -53,7 +52,6 @@ enum _SettingsId {
   privacyLock,
   channels,
   notifications,
-  chatCatalog,
   ai,
   appearance,
   workerSalesReference,
@@ -183,13 +181,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         route: '/notification-preferences',
       ),
       const _SettingsItem(
-        id: _SettingsId.chatCatalog,
-        icon: Icons.tune_outlined,
-        title: 'إعدادات المنتجات',
-        subtitle: 'إدارة المنتجات والتصنيفات كمرجع للذكاء الاصطناعي',
-        route: '/chat-catalog-settings',
-      ),
-      const _SettingsItem(
         id: _SettingsId.ai,
         icon: Icons.smart_toy_outlined,
         title: 'إعدادات الذكاء الاصطناعي',
@@ -260,10 +251,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         });
         return;
       }
-      context.push(item.route!);
-      return;
-    }
-    if (item.route != null && item.route!.startsWith('/catalog')) {
       context.push(item.route!);
       return;
     }
@@ -1213,7 +1200,6 @@ class _SettingsDetailPane extends StatelessWidget {
         title: 'تفضيلات الإشعارات',
         child: NotificationPreferencesScreen(embedded: true),
       ),
-      _SettingsId.chatCatalog => const _CatalogSettingsDetail(),
       _SettingsId.ai => const _EmbeddedDetail(
         title: 'إعدادات الذكاء الاصطناعي',
         child: AiSettingsScreen(embedded: true),
@@ -1294,40 +1280,6 @@ class _SettingsDetailPane extends StatelessWidget {
       onNavigate: onWorkerNavigate,
       onBack: onWorkerBack,
       child: child,
-    );
-  }
-}
-
-class _CatalogSettingsDetail extends StatelessWidget {
-  const _CatalogSettingsDetail();
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: HasimTokens.pageBg(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: HasimTokens.lineColor(context)),
-              ),
-            ),
-            child: const Padding(
-              padding: EdgeInsets.fromLTRB(24, 16, 24, 12),
-              child: HasimPageHeader(
-                title: 'إعدادات المنتجات',
-                subtitle: 'إدارة المنتجات والتصنيفات كمرجع للذكاء الاصطناعي',
-                icon: Icons.layers_outlined,
-              ),
-            ),
-          ),
-          const Expanded(
-            child: ChatCatalogSettingsScreen(embedded: true, hideHeader: true),
-          ),
-        ],
-      ),
     );
   }
 }

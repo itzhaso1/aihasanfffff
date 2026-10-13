@@ -164,7 +164,7 @@ void main() {
     expect(settingsItem('حسابي'), findsOneWidget);
     expect(settingsItem('الأمان والجلسات'), findsOneWidget);
     expect(settingsItem('تفضيلات الإشعارات'), findsOneWidget);
-    expect(find.text('إعدادات المنتجات'), findsOneWidget);
+    expect(find.text('إعدادات المنتجات'), findsNothing);
     expect(find.text('حالة الكتالوج'), findsNothing);
     final settingsList = find.descendant(
       of: find.byType(ListView),
@@ -204,7 +204,7 @@ void main() {
     await tester.tap(find.byKey(const Key('settings-search-close')));
     await tester.pumpAndSettle();
     expect(find.text('الإعدادات'), findsOneWidget);
-    expect(find.text('إعدادات المنتجات'), findsOneWidget);
+    expect(find.text('إعدادات المنتجات'), findsNothing);
   });
 
   testWidgets(
@@ -260,8 +260,8 @@ void main() {
       await tester.drag(find.text('المظهر والسمات'), const Offset(0, -180));
       await tester.pumpAndSettle();
       expect(find.text('عنوان API'), findsNothing);
-      expect(settingsItem('إعدادات المنتجات'), findsOneWidget);
-      await tester.drag(find.text('إعدادات المنتجات'), const Offset(0, -280));
+      expect(settingsItem('إعدادات المنتجات'), findsNothing);
+      await tester.drag(find.text('المظهر والسمات'), const Offset(0, -280));
       await tester.pumpAndSettle();
       expect(find.text('الإشعارات الفورية (Push)'), findsNothing);
       expect(settingsItem('تسجيل الخروج'), findsOneWidget);
@@ -291,7 +291,7 @@ void main() {
 
       await tester.enterText(
         find.widgetWithText(TextField, 'ابحث في الإعدادات'),
-        'منتج',
+        'ذكاء',
       );
       await tester.pump();
       expect(
@@ -304,7 +304,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('hasim-settings-panel')),
-          matching: find.text('إعدادات المنتجات'),
+          matching: find.text('إعدادات الذكاء الاصطناعي'),
         ),
         findsOneWidget,
       );

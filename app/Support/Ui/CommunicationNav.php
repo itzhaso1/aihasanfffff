@@ -23,7 +23,6 @@ class CommunicationNav
             ['label' => 'الرئيسية', 'route' => 'workspace.dashboard', 'active' => 'workspace.dashboard', 'icon' => 'home'],
             ['label' => 'التواصل', 'route' => 'workspace.conversations.index', 'active' => 'workspace.conversations.*', 'icon' => 'chat', 'module' => true],
             ['label' => 'العملاء', 'route' => 'workspace.customers.index', 'active' => 'workspace.customers.*', 'icon' => 'users'],
-            ['label' => 'المنتجات والمخزون', 'route' => 'workspace.chat-catalog.index', 'active' => 'workspace.chat-catalog.*', 'icon' => 'cube'],
             ['label' => 'التجارة', 'route' => 'workspace.commerce.orders.index', 'active' => 'workspace.commerce.*', 'icon' => 'box'],
             ['label' => 'التقارير', 'route' => 'workspace.analytics.index', 'active' => 'workspace.analytics.*', 'icon' => 'chart'],
             ['label' => 'الإعدادات', 'route' => 'workspace.ai-settings.edit', 'active' => ['workspace.ai-settings.*', 'workspace.payments.*', 'workspace.subscriptions.*', 'workspace.employees.*', 'profile.*'], 'icon' => 'settings'],
@@ -35,7 +34,6 @@ class CommunicationNav
             ['label' => 'العملاء', 'route' => 'workspace.customers.index', 'active' => 'workspace.customers.*', 'icon' => 'users'],
             ['label' => 'القنوات', 'route' => 'workspace.channels.index', 'active' => 'workspace.channels.*', 'icon' => 'channels'],
             ['label' => 'واتساب', 'route' => 'workspace.whatsapp-accounts.index', 'active' => 'workspace.whatsapp-accounts.*', 'icon' => 'whatsapp'],
-            ['label' => 'المنتجات والمخزون', 'route' => 'workspace.chat-catalog.index', 'active' => 'workspace.chat-catalog.*', 'icon' => 'cube'],
             ['label' => 'البريد', 'route' => 'workspace.emails.index', 'active' => 'workspace.emails.*', 'icon' => 'mail'],
         ])->filter(fn (array $link): bool => Route::has($link['route']))->values();
 
@@ -46,7 +44,6 @@ class CommunicationNav
             'icons' => self::icons(),
             'isCommunicationModule' => request()->routeIs([
                 'workspace.conversations.*',
-                'workspace.chat-catalog.*',
                 'workspace.customers.*',
                 'workspace.channels.*',
                 'workspace.emails.*',

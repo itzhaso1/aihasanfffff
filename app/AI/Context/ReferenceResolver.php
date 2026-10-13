@@ -7,14 +7,9 @@ namespace App\AI\Context;
 use App\AI\Core\Decision\AiReference;
 use App\Models\ChatCatalogItem;
 use App\Models\Workspace;
-use App\Services\Chat\ChatCatalogRetrievalService;
 
 final class ReferenceResolver
 {
-    public function __construct(
-        private readonly ChatCatalogRetrievalService $catalog,
-    ) {}
-
     /**
      * @param  array<string, mixed>  $conversationMetadata
      * @param  list<ContextMessage>  $recentMessages
@@ -37,22 +32,7 @@ final class ReferenceResolver
             return $this->resolved('attached_product', [$attachedId]);
         }
 
-        $query = $this->explicitReferenceQuery($currentMessage, $recentMessages);
-        if ($query === null) {
-            return new ReferenceResolution;
-        }
-
-        $rows = $this->catalog->searchForAi($workspace, $query, 3);
-        $ids = array_values(array_unique(array_map(
-            static fn (array $row): int => (int) ($row['catalog_item_id'] ?? 0),
-            array_filter($rows, static fn (array $row): bool => is_numeric($row['catalog_item_id'] ?? null) && (int) $row['catalog_item_id'] > 0),
-        )));
-
-        if (count($ids) !== 1) {
-            return new ReferenceResolution;
-        }
-
-        return $this->resolved('message_reference', $ids);
+        return new ReferenceResolution;
     }
 
     /**
@@ -84,26 +64,6 @@ final class ReferenceResolver
         $candidate = $attached['catalog_item_id'] ?? $attached['id'] ?? null;
 
         return is_numeric($candidate) && (int) $candidate > 0 ? (int) $candidate : null;
-    }
-
-    /**
-     * @param  list<ContextMessage>  $recentMessages
-     */
-    private function explicitReferenceQuery(string $currentMessage, array $recentMessages): ?string
-    {
-        if ($this->catalog->tokens($currentMessage) !== []) {
-            return $currentMessage;
-        }
-
-        foreach (array_reverse($recentMessages) as $message) {
-            if ($message->role !== 'customer' || $this->catalog->tokens($message->content) === []) {
-                continue;
-            }
-
-            return $message->content;
-        }
-
-        return null;
     }
 
     /**

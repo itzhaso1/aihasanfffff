@@ -226,43 +226,16 @@ Generic AI employees (identity by `id`; `name` is display data only). Every rout
 | GET | `/ai/employee-presets` | Starter templates (`key`, `version`, `display_name`, `avatar_key`, `summary`, `role`, `persona`, …). A preset is never an employee. |
 | GET | `/ai/skills` | Canonical skill registry entries for employees: `key`, `name`, `description`, `category`, `version`, `enabled`, `supported_intents`, `supported_domains`, `allowed_tools`, `settings_validation`, `fingerprint`, `version_fingerprint`. |
 
-## Chat catalog
+## Commerce inventory items (read-only)
 
-Requires workspace feature `products`. Auth: Sanctum Bearer + `X-Workspace-Id`. Writes use `throttle:mobile-write`. `POST /catalog` and `POST /catalog/categories` should send `Idempotency-Key`. Permissions are enforced by `ChatCatalogAccess` (`chat.catalog.*` and `commerce.catalog.*`). Responses never include digital secrets.
+Chat Catalog as a product (settings, storefront, search, templates, digital inventory, and item writes) is removed. Remaining `GET /catalog` endpoints exist only so workers and commerce can read leftover `chat_catalog_items` rows. Auth: Sanctum Bearer + `X-Workspace-Id`. Requires workspace feature `products`. Permissions remain `chat.catalog.view`.
 
 | Method | URL | Notes |
 |--------|-----|-------|
-| GET | `/catalog` | Cursor list. Query: `q`, `item_kind`, `category_id`, `active_only`, `per_page`, `cursor` |
-| GET | `/catalog/search` | Requires `q`. Forces `active_only=true`. Admin substring search, not AI retrieval |
-| GET | `/catalog/sellers` | Workspace sellers: `id`, `name`, `display_name` |
-| POST | `/catalog` | `StoreChatCatalogItemRequest`. Optional `image_file` and `gallery_files` multipart. Image updates use POST on the item URL |
-| POST | `/catalog/settings` | Same update action as PATCH, used for branding files `logo_file`, `favicon_file`, `banner_file`, `brand_image_file` |
+| GET | `/catalog` | Cursor list of leftover commerce items. Query: `q`, `item_kind`, `category_id`, `active_only`, `per_page`, `cursor` |
 | GET | `/catalog/{item}` | `ChatCatalogItemResource` |
-| PATCH | `/catalog/{item}` | Partial item update including variants, tags, aliases, search_phrases |
-| PATCH | `/catalog/{item}/inventory` | `stock`, `inventory_policy` |
-| POST | `/catalog/{item}/activate` | |
-| POST | `/catalog/{item}/deactivate` | |
-| DELETE | `/catalog/{item}` | Archives/deletes via catalog service |
-| GET/POST | `/catalog/categories` | Cursor list / create |
-| PATCH/DELETE | `/catalog/categories/{category}` | |
-| POST | `/catalog/categories/{category}` | Same update as PATCH; used for category image multipart (PHP < 8.4 does not fill `$_FILES` on PATCH) |
-| GET/PATCH | `/catalog/settings` | `ChatCatalogResource` / `UpdateChatCatalogSettingsRequest` |
-| PATCH | `/catalog/settings/communication` | Communication profile |
-| POST | `/catalog/settings/publish\|draft\|pause\|archive` | Lifecycle. Draft and archived catalogs are hidden from AI retrieval |
-| GET/POST | `/catalog/digital-pools` | Pools without secrets |
-| GET | `/catalog/digital-pools/{pool}/units` | Unit status only; secrets stay encrypted |
-| POST | `/catalog/digital-pools/{pool}/units/import` | |
-| POST | `/catalog/digital-pools/{pool}/reserve` | |
-| POST | `/catalog/digital-units/{unit}/release` | |
-| POST | `/catalog/digital-units/{unit}/consume` | |
-| PATCH | `/catalog/digital-units/{unit}/status` | |
-| PATCH | `/catalog/digital-units/{unit}/secret` | |
 
-AI customer search uses `ChatCatalogRetrievalService` (Arabic token expansion). It is not `GET /catalog/search`.
-
-`ChatCatalogItemResource.media[]` includes additive `url` (public disk). `structured_attributes` include both `key`/`value` and `attribute_key`/`attribute_value`. Writes accept either pair. Gallery delete/reorder uses existing `media[]` on item update (`syncMedia` keeps listed ids). Branding files use `POST /catalog/settings` with `logo_file` / `favicon_file` / `banner_file` / `brand_image_file` and `remove_*` flags. Additive `logo_url` / `favicon_url` / `banner_url` / `brand_image_url` are on `ChatCatalogResource`. `GET /catalog/settings` includes `access` for Flutter UX gating only.
-
-Rebuild stored search-term rows with `php artisan chat-catalog:reindex-search`.
+`search_products` for Inbox AI always returns an empty list. Do not invent products or prices.
 
 Does not invent Meta/HyperPay behavior.
 

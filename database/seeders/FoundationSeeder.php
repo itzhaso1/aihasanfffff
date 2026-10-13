@@ -212,8 +212,6 @@ class FoundationSeeder extends Seeder
             ]
         );
 
-        $this->call(ChatCatalogProductTemplateSeeder::class);
-
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 

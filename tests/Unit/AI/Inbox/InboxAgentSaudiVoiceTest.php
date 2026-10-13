@@ -17,7 +17,6 @@ use App\Services\AI\Inbox\Persona\InboxAgentPersonaValidator;
 use App\Services\AI\Inbox\Persona\InboxAgentVoiceResolver;
 use App\Services\AI\Inbox\Tools\InboxAgentToolRegistry;
 use App\Services\AI\Inbox\Tools\SearchProductsTool;
-use App\Services\Chat\ChatCatalogRetrievalService;
 use App\Services\Chat\ChatCatalogRootService;
 use App\Services\Chat\ChatCatalogService;
 use App\Support\Tenancy\WorkspaceContext;
@@ -57,13 +56,10 @@ class InboxAgentSaudiVoiceTest extends TestCase
             products: [['name' => 'آيفون 15', 'price' => '2999.00']],
         );
 
-        $names = collect(app(ChatCatalogRetrievalService::class)->searchForPrompt($workspace, 'ابي ايفون 15'))->pluck('name');
-        $this->assertTrue($names->contains('آيفون 15'));
-
         $context = $this->buildContext($workspace, $conversation, $message, $setting);
         $system = $this->system($context);
 
-        $this->assertSame(['آيفون 15'], $context->structuredContext->catalog->matchedNames);
+        $this->assertSame([], $context->structuredContext->catalog->matchedNames);
         $this->assertStringContainsString('Short: usually 1 to 3 short lines', $system);
         $this->assertStringContainsString('Reply in natural Saudi colloquial Arabic', $system);
         $this->assertStringContainsString('search_products', $system);
@@ -83,10 +79,10 @@ class InboxAgentSaudiVoiceTest extends TestCase
         $context = $this->buildContext($workspace, $conversation, $message, $setting);
         $system = $this->system($context);
 
-        $this->assertTrue($context->structuredContext->catalog->matchedFromHistory);
-        $this->assertSame(['آيفون 15'], $context->structuredContext->catalog->matchedNames);
-        $this->assertSame(299.0, (float) $context->structuredContext->catalog->prefetchRows[0]['price']);
-        $this->assertStringContainsString('matched from the earlier customer message', $system);
+        $this->assertFalse($context->structuredContext->catalog->matchedFromHistory);
+        $this->assertSame([], $context->structuredContext->catalog->matchedNames);
+        $this->assertSame([], $context->structuredContext->catalog->prefetchRows);
+        $this->assertStringContainsString('no product catalog is available', $system);
         $this->assertStringContainsString('"كم" means "سعره 150 ريال"', $system);
     }
 
@@ -103,8 +99,8 @@ class InboxAgentSaudiVoiceTest extends TestCase
 
         $context = $this->buildContext($workspace, $conversation, $message, $setting);
 
-        $this->assertTrue($context->structuredContext->catalog->matchedFromHistory);
-        $this->assertSame(['فستان أسود'], $context->structuredContext->catalog->matchedNames);
+        $this->assertFalse($context->structuredContext->catalog->matchedFromHistory);
+        $this->assertSame([], $context->structuredContext->catalog->matchedNames);
         $this->assertStringContainsString('"ابي هذا" means "ابشر\nتبغى نكمل الطلب ؟"', $this->system($context));
     }
 
@@ -115,23 +111,27 @@ class InboxAgentSaudiVoiceTest extends TestCase
             products: [['name' => 'فستان أسود', 'price' => '250.00'], ['name' => 'حذاء رياضي', 'price' => '180.00']],
         );
 
-        $names = collect(app(ChatCatalogRetrievalService::class)->searchForPrompt($workspace, 'عندكم فساتين'))->pluck('name')->all();
-        $this->assertSame(['فستان أسود'], $names);
-
         $context = $this->buildContext($workspace, $conversation, $message, $setting);
         $result = app(SearchProductsTool::class)->execute($context, ['query' => 'فساتين']);
-        $this->assertSame('فستان أسود', $result->payload['products'][0]['name']);
+        $this->assertSame(0, $result->payload['count']);
+        $this->assertSame([], $result->payload['products']);
 
-        $this->assertStringContainsString('for "عندكم فساتين" search فستان', $this->system($context));
+        $this->assertStringContainsString('There is no product catalog', $this->system($context));
     }
 
-    public function test_hamza_spelling_in_query_matches_stored_hamza_name(): void
+    public function test_hamza_spelling_in_query_does_not_invent_a_product(): void
     {
-        [$workspace] = $this->seedConversation('ابي حذاء', products: [['name' => 'حذاء رياضي', 'price' => '180.00']]);
+        [$workspace, $conversation, $message, $setting] = $this->seedConversation(
+            'ابي حذاء',
+            products: [['name' => 'حذاء رياضي', 'price' => '180.00']],
+        );
 
-        $names = collect(app(ChatCatalogRetrievalService::class)->searchForPrompt($workspace, 'ابي حذاء'))->pluck('name')->all();
+        $result = app(SearchProductsTool::class)->execute(
+            $this->buildContext($workspace, $conversation, $message, $setting),
+            ['query' => 'ابي حذاء'],
+        );
 
-        $this->assertSame(['حذاء رياضي'], $names);
+        $this->assertSame([], $result->payload['products']);
     }
 
     public function test_case_6_first_contact_intro_is_natural_and_never_an_ai_label(): void
@@ -178,9 +178,8 @@ class InboxAgentSaudiVoiceTest extends TestCase
         $system = $this->system($context);
 
         $this->assertSame([], $context->structuredContext->catalog->matchedNames);
-        $this->assertStringContainsString('no items matched the customer query', $system);
+        $this->assertStringContainsString('no product catalog is available', $system);
         $this->assertStringContainsString('Do not invent names, prices, sizes, or availability', $system);
-        $this->assertStringContainsString('Before saying a product is not available, search for it', $system);
         $this->assertStringNotContainsString('فستان أسود', $system);
     }
 
@@ -193,15 +192,10 @@ class InboxAgentSaudiVoiceTest extends TestCase
 
         $context = $this->buildContext($workspace, $conversation, $message, $setting);
         $result = app(SearchProductsTool::class)->execute($context, ['query' => 'فستان']);
-        $product = $result->payload['products'][0];
 
-        $this->assertSame('فستان أسود', $product['name']);
-        $this->assertSame(250.0, (float) $product['price']);
-        $this->assertSame('SAR', $product['currency']);
-        $communication = $result->payload['catalog_untrusted_context']['communication'];
-        foreach (InboxAgentVoiceResolver::VOICE_KEYS as $key) {
-            $this->assertArrayNotHasKey($key, $communication);
-        }
+        $this->assertSame(0, $result->payload['count']);
+        $this->assertSame([], $result->payload['products']);
+        $this->assertSame([], $result->payload['catalog_untrusted_context']);
     }
 
     public function test_matched_product_rows_reach_the_prompt_as_complete_json(): void
@@ -217,13 +211,9 @@ class InboxAgentSaudiVoiceTest extends TestCase
 
         $system = $this->system($this->buildContext($workspace, $conversation, $message, $setting));
 
-        $this->assertSame(1, preg_match('/UNTRUSTED CATALOG DATA \(hint only[^\n]*\n(\[.*?\])\nUNTRUSTED CATALOG COMMUNICATION/su', $system, $matches));
-        $rows = json_decode($matches[1], true);
-        $this->assertIsArray($rows);
-        $this->assertEqualsCanonicalizing(
-            ['فستان أسود', 'فستان سهرة أحمر', 'فستان صيفي'],
-            array_column($rows, 'name'),
-        );
+        $this->assertStringContainsString('no product catalog is available', $system);
+        $this->assertStringNotContainsString('فستان أسود', $system);
+        $this->assertStringNotContainsString('فستان سهرة أحمر', $system);
     }
 
     public function test_prompt_has_one_voice_source_without_conflicting_raw_style_settings(): void

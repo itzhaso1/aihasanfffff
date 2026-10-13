@@ -49,10 +49,10 @@ HASEM PLATFORM
 ├── Identity / Tenancy / RBAC / Customers (shared)
 ├── CHAT & INBOX
 │   ├── Unified inbox / WhatsApp / worker chat / stories
-│   ├── Chat Catalog (`chat_catalog_items` + categories/variants)
 │   └── `/api/mobile/v1/*` + apps/hasim
 ├── COMMERCE (chat-attached)
-│   ├── Products, inventory, orders, payments (workspace-scoped)
+│   ├── Leftover `chat_catalog_items` rows (orders/carts/worker product FKs)
+│   ├── Inventory, orders, payments (workspace-scoped)
 │   └── Tax enums under `App\Enums\Finance\*` used by chat commerce tax resolution only
 ├── EMAIL CRM
 │   ├── Workspace mailboxes, branding, template library
@@ -65,10 +65,11 @@ HASEM PLATFORM
 
 | Catalog | Source of truth | Consumers |
 | --- | --- | --- |
-| Chat | `chat_catalog_items` | Chat app, Chat Catalog API, Chat AI retrieval |
-| Commerce products | `products` (and related commerce tables) | Orders, payments, inventory — not a separate Flutter ERP/POS client |
+| Chat Catalog product | Removed. No storefront, settings, or AI retrieval. | — |
+| Leftover commerce items | `chat_catalog_items` (and variants) | Commerce carts/orders and worker product pickers |
+| Commerce products | `products` (and related commerce tables) if present | Orders, payments, inventory — not a separate Flutter ERP/POS client |
 
-Chat AI retrieval searches Chat Catalog tokens only. WhatsApp is the primary live inbox channel unless another channel is explicitly wired in code.
+Inbox AI does not search a product catalog. `search_products` returns an empty list. WhatsApp is the primary live inbox channel unless another channel is explicitly wired in code.
 
 ---
 

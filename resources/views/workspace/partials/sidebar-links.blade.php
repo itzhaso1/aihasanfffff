@@ -17,9 +17,8 @@
             ],
         ],
         [
-            'title' => 'المنتجات',
+            'title' => 'التجارة',
             'links' => [
-                ['label' => 'المنتجات والمخزون', 'route' => 'workspace.chat-catalog.index', 'active' => 'workspace.chat-catalog.*', 'icon' => 'cube'],
                 ['label' => 'السلات', 'route' => 'workspace.commerce.carts.index', 'active' => 'workspace.commerce.carts.*', 'icon' => 'box'],
                 ['label' => 'الطلبات', 'route' => 'workspace.commerce.orders.index', 'active' => 'workspace.commerce.orders.*', 'icon' => 'tag'],
             ],
