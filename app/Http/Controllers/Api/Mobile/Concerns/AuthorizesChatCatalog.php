@@ -50,20 +50,6 @@ trait AuthorizesChatCatalog
         );
     }
 
-    protected function authorizeChatCatalogSettingsManage(Request $request, Workspace $workspace): User
-    {
-        /** @var User|null $user */
-        $user = $request->user();
-        if (! $user) {
-            throw new HttpResponseException($this->fail('غير مصرح.', 401));
-        }
-        if (! app(ChatCatalogAccess::class)->canManageSettings($user, $workspace)) {
-            throw new HttpResponseException($this->fail('لا تملك صلاحية إعدادات المنتجات والمخزون.', 403));
-        }
-
-        return $user;
-    }
-
     protected function authorizeChatCatalogDigitalInventoryManage(Request $request, Workspace $workspace): User
     {
         /** @var User|null $user */

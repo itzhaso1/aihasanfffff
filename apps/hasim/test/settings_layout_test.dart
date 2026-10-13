@@ -63,8 +63,8 @@ void main() {
           builder: (_, _) => const Scaffold(body: Text('شاشة التفضيلات')),
         ),
         GoRoute(
-          path: '/chat-catalog-settings',
-          builder: (_, _) => const Scaffold(body: Text('شاشة الكتالوج')),
+          path: '/catalog',
+          builder: (_, _) => const Scaffold(body: Text('شاشة المنتجات والمخزون')),
         ),
         GoRoute(
           path: '/chat-themes',
@@ -171,6 +171,12 @@ void main() {
       matching: find.byType(Scrollable),
     );
     await tester.scrollUntilVisible(
+      find.text('المنتجات والمخزون'),
+      120,
+      scrollable: settingsList,
+    );
+    expect(settingsItem('المنتجات والمخزون'), findsOneWidget);
+    await tester.scrollUntilVisible(
       find.text('المظهر والسمات'),
       120,
       scrollable: settingsList,
@@ -260,6 +266,7 @@ void main() {
       await tester.drag(find.text('المظهر والسمات'), const Offset(0, -180));
       await tester.pumpAndSettle();
       expect(find.text('عنوان API'), findsNothing);
+      expect(settingsItem('المنتجات والمخزون'), findsOneWidget);
       expect(settingsItem('إعدادات المنتجات'), findsNothing);
       await tester.drag(find.text('المظهر والسمات'), const Offset(0, -280));
       await tester.pumpAndSettle();

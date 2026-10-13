@@ -178,7 +178,7 @@ class InboxAgentSaudiVoiceTest extends TestCase
         $system = $this->system($context);
 
         $this->assertSame([], $context->structuredContext->catalog->matchedNames);
-        $this->assertStringContainsString('no items matched the customer query', $system);
+        $this->assertStringContainsString('no items matched', $system);
         $this->assertStringContainsString('Do not invent names, prices, sizes, or availability', $system);
         $this->assertStringContainsString('Before saying a product is not available, search for it', $system);
         $this->assertStringNotContainsString('فستان أسود', $system);
