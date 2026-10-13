@@ -23,7 +23,7 @@ final class CommercePricingService
 
     public function resolve(
         Workspace $workspace,
-        ?ChatCatalog $catalog,
+        ChatCatalog $catalog,
         ChatCatalogItem $item,
         ?ChatCatalogItemVariant $variant,
         int $quantity,
@@ -39,8 +39,7 @@ final class CommercePricingService
         $currency = strtoupper((string) (
             $variant?->currency
             ?: $item->currency
-            ?: $catalog?->default_currency
-            ?: 'SAR'
+            ?: $catalog->default_currency
         ));
         if (! preg_match('/^[A-Z]{3}$/', $currency)) {
             throw new InvalidArgumentException('Catalog item currency is invalid.');

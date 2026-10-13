@@ -15,8 +15,11 @@ use App\Services\AI\Inbox\Tools\InboxAgentToolCall;
 use App\Services\AI\Inbox\Tools\InboxAgentToolExecutor;
 use App\Services\AI\Inbox\Tools\InboxAgentToolRegistry;
 use App\Services\AI\Inbox\Tools\SearchProductsTool;
+use App\Services\Chat\ChatCatalogRetrievalService;
+use App\Services\Chat\ChatCatalogRootService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Mockery;
 use Tests\TestCase;
 
 class SearchProductsToolTest extends TestCase
@@ -119,8 +122,8 @@ class SearchProductsToolTest extends TestCase
         $result = app(SearchProductsTool::class)->execute($context, ['query' => 'هل عندكم فستان أسود؟']);
 
         $this->assertTrue($result->success);
-        $this->assertSame(0, $result->payload['count']);
-        $this->assertSame([], $result->payload['products']);
+        $this->assertGreaterThanOrEqual(1, $result->payload['count']);
+        $this->assertSame('فستان أسود', $result->payload['products'][0]['name']);
     }
 
     public function test_model_cannot_override_workspace(): void
@@ -159,11 +162,28 @@ class SearchProductsToolTest extends TestCase
         $result = app(SearchProductsTool::class)->execute($context, ['query' => 'وش عندكم منتجات؟']);
 
         $this->assertTrue($result->success);
-        $this->assertSame(0, $result->payload['count']);
-        $this->assertSame([], $result->payload['products']);
+        $this->assertGreaterThanOrEqual(1, $result->payload['count']);
+        $this->assertSame('فستان أسود', $result->payload['products'][0]['name']);
     }
 
-    public function test_search_products_never_invents_or_returns_catalog_items(): void
+    public function test_search_service_exception_returns_controlled_failure(): void
+    {
+        [$workspace, $conversation, $message, $setting] = $this->seedFixtures();
+        $context = app(InboxAgentContextBuilder::class)->build($workspace, $conversation, $message, $setting);
+
+        $mock = Mockery::mock(ChatCatalogRetrievalService::class);
+        $mock->shouldReceive('searchForAi')->andThrow(new \RuntimeException('SQLSTATE secret details'));
+        $this->app->instance(ChatCatalogRetrievalService::class, $mock);
+        $this->app->forgetInstance(SearchProductsTool::class);
+
+        $result = app(SearchProductsTool::class)->execute($context, ['query' => 'shoe']);
+
+        $this->assertFalse($result->success);
+        $this->assertSame('search_failed', $result->errorCode);
+        $this->assertStringNotContainsString('SQLSTATE', json_encode($result->toModelPayload(), JSON_UNESCAPED_UNICODE));
+    }
+
+    public function test_sensitive_internal_fields_are_not_exposed(): void
     {
         [$workspace, $conversation, $message, $setting] = $this->seedFixtures();
         $context = app(InboxAgentContextBuilder::class)->build($workspace, $conversation, $message, $setting);
@@ -171,10 +191,45 @@ class SearchProductsToolTest extends TestCase
         $result = app(SearchProductsTool::class)->execute($context, ['query' => 'هل عندكم فستان أسود؟']);
         $encoded = json_encode($result->toModelPayload(), JSON_UNESCAPED_UNICODE);
 
-        $this->assertTrue($result->success);
-        $this->assertSame([], $result->payload['products']);
         $this->assertStringNotContainsString('workspace_id', $encoded);
         $this->assertStringNotContainsString('SQL', $encoded);
+        $this->assertArrayNotHasKey('catalog_item_id', $result->payload['products'][0]);
+        $this->assertArrayHasKey('name', $result->payload['products'][0]);
+    }
+
+    public function test_search_products_reflects_live_catalog_updates_and_removals(): void
+    {
+        [$workspace, $conversation, $message, $setting] = $this->seedFixtures();
+        $context = app(InboxAgentContextBuilder::class)->build($workspace, $conversation, $message, $setting);
+
+        $first = app(SearchProductsTool::class)->execute($context, ['query' => 'فستان']);
+        $this->assertTrue($first->success);
+        $this->assertSame('فستان أسود', $first->payload['products'][0]['name']);
+
+        app(WorkspaceContext::class)->runFor($workspace, function (): void {
+            ChatCatalogItem::query()->where('sku', 'DRESS-SEARCH')->firstOrFail()->update([
+                'name' => 'فستان أحمر محدّث',
+                'description' => 'وصف جديد للمرجع',
+                'price' => 99,
+            ]);
+        });
+
+        $updated = app(SearchProductsTool::class)->execute($context, ['query' => 'فستان']);
+        $this->assertTrue($updated->success);
+        $this->assertSame('فستان أحمر محدّث', $updated->payload['products'][0]['name']);
+        $this->assertSame('وصف جديد للمرجع', $updated->payload['products'][0]['description']);
+        $this->assertSame(99, (int) $updated->payload['products'][0]['price']);
+
+        app(WorkspaceContext::class)->runFor($workspace, function (): void {
+            ChatCatalogItem::query()->where('sku', 'DRESS-SEARCH')->firstOrFail()->update([
+                'is_active' => false,
+                'archived_at' => now(),
+            ]);
+        });
+
+        $removed = app(SearchProductsTool::class)->execute($context, ['query' => 'فستان']);
+        $this->assertTrue($removed->success);
+        $this->assertSame(0, $removed->payload['count']);
     }
 
     /**
@@ -248,6 +303,8 @@ class SearchProductsToolTest extends TestCase
                 'item_kind' => 'product',
                 'tangibility' => 'tangible',
             ]);
+            $roots = app(ChatCatalogRootService::class);
+            $roots->publish($roots->forWorkspace($workspace));
 
             $setting = AiSetting::query()->create([
                 'workspace_id' => $workspace->id,

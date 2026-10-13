@@ -13,6 +13,7 @@ use App\Services\AI\Inbox\Memory\InboxAgentMemoryRetriever;
 use App\Services\AI\Inbox\Persona\InboxAgentPersonaFingerprint;
 use App\Services\AI\Inbox\Persona\InboxAgentPersonaResolver;
 use App\Services\AI\Inbox\Tools\InboxAgentToolRegistry;
+use App\Services\Chat\ChatCatalogRetrievalService;
 use App\Support\Chat\ChatAiRole;
 
 /**
@@ -26,6 +27,7 @@ final class InboxAgentContextEngine
         private readonly InboxAgentMessageWindowBuilder $messageWindowBuilder,
         private readonly InboxAgentContextFingerprint $contextFingerprint,
         private readonly InboxAgentContextPolicy $policy,
+        private readonly ChatCatalogRetrievalService $catalogRetrieval,
         private readonly InboxAgentToolRegistry $toolRegistry,
         private readonly InboxAgentMemoryRetriever $memoryRetriever,
         private readonly InboxAgentMemoryPolicy $memoryPolicy,
@@ -46,9 +48,25 @@ final class InboxAgentContextEngine
 
         $messageWindow = $this->messageWindowBuilder->build($conversation, $message);
 
-        $catalogRows = [];
-        $catalogNames = [];
+        $catalogRows = $this->catalogRetrieval->searchForAi($workspace, $messageWindow->currentMessage->content);
         $matchedFromHistory = false;
+        if ($catalogRows === []) {
+            $previousQuery = $this->previousProductQuery($messageWindow);
+            if ($previousQuery !== null) {
+                $catalogRows = $this->catalogRetrieval->searchForAi($workspace, $previousQuery);
+                $matchedFromHistory = $catalogRows !== [];
+            }
+        }
+        $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
+        $attached = data_get($metadata, 'catalog.attached_product');
+        if (is_array($attached) && $attached !== []) {
+            $catalogRows = [$attached];
+            $matchedFromHistory = false;
+        }
+        $catalogNames = array_values(array_filter(array_map(
+            static fn (array $row): string => (string) ($row['name'] ?? ''),
+            $catalogRows
+        )));
 
         $toolsEnabled = (bool) config('ai.inbox_agent.tools_enabled', true);
         $toolNames = $toolsEnabled ? array_map(
@@ -86,8 +104,8 @@ final class InboxAgentContextEngine
             catalog: new InboxAgentCatalogContextSlice(
                 prefetchRows: $catalogRows,
                 matchedNames: $catalogNames,
-                matched: false,
-                untrustedCommunication: [],
+                matched: $catalogRows !== [],
+                untrustedCommunication: $this->catalogRetrieval->untrustedCommunicationContext($workspace),
                 matchedFromHistory: $matchedFromHistory,
             ),
             metadata: new InboxAgentContextMetadata(
@@ -121,6 +139,24 @@ final class InboxAgentContextEngine
                 historyTruncated: $structured->metadata->historyTruncated,
             ),
         );
+    }
+
+    /**
+     * Latest earlier customer message that carries product words, used when the current
+     * message is a short follow-up ("كم", "ابي هذا") with nothing to search for.
+     */
+    private function previousProductQuery(InboxAgentMessageWindow $window): ?string
+    {
+        foreach (array_reverse($window->history) as $message) {
+            if ($message->role !== 'customer') {
+                continue;
+            }
+            if ($this->catalogRetrieval->tokens($message->content) !== []) {
+                return $message->content;
+            }
+        }
+
+        return null;
     }
 
     private function conversationSlice(Conversation $conversation, Message $message): InboxAgentConversationContextSlice

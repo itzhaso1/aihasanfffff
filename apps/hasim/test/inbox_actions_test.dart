@@ -20,7 +20,6 @@ import 'package:hasim/features/conversations/data/conversation_repository.dart';
 import 'package:hasim/features/conversations/presentation/chat_screen.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
 import 'package:hasim/features/home/data/home_repository.dart';
-import 'package:hasim/features/settings/data/company_worker_discovery_repository.dart';
 import 'package:hasim/l10n/app_localizations.dart';
 import 'package:hasim/realtime/realtime_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -339,23 +338,6 @@ class _FakeHomeRepository extends HomeRepository {
   Future<HomeSnapshot> home() async => const HomeSnapshot();
 }
 
-class _FakeWorkerDiscoveryRepository extends CompanyWorkerDiscoveryRepository {
-  _FakeWorkerDiscoveryRepository(super.api);
-
-  @override
-  Future<List<CompanyWorkerOpenEngagement>> fetchOpenEngagements() async {
-    return const [
-      CompanyWorkerOpenEngagement(
-        id: 22,
-        workerProfileId: 4,
-        status: 'active',
-        workerDisplayName: 'عامل الدعم',
-        jobTitle: 'دعم العملاء',
-      ),
-    ];
-  }
-}
-
 class _SeededAuthController extends AuthController {
   _SeededAuthController(super.ref, this.seed);
   final AuthState seed;
@@ -440,14 +422,23 @@ void main() {
     }
   }
 
-  test('open conversations can be assigned without a prior handoff request', () {
-    expect(ConversationHandoffValues.canAssign(_conv(handoff: 'none')), isTrue);
-    expect(ConversationHandoffValues.canRequest(_conv(handoff: 'none')), isTrue);
-    expect(
-      ConversationHandoffValues.canAssign(_conv(handoff: 'assigned')),
-      isFalse,
-    );
-  });
+  test(
+    'open conversations can be assigned without a prior handoff request',
+    () {
+      expect(
+        ConversationHandoffValues.canAssign(_conv(handoff: 'none')),
+        isTrue,
+      );
+      expect(
+        ConversationHandoffValues.canRequest(_conv(handoff: 'none')),
+        isTrue,
+      );
+      expect(
+        ConversationHandoffValues.canAssign(_conv(handoff: 'assigned')),
+        isFalse,
+      );
+    },
+  );
 
   test('closed conversations cannot request assign resolve or resume AI', () {
     final closed = _conv(handoff: 'queued', status: 'closed');
@@ -489,6 +480,28 @@ void main() {
     expect(
       ConversationHandoffValues.canResumeAi(
         _conv(handoff: 'queued', aiEnabled: false),
+      ),
+      isFalse,
+    );
+    expect(
+      ConversationHandoffValues.canEndHandoff(_conv(handoff: 'queued')),
+      isTrue,
+    );
+    expect(
+      ConversationHandoffValues.canEndHandoff(
+        _conv(handoff: 'none', aiEnabled: true),
+      ),
+      isTrue,
+    );
+    expect(
+      ConversationHandoffValues.canEndHandoff(
+        _conv(handoff: 'resolved', aiEnabled: true),
+      ),
+      isFalse,
+    );
+    expect(
+      ConversationHandoffValues.canResumeAi(
+        _conv(handoff: 'none', aiEnabled: true),
       ),
       isFalse,
     );
@@ -579,7 +592,10 @@ void main() {
         isNull,
       );
       expect(
-        h.container.read(chatControllerProvider(7)).conversation?.assignedUserId,
+        h.container
+            .read(chatControllerProvider(7))
+            .conversation
+            ?.assignedUserId,
         isNull,
       );
     },
@@ -1037,14 +1053,6 @@ void main() {
         ),
         inboxSessionProvider.overrideWithValue(session),
         conversationRepositoryProvider.overrideWithValue(repo),
-        companyWorkerDiscoveryRepositoryProvider.overrideWithValue(
-          _FakeWorkerDiscoveryRepository(
-            isolatedTestApiClient(
-              secureStore: _MemorySecureStore(),
-              prefsStore: PrefsStore(prefs),
-            ),
-          ),
-        ),
         realtimeServiceProvider.overrideWithValue(NoopRealtimeService()),
       ],
       child: MaterialApp(
@@ -1179,7 +1187,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('company chat requests handoff with a contract reason', (
+  testWidgets('inbox hides independent worker conversion actions', (
     tester,
   ) async {
     setPhone(tester);
@@ -1200,43 +1208,16 @@ void main() {
     );
     await tester.pumpAndSettle();
     await openMore(tester);
-    await tester.tap(find.byKey(const Key('chat-action-request-handoff')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('handoff-reason-payment_issue')));
-    await tester.tap(find.byKey(const Key('handoff-request-submit')));
-    await tester.pumpAndSettle();
-    expect(repo.handoffCalls, 1);
-    expect(repo.lastHandoffReason, 'payment_issue');
+    expect(find.byKey(const Key('chat-action-assign-handoff')), findsNothing);
+    expect(find.byKey(const Key('chat-action-request-handoff')), findsNothing);
+    expect(find.byKey(const Key('chat-action-takeover')), findsNothing);
+    expect(find.text('تعيين عامل مستقل'), findsNothing);
+    expect(find.text('تعيين المحادثة'), findsNothing);
+    expect(find.text('تولي المحادثة'), findsNothing);
+    expect(find.text('تحويل إلى AI'), findsOneWidget);
   });
 
-  testWidgets('handoff request shows backend failure', (tester) async {
-    setPhone(tester);
-    SharedPreferences.setMockInitialValues({'workspace_id': 1});
-    final prefs = await SharedPreferences.getInstance();
-    final db = InboxDatabase.memory();
-    addTearDown(db.close);
-    final repo = _RecordingRepo(
-      isolatedTestApiClient(
-        secureStore: _MemorySecureStore(),
-        prefsStore: PrefsStore(prefs),
-      ),
-      InboxLocalStore(db),
-    )..error = ApiException('تعذر طلب التحويل.');
-
-    await tester.pumpWidget(
-      chatApp(repo: repo, prefs: prefs, auth: companyAuth),
-    );
-    await tester.pumpAndSettle();
-    await openMore(tester);
-    await tester.tap(find.byKey(const Key('chat-action-request-handoff')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('handoff-request-submit')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('handoff-request-error')), findsOneWidget);
-    expect(find.text('تعذر طلب التحويل.'), findsOneWidget);
-  });
-
-  testWidgets('company chat assigns from session member target', (
+  testWidgets('company chat converts an open conversation to AI', (
     tester,
   ) async {
     setPhone(tester);
@@ -1250,153 +1231,35 @@ void main() {
         prefsStore: PrefsStore(prefs),
       ),
       InboxLocalStore(db),
-    )..item = _conv(handoff: 'queued');
+    )..item = _conv(handoff: 'resolved', aiEnabled: false);
 
     await tester.pumpWidget(
       chatApp(repo: repo, prefs: prefs, auth: companyAuth),
     );
     await tester.pumpAndSettle();
     await openMore(tester);
-    await tester.tap(find.byKey(const Key('chat-action-assign-handoff')));
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
+    await tester.tap(find.byKey(const Key('chat-action-resume-ai')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('handoff-assign-target-9')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('handoff-assign-target-9')));
-    await tester.pumpAndSettle();
-    expect(repo.assignCalls, 1);
-    expect(repo.lastAssignUserId, 9);
-  });
-
-  testWidgets('company chat assigns an active worker engagement', (
-    tester,
-  ) async {
-    setPhone(tester);
-    SharedPreferences.setMockInitialValues({'workspace_id': 1});
-    final prefs = await SharedPreferences.getInstance();
-    final db = InboxDatabase.memory();
-    addTearDown(db.close);
-    final repo = _RecordingRepo(
-      isolatedTestApiClient(
-        secureStore: _MemorySecureStore(),
-        prefsStore: PrefsStore(prefs),
-      ),
-      InboxLocalStore(db),
-    )..item = _conv(handoff: 'queued');
-
-    await tester.pumpWidget(
-      chatApp(repo: repo, prefs: prefs, auth: companyAuth),
+    expect(repo.resumeAiCalls, 1);
+    expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ChatScreen)),
     );
-    await tester.pumpAndSettle();
-    await openMore(tester);
-    await tester.tap(find.byKey(const Key('chat-action-assign-handoff')));
-    await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('handoff-assign-target-engagement-22')),
-      findsOneWidget,
+      container.read(chatControllerProvider(7)).conversation?.aiEnabled,
+      isTrue,
     );
-    await tester.tap(
-      find.byKey(const Key('handoff-assign-target-engagement-22')),
+    expect(
+      container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'none',
     );
-    await tester.pumpAndSettle();
-
-    expect(repo.assignCalls, 1);
-    expect(repo.lastAssignUserId, isNull);
-    expect(repo.lastAssignWorkerEngagementId, 22);
   });
 
-  testWidgets(
-    'company can assign an open conversation to a worker without requesting handoff',
-    (tester) async {
-      setPhone(tester);
-      SharedPreferences.setMockInitialValues({'workspace_id': 1});
-      final prefs = await SharedPreferences.getInstance();
-      final db = InboxDatabase.memory();
-      addTearDown(db.close);
-      final repo = _RecordingRepo(
-        isolatedTestApiClient(
-          secureStore: _MemorySecureStore(),
-          prefsStore: PrefsStore(prefs),
-        ),
-        InboxLocalStore(db),
-      )..item = _conv(handoff: 'none');
-
-      await tester.pumpWidget(
-        chatApp(repo: repo, prefs: prefs, auth: companyAuth),
-      );
-      await tester.pumpAndSettle();
-      await openMore(tester);
-      expect(find.byKey(const Key('chat-action-assign-handoff')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('chat-action-assign-handoff')));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('handoff-assign-target-engagement-22')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(repo.assignCalls, 1);
-      expect(repo.lastAssignWorkerEngagementId, 22);
-      expect(repo.lastAssignUserId, isNull);
-      expect(find.text('تم تعيين المحادثة'), findsOneWidget);
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(ChatScreen)),
-      );
-      expect(
-        container.read(chatControllerProvider(7)).conversation?.handoffStatus,
-        'assigned',
-      );
-      expect(
-        container
-            .read(chatControllerProvider(7))
-            .conversation
-            ?.assignedWorkerEngagementId,
-        22,
-      );
-    },
-  );
-
-  testWidgets(
-    'failed open-conversation assignment keeps none and shows the error',
-    (tester) async {
-      setPhone(tester);
-      SharedPreferences.setMockInitialValues({'workspace_id': 1});
-      final prefs = await SharedPreferences.getInstance();
-      final db = InboxDatabase.memory();
-      addTearDown(db.close);
-      final repo =
-          _RecordingRepo(
-              isolatedTestApiClient(
-                secureStore: _MemorySecureStore(),
-                prefsStore: PrefsStore(prefs),
-              ),
-              InboxLocalStore(db),
-            )
-            ..item = _conv(handoff: 'none')
-            ..error = ApiException('تعذر تعيين المحادثة.');
-
-      await tester.pumpWidget(
-        chatApp(repo: repo, prefs: prefs, auth: companyAuth),
-      );
-      await tester.pumpAndSettle();
-      await openMore(tester);
-      await tester.tap(find.byKey(const Key('chat-action-assign-handoff')));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('handoff-assign-target-engagement-22')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('handoff-assign-error')), findsOneWidget);
-      expect(find.text('تعذر تعيين المحادثة.'), findsOneWidget);
-      expect(find.text('تم تعيين المحادثة'), findsNothing);
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(ChatScreen)),
-      );
-      expect(
-        container.read(chatControllerProvider(7)).conversation?.handoffStatus,
-        'none',
-      );
-    },
-  );
-
-  testWidgets('handoff assign shows backend failure', (tester) async {
+  testWidgets('convert to AI does not show success before backend confirms', (
+    tester,
+  ) async {
     setPhone(tester);
     SharedPreferences.setMockInitialValues({'workspace_id': 1});
     final prefs = await SharedPreferences.getInstance();
@@ -1410,20 +1273,134 @@ void main() {
             ),
             InboxLocalStore(db),
           )
-          ..item = _conv(handoff: 'queued')
-          ..error = ApiException('تعذر تعيين المحادثة.');
+          ..item = _conv(handoff: 'resolved', aiEnabled: false)
+          ..error = ApiException(
+            'Handoff is only allowed on open conversations.',
+          );
 
     await tester.pumpWidget(
       chatApp(repo: repo, prefs: prefs, auth: companyAuth),
     );
     await tester.pumpAndSettle();
     await openMore(tester);
-    await tester.tap(find.byKey(const Key('chat-action-assign-handoff')));
+    await tester.tap(find.byKey(const Key('chat-action-resume-ai')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('handoff-assign-target-9')));
+    expect(repo.resumeAiCalls, 1);
+    expect(find.text('تم تحديث حالة التحويل'), findsNothing);
+    expect(
+      find.text('التحويل مسموح فقط في المحادثات المفتوحة.'),
+      findsOneWidget,
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ChatScreen)),
+    );
+    expect(
+      container.read(chatControllerProvider(7)).conversation?.aiEnabled,
+      isFalse,
+    );
+  });
+
+  testWidgets(
+    'resolved conversation with AI on hides convert and end actions',
+    (tester) async {
+      setPhone(tester);
+      SharedPreferences.setMockInitialValues({'workspace_id': 1});
+      final prefs = await SharedPreferences.getInstance();
+      final db = InboxDatabase.memory();
+      addTearDown(db.close);
+      final repo = _RecordingRepo(
+        isolatedTestApiClient(
+          secureStore: _MemorySecureStore(),
+          prefsStore: PrefsStore(prefs),
+        ),
+        InboxLocalStore(db),
+      )..item = _conv(handoff: 'resolved', aiEnabled: true);
+
+      await tester.pumpWidget(
+        chatApp(repo: repo, prefs: prefs, auth: companyAuth),
+      );
+      await tester.pumpAndSettle();
+      await openMore(tester);
+      expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
+      expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
+      expect(repo.resumeAiCalls, 0);
+      expect(repo.takeoverCalls, 0);
+    },
+  );
+
+  testWidgets('company chat ends an active handoff', (tester) async {
+    setPhone(tester);
+    SharedPreferences.setMockInitialValues({'workspace_id': 1});
+    final prefs = await SharedPreferences.getInstance();
+    final db = InboxDatabase.memory();
+    addTearDown(db.close);
+    final repo = _RecordingRepo(
+      isolatedTestApiClient(
+        secureStore: _MemorySecureStore(),
+        prefsStore: PrefsStore(prefs),
+      ),
+      InboxLocalStore(db),
+    )..item = _conv(handoff: 'queued');
+
+    await tester.pumpWidget(
+      chatApp(repo: repo, prefs: prefs, auth: companyAuth),
+    );
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('handoff-assign-error')), findsOneWidget);
-    expect(find.text('تعذر تعيين المحادثة.'), findsOneWidget);
+    await openMore(tester);
+    expect(find.text('إنهاء التحويل'), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
+    await tester.tap(find.byKey(const Key('chat-action-end-handoff')));
+    await tester.pumpAndSettle();
+    expect(repo.resolveCalls, 1);
+    expect(repo.takeoverCalls, 0);
+    expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ChatScreen)),
+    );
+    expect(
+      container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'resolved',
+    );
+  });
+
+  testWidgets('company chat ends AI conversion by taking control', (
+    tester,
+  ) async {
+    setPhone(tester);
+    SharedPreferences.setMockInitialValues({'workspace_id': 1});
+    final prefs = await SharedPreferences.getInstance();
+    final db = InboxDatabase.memory();
+    addTearDown(db.close);
+    final repo = _RecordingRepo(
+      isolatedTestApiClient(
+        secureStore: _MemorySecureStore(),
+        prefsStore: PrefsStore(prefs),
+      ),
+      InboxLocalStore(db),
+    )..item = _conv(handoff: 'none', aiEnabled: true);
+
+    await tester.pumpWidget(
+      chatApp(repo: repo, prefs: prefs, auth: companyAuth),
+    );
+    await tester.pumpAndSettle();
+    await openMore(tester);
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
+    await tester.tap(find.byKey(const Key('chat-action-end-handoff')));
+    await tester.pumpAndSettle();
+    expect(repo.takeoverCalls, 1);
+    expect(repo.resolveCalls, 0);
+    expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ChatScreen)),
+    );
+    expect(
+      container.read(chatControllerProvider(7)).conversation?.aiEnabled,
+      isFalse,
+    );
+    expect(
+      container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'active',
+    );
   });
 
   testWidgets(
@@ -1454,7 +1431,7 @@ void main() {
       );
       expect(find.byKey(const Key('chat-action-assign-handoff')), findsNothing);
       expect(find.text('تولي المحادثة'), findsNothing);
-      expect(find.byKey(const Key('chat-action-resolve-handoff')), findsNothing);
+      expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
       expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
       expect(repo.classificationCalls, 0);
       expect(repo.handoffCalls, 0);
@@ -1510,36 +1487,43 @@ void main() {
     );
     await tester.pumpAndSettle();
     await openMore(tester);
-    expect(find.byKey(const Key('chat-action-resolve-handoff')), findsNothing);
+    expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
     expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
     expect(find.byKey(const Key('chat-action-takeover')), findsNothing);
     expect(repo.resolveCalls, 0);
     expect(repo.resumeAiCalls, 0);
   });
 
-  testWidgets('company chat resolves an open handoff', (tester) async {
+  testWidgets('archived conversation hides convert to AI and end handoff', (
+    tester,
+  ) async {
     setPhone(tester);
     SharedPreferences.setMockInitialValues({'workspace_id': 1});
     final prefs = await SharedPreferences.getInstance();
     final db = InboxDatabase.memory();
     addTearDown(db.close);
-    final repo = _RecordingRepo(
-      isolatedTestApiClient(
-        secureStore: _MemorySecureStore(),
-        prefsStore: PrefsStore(prefs),
-      ),
-      InboxLocalStore(db),
-    )..item = _conv(handoff: 'queued');
+    final repo =
+        _RecordingRepo(
+            isolatedTestApiClient(
+              secureStore: _MemorySecureStore(),
+              prefsStore: PrefsStore(prefs),
+            ),
+            InboxLocalStore(db),
+          )
+          ..item = _conv(
+            handoff: 'resolved',
+            status: 'open',
+            archived: true,
+            aiEnabled: false,
+          );
 
     await tester.pumpWidget(
       chatApp(repo: repo, prefs: prefs, auth: companyAuth),
     );
     await tester.pumpAndSettle();
     await openMore(tester);
-    await tester.tap(find.byKey(const Key('chat-action-resolve-handoff')));
-    await tester.pumpAndSettle();
-    expect(repo.resolveCalls, 1);
-    expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
   });
 
   testWidgets('resolve handoff shows backend failure', (tester) async {
@@ -1548,23 +1532,31 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     final db = InboxDatabase.memory();
     addTearDown(db.close);
-    final repo = _RecordingRepo(
-      isolatedTestApiClient(
-        secureStore: _MemorySecureStore(),
-        prefsStore: PrefsStore(prefs),
-      ),
-      InboxLocalStore(db),
-    )..item = _conv(handoff: 'queued')
-      ..error = ApiException('Handoff is only allowed on open conversations.');
+    final repo =
+        _RecordingRepo(
+            isolatedTestApiClient(
+              secureStore: _MemorySecureStore(),
+              prefsStore: PrefsStore(prefs),
+            ),
+            InboxLocalStore(db),
+          )
+          ..item = _conv(handoff: 'queued')
+          ..error = ApiException(
+            'Handoff is only allowed on open conversations.',
+          );
 
     await tester.pumpWidget(
       chatApp(repo: repo, prefs: prefs, auth: companyAuth),
     );
     await tester.pumpAndSettle();
     await openMore(tester);
-    await tester.tap(find.byKey(const Key('chat-action-resolve-handoff')));
+    await tester.tap(find.byKey(const Key('chat-action-end-handoff')));
     await tester.pumpAndSettle();
     expect(repo.resolveCalls, 1);
-    expect(find.text('التحويل مسموح فقط في المحادثات المفتوحة.'), findsOneWidget);
+    expect(find.text('تم تحديث حالة التحويل'), findsNothing);
+    expect(
+      find.text('التحويل مسموح فقط في المحادثات المفتوحة.'),
+      findsOneWidget,
+    );
   });
 }

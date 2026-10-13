@@ -34,28 +34,33 @@ class RetiredDigitalProductCommerceTest extends TestCase
         ]);
     }
 
-    public function test_web_catalog_and_digital_inventory_routes_are_gone(): void
+    public function test_catalog_settings_are_gone_while_product_management_remains(): void
     {
-        $this->assertFalse(Route::has('workspace.chat-catalog.index'));
-        $this->assertFalse(Route::has('workspace.chat-catalog.create'));
-        $this->assertFalse(Route::has('workspace.chat-catalog.digital-inventory.index'));
+        $this->assertTrue(Route::has('workspace.chat-catalog.index'));
+        $this->assertTrue(Route::has('workspace.chat-catalog.create'));
+        $this->assertFalse(Route::has('workspace.chat-catalog.settings.edit'));
 
         $this->actingAs($this->user)
             ->withSession(['current_workspace_id' => $this->workspace->id])
             ->get('/workspace/chat-catalog')
-            ->assertNotFound();
+            ->assertOk();
 
         $this->actingAs($this->user)
             ->withSession(['current_workspace_id' => $this->workspace->id])
-            ->get('/workspace/chat-catalog/digital-inventory')
+            ->get('/workspace/chat-catalog/settings')
             ->assertNotFound();
     }
 
-    public function test_mobile_catalog_settings_and_digital_inventory_endpoints_are_gone(): void
+    public function test_digital_inventory_http_surface_stays_retired(): void
     {
+        $this->actingAs($this->user)
+            ->withSession(['current_workspace_id' => $this->workspace->id])
+            ->get(route('workspace.chat-catalog.digital-inventory.index'))
+            ->assertStatus(410);
+
         $this->actingAsMobile()
             ->getJson('/api/mobile/v1/catalog/digital-pools')
-            ->assertNotFound();
+            ->assertStatus(410);
 
         $this->actingAsMobile()
             ->getJson('/api/mobile/v1/catalog/settings')

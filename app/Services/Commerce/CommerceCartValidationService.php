@@ -14,6 +14,7 @@ use App\Models\Commerce\CommerceInventoryReservation;
 use App\Models\Commerce\Seller;
 use App\Models\Customer;
 use App\Models\Workspace;
+use App\Services\Chat\CatalogAvailabilityService;
 use InvalidArgumentException;
 
 /**
@@ -26,6 +27,7 @@ final class CommerceCartValidationService
 {
     public function __construct(
         private readonly CommercePricingService $pricing,
+        private readonly CatalogAvailabilityService $availability,
     ) {}
 
     public function validate(
@@ -76,13 +78,28 @@ final class CommerceCartValidationService
         $catalog = ChatCatalog::withoutGlobalScopes()
             ->where('workspace_id', $workspace->id)
             ->first();
+        if (! $catalog) {
+            return new CommerceCartValidationResult([], [[
+                'cart_item_id' => null,
+                'code' => 'catalog_missing',
+                'message' => 'Commerce catalog is not configured.',
+            ]]);
+        }
 
         $channel = strtolower(trim((string) $cart->channel));
-        if (! in_array($channel, ['chat', 'whatsapp', 'instagram', 'web', 'marketplace'], true)) {
+        if (! in_array($channel, ['chat', 'whatsapp', 'instagram', 'web', 'marketplace'], true)
+            || ! $catalog->channelEnabled($channel)) {
             return new CommerceCartValidationResult([], [[
                 'cart_item_id' => null,
                 'code' => 'channel_unavailable',
-                'message' => 'Orders are not available in this channel.',
+                'message' => 'Catalog is not available in this channel.',
+            ]]);
+        }
+        if (! $this->availability->isCatalogOpenForCustomers($catalog)) {
+            return new CommerceCartValidationResult([], [[
+                'cart_item_id' => null,
+                'code' => 'catalog_unavailable',
+                'message' => 'Catalog is currently unavailable for ordering.',
             ]]);
         }
 
@@ -123,7 +140,7 @@ final class CommerceCartValidationService
      */
     private function validateItem(
         Workspace $workspace,
-        ?ChatCatalog $catalog,
+        ChatCatalog $catalog,
         CommerceCart $cart,
         CommerceCartItem $cartItem,
         bool $lockCatalogRows,
@@ -182,7 +199,7 @@ final class CommerceCartValidationService
             );
         }
 
-        $sellerId = $item->commerce_seller_id ?: $catalog?->commerce_seller_id;
+        $sellerId = $item->commerce_seller_id ?: $catalog->commerce_seller_id;
         if (! $sellerId) {
             return $this->problem($cartItem, 'seller_missing', 'Catalog item has no orderable seller.');
         }
@@ -265,10 +282,10 @@ final class CommerceCartValidationService
             && $variant->status === 'published';
     }
 
-    private function maximumQuantity(?ChatCatalog $catalog, ChatCatalogItem $item): int
+    private function maximumQuantity(ChatCatalog $catalog, ChatCatalogItem $item): int
     {
         $candidateLimits = [
-            data_get($catalog?->customer_service_policy, 'max_order_quantity'),
+            data_get($catalog->customer_service_policy, 'max_order_quantity'),
             data_get($item->policies, 'max_order_quantity'),
         ];
         $limits = collect($candidateLimits)

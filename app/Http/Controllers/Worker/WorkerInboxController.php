@@ -138,7 +138,6 @@ final class WorkerInboxController extends Controller
         return view('workspace.conversations.index', [
             'conversations' => $this->paginateConversations($request, $workspace, $conversations),
             'activeConversation' => $activeConversation,
-            'workerAssignments' => new Collection,
             'channelFilter' => $this->normalizeChannelFilter($request->string('channel')->toString()),
             'availableChannels' => [
                 'whatsapp' => 'WhatsApp',

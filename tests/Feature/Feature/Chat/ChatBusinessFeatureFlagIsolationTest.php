@@ -54,11 +54,12 @@ class ChatBusinessFeatureFlagIsolationTest extends TestCase
         $this->assertSame('commerce', $order->source);
         $this->assertSame('50.00', $order->total_amount);
         $this->assertNull($order->finance_invoice_id);
-        $this->assertFalse(Route::has('workspace.chat-catalog.index'));
+        $this->assertTrue(Route::has('workspace.chat-catalog.index'));
+        $this->assertFalse(Route::has('workspace.chat-catalog.settings.edit'));
         $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
             ->get('/workspace/chat-catalog')
-            ->assertNotFound();
+            ->assertOk();
         $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
             ->get('/workspace/chat-catalog/settings')

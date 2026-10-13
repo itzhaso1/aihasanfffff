@@ -27,7 +27,7 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->assertSee('البريد')
             ->assertSee('صندوق البريد')
             ->assertSee('قوالب البريد')
-            ->assertDontSee('المنتجات والمخزون')
+            ->assertSee('المنتجات والمخزون')
             ->assertDontSee('الفوترة والحسابات')
             ->assertSee('النظام')
             ->assertSee(route('workspace.conversations.index'), false)
@@ -58,15 +58,16 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->assertSee('data-communication-nav="sidebar"', false)
             ->assertSee(route('workspace.conversations.index'), false)
             ->assertSee(route('workspace.customers.index'), false)
-            ->assertDontSee('/workspace/chat-catalog', false)
             ->assertSee(route('workspace.channels.index'), false)
             ->assertSee(route('workspace.emails.index'), false)
             ->assertSee(route('workspace.whatsapp-accounts.index'), false)
+            ->assertSee(route('workspace.chat-catalog.index'), false)
             ->assertSee(route('workspace.ai-settings.edit'), false)
             ->assertSee('data-communication-nav="settings"', false)
             ->assertSee('data-communication-nav="archive"', false)
             ->assertSee(route('workspace.conversations.index', ['status' => 'archived']), false)
-            ->assertDontSee('المنتجات والمخزون');
+            ->assertSee('المنتجات والمخزون')
+            ->assertDontSee(url('/workspace/chat-catalog/settings'), false);
 
         $labels = CommunicationNav::data()['secondaryLinks']->pluck('label')->all();
         $routes = CommunicationNav::data()['secondaryLinks']->pluck('route')->all();
@@ -77,12 +78,13 @@ class WorkspaceModulesNavigationTest extends TestCase
             'العملاء',
             'القنوات',
             'واتساب',
+            'المنتجات والمخزون',
             'البريد',
         ], $labels);
-        $this->assertNotContains('workspace.chat-catalog.index', $routes);
+        $this->assertContains('workspace.chat-catalog.index', $routes);
         $this->assertNotContains('workspace.products.index', $routes);
         $this->assertNotContains('workspace.inventory.index', $routes);
-        $this->assertFalse(Route::has('workspace.chat-catalog.index'));
+        $this->assertTrue(Route::has('workspace.chat-catalog.index'));
         $this->assertFalse(Route::has('workspace.chat-catalog.settings.edit'));
     }
 

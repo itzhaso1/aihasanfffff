@@ -28,7 +28,6 @@ import 'package:hasim/features/conversations/presentation/widgets/chat_message_b
 import 'package:hasim/features/conversations/presentation/widgets/chat_wallpaper.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_channel_avatar.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_classification_sheet.dart';
-import 'package:hasim/features/conversations/presentation/widgets/conversation_handoff_sheets.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
 import 'package:hasim/features/conversations/providers/desktop_conversation_selection.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
@@ -482,34 +481,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         if (conversation != null &&
             isCompanyUser &&
-            ConversationHandoffValues.canRequest(conversation))
+            ConversationHandoffValues.canEndHandoff(conversation))
           const PopupMenuItem(
-            key: Key('chat-action-request-handoff'),
-            value: 'request_handoff',
-            child: Text('طلب تحويل'),
-          ),
-        if (conversation != null &&
-            isCompanyUser &&
-            ConversationHandoffValues.canAssign(conversation))
-          const PopupMenuItem(
-            key: Key('chat-action-assign-handoff'),
-            value: 'assign_handoff',
-            child: Text('تعيين المحادثة'),
-          ),
-        if (conversation != null &&
-            isCompanyUser &&
-            ConversationHandoffValues.canTakeover(conversation))
-          const PopupMenuItem(
-            key: Key('chat-action-takeover'),
-            value: 'takeover',
-            child: Text('تولي المحادثة'),
-          ),
-        if (conversation != null &&
-            isCompanyUser &&
-            ConversationHandoffValues.canResolve(conversation))
-          const PopupMenuItem(
-            key: Key('chat-action-resolve-handoff'),
-            value: 'resolve_handoff',
+            key: Key('chat-action-end-handoff'),
+            value: 'end_handoff',
             child: Text('إنهاء التحويل'),
           ),
         if (conversation != null &&
@@ -518,7 +493,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           const PopupMenuItem(
             key: Key('chat-action-resume-ai'),
             value: 'resume_ai',
-            child: Text('تفعيل AI'),
+            child: Text('تحويل إلى AI'),
           ),
       ],
     );
@@ -563,27 +538,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (selected == 'classify' && conversation != null) {
       await _openClassification(conversation);
     }
-    if (selected == 'request_handoff') {
-      await _openHandoffRequest();
-    }
-    if (selected == 'assign_handoff') {
-      await _openHandoffAssign();
-    }
-    if (selected == 'takeover' ||
-        selected == 'resolve_handoff' ||
-        selected == 'resume_ai') {
+    if (selected == 'end_handoff' || selected == 'resume_ai') {
       final notifier = ref.read(
         chatControllerProvider(widget.conversationId).notifier,
       );
-      final error = selected == 'takeover'
-          ? await notifier.takeoverHandoff()
-          : selected == 'resolve_handoff'
-          ? await notifier.resolveHandoff()
-          : await notifier.resumeAi();
+      final wasMutating = ref
+          .read(chatControllerProvider(widget.conversationId))
+          .mutating;
+      final Future<String?> request;
+      if (selected == 'resume_ai') {
+        request = notifier.resumeAi();
+      } else if (ConversationHandoffValues.canResolve(conversation!)) {
+        request = notifier.resolveHandoff();
+      } else {
+        request = notifier.takeoverHandoff();
+      }
+      final error = await request;
       if (!mounted) return;
-      ScaffoldMessenger.of(this.context).showSnackBar(
-        SnackBar(content: Text(error ?? 'تم تحديث حالة التحويل')),
-      );
+      if (error != null) {
+        ScaffoldMessenger.of(
+          this.context,
+        ).showSnackBar(SnackBar(content: Text(error)));
+        return;
+      }
+      if (wasMutating) return;
+      ScaffoldMessenger.of(
+        this.context,
+      ).showSnackBar(const SnackBar(content: Text('تم تحديث حالة التحويل')));
     }
   }
 
@@ -616,89 +597,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             }
             return error;
           },
-    );
-  }
-
-  Future<void> _openHandoffRequest() async {
-    if (!ref.read(authControllerProvider).isCompanyUser) return;
-    final notifier = ref.read(
-      chatControllerProvider(widget.conversationId).notifier,
-    );
-    await showHandoffRequestSheet(
-      context: context,
-      submitting: ref
-          .read(chatControllerProvider(widget.conversationId))
-          .mutating,
-      onSubmit: (reason) async {
-        final error = await notifier.requestHandoff(reason: reason);
-        if (error == null && mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('تم طلب التحويل')));
-        }
-        return error;
-      },
-    );
-  }
-
-  Future<void> _openHandoffAssign() async {
-    if (!ref.read(authControllerProvider).isCompanyUser) return;
-    final auth = ref.read(authControllerProvider);
-    final user = auth.user;
-    final targets = <HandoffAssignTarget>[
-      if (user != null)
-        HandoffAssignTarget.staff(userId: user.id, name: user.name),
-    ];
-    String? loadError;
-    try {
-      final engagements = await ref
-          .read(companyWorkerDiscoveryRepositoryProvider)
-          .fetchOpenEngagements();
-      targets.addAll(
-        engagements
-            .where((engagement) => engagement.status == 'active')
-            .map(
-              (engagement) => HandoffAssignTarget.worker(
-                workerEngagementId: engagement.id,
-                name: engagement.workerDisplayName,
-              ),
-            ),
-      );
-    } on ApiException catch (error) {
-      loadError = error.userMessage;
-    } catch (_) {
-      loadError = 'تعذر تحميل ارتباطات العمال.';
-    }
-    if (!mounted) return;
-    final notifier = ref.read(
-      chatControllerProvider(widget.conversationId).notifier,
-    );
-    final conversation = ref
-        .read(chatControllerProvider(widget.conversationId))
-        .conversation;
-    await showHandoffAssignSheet(
-      context: context,
-      targets: targets,
-      loading: false,
-      loadError: loadError,
-      submitting: ref
-          .read(chatControllerProvider(widget.conversationId))
-          .mutating,
-      assignedUserId: conversation?.assignedUserId,
-      assignedWorkerEngagementId: conversation?.assignedWorkerEngagementId,
-      onRetry: () {},
-      onAssign: (target) async {
-        final error = await notifier.assignHandoff(
-          userId: target.userId,
-          workerEngagementId: target.workerEngagementId,
-        );
-        if (error == null && mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('تم تعيين المحادثة')));
-        }
-        return error;
-      },
     );
   }
 

@@ -3,6 +3,7 @@ import 'package:hasim/core/local_db/domain_local_store.dart';
 import 'package:hasim/core/network/api_client.dart';
 import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/features/catalog/data/chat_catalog_models.dart';
+import 'package:hasim/features/catalog/data/chat_catalog_settings_model.dart';
 import 'package:hasim/core/models/models.dart';
 
 class ChatCatalogRepository {

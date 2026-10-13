@@ -64,8 +64,9 @@ class ReferenceResolverTest extends TestCase
             recentMessages: [new ContextMessage('customer', 'أبي فستان سهرة أسود')],
         );
 
-        $this->assertFalse($resolution->resolved);
-        $this->assertSame([], $resolution->productIds);
+        $this->assertTrue($resolution->resolved);
+        $this->assertSame('message_reference', $resolution->source);
+        $this->assertSame([$itemId], $resolution->productIds);
     }
 
     public function test_unresolved_and_cross_workspace_products_are_rejected(): void

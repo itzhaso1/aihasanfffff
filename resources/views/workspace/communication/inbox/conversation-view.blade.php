@@ -26,7 +26,14 @@
     $inboxAllowsCompanyActions = $inboxAllowsCompanyActions ?? true;
     $inboxCanSend = $inboxCanSend ?? true;
     $inboxMessageAction = $inboxMessageAction ?? route('workspace.conversations.messages.store', $activeConversation);
-    $conversationIsOpen = $activeConversation->status === 'open';
+    $conversationIsOpen = $activeConversation->isOpen();
+    $handoffEnum = $activeConversation->handoff_status instanceof \App\Enums\ConversationHandoffStatus
+        ? $activeConversation->handoff_status
+        : (\App\Enums\ConversationHandoffStatus::tryFrom((string) $handoffStatus) ?? \App\Enums\ConversationHandoffStatus::None);
+    $handoffBlocksAi = $handoffEnum->blocksAi();
+    $canConvertToAi = $conversationIsOpen && ! $activeConversation->ai_enabled && ! $handoffBlocksAi;
+    $canEndActiveHandoff = $conversationIsOpen && $handoffBlocksAi;
+    $canTakeControlFromAi = $conversationIsOpen && $activeConversation->ai_enabled && $handoffEnum === \App\Enums\ConversationHandoffStatus::None;
 @endphp
 
 <section class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-[#FCFFFE]">
@@ -92,39 +99,28 @@
         </div>
         </div>
         <div class="hidden max-w-full flex-wrap items-center justify-end gap-2 overflow-x-auto sm:flex">
-            @if($conversationIsOpen)
-            @can('manageHandoff', $activeConversation)
-                @if($workerAssignments->isNotEmpty())
-                    <form method="POST" action="{{ route('workspace.conversations.handoff.assign', $activeConversation) }}" class="flex items-center gap-2">
-                        @csrf
-                        <select name="worker_engagement_id" required class="rounded-lg border-slate-300 text-xs focus:border-[#06C2A4] focus:ring-[#06C2A4]">
-                            <option value="">تعيين عامل مستقل</option>
-                            @foreach($workerAssignments as $workerAssignment)
-                                <option value="{{ $workerAssignment->id }}" @selected($activeConversation->assigned_worker_engagement_id === $workerAssignment->id)>
-                                    {{ $workerAssignment->workerProfile?->display_name ?: 'عامل مستقل' }}
-                                </option>
-                            @endforeach
-                        </select>
-                        <button class="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100">تعيين</button>
-                    </form>
-                @endif
-            @endcan
-            @if($inboxAllowsCompanyActions)
-                <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">
-                    @csrf
-                    <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">تولي المحادثة</button>
-                </form>
-                <form method="POST" action="{{ route('workspace.conversations.handoff.resolve', $activeConversation) }}">
-                    @csrf
-                    <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">إنهاء التحويل</button>
-                </form>
-            @endif
-            @can('resumeAi', $activeConversation)
-                <form method="POST" action="{{ route('workspace.conversations.handoff.resume-ai', $activeConversation) }}">
-                    @csrf
-                    <button type="submit" class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">تفعيل AI</button>
-                </form>
-            @endcan
+            @if($inboxAllowsCompanyActions && $conversationIsOpen)
+                @can('manageHandoff', $activeConversation)
+                    @if($canEndActiveHandoff)
+                        <form method="POST" action="{{ route('workspace.conversations.handoff.resolve', $activeConversation) }}">
+                            @csrf
+                            <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">إنهاء التحويل</button>
+                        </form>
+                    @elseif($canTakeControlFromAi)
+                        <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">
+                            @csrf
+                            <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">إنهاء التحويل</button>
+                        </form>
+                    @endif
+                @endcan
+                @can('resumeAi', $activeConversation)
+                    @if($canConvertToAi)
+                        <form method="POST" action="{{ route('workspace.conversations.handoff.resume-ai', $activeConversation) }}">
+                            @csrf
+                            <button type="submit" class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">تحويل إلى AI</button>
+                        </form>
+                    @endif
+                @endcan
             @endif
             @if($inboxAllowsCompanyActions)
                 <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}" class="flex items-center gap-2">

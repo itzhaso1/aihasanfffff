@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim/core/models/models.dart';
+import 'package:hasim/features/catalog/data/chat_catalog_models.dart';
+import 'package:hasim/features/catalog/presentation/catalog_categories_screen.dart';
+import 'package:hasim/features/catalog/presentation/catalog_category_form_screen.dart';
+import 'package:hasim/features/catalog/presentation/catalog_form_screen.dart';
+import 'package:hasim/features/catalog/presentation/catalog_list_screen.dart';
 import 'package:hasim/features/auth/presentation/forgot_password_screen.dart';
 import 'package:hasim/features/auth/presentation/login_screen.dart';
 import 'package:hasim/features/auth/presentation/register_screen.dart';
@@ -344,6 +349,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 body: Center(child: Text('لا توجد قصص للعرض')),
               );
             },
+          ),
+          GoRoute(
+            path: '/catalog',
+            builder: (context, state) => CatalogListScreen(
+              mode: state.uri.queryParameters['mode'] ?? 'catalog',
+            ),
+          ),
+          GoRoute(
+            path: '/catalog/form',
+            builder: (context, state) {
+              final item = state.extra is ChatCatalogItemModel
+                  ? state.extra as ChatCatalogItemModel
+                  : null;
+              return CatalogFormScreen(item: item);
+            },
+          ),
+          GoRoute(
+            path: '/catalog/categories',
+            builder: (context, state) => const CatalogCategoriesScreen(),
+          ),
+          GoRoute(
+            path: '/catalog/categories/form',
+            builder: (context, state) => CatalogCategoryFormScreen(
+              category: state.extra is ChatCatalogCategoryModel
+                  ? state.extra as ChatCatalogCategoryModel
+                  : null,
+            ),
           ),
           GoRoute(
             path: '/contacts',

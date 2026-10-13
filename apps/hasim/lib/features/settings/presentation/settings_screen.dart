@@ -17,6 +17,7 @@ import 'package:hasim/features/auth/providers/auth_controller.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
 import 'package:hasim/features/home/providers/home_controller.dart';
 import 'package:hasim/features/more/presentation/security_sessions_screen.dart';
+import 'package:hasim/features/catalog/presentation/catalog_list_screen.dart';
 import 'package:hasim/features/settings/presentation/widgets/display_appearance_settings.dart';
 import 'package:hasim/features/settings/presentation/ai_settings_screen.dart';
 import 'package:hasim/features/settings/presentation/channels_screen.dart';
@@ -52,6 +53,7 @@ enum _SettingsId {
   privacyLock,
   channels,
   notifications,
+  products,
   ai,
   appearance,
   workerSalesReference,
@@ -179,6 +181,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         icon: Icons.notifications_outlined,
         title: 'تفضيلات الإشعارات',
         route: '/notification-preferences',
+      ),
+      const _SettingsItem(
+        id: _SettingsId.products,
+        icon: Icons.inventory_2_outlined,
+        title: 'المنتجات والمخزون',
+        subtitle: 'عرض المنتجات والتصنيفات والكميات كمرجع للذكاء الاصطناعي',
+        route: '/catalog',
       ),
       const _SettingsItem(
         id: _SettingsId.ai,
@@ -1199,6 +1208,11 @@ class _SettingsDetailPane extends StatelessWidget {
       _SettingsId.notifications => const _EmbeddedDetail(
         title: 'تفضيلات الإشعارات',
         child: NotificationPreferencesScreen(embedded: true),
+      ),
+      _SettingsId.products => const _EmbeddedDetail(
+        title: 'المنتجات والمخزون',
+        subtitle: 'عرض المنتجات والتصنيفات والكميات كمرجع للذكاء الاصطناعي',
+        child: CatalogListScreen(embedded: true),
       ),
       _SettingsId.ai => const _EmbeddedDetail(
         title: 'إعدادات الذكاء الاصطناعي',

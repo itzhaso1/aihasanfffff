@@ -361,7 +361,9 @@ class WorkerInboxTest extends TestCase
             ->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
             ->assertSee('id="inbox-shell"', false)
-            ->assertSee('تولي المحادثة', false)
+            ->assertSee('إنهاء التحويل', false)
+            ->assertDontSee('تعيين عامل مستقل', false)
+            ->assertDontSee('تولي المحادثة', false)
             ->assertSee(route('workspace.conversations.messages.store', $conversation), false);
 
         $this->actingAs($worker)
@@ -373,6 +375,8 @@ class WorkerInboxTest extends TestCase
             ->assertSee('Customer '.$engagement->id)
             ->assertSee('Hidden From Worker')
             ->assertDontSee('تولي المحادثة', false)
+            ->assertDontSee('تعيين عامل مستقل', false)
+            ->assertDontSee('تحويل إلى AI', false)
             ->assertDontSee(route('workspace.conversations.messages.store', $conversation), false)
             ->assertDontSee(route('workspace.conversations.handoff.takeover', $conversation), false);
 

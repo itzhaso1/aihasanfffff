@@ -39,16 +39,27 @@ abstract final class ConversationHandoffValues {
 
   static bool canResolve(ConversationModel conversation) =>
       isOpen(conversation) &&
-      const ['requested', 'queued', 'assigned', 'active'].contains(
-        conversation.handoffStatus,
-      );
+      const [
+        'requested',
+        'queued',
+        'assigned',
+        'active',
+      ].contains(conversation.handoffStatus);
 
   static bool canResumeAi(ConversationModel conversation) =>
       isOpen(conversation) &&
       !conversation.aiEnabled &&
-      !const ['requested', 'queued', 'assigned', 'active'].contains(
-        conversation.handoffStatus,
-      );
+      !const [
+        'requested',
+        'queued',
+        'assigned',
+        'active',
+      ].contains(conversation.handoffStatus);
+
+  static bool canEndHandoff(ConversationModel conversation) =>
+      isOpen(conversation) &&
+      (canResolve(conversation) ||
+          (conversation.aiEnabled && conversation.handoffStatus == 'none'));
 
   static String reasonLabel(String value) => switch (value) {
     'customer_request' => 'طلب العميل',

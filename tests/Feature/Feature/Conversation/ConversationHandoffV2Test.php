@@ -341,11 +341,97 @@ class ConversationHandoffV2Test extends TestCase
 
         $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
+            ->assertSee('مفتوحة', false)
+            ->assertDontSee('تحويل إلى AI', false)
+            ->assertDontSee('إنهاء التحويل', false)
+            ->assertDontSee('تعيين عامل مستقل', false)
+            ->assertDontSee('تولي المحادثة', false)
             ->assertDontSee(route('workspace.conversations.handoff.takeover', $conversation), false)
+            ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false)
+            ->assertDontSee(route('workspace.conversations.handoff.resolve', $conversation), false);
+    }
+
+    public function test_inbox_hides_ai_actions_on_archived_conversation(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'status' => 'archived',
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Resolved->value,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertSee('مفتوحة', false)
+            ->assertDontSee('تحويل إلى AI', false)
+            ->assertDontSee('إنهاء التحويل', false)
             ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false);
     }
 
-    public function test_inbox_shows_handoff_actions_on_open_conversation(): void
+    public function test_inbox_shows_convert_to_ai_when_resume_would_succeed(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Resolved->value,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertSee('تحويل إلى AI', false)
+            ->assertSee(route('workspace.conversations.handoff.resume-ai', $conversation), false)
+            ->assertDontSee('إنهاء التحويل', false)
+            ->assertDontSee('تعيين عامل مستقل', false)
+            ->assertDontSee('تولي المحادثة', false)
+            ->assertDontSee(route('workspace.conversations.handoff.takeover', $conversation), false)
+            ->assertDontSee(route('workspace.conversations.handoff.assign', $conversation), false);
+    }
+
+    public function test_inbox_hides_convert_to_ai_when_resolved_and_ai_already_enabled(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => true,
+            'handoff_status' => ConversationHandoffStatus::Resolved->value,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertDontSee('تحويل إلى AI', false)
+            ->assertDontSee('إنهاء التحويل', false)
+            ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false)
+            ->assertDontSee(route('workspace.conversations.handoff.takeover', $conversation), false);
+    }
+
+    public function test_inbox_shows_end_handoff_when_human_handoff_is_active(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Queued->value,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertSee('إنهاء التحويل', false)
+            ->assertSee(route('workspace.conversations.handoff.resolve', $conversation), false)
+            ->assertDontSee('تحويل إلى AI', false)
+            ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false);
+    }
+
+    public function test_inbox_shows_end_handoff_takeover_when_ai_is_enabled(): void
     {
         [$user, $workspace, $conversation] = $this->seedConversation();
 
@@ -354,8 +440,71 @@ class ConversationHandoffV2Test extends TestCase
 
         $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
+            ->assertSee('إنهاء التحويل', false)
             ->assertSee(route('workspace.conversations.handoff.takeover', $conversation), false)
-            ->assertSee(route('workspace.conversations.handoff.resume-ai', $conversation), false);
+            ->assertDontSee('تحويل إلى AI', false)
+            ->assertDontSee('تولي المحادثة', false)
+            ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false);
+    }
+
+    public function test_agent_does_not_see_convert_to_ai(): void
+    {
+        [, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::None->value,
+        ]);
+        $agent = $this->workspaceAgent($workspace);
+
+        $this->actingAs($agent);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertDontSee('تحويل إلى AI', false)
+            ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false);
+    }
+
+    public function test_web_resume_ai_enables_ai_from_backend(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Resolved->value,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->from(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->post(route('workspace.conversations.handoff.resume-ai', $conversation))
+            ->assertRedirect();
+
+        $conversation->refresh();
+        $this->assertTrue((bool) $conversation->ai_enabled);
+        $this->assertSame(ConversationHandoffStatus::None, $conversation->handoff_status);
+        $this->assertSame('open', $conversation->status);
+    }
+
+    public function test_web_resolve_handoff_returns_control_without_closing_conversation(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Queued->value,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->from(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->post(route('workspace.conversations.handoff.resolve', $conversation))
+            ->assertRedirect();
+
+        $conversation->refresh();
+        $this->assertSame(ConversationHandoffStatus::Resolved, $conversation->handoff_status);
+        $this->assertSame('open', $conversation->status);
+        $this->assertFalse((bool) $conversation->ai_enabled);
     }
 
     public function test_inbox_handoff_filter(): void

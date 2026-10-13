@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\Mobile\V1\BrandingController;
 use App\Http\Controllers\Api\Mobile\V1\ChannelConnectController;
 use App\Http\Controllers\Api\Mobile\V1\ChannelController;
 use App\Http\Controllers\Api\Mobile\V1\ChatCatalogController;
+use App\Http\Controllers\Api\Mobile\V1\ChatCatalogDigitalInventoryController;
+use App\Http\Controllers\Api\Mobile\V1\ChatCatalogProductTemplateController;
 use App\Http\Controllers\Api\Mobile\V1\CommerceCartController;
 use App\Http\Controllers\Api\Mobile\V1\CommerceIntelligenceController;
 use App\Http\Controllers\Api\Mobile\V1\CommerceOrderController;
@@ -278,8 +280,40 @@ Route::middleware([
     Route::get('/branding', [BrandingController::class, 'show']);
 
     Route::middleware('workspace.feature:products')->group(function (): void {
+        Route::middleware('retired.digital-products')->group(function (): void {
+            Route::get('/catalog/digital-pools', [ChatCatalogDigitalInventoryController::class, 'pools']);
+            Route::post('/catalog/digital-pools', [ChatCatalogDigitalInventoryController::class, 'storePool'])->middleware('throttle:mobile-write');
+            Route::get('/catalog/digital-pools/{pool}/units', [ChatCatalogDigitalInventoryController::class, 'units']);
+            Route::post('/catalog/digital-pools/{pool}/units/import', [ChatCatalogDigitalInventoryController::class, 'importUnits'])->middleware('throttle:mobile-write');
+            Route::post('/catalog/digital-pools/{pool}/reserve', [ChatCatalogDigitalInventoryController::class, 'reserve'])->middleware('throttle:mobile-write');
+            Route::delete('/catalog/digital-pools/{pool}', [ChatCatalogDigitalInventoryController::class, 'destroyPool'])->middleware('throttle:mobile-write');
+            Route::post('/catalog/digital-units/{unit}/release', [ChatCatalogDigitalInventoryController::class, 'release'])->middleware('throttle:mobile-write');
+            Route::delete('/catalog/digital-units/{unit}', [ChatCatalogDigitalInventoryController::class, 'destroyUnit'])->middleware('throttle:mobile-write');
+            Route::post('/catalog/digital-units/{unit}/consume', [ChatCatalogDigitalInventoryController::class, 'consume'])->middleware('throttle:mobile-write');
+            Route::patch('/catalog/digital-units/{unit}/status', [ChatCatalogDigitalInventoryController::class, 'transition'])->middleware('throttle:mobile-write');
+            Route::patch('/catalog/digital-units/{unit}/secret', [ChatCatalogDigitalInventoryController::class, 'replaceSecret'])->middleware('throttle:mobile-write');
+        });
+        Route::get('/catalog/search', [ChatCatalogController::class, 'search'])->middleware('throttle:mobile-search');
+        Route::get('/catalog/categories', [ChatCatalogController::class, 'categories']);
+        Route::post('/catalog/categories', [ChatCatalogController::class, 'storeCategory'])->middleware('throttle:mobile-write');
+        Route::patch('/catalog/categories/{category}', [ChatCatalogController::class, 'updateCategory'])->middleware('throttle:mobile-write');
+        Route::post('/catalog/categories/{category}', [ChatCatalogController::class, 'updateCategory'])->middleware('throttle:mobile-write');
+        Route::delete('/catalog/categories/{category}', [ChatCatalogController::class, 'destroyCategory'])->middleware('throttle:mobile-write');
+        Route::get('/catalog/product-templates', [ChatCatalogProductTemplateController::class, 'index']);
+        Route::post('/catalog/product-templates', [ChatCatalogProductTemplateController::class, 'store'])->middleware('throttle:mobile-write');
+        Route::get('/catalog/product-templates/{template}', [ChatCatalogProductTemplateController::class, 'show']);
+        Route::post('/catalog/product-templates/{template}/clone', [ChatCatalogProductTemplateController::class, 'clone'])->middleware('throttle:mobile-write');
+        Route::get('/catalog/{item}/product-template', [ChatCatalogProductTemplateController::class, 'showForItem']);
+        Route::put('/catalog/{item}/product-template', [ChatCatalogProductTemplateController::class, 'assign'])->middleware('throttle:mobile-write');
         Route::get('/catalog', [ChatCatalogController::class, 'index']);
+        Route::post('/catalog', [ChatCatalogController::class, 'store'])->middleware('throttle:mobile-write');
         Route::get('/catalog/{item}', [ChatCatalogController::class, 'show']);
+        Route::patch('/catalog/{item}', [ChatCatalogController::class, 'update'])->middleware('throttle:mobile-write');
+        Route::post('/catalog/{item}', [ChatCatalogController::class, 'update'])->middleware('throttle:mobile-write');
+        Route::patch('/catalog/{item}/inventory', [ChatCatalogController::class, 'updateInventory'])->middleware('throttle:mobile-write');
+        Route::post('/catalog/{item}/activate', [ChatCatalogController::class, 'activate'])->middleware('throttle:mobile-write');
+        Route::post('/catalog/{item}/deactivate', [ChatCatalogController::class, 'deactivate'])->middleware('throttle:mobile-write');
+        Route::delete('/catalog/{item}', [ChatCatalogController::class, 'destroy'])->middleware('throttle:mobile-write');
     });
 
     Route::middleware(['workspace.feature:products', 'workspace.feature:orders'])->group(function (): void {

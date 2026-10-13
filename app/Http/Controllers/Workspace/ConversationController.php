@@ -13,14 +13,10 @@ use App\Models\Conversation;
 use App\Models\Customer;
 use App\Models\Message;
 use App\Models\MessageAttachment;
-use App\Models\Worker\WorkerEngagement;
-use App\Models\Worker\WorkerProfile;
 use App\Services\Conversation\ConversationAiEligibilityService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Mobile\MessageAttachmentService;
-use App\Services\Worker\WorkerInboxService;
 use App\Services\Workforce\WorkforceInboxAttribution;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -188,7 +184,6 @@ class ConversationController extends Controller
         return view('workspace.conversations.index', [
             'conversations' => $conversations,
             'activeConversation' => $activeConversation,
-            'workerAssignments' => $this->workerAssignments(),
             'channelFilter' => $channelFilter,
             'availableChannels' => [
                 'whatsapp' => 'WhatsApp',
@@ -357,30 +352,5 @@ class ConversationController extends Controller
             'ig' => 'instagram',
             default => $normalized !== '' ? $normalized : 'manual',
         };
-    }
-
-    /**
-     * Return only active, verified engagements already granted Inbox read access.
-     *
-     * @return Collection<int, WorkerEngagement>
-     */
-    private function workerAssignments(): Collection
-    {
-        return WorkerEngagement::query()
-            ->where('status', 'active')
-            ->whereHas('workerProfile', function ($query): void {
-                $query
-                    ->where('verification_status', WorkerProfile::VERIFICATION_APPROVED)
-                    ->where('lifecycle_status', WorkerProfile::LIFECYCLE_VERIFIED);
-            })
-            ->whereHas('permissions', function ($query): void {
-                $query
-                    ->where('capability_key', WorkerInboxService::READ_CAPABILITY)
-                    ->where('allowed', true)
-                    ->whereHas('capabilityDefinition', fn ($definition): mixed => $definition->where('is_active', true));
-            })
-            ->with('workerProfile:id,display_name')
-            ->orderBy('id')
-            ->get();
     }
 }
