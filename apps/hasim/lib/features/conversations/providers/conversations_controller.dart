@@ -896,10 +896,9 @@ class ChatController extends StateNotifier<ChatState> {
     }
     bumpInboxLocalRevision(_ref);
     try {
-      await _ref.read(conversationRepositoryProvider).markRead(
-        conversationId,
-        workspaceId: workspaceId,
-      );
+      await _ref
+          .read(conversationRepositoryProvider)
+          .markRead(conversationId, workspaceId: workspaceId);
     } catch (_) {
       // Local unread is already cleared; the next open retries the server.
     }
@@ -1393,6 +1392,19 @@ class ChatController extends StateNotifier<ChatState> {
     );
   }
 
+  Future<String?> setAiEnabled({required bool enabled}) {
+    if (!_companyInboxWriteAllowed()) {
+      return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
+    }
+    return _applyServerConversation(
+      (repo, workspaceId) => repo.setAiEnabled(
+        conversationId,
+        enabled: enabled,
+        workspaceId: workspaceId,
+      ),
+    );
+  }
+
   bool _companyInboxWriteAllowed() {
     return _ref.read(authControllerProvider).isCompanyUser;
   }
@@ -1449,10 +1461,9 @@ class ChatController extends StateNotifier<ChatState> {
 
   Future<void> _syncConversationFromServer(InboxScope scope) async {
     try {
-      final remote = await _ref.read(conversationRepositoryProvider).getById(
-        conversationId,
-        workspaceId: scope.workspaceId,
-      );
+      final remote = await _ref
+          .read(conversationRepositoryProvider)
+          .getById(conversationId, workspaceId: scope.workspaceId);
       if (!_canCommit(scope)) {
         return;
       }

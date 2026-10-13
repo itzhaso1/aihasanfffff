@@ -225,6 +225,7 @@ Route::middleware([
 
     Route::post('/conversations/{conversation}/archive', [ConversationController::class, 'archive']);
     Route::post('/conversations/{conversation}/mute', [ConversationController::class, 'mute']);
+    Route::patch('/conversations/{conversation}/ai', [ConversationController::class, 'updateAi']);
     Route::patch('/conversations/{conversation}/classification', [ConversationController::class, 'updateClassification']);
     Route::post('/conversations/{conversation}/handoff', [ConversationHandoffController::class, 'requestHandoff']);
     Route::post('/conversations/{conversation}/assign', [ConversationHandoffController::class, 'assign']);

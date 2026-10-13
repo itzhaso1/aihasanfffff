@@ -5,6 +5,6 @@
     "model_invocations": 1500,
     "guard_invocations": 1500,
     "tool_invocations": 0,
-    "duration_ms": 53593,
+    "duration_ms": 94101,
     "note": "Infrastructure only. Not an AI quality score."
 }

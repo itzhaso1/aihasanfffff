@@ -180,4 +180,21 @@ void main() {
     expect(setup.calls.single.path, 'conversations/7/resume-ai');
     expect(model.aiEnabled, isTrue);
   });
+
+  test('set AI enabled patches the mobile contract path', () async {
+    final setup = await repository(
+      data: {
+        'id': 7,
+        'channel': 'whatsapp',
+        'status': 'open',
+        'handoff_status': 'none',
+        'ai_enabled': false,
+      },
+    );
+    final model = await setup.repo.setAiEnabled(7, enabled: false);
+    expect(setup.calls.single.method, 'PATCH');
+    expect(setup.calls.single.path, 'conversations/7/ai');
+    expect(setup.calls.single.data, {'ai_enabled': false});
+    expect(model.aiEnabled, isFalse);
+  });
 }

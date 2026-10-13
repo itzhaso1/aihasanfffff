@@ -8,4 +8,4 @@ This run validates infrastructure only. It is not an AI quality, accuracy, or Ge
 - Database: sqlite :memory:
 - Completed: 1500
 - Errors: 0
-- Duration ms: 53593
+- Duration ms: 94101

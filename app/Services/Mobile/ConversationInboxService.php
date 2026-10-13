@@ -257,6 +257,14 @@ class ConversationInboxService
         return $state;
     }
 
+    public function toggleAi(Conversation $conversation, bool $enabled): Conversation
+    {
+        $updated = $this->conversationService->toggleAi($conversation, $enabled);
+        event(new ConversationUpdated($updated));
+
+        return $updated;
+    }
+
     public function messages(Conversation $conversation, int $perPage = 30): CursorPaginator
     {
         $perPage = max(1, min(50, $perPage));

@@ -92,11 +92,7 @@ class ConversationRepository {
   }) {
     final store = _local;
     if (store == null) return const Stream.empty();
-    return store.watchLatestMessages(
-      workspaceId,
-      conversationId,
-      limit: limit,
-    );
+    return store.watchLatestMessages(workspaceId, conversationId, limit: limit);
   }
 
   Future<void> persistConversations(
@@ -549,6 +545,22 @@ class ConversationRepository {
       res.data,
       workspaceId: workspaceId,
       fallback: res.message ?? 'تعذر تفعيل الذكاء الاصطناعي.',
+    );
+  }
+
+  Future<ConversationModel> setAiEnabled(
+    int conversationId, {
+    required bool enabled,
+    int? workspaceId,
+  }) async {
+    final res = await _api.patch(
+      '/conversations/$conversationId/ai',
+      body: {'ai_enabled': enabled},
+    );
+    return _conversationWrite(
+      res.data,
+      workspaceId: workspaceId,
+      fallback: res.message ?? 'تعذر تحديث رد الذكاء الاصطناعي.',
     );
   }
 

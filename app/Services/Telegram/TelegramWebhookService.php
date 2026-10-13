@@ -147,12 +147,16 @@ class TelegramWebhookService
                 $conversationMetadata['unread_count'] = (int) ($conversationMetadata['unread_count'] ?? 0) + 1;
             }
 
-            $conversation->update([
+            $conversationAttributes = [
                 'customer_id' => $conversation->customer_id ?: $customer->id,
                 'channel' => 'telegram',
                 'last_message_at' => $message->created_at,
                 'metadata' => $conversationMetadata,
-            ]);
+            ];
+            if ($message->wasRecentlyCreated) {
+                $conversationAttributes = $conversation->attributesForInboundCustomerMessage($conversationAttributes);
+            }
+            $conversation->update($conversationAttributes);
 
             if ($message->wasRecentlyCreated) {
                 $customer->update(['last_conversation_at' => $message->created_at]);

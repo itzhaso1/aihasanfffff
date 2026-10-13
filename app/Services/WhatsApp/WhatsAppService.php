@@ -220,12 +220,16 @@ class WhatsAppService
                 $conversationMetadata['phone_number_id'] = $phoneNumberId;
             }
 
-            $conversation->update([
+            $conversationAttributes = [
                 'customer_id' => $conversation->customer_id ?: $customer->id,
                 'channel' => 'whatsapp',
                 'last_message_at' => $message->created_at,
                 'metadata' => $conversationMetadata,
-            ]);
+            ];
+            if ($message->wasRecentlyCreated) {
+                $conversationAttributes = $conversation->attributesForInboundCustomerMessage($conversationAttributes);
+            }
+            $conversation->update($conversationAttributes);
 
             if ($message->wasRecentlyCreated) {
                 $customer->update([

@@ -53,10 +53,14 @@ class ConversationService
             $metadata['unread_count'] = max(0, $unreadCount);
             $metadata['channel_source'] = $metadata['channel_source'] ?? $this->resolveDisplayChannel($conversation);
 
-            $conversation->update([
+            $conversationAttributes = [
                 'last_message_at' => $message->created_at,
                 'metadata' => $metadata,
-            ]);
+            ];
+            if ($message->direction === 'inbound') {
+                $conversationAttributes = $conversation->attributesForInboundCustomerMessage($conversationAttributes);
+            }
+            $conversation->update($conversationAttributes);
 
             if ($conversation->customer) {
                 $conversation->customer->update([

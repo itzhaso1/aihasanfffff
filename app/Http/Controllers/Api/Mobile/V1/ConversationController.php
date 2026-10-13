@@ -215,6 +215,23 @@ class ConversationController extends MobileController
         return $this->ok(message: $muted ? 'تم كتم المحادثة.' : 'تم إلغاء كتم المحادثة.');
     }
 
+    public function updateAi(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('update', $conversation);
+
+        $validated = $request->validate([
+            'ai_enabled' => ['required', 'boolean'],
+        ]);
+
+        $enabled = (bool) $validated['ai_enabled'];
+        $conversation = $this->conversationInboxService->toggleAi($conversation, $enabled);
+
+        return $this->ok(
+            new ConversationResource($conversation->load(['customer', 'assignedUser'])),
+            message: $enabled ? 'تم تشغيل رد الذكاء الاصطناعي.' : 'تم إيقاف رد الذكاء الاصطناعي.',
+        );
+    }
+
     public function updateClassification(Request $request, Conversation $conversation): JsonResponse
     {
         $this->authorize('update', $conversation);

@@ -81,6 +81,41 @@ class FacebookWebhookInboundTest extends TestCase
         });
     }
 
+    public function test_inbound_message_reopens_an_archived_conversation_and_queues_ai(): void
+    {
+        [$workspace] = $this->workspaceWithFacebookPage('112233445566778');
+        $senderId = '998877665544332';
+        $customer = Customer::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'Facebook User',
+            'phone' => 'fb-'.$senderId,
+            'client_reference' => 'facebook:'.$senderId,
+        ]);
+        $conversation = Conversation::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'customer_id' => $customer->id,
+            'channel' => 'facebook_messenger',
+            'external_id' => 'facebook:'.$senderId,
+            'status' => 'archived',
+            'ai_enabled' => true,
+            'handoff_status' => 'resolved',
+        ]);
+
+        $payload = $this->facebookTextPayload(
+            pageId: '112233445566778',
+            senderId: $senderId,
+            messageId: 'mid.fb.reopen',
+            text: 'هلا كيفك',
+        );
+
+        $this->postMetaWebhook($payload, 'meta_facebook_secret')->assertAccepted();
+
+        $this->assertSame('open', $conversation->fresh()->status);
+        Bus::assertDispatched(ProcessAIResponse::class, function (ProcessAIResponse $job) use ($conversation): bool {
+            return $job->conversationId === $conversation->id;
+        });
+    }
+
     /**
      * @return array{0: Workspace}
      */

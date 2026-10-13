@@ -88,4 +88,20 @@ class Conversation extends WorkspaceScopedModel
     {
         return (string) $this->status === 'open';
     }
+
+    /**
+     * New customer messages bring archived/closed threads back to the open inbox
+     * so auto-reply can run when AI is enabled.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    public function attributesForInboundCustomerMessage(array $attributes): array
+    {
+        if (! $this->isOpen() && in_array((string) $this->status, ['closed', 'archived'], true)) {
+            $attributes['status'] = 'open';
+        }
+
+        return $attributes;
+    }
 }

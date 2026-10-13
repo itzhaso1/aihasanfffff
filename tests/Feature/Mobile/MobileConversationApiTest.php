@@ -281,6 +281,54 @@ class MobileConversationApiTest extends TestCase
         $this->assertFalse((bool) $unmuted->json('data.muted'));
     }
 
+    public function test_toggle_ai_reply_persists_on_the_conversation(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [$user, $workspace, $token] = $this->authMember('toggle-ai@example.com');
+        $conversation = $this->makeConversation($workspace);
+        $headers = ['X-Workspace-Id' => (string) $workspace->id];
+
+        $this->assertTrue((bool) $conversation->fresh()->ai_enabled);
+
+        $disabled = $this->withToken($token)
+            ->withHeaders($headers)
+            ->patchJson("/api/mobile/v1/conversations/{$conversation->id}/ai", [
+                'ai_enabled' => false,
+            ])
+            ->assertOk();
+
+        $this->assertFalse((bool) $disabled->json('data.ai_enabled'));
+        $this->assertFalse((bool) $conversation->fresh()->ai_enabled);
+
+        $enabled = $this->withToken($token)
+            ->withHeaders($headers)
+            ->patchJson("/api/mobile/v1/conversations/{$conversation->id}/ai", [
+                'ai_enabled' => true,
+            ])
+            ->assertOk();
+
+        $this->assertTrue((bool) $enabled->json('data.ai_enabled'));
+        $this->assertTrue((bool) $conversation->fresh()->ai_enabled);
+    }
+
+    public function test_toggle_ai_on_foreign_workspace_conversation_is_forbidden(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [$userA, $workspaceA, $tokenA] = $this->authMember('toggle-ai-a@example.com');
+        [$userB, $workspaceB] = $this->makeMember('toggle-ai-b@example.com');
+        $conversationB = $this->makeConversation($workspaceB);
+
+        $response = $this->withToken($tokenA)
+            ->withHeader('X-Workspace-Id', (string) $workspaceA->id)
+            ->patchJson("/api/mobile/v1/conversations/{$conversationB->id}/ai", [
+                'ai_enabled' => false,
+            ]);
+
+        $this->assertContains($response->status(), [403, 404]);
+        $this->assertNotEquals(200, $response->status());
+        $this->assertTrue((bool) $conversationB->fresh()->ai_enabled);
+    }
+
     public function test_archive_on_foreign_workspace_conversation_is_forbidden(): void
     {
         $this->seed(FoundationSeeder::class);
