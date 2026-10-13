@@ -3,6 +3,7 @@
 namespace Tests\Feature\Feature\Platform;
 
 use App\Models\PlatformAdmin;
+use App\Models\PlatformAiSetting;
 use App\Models\User;
 use App\Services\AI\AiSafety;
 use App\Services\Platform\PlatformAiConfiguration;
@@ -107,7 +108,13 @@ class PlatformAiModelSettingsTest extends TestCase
 
     public function test_platform_uses_config_default_when_selected_and_fallback_models_leave_allow_list(): void
     {
-        $this->setPlatformAi('google_ai_studio', 'gemini-not-allowed');
+        $this->setPlatformAi('google_ai_studio', 'gemini-2.5-flash');
+        PlatformAiSetting::query()->first()?->update([
+            'provider' => 'google_ai_studio',
+            'model' => 'gemini-not-allowed',
+            'fallback_provider' => null,
+            'fallback_model' => null,
+        ]);
 
         app(PlatformAiConfiguration::class)->forget();
 
