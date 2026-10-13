@@ -5,11 +5,18 @@ return [
     // Catalog of providers/models an admin may select. Runtime uses Platform Admin only.
     'allowed_providers' => ['google_ai_studio', 'openai'],
     'allowed_models' => [
-        'google_ai_studio' => array_values(array_filter([
+        'google_ai_studio' => array_values(array_unique(array_filter([
             env('GEMINI_MODEL', 'gemini-2.5-flash'),
             'gemini-2.5-flash',
+            'gemini-2.5-flash-lite',
             'gemini-2.0-flash',
-        ])),
+            'gemini-3-flash-preview',
+            'gemini-3.1-flash-lite',
+            'gemini-3.5-flash-lite',
+            'gemini-3.6-flash',
+            'gemini-3.7-flash',
+            'gemini-3.8-flash',
+        ]))),
         'openai' => array_values(array_filter([
             env('OPENAI_MODEL', 'gpt-4o-mini'),
             'gpt-4o-mini',

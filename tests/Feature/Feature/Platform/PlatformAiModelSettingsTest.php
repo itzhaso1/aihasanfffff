@@ -34,7 +34,11 @@ class PlatformAiModelSettingsTest extends TestCase
             ->assertOk()
             ->assertSee('إعداد نموذج الذكاء الاصطناعي', false)
             ->assertSee('الموديل المعتمد', false)
-            ->assertSee('احتياطي المنصة', false);
+            ->assertSee('احتياطي المنصة', false)
+            ->assertSee('gemini-2.5-flash', false)
+            ->assertSee('gemini-2.5-flash-lite', false)
+            ->assertSee('gemini-3.6-flash', false)
+            ->assertSee('gemini-3.8-flash', false);
 
         $this->actingAs($admin, 'platform_admin')
             ->put(route('platform.ai.update'), [
@@ -55,6 +59,39 @@ class PlatformAiModelSettingsTest extends TestCase
         $this->assertSame('gpt-4o-mini', app(AiSafety::class)->resolveModel('google_ai_studio', 'gemini-2.0-flash'));
     }
 
+    public function test_platform_admin_gemini_catalog_includes_current_text_models(): void
+    {
+        $admin = PlatformAdmin::factory()->create();
+        $gemini = collect(app(PlatformAiConfiguration::class)->catalog())
+            ->firstWhere('id', 'google_ai_studio');
+
+        $this->assertIsArray($gemini);
+        foreach ([
+            'gemini-2.5-flash',
+            'gemini-2.5-flash-lite',
+            'gemini-3-flash-preview',
+            'gemini-3.1-flash-lite',
+            'gemini-3.5-flash-lite',
+            'gemini-3.6-flash',
+            'gemini-3.7-flash',
+            'gemini-3.8-flash',
+        ] as $model) {
+            $this->assertContains($model, $gemini['models']);
+        }
+        $this->assertNotContains('gemini-3.5-flash', $gemini['models']);
+
+        $this->actingAs($admin, 'platform_admin')
+            ->put(route('platform.ai.update'), [
+                'provider' => 'google_ai_studio',
+                'model' => 'gemini-3.8-flash',
+            ])
+            ->assertRedirect(route('platform.ai.edit'));
+
+        $selected = app(AiSafety::class)->selected();
+        $this->assertSame('google_ai_studio', $selected->provider);
+        $this->assertSame('gemini-3.8-flash', $selected->model);
+    }
+
     public function test_platform_fallback_is_used_when_selected_model_leaves_the_allow_list(): void
     {
         $this->setPlatformAi('openai', 'gpt-4o-mini', 'google_ai_studio', 'gemini-2.5-flash');
@@ -70,7 +107,7 @@ class PlatformAiModelSettingsTest extends TestCase
 
     public function test_platform_uses_config_default_when_selected_and_fallback_models_leave_allow_list(): void
     {
-        $this->setPlatformAi('google_ai_studio', 'gemini-3.6-flash');
+        $this->setPlatformAi('google_ai_studio', 'gemini-not-allowed');
 
         app(PlatformAiConfiguration::class)->forget();
 
