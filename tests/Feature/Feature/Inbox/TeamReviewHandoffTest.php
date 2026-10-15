@@ -55,6 +55,49 @@ class TeamReviewHandoffTest extends TestCase
             ->assertSee('تحتاج مراجعة من الفريق', false);
     }
 
+    public function test_an_ai_promise_to_transfer_is_recorded_when_the_customer_writes_again(): void
+    {
+        [, , $conversation] = $this->conversation();
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $conversation->workspace_id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'outbound',
+            'message_type' => 'text',
+            'content' => 'أبشر بحولك على الفريق وهم بيكملون معك',
+            'ai_generated' => true,
+        ]);
+
+        $this->assertTrue(app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage(
+            $conversation,
+            $this->inbound($conversation, 'هات وصفه'),
+        ));
+
+        $fresh = $conversation->fresh();
+        $this->assertTrue($fresh->handoffStatusEnum()->blocksAi());
+        $this->assertFalse($fresh->isAiReplying());
+    }
+
+    public function test_a_normal_ai_answer_does_not_transfer_the_next_message(): void
+    {
+        [, , $conversation] = $this->conversation();
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $conversation->workspace_id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'outbound',
+            'message_type' => 'text',
+            'content' => 'ما عندي حاليا إلا كتاب تعلم Excel للمبتدئين وسعره 10 ريال',
+            'ai_generated' => true,
+        ]);
+
+        $this->assertFalse(app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage(
+            $conversation,
+            $this->inbound($conversation, 'هات وصفه'),
+        ));
+        $this->assertTrue($conversation->fresh()->isAiReplying());
+    }
+
     public function test_a_staff_decision_opens_team_review_and_shows_the_badge(): void
     {
         [$user, $workspace, $conversation] = $this->conversation();

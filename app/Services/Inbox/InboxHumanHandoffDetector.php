@@ -33,6 +33,9 @@ final class InboxHumanHandoffDetector
         'موظف لو سمحت',
         'بدي انسان',
         'بدي إنسان',
+        'ابي انسان',
+        'أبي إنسان',
+        'ابغى انسان',
         'أريد موظف',
         'اريد موظف',
         'أريد شخص',
@@ -72,11 +75,33 @@ final class InboxHumanHandoffDetector
             return true;
         }
 
+        if (preg_match('/(اكلم|اكلمه|احكي|اتحدث)/u', $normalized) === 1
+            && preg_match('/(موظف|انسان|شخص|احد|فريق)/u', $normalized) === 1) {
+            return true;
+        }
+
         if (preg_match('/\b(human|agent|representative)\b/u', $normalized) === 1) {
             return true;
         }
 
         return false;
+    }
+
+    /**
+     * The model promised a transfer. That promise is not a recorded handoff.
+     */
+    public function claimsUnconfirmedHandoff(?string $content): bool
+    {
+        $normalized = $this->normalize($content);
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (preg_match('/(بحولك|احولك|ساحولك|حولتك|تم تحويل)/u', $normalized) === 1) {
+            return true;
+        }
+
+        return str_contains($normalized, 'ابشر') && str_contains($normalized, 'فريق');
     }
 
     /**

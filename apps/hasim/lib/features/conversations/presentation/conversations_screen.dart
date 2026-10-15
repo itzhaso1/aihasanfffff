@@ -1018,8 +1018,8 @@ class _ConversationsPanel extends StatelessWidget {
                                                           key: Key(
                                                             'team-review-${c.id}',
                                                           ),
-                                                        ),
-                                                      if (c.isAiReplying)
+                                                        )
+                                                      else if (c.isAiReplying)
                                                         _ClassBadge(
                                                           label: 'رد AI',
                                                           key: Key(

@@ -21,6 +21,8 @@ class InboxHumanHandoffDetectorTest extends TestCase
             ['حولني لشخص'],
             ['حولني على الفريق'],
             ['حَوِّلني لو سمحت على الفريق'],
+            ['فيه احد اكلمه؟'],
+            ['ابي انسان'],
             ['بدي موظف'],
             ['أريد التحدث مع موظف'],
             ['اريد التحدث مع انسان'],
@@ -35,6 +37,8 @@ class InboxHumanHandoffDetectorTest extends TestCase
 
         $this->assertFalse($detector->requestsHumanAgent('ما هي ساعات العمل؟'));
         $this->assertFalse($detector->requestsHumanAgent('حولني على المنتج'));
+        $this->assertTrue($detector->claimsUnconfirmedHandoff('أبشر بحولك على الفريق وهم بيكملون معك'));
+        $this->assertFalse($detector->claimsUnconfirmedHandoff('أبشر، الكتاب سعره 10 ريال'));
         $this->assertNull($detector->staffDecisionReason('كم الكمية المتوفرة من الدفتر؟'));
         $this->assertSame(
             ConversationHandoffReason::RefundRequest,

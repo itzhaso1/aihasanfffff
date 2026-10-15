@@ -34,6 +34,30 @@ class ProcessAIResponseHonestFallbackTest extends TestCase
         Queue::fake();
     }
 
+    public function test_a_reply_that_promises_a_transfer_leaves_ai_mode(): void
+    {
+        [, $conversation, $message] = $this->seedHasimInbox();
+        Message::withoutGlobalScopes()->whereKey($message->id)->update(['content' => 'كم السعر؟']);
+        $this->bindHasimRuntime(modelScript: [
+            new ModelResponse('أبشر بحولك على الفريق وهم بيكملون معك'),
+        ]);
+
+        $this->runAiJob((int) $conversation->id, (int) $message->id, (int) $conversation->workspace_id);
+
+        $fresh = $conversation->fresh();
+        $this->assertTrue($fresh->handoffStatusEnum()->blocksAi());
+        $this->assertFalse($fresh->isAiReplying());
+        $this->assertSame(
+            [],
+            $this->outboundContents((int) $conversation->workspace_id, (int) $conversation->id),
+        );
+        $this->assertSame(1, Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where('conversation_id', $conversation->id)
+            ->where('metadata->handoff_acknowledgement', true)
+            ->count());
+    }
+
     public function test_happy_path_persists_the_model_reply_once(): void
     {
         [, $conversation, $message] = $this->seedHasimInbox();

@@ -12,6 +12,8 @@ use App\Services\AI\AIService;
 use App\Services\AI\Inbox\AiReplyEligibility;
 use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Channel\Outbound\ChannelOutboundService;
+use App\Services\Inbox\InboxHumanHandoffDetector;
+use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Observability\OpsMetricsRecorder;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -83,6 +85,10 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             $started,
         ): void {
             $fresh = $conversation->fresh() ?? $conversation;
+            if (app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage($fresh, $incomingMessage, onlyIfJustCreated: false)) {
+                return;
+            }
+            $fresh = $fresh->fresh() ?? $fresh;
             if (! $eligibility->mayGenerate($fresh, $incomingMessage)) {
                 Log::info('ai.reply.skipped_precheck', [
                     'workspace_id' => $conversation->workspace_id,
@@ -249,6 +255,12 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 'inbound_message_id' => $incomingMessage->id,
                 'reason' => $fallbackReason,
             ]);
+        }
+
+        if (app(InboxHumanHandoffDetector::class)->claimsUnconfirmedHandoff($validated)) {
+            app(InboxHumanHandoffService::class)->recordCustomerHandoff($conversationFresh, $incomingMessage);
+
+            return;
         }
 
         if ($this->existingReply($conversationFresh, $incomingMessage)) {
