@@ -133,6 +133,7 @@ class _RecordingRepo extends ConversationRepository {
   String? lastHandoffReason;
   int? lastAssignUserId;
   int? lastAssignWorkerEngagementId;
+  List<MessageModel> thread = const [];
 
   Future<void> _hold() async {
     final hold = gate;
@@ -158,7 +159,10 @@ class _RecordingRepo extends ConversationRepository {
     String? cursor,
     int? workspaceId,
   }) async {
-    return (items: const <MessageModel>[], nextCursor: null);
+    if (workspaceId != null && thread.isNotEmpty) {
+      await _store.upsertMessages(workspaceId, conversationId, thread);
+    }
+    return (items: thread.reversed.toList(), nextCursor: null);
   }
 
   @override
@@ -1163,6 +1167,59 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('chat screen shows the customer message and the AI reply together', (
+    tester,
+  ) async {
+    setPhone(tester);
+    SharedPreferences.setMockInitialValues({'workspace_id': 1});
+    final prefs = await SharedPreferences.getInstance();
+    final db = InboxDatabase.memory();
+    addTearDown(db.close);
+    const customer = MessageModel(
+      id: 21,
+      conversationId: 7,
+      direction: 'inbound',
+      messageType: 'text',
+      content: 'مرحبا من العميل',
+      clientId: 'same-key',
+    );
+    const reply = MessageModel(
+      id: 22,
+      conversationId: 7,
+      direction: 'outbound',
+      messageType: 'text',
+      content: 'رد الذكاء',
+      aiGenerated: true,
+      clientId: 'same-key',
+    );
+    final initial = _conv(unread: 1);
+    final repo = _RecordingRepo(
+      isolatedTestApiClient(
+        secureStore: _MemorySecureStore(),
+        prefsStore: PrefsStore(prefs),
+      ),
+      InboxLocalStore(db),
+    )
+      ..item = initial
+      ..thread = const [customer, reply];
+
+    await tester.pumpWidget(
+      chatApp(
+        repo: repo,
+        prefs: prefs,
+        auth: companyAuth,
+        initialConversation: initial,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('مرحبا من العميل'), findsOneWidget);
+    expect(find.text('رد الذكاء'), findsOneWidget);
+    final customerBox = tester.getRect(find.text('مرحبا من العميل'));
+    final replyBox = tester.getRect(find.text('رد الذكاء'));
+    expect(customerBox.top, lessThan(replyBox.top));
+  });
+
   testWidgets('opening chat with a list seed does not throw during build', (
     tester,
   ) async {
@@ -1481,7 +1538,7 @@ void main() {
     await tester.tap(find.byKey(const Key('chat-action-end-handoff')));
     await tester.pumpAndSettle();
     expect(repo.takeoverCalls, 1);
-    expect(repo.resolveCalls, 0);
+    expect(repo.resolveCalls, 1);
     expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ChatScreen)),
@@ -1492,7 +1549,7 @@ void main() {
     );
     expect(
       container.read(chatControllerProvider(7)).conversation?.handoffStatus,
-      'active',
+      'resolved',
     );
   });
 

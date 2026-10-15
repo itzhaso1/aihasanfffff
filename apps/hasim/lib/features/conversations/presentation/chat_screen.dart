@@ -547,10 +547,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final Future<String?> request;
       if (selected == 'resume_ai') {
         request = notifier.resumeAi();
-      } else if (ConversationHandoffValues.canResolve(conversation!)) {
-        request = notifier.resolveHandoff();
       } else {
-        request = notifier.takeoverHandoff();
+        request = notifier.endHandoff();
       }
       final error = await request;
       if (!mounted) return;

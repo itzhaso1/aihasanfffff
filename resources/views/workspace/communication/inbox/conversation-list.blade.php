@@ -241,8 +241,11 @@
                             @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
                                 <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">AI Employee</span>
                             @endif
-                            @if($handoffStatus !== 'none')
-                                <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">{{ $handoffStatus }}</span>
+                            @if($conversation->handoffStatusEnum()->blocksAi())
+                                <span class="inline-flex items-center gap-1 rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-950">
+                                    <span aria-hidden="true">مراجعة</span>
+                                    تحتاج مراجعة من الفريق
+                                </span>
                             @endif
                             </div>
                             @if($unreadCount > 0)

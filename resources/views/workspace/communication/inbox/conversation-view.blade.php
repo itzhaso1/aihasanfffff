@@ -83,8 +83,11 @@
                         AI Employee{{ $activeConversation->aiEmployee?->name ? ': '.$activeConversation->aiEmployee->name : '' }}
                     </span>
                 @endif
-                @if($handoffStatus !== 'none')
-                    <span class="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">{{ $handoffStatus }}</span>
+                @if($handoffEnum->blocksAi())
+                    <span class="inline-flex items-center gap-1 rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 font-semibold text-amber-950">
+                        <span aria-hidden="true">مراجعة</span>
+                        تحتاج مراجعة من الفريق
+                    </span>
                 @endif
                 @if($handoffReason)
                     <span class="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">{{ $handoffReason }}</span>
@@ -98,7 +101,7 @@
                     @if($canEndActiveHandoff)
                         <form method="POST" action="{{ route('workspace.conversations.handoff.resolve', $activeConversation) }}">
                             @csrf
-                            <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">إنهاء التحويل</button>
+                            <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">إنهاء المراجعة</button>
                         </form>
                     @elseif($canTakeControlFromAi)
                         <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">

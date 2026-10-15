@@ -58,6 +58,33 @@ void main() {
     createdAt: DateTime.utc(2026, 1, 2, 12),
   );
 
+  test('shared client id does not replace the customer row with the AI reply', () async {
+    final db = InboxDatabase.memory();
+    final store = InboxLocalStore(db);
+    addTearDown(db.close);
+
+    await store.upsertMessages(1, 7, const [
+      MessageModel(
+        id: 21,
+        conversationId: 7,
+        direction: 'inbound',
+        messageType: 'text',
+        content: 'مرحبا من العميل',
+        clientId: 'same-key',
+      ),
+    ]);
+    await store.upsertMessages(1, 7, [
+      reply.copyWith(clientId: 'same-key'),
+    ]);
+
+    final messages = await store.getMessages(1, 7);
+    expect(messages.map((m) => m.id).toList(), [21, 22]);
+    expect(messages.map((m) => m.content).toList(), [
+      'مرحبا من العميل',
+      'رد الذكاء',
+    ]);
+  });
+
   test('latest window keeps a customer row that has no timestamp', () async {
     final db = InboxDatabase.memory();
     final store = InboxLocalStore(db);

@@ -974,6 +974,14 @@ class _ConversationsPanel extends StatelessWidget {
                                                     spacing: 4,
                                                     runSpacing: 4,
                                                     children: [
+                                                      if (c.isHumanHandoffActive)
+                                                        _ClassBadge(
+                                                          label:
+                                                              'تحتاج مراجعة من الفريق',
+                                                          key: Key(
+                                                            'team-review-${c.id}',
+                                                          ),
+                                                        ),
                                                       if (c.isAiReplying)
                                                         _ClassBadge(
                                                           label: 'رد AI',

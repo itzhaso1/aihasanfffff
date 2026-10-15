@@ -2,6 +2,8 @@
 
 namespace App\Services\Inbox;
 
+use App\Enums\ConversationHandoffReason;
+
 final class InboxHumanHandoffDetector
 {
     /**
@@ -59,6 +61,35 @@ final class InboxHumanHandoffDetector
         }
 
         return false;
+    }
+
+    /**
+     * A staff decision, not a catalog question. Unknown product questions stay with AI.
+     */
+    public function staffDecisionReason(?string $content): ?ConversationHandoffReason
+    {
+        $normalized = $this->normalize($content);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $groups = [
+            ConversationHandoffReason::RefundRequest->value => ['استرجاع', 'استرجع', 'استرداد', 'refund'],
+            ConversationHandoffReason::CancelRequest->value => ['الغاء الطلب', 'إلغاء الطلب', 'الغاء طلبي', 'cancel my order'],
+            ConversationHandoffReason::PaymentIssue->value => ['مشكلة دفع', 'ما وصل المبلغ', 'payment failed', 'دفعة معلقه'],
+            ConversationHandoffReason::SensitiveSupport->value => ['شكوى', 'نزاع', 'complaint', 'مختص', 'فني يزور'],
+            ConversationHandoffReason::AgentRequested->value => ['خصم خاص', 'وافق على السعر', 'موافقه خاصه', 'سعر خاص لي'],
+        ];
+
+        foreach ($groups as $reason => $phrases) {
+            foreach ($phrases as $phrase) {
+                if (str_contains($normalized, $this->normalize($phrase))) {
+                    return ConversationHandoffReason::from($reason);
+                }
+            }
+        }
+
+        return null;
     }
 
     private function normalize(?string $value): string

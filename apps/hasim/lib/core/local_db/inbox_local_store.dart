@@ -417,10 +417,11 @@ class InboxLocalStore {
         : (String sql, [List<Object?> args = const []]) => tx.runSelect(sql, args);
 
     Map<String, Object?>? existing;
-    if (item.clientId != null && item.clientId!.isNotEmpty) {
+    var clientId = item.clientId;
+    if (clientId != null && clientId.isNotEmpty && item.id <= 0) {
       final rows = await select(
         'SELECT * FROM inbox_messages WHERE workspace_id = ? AND client_id = ? LIMIT 1',
-        [workspaceId, item.clientId],
+        [workspaceId, clientId],
       );
       if (rows.isNotEmpty) existing = rows.first;
     }
@@ -430,6 +431,21 @@ class InboxLocalStore {
         [workspaceId, item.id],
       );
       if (rows.isNotEmpty) existing = rows.first;
+    }
+    if (existing == null && clientId != null && clientId.isNotEmpty && item.id > 0) {
+      final rows = await select(
+        'SELECT * FROM inbox_messages WHERE workspace_id = ? AND client_id = ? LIMIT 1',
+        [workspaceId, clientId],
+      );
+      final matched = rows.isEmpty ? null : rows.first;
+      final matchedServer = (matched?['server_id'] as num?)?.toInt() ?? 0;
+      if (matched != null && (matchedServer == 0 || matchedServer == item.id)) {
+        existing = matched;
+      } else if (matched != null) {
+        // Same client key already belongs to another saved message.
+        // Keep both rows instead of replacing the customer text with the reply.
+        clientId = null;
+      }
     }
 
     final serverId = item.id > 0 ? item.id : existing?['server_id'];
@@ -486,7 +502,7 @@ class InboxLocalStore {
         [
           conversationId,
           serverId,
-          item.clientId,
+          clientId,
           item.direction,
           item.messageType,
           item.content,
@@ -522,7 +538,7 @@ class InboxLocalStore {
         workspaceId,
         conversationId,
         serverId,
-        item.clientId,
+        clientId,
         item.direction,
         item.messageType,
         item.content,

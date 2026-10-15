@@ -27,14 +27,22 @@ final class InboxHumanHandoffService
             return false;
         }
 
-        if (! $this->detector->requestsHumanAgent($message->content)) {
+        $fresh = $conversation->fresh() ?? $conversation;
+
+        try {
+            if ($this->detector->requestsHumanAgent($message->content)) {
+                return $this->handoff->requestFromCustomerPhrase($fresh, $message);
+            }
+
+            $reason = $this->detector->staffDecisionReason($message->content);
+            if ($reason === null) {
+                return false;
+            }
+
+            return $this->handoff->requestStaffReview($fresh, $message, $reason);
+        } catch (\InvalidArgumentException) {
             return false;
         }
-
-        return $this->handoff->requestFromCustomerPhrase(
-            $conversation->fresh() ?? $conversation,
-            $message,
-        );
     }
 
     /**

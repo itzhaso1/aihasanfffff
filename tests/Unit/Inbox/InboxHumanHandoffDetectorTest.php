@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Inbox;
 
+use App\Enums\ConversationHandoffReason;
 use App\Services\Inbox\InboxHumanHandoffDetector;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -28,6 +29,13 @@ class InboxHumanHandoffDetectorTest extends TestCase
 
     public function test_does_not_detect_unrelated_messages(): void
     {
-        $this->assertFalse(app(InboxHumanHandoffDetector::class)->requestsHumanAgent('ما هي ساعات العمل؟'));
+        $detector = app(InboxHumanHandoffDetector::class);
+
+        $this->assertFalse($detector->requestsHumanAgent('ما هي ساعات العمل؟'));
+        $this->assertNull($detector->staffDecisionReason('كم الكمية المتوفرة من الدفتر؟'));
+        $this->assertSame(
+            ConversationHandoffReason::RefundRequest,
+            $detector->staffDecisionReason('أبي أسترجع المبلغ'),
+        );
     }
 }

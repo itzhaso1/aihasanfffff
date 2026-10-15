@@ -667,15 +667,28 @@ class ChatController extends StateNotifier<ChatState> {
     List<MessageModel> older,
     List<MessageModel> latest,
   ) {
-    final byKey = <String, MessageModel>{};
+    final server = <int, MessageModel>{};
+    final pending = <String, MessageModel>{};
     for (final message in [...older, ...latest]) {
+      if (message.id > 0) {
+        // A saved customer message and the AI reply are different rows.
+        // client_id is only for an optimistic send that has no server id yet.
+        server[message.id] = message;
+        continue;
+      }
       final clientId = message.clientId;
       final key = clientId != null && clientId.isNotEmpty
           ? 'c:$clientId'
-          : 's:${message.id}';
-      byKey[key] = message;
+          : 'l:${message.id}';
+      pending[key] = message;
     }
-    final merged = byKey.values.toList();
+    final claimed = <String>{
+      for (final message in server.values)
+        if (message.clientId != null && message.clientId!.isNotEmpty)
+          'c:${message.clientId}',
+    };
+    pending.removeWhere((key, _) => claimed.contains(key));
+    final merged = [...server.values, ...pending.values];
     merged.sort(_messageOrder);
     return merged;
   }
@@ -1394,6 +1407,18 @@ class ChatController extends StateNotifier<ChatState> {
       (repo, workspaceId) =>
           repo.resolveHandoff(conversationId, workspaceId: workspaceId),
     );
+  }
+
+  /// One user action. Taking control used to stop on `active`, so the same
+  /// "إنهاء التحويل" button had to be pressed again to resolve.
+  Future<String?> endHandoff() async {
+    final current = state.conversation;
+    if (current != null && ConversationHandoffValues.canResolve(current)) {
+      return resolveHandoff();
+    }
+    final takeoverError = await takeoverHandoff();
+    if (takeoverError != null) return takeoverError;
+    return resolveHandoff();
   }
 
   Future<String?> resumeAi() {

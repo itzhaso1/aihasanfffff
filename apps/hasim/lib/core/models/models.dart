@@ -219,43 +219,68 @@ class MessageModel extends Equatable {
 
   bool get isOutbound => direction == 'outbound';
 
+  static Map<String, dynamic> _unwrapMessageJson(Map<String, dynamic> json) {
+    final nested = json['data'];
+    if (json['id'] == null && nested is Map) {
+      return nested is Map<String, dynamic>
+          ? nested
+          : Map<String, dynamic>.from(nested);
+    }
+    return json;
+  }
+
+  static String? _messageClientId(Map<String, dynamic> json) {
+    final raw = json['client_id'] ?? json['idempotency_key'];
+    if (raw == null) return null;
+    final text = raw.toString().trim();
+    if (text.isEmpty || text == 'null') return null;
+    return text;
+  }
+
   factory MessageModel.fromJson(Map<String, dynamic> json) {
-    final attachmentsRaw = json['attachments'];
+    final payload = _unwrapMessageJson(json);
+    final attachmentsRaw = payload['attachments'];
+    final attachmentRows = attachmentsRaw is Map && attachmentsRaw['data'] is List
+        ? attachmentsRaw['data'] as List
+        : attachmentsRaw;
     final attachments = <MessageAttachmentModel>[];
-    if (attachmentsRaw is List) {
-      for (final item in attachmentsRaw) {
-        if (item is Map) {
-          attachments.add(
-            MessageAttachmentModel.fromJson(
-              item is Map<String, dynamic>
-                  ? item
-                  : Map<String, dynamic>.from(item),
-            ),
-          );
+    if (attachmentRows is List) {
+      for (final item in attachmentRows) {
+        if (item is! Map) continue;
+        final row = item is Map<String, dynamic>
+            ? item
+            : Map<String, dynamic>.from(item);
+        final attachmentId = row['id'];
+        if (attachmentId is! num) continue;
+        try {
+          attachments.add(MessageAttachmentModel.fromJson(row));
+        } catch (_) {
+          // A broken attachment must not drop the customer text around it.
         }
       }
     }
 
+    final clientId = _messageClientId(payload);
+
     return MessageModel(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      conversationId: (json['conversation_id'] as num?)?.toInt() ?? 0,
-      direction: json['direction']?.toString() ?? 'inbound',
-      messageType: json['message_type']?.toString() ?? 'text',
-      content: json['content']?.toString() ?? '',
-      aiGenerated: json['ai_generated'] == true,
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
-      userName: json['user'] is Map ? json['user']['name']?.toString() : null,
-      customerName: json['customer'] is Map
-          ? json['customer']['name']?.toString()
+      id: (payload['id'] as num?)?.toInt() ?? 0,
+      conversationId: (payload['conversation_id'] as num?)?.toInt() ?? 0,
+      direction: payload['direction']?.toString().trim().toLowerCase() ?? 'inbound',
+      messageType: payload['message_type']?.toString() ?? 'text',
+      content: payload['content']?.toString() ?? '',
+      aiGenerated: payload['ai_generated'] == true || payload['ai_generated'] == 1,
+      createdAt: DateTime.tryParse(payload['created_at']?.toString() ?? ''),
+      userName: payload['user'] is Map ? payload['user']['name']?.toString() : null,
+      customerName: payload['customer'] is Map
+          ? payload['customer']['name']?.toString()
           : null,
       attachments: attachments,
-      clientId:
-          json['client_id']?.toString() ?? json['idempotency_key']?.toString(),
-      workerEngagementId: (json['worker_engagement_id'] as num?)?.toInt(),
-      senderUserId: json['user'] is Map
-          ? ((json['user'] as Map)['id'] as num?)?.toInt()
+      clientId: clientId,
+      workerEngagementId: (payload['worker_engagement_id'] as num?)?.toInt(),
+      senderUserId: payload['user'] is Map && payload['user']['id'] is num
+          ? (payload['user']['id'] as num).toInt()
           : null,
-      participantType: json['participant_type']?.toString(),
+      participantType: payload['participant_type']?.toString(),
     );
   }
 

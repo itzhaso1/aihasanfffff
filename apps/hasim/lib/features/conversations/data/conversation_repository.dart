@@ -211,7 +211,14 @@ class ConversationRepository {
           'per_page': 30,
         },
       );
-      final items = asMapList(res.data).map(MessageModel.fromJson).toList();
+      final items = <MessageModel>[];
+      for (final row in asMapList(res.data)) {
+        try {
+          items.add(MessageModel.fromJson(row));
+        } catch (_) {
+          // One malformed row must not discard the customer messages beside it.
+        }
+      }
       if (workspaceId != null) {
         final chronological = items.reversed.toList();
         await _local?.upsertMessages(

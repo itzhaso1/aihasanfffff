@@ -78,6 +78,38 @@ final class ConversationHandoffService
         });
     }
 
+    public function requestStaffReview(
+        Conversation $conversation,
+        Message $triggerMessage,
+        ConversationHandoffReason $reason,
+    ): bool {
+        if ($triggerMessage->direction !== 'inbound' || $triggerMessage->message_type !== 'text') {
+            return false;
+        }
+
+        $status = $this->currentStatus($conversation);
+        if ($status->blocksAi()) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($conversation, $triggerMessage, $reason): bool {
+            $fresh = $conversation->fresh() ?? $conversation;
+            if ($this->currentStatus($fresh)->blocksAi()) {
+                return false;
+            }
+
+            $this->request(
+                $fresh,
+                $reason,
+                $this->baseContext($fresh, 'staff_review', $triggerMessage),
+                queueImmediately: true,
+            );
+            $this->sendCustomerAcknowledgement($fresh->fresh() ?? $fresh);
+
+            return true;
+        });
+    }
+
     /**
      * @param  array<string, mixed>  $context
      */
