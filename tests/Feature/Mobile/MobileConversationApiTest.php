@@ -200,6 +200,44 @@ class MobileConversationApiTest extends TestCase
         $this->assertSame('lost-key-1', collect($page->json('data'))->firstWhere('id', $messageId)['client_id']);
     }
 
+    public function test_message_page_includes_inbound_customer_and_ai_reply(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [$user, $workspace, $token] = $this->authMember('both-directions@example.com');
+        $conversation = $this->makeConversation($workspace);
+
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'content' => 'مرحبا من العميل',
+        ]);
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'outbound',
+            'message_type' => 'text',
+            'content' => 'رد الذكاء',
+            'ai_generated' => true,
+        ]);
+
+        $page = $this->withToken($token)
+            ->withHeader('X-Workspace-Id', (string) $workspace->id)
+            ->getJson("/api/mobile/v1/conversations/{$conversation->id}/messages")
+            ->assertOk();
+
+        $rows = collect($page->json('data'));
+        $this->assertTrue(
+            $rows->contains(fn (array $row): bool => $row['direction'] === 'inbound' && $row['content'] === 'مرحبا من العميل'),
+        );
+        $this->assertTrue(
+            $rows->contains(fn (array $row): bool => $row['direction'] === 'outbound' && $row['content'] === 'رد الذكاء' && $row['ai_generated'] === true),
+        );
+    }
+
     public function test_tenant_isolation_blocks_foreign_conversation(): void
     {
         $this->seed(FoundationSeeder::class);

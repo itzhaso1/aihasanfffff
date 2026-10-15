@@ -569,6 +569,67 @@ void main() {
     expect(messages.single.direction, 'inbound');
   });
 
+  test('a later local snapshot cannot hide the inbound customer message', () async {
+    await h.store.upsertConversations(1, [
+      _conv(
+        1,
+        name: 'رد الذكاء',
+        unread: 1,
+        lastMessageId: 22,
+        lastMessageDirection: 'outbound',
+      ),
+    ]);
+    h.repo.remoteMessages = const [
+      MessageModel(
+        id: 22,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'رد الذكاء',
+        aiGenerated: true,
+      ),
+      MessageModel(
+        id: 21,
+        conversationId: 1,
+        direction: 'inbound',
+        messageType: 'text',
+        content: 'مرحبا من العميل',
+      ),
+    ];
+
+    h.container.read(chatControllerProvider(1));
+    await h.container.read(chatControllerProvider(1).notifier).refresh(
+      silent: true,
+    );
+    expect(
+      h.container.read(chatControllerProvider(1)).messages.map((m) => m.content),
+      containsAll(['مرحبا من العميل', 'رد الذكاء']),
+    );
+
+    await h.store.upsertMessages(1, 1, const [
+      MessageModel(
+        id: 22,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'رد الذكاء',
+        aiGenerated: true,
+      ),
+    ]);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final shown = h.container.read(chatControllerProvider(1)).messages;
+    expect(shown.map((m) => m.id), containsAll([21, 22]));
+    expect(
+      shown.singleWhere((m) => m.id == 21).direction,
+      'inbound',
+    );
+    expect(
+      shown.singleWhere((m) => m.id == 22).direction,
+      'outbound',
+    );
+  });
+
   test('refresh keeps a fetched inbound that the painted list had missed', () async {
     await h.store.upsertConversations(1, [
       _conv(1, name: 'قديمة', unread: 1, lastMessageId: 10),

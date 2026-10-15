@@ -1112,12 +1112,18 @@ class InboxLocalStore {
   Stream<T> _queryStream<T>(Future<T> Function() read) {
     return Stream<T>.multi((listener) {
       var alive = true;
+      var request = 0;
       Future<void> emit() async {
+        final token = ++request;
         try {
           final value = await read();
-          if (alive) listener.add(value);
+          // A slow read that started before a newer write must not replace
+          // the newer snapshot. That was dropping inbound rows after the
+          // conversation list had cached only the latest AI reply.
+          if (!alive || token != request) return;
+          listener.add(value);
         } catch (error, stack) {
-          if (alive) listener.addError(error, stack);
+          if (alive && token == request) listener.addError(error, stack);
         }
       }
 

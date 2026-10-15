@@ -599,7 +599,11 @@ class ChatController extends StateNotifier<ChatState> {
           )
           .listen((latest) {
             if (!mounted || _boundWorkspaceId != workspaceId) return;
-            final messages = _mergeMessages(_olderMessages, latest);
+            // Keep messages already on screen. A conversation-list snapshot
+            // often contains only the newest row (the AI reply). A later
+            // local read of that partial snapshot must not erase the inbound
+            // customer message once the full page has been shown.
+            final messages = _mergeMessages(state.messages, latest);
             state = state.copyWith(
               messages: messages,
               loading: messages.isEmpty && state.loading,

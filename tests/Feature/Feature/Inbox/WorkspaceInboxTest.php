@@ -44,6 +44,37 @@ class WorkspaceInboxTest extends TestCase
         ]);
     }
 
+    public function test_open_conversation_shows_inbound_customer_message_and_ai_reply(): void
+    {
+        [$user, $workspace, $conversation] = $this->seedConversation('whatsapp');
+
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'content' => 'مرحبا من العميل',
+        ]);
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'outbound',
+            'message_type' => 'text',
+            'content' => 'رد الذكاء',
+            'ai_generated' => true,
+        ]);
+
+        $this->actingAs($user);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertSee('مرحبا من العميل')
+            ->assertSee('رد الذكاء');
+    }
+
     public function test_inbox_remembers_last_conversation_in_session(): void
     {
         [$user, $workspace, $conversation] = $this->seedConversation('facebook_messenger');

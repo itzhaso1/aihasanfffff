@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/theme/app_theme.dart';
@@ -121,11 +122,22 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
 
   bool get _editorOpen => _creating || _selected != null;
 
+  void _openCreate() {
+    setState(() {
+      _selected = null;
+      _creating = true;
+    });
+  }
+
   void _openItem(ChatCatalogItemModel item) {
     setState(() {
       _selected = item;
       _creating = false;
     });
+  }
+
+  void _openCategories() {
+    context.push('/catalog/categories');
   }
 
   void _closeEditor() {
@@ -157,6 +169,27 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
           final sideBySide = _editorOpen && constraints.maxWidth >= 720;
           final list = Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    FilledButton.icon(
+                      key: const Key('catalog-add-product'),
+                      onPressed: _openCreate,
+                      icon: const Icon(Icons.add),
+                      label: const Text('إضافة منتج'),
+                    ),
+                    TextButton(
+                      key: const Key('catalog-open-categories'),
+                      onPressed: _openCategories,
+                      child: Text(l10n.catalogCategoriesNav),
+                    ),
+                  ],
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                 child: TextField(
@@ -242,8 +275,10 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
     if (_items.isEmpty) {
       return EmptyState(
         title: 'لا توجد منتجات',
-        subtitle: 'أضف منتجاً من إضافة منتج.',
+        subtitle: 'أضف منتجاً ليظهر كمرجع للذكاء الاصطناعي.',
         icon: Icons.inventory_2_outlined,
+        actionLabel: 'إضافة منتج',
+        onAction: _openCreate,
       );
     }
     return LayoutBuilder(
