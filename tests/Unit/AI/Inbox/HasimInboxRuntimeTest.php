@@ -193,6 +193,28 @@ class HasimInboxRuntimeTest extends TestCase
         $this->assertStringNotContainsString('تعذر إنشاء الرد', $result->reply);
     }
 
+    public function test_model_gateway_exception_records_provider_codes_in_ai_log(): void
+    {
+        [, $conversation, $message] = $this->seedHasimInbox();
+        $this->bindHasimRuntime(modelScript: [
+            ModelGatewayException::httpError('google_ai_studio', 503),
+        ]);
+
+        $reply = app(AIService::class)->generateReply($conversation, $message);
+
+        $this->assertSame('', $reply);
+        $log = AiLog::withoutGlobalScopes()->where('message_id', $message->id)->firstOrFail();
+        $input = is_array($log->input_payload) ? $log->input_payload : [];
+        $encoded = json_encode($input) ?: '';
+
+        $this->assertSame('failed', $log->status);
+        $this->assertSame('call_model', data_get($input, 'failure_stage'));
+        $this->assertSame('model_error', data_get($input, 'failure_code'));
+        $this->assertSame(ModelGatewayException::HTTP_ERROR, data_get($input, 'provider_error_code'));
+        $this->assertSame(503, data_get($input, 'http_status'));
+        $this->assertStringNotContainsString('sk-secret', $encoded);
+    }
+
     public function test_model_gateway_exception_is_logged_with_safe_codes_only(): void
     {
         [, $conversation, $message] = $this->seedHasimInbox();

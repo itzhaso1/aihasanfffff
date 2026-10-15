@@ -6,7 +6,9 @@ namespace Tests\Unit\AI\Inbox;
 
 use App\AI\Core\Data\ModelResponse;
 use App\AI\Models\ModelGatewayException;
+use App\Enums\ConversationHandoffStatus;
 use App\Jobs\ProcessAIResponse;
+use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\AI\AiOutputValidator;
 use App\Services\AI\AIService;
@@ -150,6 +152,75 @@ class ProcessAIResponseHonestFallbackTest extends TestCase
 
         $this->assertSame(
             [InboxHonestReplyFallback::GREETING],
+            $this->outboundContents((int) $conversation->workspace_id, (int) $conversation->id),
+        );
+    }
+
+    public function test_model_gateway_failure_logs_job_complete_after_fallback_outbound(): void
+    {
+        [, $conversation, $message] = $this->seedHasimInbox();
+        Message::withoutGlobalScopes()->whereKey($message->id)->update(['content' => 'مرحبا']);
+        $this->bindHasimRuntime(modelScript: [ModelGatewayException::httpError('google_ai_studio', 503)]);
+        $logs = [];
+        Log::listen(static function (MessageLogged $event) use (&$logs): void {
+            $logs[] = $event;
+        });
+
+        $this->runAiJob((int) $conversation->id, (int) $message->id, (int) $conversation->workspace_id);
+
+        $completeLogs = array_values(array_filter(
+            $logs,
+            static fn (MessageLogged $event): bool => $event->message === 'ai.reply.job_complete',
+        ));
+        $fallbackLogs = array_values(array_filter(
+            $logs,
+            static fn (MessageLogged $event): bool => $event->message === 'ai.reply.honest_fallback',
+        ));
+
+        $this->assertNotEmpty($fallbackLogs);
+        $this->assertNotEmpty($completeLogs);
+        $this->assertSame(
+            (int) $message->id,
+            (int) ($completeLogs[0]->context['inbound_message_id'] ?? 0),
+        );
+        $this->assertSame(
+            InboxHonestReplyFallback::GREETING,
+            Message::withoutGlobalScopes()
+                ->whereKey($completeLogs[0]->context['outbound_message_id'] ?? 0)
+                ->value('content'),
+        );
+    }
+
+    public function test_active_handoff_skips_auto_reply_and_fallback(): void
+    {
+        [, $conversation, $message] = $this->seedHasimInbox();
+        Conversation::withoutGlobalScopes()->whereKey($conversation->id)->update([
+            'handoff_status' => ConversationHandoffStatus::Active,
+            'ai_enabled' => false,
+        ]);
+        $this->bindHasimRuntime(modelScript: [ModelGatewayException::httpError('google_ai_studio', 503)]);
+
+        $this->runAiJob((int) $conversation->id, (int) $message->id, (int) $conversation->workspace_id);
+
+        $this->assertSame(
+            [],
+            $this->outboundContents((int) $conversation->workspace_id, (int) $conversation->id),
+        );
+    }
+
+    public function test_resolved_handoff_blocks_auto_reply_even_when_ai_enabled(): void
+    {
+        [, $conversation, $message] = $this->seedHasimInbox();
+        Conversation::withoutGlobalScopes()->whereKey($conversation->id)->update([
+            'handoff_status' => ConversationHandoffStatus::Resolved,
+            'ai_enabled' => true,
+        ]);
+        $this->bindHasimRuntime(modelScript: [ModelGatewayException::httpError('google_ai_studio', 503)]);
+
+        $this->runAiJob((int) $conversation->id, (int) $message->id, (int) $conversation->workspace_id);
+
+        $this->assertSame(
+            [],
             $this->outboundContents((int) $conversation->workspace_id, (int) $conversation->id),
         );
     }

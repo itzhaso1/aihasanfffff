@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Unit\AI\Models;
 
+use App\AI\Core\AiFailureCode;
 use App\AI\Core\AiRunMode;
+use App\AI\Core\AiRuntimeStage;
 use App\AI\Core\Data\ModelFinishReason;
 use App\AI\Core\Data\ModelRequest;
 use App\AI\Core\Data\ModelToolCall;
 use App\AI\Core\Data\ToolExchange;
 use App\AI\Core\Data\ToolSpec;
+use App\AI\Core\Decision\AiFailure;
 use App\AI\Core\Prompt\PromptLayer;
 use App\AI\Core\Prompt\PromptSection;
 use App\AI\Core\PromptComposer;
@@ -156,6 +159,17 @@ class GeminiAdapterTest extends TestCase
             $this->assertSame(ModelGatewayException::HTTP_ERROR, $exception->errorCode);
             $this->assertSame(500, $exception->httpStatus);
             $this->assertStringNotContainsString('sk-secret', $exception->getMessage());
+
+            $failure = AiFailure::fromThrowable(
+                AiRuntimeStage::CallModel,
+                AiFailureCode::ModelError,
+                $exception,
+            );
+            $payload = $failure->toArray();
+
+            $this->assertSame('http_error', $payload['provider_error_code'] ?? null);
+            $this->assertSame(500, $payload['http_status'] ?? null);
+            $this->assertStringNotContainsString('sk-secret', json_encode($payload) ?: '');
         }
     }
 

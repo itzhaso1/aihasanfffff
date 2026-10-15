@@ -351,8 +351,9 @@ final class ConversationHandoffService
             }
 
             $fresh->update(['ai_enabled' => false]);
+            $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
 
-            return $this->publishAndReturn($fresh->fresh() ?? $fresh);
+            return $this->publishAndReturn($fresh);
         });
     }
 

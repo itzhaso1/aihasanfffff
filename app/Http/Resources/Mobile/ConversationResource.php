@@ -5,6 +5,7 @@ namespace App\Http\Resources\Mobile;
 use App\Enums\ConversationHandoffReason;
 use App\Enums\ConversationHandoffStatus;
 use App\Models\Conversation;
+use App\Services\Conversation\ConversationHandoffSummaryBuilder;
 use App\Services\Workforce\WorkforceInboxAttribution;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -56,7 +57,9 @@ class ConversationResource extends JsonResource
                 'id' => $this->assignedUser->id,
                 'name' => $this->assignedUser->name,
             ] : null),
-            'handoff_summary' => data_get($this->metadata, 'handoff.structured'),
+            'handoff_summary' => $this->resource instanceof Conversation
+                ? app(ConversationHandoffSummaryBuilder::class)->build($this->resource)
+                : data_get($this->metadata, 'handoff.structured'),
             'catalog_context' => data_get($this->metadata, 'catalog') ? [
                 'catalog_id' => data_get($this->metadata, 'catalog.catalog_id'),
                 'catalog_item_id' => data_get($this->metadata, 'catalog.catalog_item_id'),

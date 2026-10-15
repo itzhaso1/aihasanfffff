@@ -16,6 +16,7 @@ use App\AI\Core\Decision\GuardVerdict;
 use App\AI\Core\Decision\ModelUsage;
 use App\AI\Core\Decision\ToolCallRecord;
 use App\AI\Core\Prompt\PromptLayer;
+use App\AI\Models\ModelGatewayException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -191,6 +192,27 @@ class AiRuntimeTest extends TestCase
         $harness->model->script = [new RuntimeException('provider down')];
 
         $this->assertFailed($harness->runtime()->handle(AiRuntimeHarness::request()), 'call_model', 'model_error');
+    }
+
+    public function test_model_gateway_exception_preserves_provider_codes_in_failure_summary(): void
+    {
+        $harness = new AiRuntimeHarness;
+        $harness->model->script = [
+            new ModelGatewayException(
+                ModelGatewayException::HTTP_ERROR,
+                'provider body AIzaSy-secret must not appear in logs',
+                503,
+            ),
+        ];
+
+        $response = $harness->runtime()->handle(AiRuntimeHarness::request());
+        $failure = $response->decision->failure?->toArray() ?? [];
+        $encoded = json_encode($failure) ?: '';
+
+        $this->assertFailed($response, 'call_model', 'model_error');
+        $this->assertSame(ModelGatewayException::HTTP_ERROR, $failure['provider_error_code'] ?? null);
+        $this->assertSame(503, $failure['http_status'] ?? null);
+        $this->assertStringNotContainsString('AIzaSy-secret', $encoded);
     }
 
     /**
