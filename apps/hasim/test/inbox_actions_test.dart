@@ -830,6 +830,79 @@ void main() {
     );
   });
 
+  test('ending handoff from an AI reply resolves in one action', () async {
+    final h = await _openController(
+      item: _conv(handoff: 'none', aiEnabled: true),
+    );
+    addTearDown(() async {
+      h.container.dispose();
+      await h.db.close();
+    });
+    h.container.read(chatControllerProvider(7));
+    await waitUntil(
+      () => h.container.read(chatControllerProvider(7)).conversation?.id == 7,
+    );
+    final error = await h.container
+        .read(chatControllerProvider(7).notifier)
+        .endHandoff();
+    expect(error, isNull);
+    expect(h.repo.takeoverCalls, 1);
+    expect(h.repo.resolveCalls, 1);
+    expect(
+      h.container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'resolved',
+    );
+  });
+
+  test('ending an open review resolves without taking over again', () async {
+    final h = await _openController(item: _conv(handoff: 'queued'));
+    addTearDown(() async {
+      h.container.dispose();
+      await h.db.close();
+    });
+    h.container.read(chatControllerProvider(7));
+    await waitUntil(
+      () => h.container.read(chatControllerProvider(7)).conversation?.id == 7,
+    );
+    final error = await h.container
+        .read(chatControllerProvider(7).notifier)
+        .endHandoff();
+    expect(error, isNull);
+    expect(h.repo.takeoverCalls, 0);
+    expect(h.repo.resolveCalls, 1);
+    expect(
+      h.container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'resolved',
+    );
+  });
+
+  test('ending handoff stops when takeover fails', () async {
+    final h = await _openController(
+      item: _conv(handoff: 'none', aiEnabled: true),
+    );
+    addTearDown(() async {
+      h.container.dispose();
+      await h.db.close();
+    });
+    h.repo.error = ApiException(
+      'Handoff is only allowed on open conversations.',
+    );
+    h.container.read(chatControllerProvider(7));
+    await waitUntil(
+      () => h.container.read(chatControllerProvider(7)).conversation?.id == 7,
+    );
+    final error = await h.container
+        .read(chatControllerProvider(7).notifier)
+        .endHandoff();
+    expect(error, isNotNull);
+    expect(h.repo.takeoverCalls, 1);
+    expect(h.repo.resolveCalls, 0);
+    expect(
+      h.container.read(chatControllerProvider(7)).conversation?.handoffStatus,
+      'none',
+    );
+  });
+
   test('resolve handoff failure keeps previous status', () async {
     final h = await _openController(item: _conv(handoff: 'queued'));
     addTearDown(() async {
@@ -1492,6 +1565,8 @@ void main() {
       chatApp(repo: repo, prefs: prefs, auth: companyAuth),
     );
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-team-review')), findsOneWidget);
+    expect(find.text('تحتاج مراجعة من الفريق'), findsOneWidget);
     await openMore(tester);
     expect(find.text('إنهاء التحويل'), findsOneWidget);
     expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
@@ -1511,7 +1586,7 @@ void main() {
     );
   });
 
-  testWidgets('company chat ends AI conversion by taking control', (
+  testWidgets('company chat ends an AI reply in one press', (
     tester,
   ) async {
     setPhone(tester);
@@ -1531,6 +1606,7 @@ void main() {
       chatApp(repo: repo, prefs: prefs, auth: companyAuth),
     );
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-team-review')), findsNothing);
     await openMore(tester);
     expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
     expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);

@@ -149,7 +149,9 @@
 
     @if($handoffStatus !== 'none' || is_array($catalogCtx))
         <div class="border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-700">
-            @if($handoffStatus !== 'none')
+            @if($handoffBlocksAi)
+                <p class="font-semibold text-amber-950">تحتاج مراجعة من الفريق</p>
+            @elseif($handoffStatus !== 'none')
                 <p><span class="font-semibold">التحويل:</span> {{ $handoffStatus }}
                     @if($activeConversation->handoff_requested_at)
                         · {{ $activeConversation->handoff_requested_at->format('Y-m-d H:i') }}

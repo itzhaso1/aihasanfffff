@@ -15,6 +15,17 @@ final class InboxHumanHandoffDetector
         'حولني لممثل',
         'حولني لموظف',
         'حولني إلى موظف',
+        'حولني على الفريق',
+        'حولني للفريق',
+        'حولني إلى الفريق',
+        'حولني الى الفريق',
+        'حولني لفريق',
+        'حولني على موظف',
+        'حولني للموظف',
+        'حولني على شخص',
+        'حولني لخدمة العملاء',
+        'حولني على خدمة العملاء',
+        'وصلني بالفريق',
         'بدي شخص',
         'بدي موظف',
         'بدي أحكي مع موظف',
@@ -56,6 +67,11 @@ final class InboxHumanHandoffDetector
             }
         }
 
+        if (preg_match('/حولن/u', $normalized) === 1
+            && preg_match('/(فريق|موظف|شخص|انسان|ممثل|خدمه العملاء|خدمة العملاء)/u', $normalized) === 1) {
+            return true;
+        }
+
         if (preg_match('/\b(human|agent|representative)\b/u', $normalized) === 1) {
             return true;
         }
@@ -95,6 +111,7 @@ final class InboxHumanHandoffDetector
     private function normalize(?string $value): string
     {
         $text = mb_strtolower(trim((string) $value));
+        $text = preg_replace('/[\x{064B}-\x{065F}\x{0670}\x{0640}]/u', '', $text) ?? $text;
         $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
 
         return str_replace(['أ', 'إ', 'آ'], 'ا', $text);

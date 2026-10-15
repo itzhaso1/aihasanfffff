@@ -1409,16 +1409,21 @@ class ChatController extends StateNotifier<ChatState> {
     );
   }
 
-  /// One user action. Taking control used to stop on `active`, so the same
-  /// "إنهاء التحويل" button had to be pressed again to resolve.
-  Future<String?> endHandoff() async {
+  /// One press of "إنهاء التحويل". A review that is already open is resolved
+  /// directly. Stopping an AI reply used to stop at takeover (`active`), so
+  /// the same button had to be pressed again.
+  Future<String?> endHandoff() {
+    if (!_companyInboxWriteAllowed()) {
+      return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
+    }
     final current = state.conversation;
     if (current != null && ConversationHandoffValues.canResolve(current)) {
       return resolveHandoff();
     }
-    final takeoverError = await takeoverHandoff();
-    if (takeoverError != null) return takeoverError;
-    return resolveHandoff();
+    return _applyServerConversation((repo, workspaceId) async {
+      await repo.takeoverHandoff(conversationId, workspaceId: workspaceId);
+      return repo.resolveHandoff(conversationId, workspaceId: workspaceId);
+    });
   }
 
   Future<String?> resumeAi() {

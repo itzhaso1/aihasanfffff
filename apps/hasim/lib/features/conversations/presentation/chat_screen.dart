@@ -1166,6 +1166,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 const LinearProgressIndicator(minHeight: 2),
               if (state.aiBusy || state.mutating)
                 const LinearProgressIndicator(minHeight: 2),
+              if (conversation?.isHumanHandoffActive == true)
+                const Material(
+                  color: Color(0xFFFFF7ED),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text(
+                        'تحتاج مراجعة من الفريق',
+                        key: Key('chat-team-review'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF78350F),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               Expanded(
                 child: state.loading && state.messages.isEmpty
                     ? const SkeletonList()

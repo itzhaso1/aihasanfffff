@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\Message;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Conversation\ConversationAiEligibilityService;
 use App\Services\Conversation\ConversationHandoffService;
 use App\Services\Inbox\InboxHumanHandoffDetector;
 use App\Services\Inbox\InboxHumanHandoffService;
@@ -31,6 +32,27 @@ class TeamReviewHandoffTest extends TestCase
         $this->assertSame(ConversationHandoffStatus::None, $fresh->handoffStatusEnum());
         $this->assertSame(0, $this->acknowledgements($conversation));
         $this->assertTrue($user->exists && $workspace->exists);
+    }
+
+    public function test_asking_for_the_team_opens_review_and_stops_the_ai_reply(): void
+    {
+        [$user, $workspace, $conversation] = $this->conversation();
+        $message = $this->inbound($conversation, 'حولني على الفريق');
+
+        $this->assertTrue(app(InboxHumanHandoffDetector::class)->requestsHumanAgent($message->content));
+        $this->assertTrue(app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage($conversation, $message));
+
+        $fresh = $conversation->fresh();
+        $this->assertTrue($fresh->handoffStatusEnum()->blocksAi());
+        $this->assertFalse($fresh->isAiReplying());
+        $this->assertFalse(app(ConversationAiEligibilityService::class)->shouldDispatchAiJob($fresh, $message));
+        $this->assertSame(1, $this->acknowledgements($conversation));
+
+        $this->actingAs($user)
+            ->withSession(['current_workspace_id' => $workspace->id])
+            ->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertSee('تحتاج مراجعة من الفريق', false);
     }
 
     public function test_a_staff_decision_opens_team_review_and_shows_the_badge(): void
