@@ -77,11 +77,12 @@ class ChatCatalogRetrievalService
                 $limit = max(1, $limit);
                 $rows = $this->searchForPromptInWorkspace($workspace, $query, $limit + 1, 'chat', forAi: true);
                 $items = [];
+                $queryTokens = $this->tokens($query);
                 foreach ($rows as $row) {
                     if (! is_array($row)) {
                         continue;
                     }
-                    $item = $this->assistantItem($row);
+                    $item = $this->assistantItem($row, $queryTokens);
                     if ($item !== null) {
                         $items[] = $item;
                     }
@@ -133,9 +134,10 @@ class ChatCatalogRetrievalService
 
     /**
      * @param  array<string, mixed>  $row
+     * @param  list<string>  $queryTokens
      * @return array<string, mixed>|null
      */
-    private function assistantItem(array $row): ?array
+    private function assistantItem(array $row, array $queryTokens = []): ?array
     {
         $id = $row['catalog_item_id'] ?? null;
         $name = $row['name'] ?? null;
@@ -165,7 +167,139 @@ class ChatCatalogRetrievalService
             $item['stock'] = (int) $row['stock'];
         }
 
+        $variants = $this->assistantVariants($row['variants'] ?? null, $queryTokens);
+        if ($variants['variants'] !== []) {
+            $item['variants'] = $variants['variants'];
+            $item['has_more_variants'] = $variants['has_more'];
+        }
+
         return $item;
+    }
+
+    /**
+     * Copies of the parent item. A matching copy is marked, and the rest stay
+     * attached so a follow-up can compare them without treating them as other products.
+     *
+     * @param  list<string>  $queryTokens
+     * @return array{variants: list<array<string, mixed>>, has_more: bool}
+     */
+    private function assistantVariants(mixed $rows, array $queryTokens): array
+    {
+        if (! is_array($rows)) {
+            return ['variants' => [], 'has_more' => false];
+        }
+
+        $variants = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $variant = $this->assistantVariant($row, $queryTokens);
+            if ($variant !== null) {
+                $variants[] = $variant;
+            }
+        }
+
+        $limit = 8;
+        $hasMore = count($variants) > $limit;
+
+        return [
+            'variants' => array_slice($variants, 0, $limit),
+            'has_more' => $hasMore,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<string>  $queryTokens
+     * @return array<string, mixed>|null
+     */
+    private function assistantVariant(array $row, array $queryTokens): ?array
+    {
+        $id = $row['id'] ?? null;
+        $name = $row['name'] ?? null;
+        if (! is_numeric($id) || (int) $id <= 0 || ! is_string($name) || trim($name) === '') {
+            return null;
+        }
+
+        $variant = [
+            'id' => (int) $id,
+            'name' => trim($name),
+        ];
+        if (is_scalar($row['price'] ?? null) && (string) $row['price'] !== '') {
+            $variant['price'] = (string) $row['price'];
+        }
+        if (is_string($row['currency'] ?? null) && trim($row['currency']) !== '') {
+            $variant['currency'] = trim($row['currency']);
+        }
+        $availability = CatalogAvailabilityFact::token($row['availability'] ?? null);
+        if ($availability !== null) {
+            $variant['availability'] = $availability;
+        }
+        if (is_int($row['stock'] ?? null) || (is_string($row['stock'] ?? null) && is_numeric($row['stock']))) {
+            $variant['stock'] = (int) $row['stock'];
+        }
+        $attributes = $this->scalarAttributes($row['attributes'] ?? null);
+        if ($attributes !== []) {
+            $variant['attributes'] = $attributes;
+        }
+        $variant['matches_question'] = $this->variantMatchesQuestion($variant, $queryTokens);
+
+        return $variant;
+    }
+
+    /**
+     * @param  array<string, mixed>  $variant
+     * @param  list<string>  $queryTokens
+     */
+    private function variantMatchesQuestion(array $variant, array $queryTokens): bool
+    {
+        if ($queryTokens === []) {
+            return false;
+        }
+
+        $haystack = $this->normalizer->normalize(implode(' ', [
+            (string) ($variant['name'] ?? ''),
+            json_encode($variant['attributes'] ?? [], JSON_UNESCAPED_UNICODE) ?: '',
+        ]));
+        foreach ($this->tokenExpander->expandAll($queryTokens) as $token) {
+            $needle = $this->normalizer->normalize($token);
+            if (mb_strlen($needle) < 3) {
+                continue;
+            }
+            if ($haystack !== '' && mb_strpos($haystack, $needle) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, string|int|float>
+     */
+    private function scalarAttributes(mixed $attributes): array
+    {
+        if (! is_array($attributes)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($attributes as $key => $value) {
+            if (! is_string($key) || $key === '' || count($clean) >= 6) {
+                continue;
+            }
+            if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+                continue;
+            }
+            $text = trim((string) $value);
+            if ($text === '') {
+                continue;
+            }
+            $clean[$key] = is_string($value) ? mb_substr($text, 0, 80) : $value;
+        }
+
+        return $clean;
     }
 
     /**
@@ -311,9 +445,15 @@ class ChatCatalogRetrievalService
         $matched = $items
             ->map(fn (ChatCatalogItem $item): array => [
                 'score' => $this->score($catalog, $item, $searchTokens, $weights),
+                'token_hits' => $this->matchedTokenCount($catalog, $item, $searchTokens),
                 'item' => $item,
             ])
-            ->filter(fn (array $row): bool => $row['score'] >= 2)
+            ->filter(fn (array $row): bool => $row['score'] >= 2);
+        $bestTokenHits = (int) $matched->max('token_hits');
+        if ($bestTokenHits > 0) {
+            $matched = $matched->filter(fn (array $row): bool => $row['token_hits'] === $bestTokenHits);
+        }
+        $matched = $matched
             ->sortByDesc('score')
             ->values();
 
@@ -658,6 +798,28 @@ class ChatCatalogRetrievalService
         }
 
         return $score;
+    }
+
+    /**
+     * How many query tokens appear on the product or one of its variants.
+     * Results that miss a distinguishing token are dropped when another result matches more.
+     *
+     * @param  list<string>  $tokens
+     */
+    private function matchedTokenCount(ChatCatalog $catalog, ChatCatalogItem $item, array $tokens): int
+    {
+        $hits = 0;
+        foreach ($tokens as $token) {
+            $needle = $this->normalizer->normalize($token);
+            if (mb_strlen($needle) < 2) {
+                continue;
+            }
+            if ($this->score($catalog, $item, [$token], []) > 0) {
+                $hits++;
+            }
+        }
+
+        return $hits;
     }
 
     /**

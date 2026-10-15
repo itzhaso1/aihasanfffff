@@ -77,6 +77,23 @@ final class FactRecorder
             if ($availability !== null) {
                 $facts[] = new FactRecord(CanonicalTools::SEARCH_PRODUCTS, $prefix.'.availability', $availability);
             }
+            $variants = is_array($row['variants'] ?? null) ? $row['variants'] : [];
+            foreach (array_slice($variants, 0, self::MAX_PRODUCT_FACTS) as $variant) {
+                if (! is_array($variant) || ! is_numeric($variant['id'] ?? null)) {
+                    continue;
+                }
+                $variantPrefix = $prefix.'.variant:'.(int) $variant['id'];
+                foreach (['name', 'price', 'currency', 'stock', 'sku'] as $field) {
+                    if (! array_key_exists($field, $variant) || ! $this->isScalar($variant[$field])) {
+                        continue;
+                    }
+                    $facts[] = new FactRecord(CanonicalTools::SEARCH_PRODUCTS, $variantPrefix.'.'.$field, $variant[$field]);
+                }
+                $variantAvailability = CatalogAvailabilityFact::token($variant['availability'] ?? null);
+                if ($variantAvailability !== null) {
+                    $facts[] = new FactRecord(CanonicalTools::SEARCH_PRODUCTS, $variantPrefix.'.availability', $variantAvailability);
+                }
+            }
         }
 
         return $facts;

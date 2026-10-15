@@ -101,9 +101,10 @@ final class AiContextRenderer
     private function catalogInstruction(ReferenceResolution $references): string
     {
         return match ($references->retrievalStatus) {
-            'listed' => $references->hasMore
+            'listed' => ($references->hasMore
                 ? 'The items below are a partial list of eligible catalog rows. More eligible items exist. Do not say this is the complete catalog.'
-                : 'The items below are the complete list of eligible catalog rows for this question. Do not invent additional items.',
+                : 'The items below are the complete list of eligible catalog rows for this question. Do not invent additional items.')
+                .' Each item may include variants. A variant price, currency, or availability belongs only to that variant. Do not copy the parent price onto a variant, and do not invent a variant that is not listed. If has_more_variants is true, the variant list is partial.',
             'no_matching_type' => 'The catalog has eligible items, but none of the requested type. Do not say the catalog is empty and do not invent items of the requested type.',
             'catalog_empty' => 'No eligible catalog items are available to show. Do not invent products, services, prices, or availability.',
             'name_not_found' => 'The requested name was not found. Eligible catalog items may still exist. Do not say the catalog is empty.',

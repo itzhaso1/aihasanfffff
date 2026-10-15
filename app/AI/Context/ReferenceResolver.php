@@ -42,7 +42,7 @@ final class ReferenceResolver
             return new ReferenceResolution;
         }
 
-        $lookup = $this->catalog->lookupForAssistant($workspace, $query, 8);
+        $lookup = $this->lookupWithPriorProduct($workspace, $query, $currentMessage, $recentMessages);
         $items = is_array($lookup['items'] ?? null) ? $lookup['items'] : [];
         $ids = array_values(array_unique(array_map(
             static fn (array $row): int => (int) ($row['catalog_item_id'] ?? 0),
@@ -59,6 +59,37 @@ final class ReferenceResolver
         }
 
         return new ReferenceResolution;
+    }
+
+    /**
+     * A follow-up such as "how much is the Arabic copy?" may not repeat the product name.
+     * If that question misses, search again with the previous customer message that did refer to a product.
+     *
+     * @param  list<ContextMessage>  $recentMessages
+     * @return array{status: string, items: list<array<string, mixed>>, has_more: bool}
+     */
+    private function lookupWithPriorProduct(Workspace $workspace, string $query, string $currentMessage, array $recentMessages): array
+    {
+        $lookup = $this->catalog->lookupForAssistant($workspace, $query, 8);
+        if (($lookup['status'] ?? '') === 'listed' || $query !== $currentMessage) {
+            return $lookup;
+        }
+
+        foreach (array_reverse($recentMessages) as $message) {
+            if ($message->role !== 'customer' || $message->content === $currentMessage) {
+                continue;
+            }
+            if (! $this->catalog->shouldLookupForAssistant($message->content)) {
+                continue;
+            }
+
+            $combined = $this->catalog->lookupForAssistant($workspace, $message->content.' '.$currentMessage, 8);
+            if (($combined['status'] ?? '') === 'listed') {
+                return $combined;
+            }
+        }
+
+        return $lookup;
     }
 
     /**

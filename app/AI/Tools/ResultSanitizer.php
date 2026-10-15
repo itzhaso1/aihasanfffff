@@ -66,6 +66,26 @@ final class ResultSanitizer
                 $availability = ((int) $row['stock']) > 0 ? 'in_stock' : 'out_of_stock';
             }
 
+            $variants = [];
+            foreach (array_slice(is_array($row['variants'] ?? null) ? $row['variants'] : [], 0, 8) as $variant) {
+                if (! is_array($variant)) {
+                    continue;
+                }
+                $variantAvailability = $variant['availability'] ?? null;
+                $variants[] = array_filter([
+                    'id' => $variant['id'] ?? null,
+                    'name' => $variant['name'] ?? null,
+                    'price' => $variant['price'] ?? null,
+                    'currency' => $variant['currency'] ?? null,
+                    'stock' => $variant['stock'] ?? null,
+                    'availability' => is_array($variantAvailability)
+                        ? ($variantAvailability['label'] ?? $variantAvailability['available'] ?? null)
+                        : $variantAvailability,
+                    'attributes' => is_array($variant['attributes'] ?? null) ? $variant['attributes'] : null,
+                    'matches_question' => $variant['matches_question'] ?? null,
+                ], static fn (mixed $value): bool => $value !== null);
+            }
+
             return array_filter([
                 'catalog_item_id' => $row['catalog_item_id'] ?? $row['item_id'] ?? null,
                 'name' => $row['name'] ?? null,
@@ -76,6 +96,8 @@ final class ResultSanitizer
                 'stock' => $row['stock'] ?? null,
                 'category' => $row['category'] ?? null,
                 'availability' => $availability,
+                'variants' => $variants === [] ? null : $variants,
+                'has_more_variants' => ($row['has_more_variants'] ?? false) === true ? true : null,
             ], static fn (mixed $value): bool => $value !== null);
         }, $products);
         $payload['count'] = count($payload['products']);

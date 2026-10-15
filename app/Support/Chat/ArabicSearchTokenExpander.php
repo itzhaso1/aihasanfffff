@@ -47,6 +47,10 @@ final class ArabicSearchTokenExpander
         $variants = array_values(array_unique(array_filter([$raw, $folded])));
 
         $stem = $folded;
+        if (preg_match('/^[بوفكل]/u', $stem) === 1 && mb_strlen($stem) >= 5) {
+            $stem = mb_substr($stem, 1);
+            $variants[] = $stem;
+        }
         if (str_starts_with($stem, 'ال') && mb_strlen($stem) > 4) {
             $variants[] = mb_substr($stem, 2);
             $stem = mb_substr($stem, 2);

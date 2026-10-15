@@ -86,6 +86,7 @@ final class SearchProductsTool implements InboxAgentSecuredTool
                         $this->catalogRetrieval->untrustedCommunicationContext($context->workspace),
                     ),
                     'products' => array_map(static fn (array $row): array => [
+                        'catalog_item_id' => $row['catalog_item_id'] ?? null,
                         'name' => $row['name'] ?? null,
                         'description' => $row['description'] ?? null,
                         'sku' => $row['sku'] ?? null,

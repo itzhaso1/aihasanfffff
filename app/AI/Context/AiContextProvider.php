@@ -55,8 +55,41 @@ final class AiContextProvider implements ContextProvider
                 }
                 $facts[] = new FactRecord('chat_catalog', $prefix.'.'.$field, $value);
             }
+            foreach ($this->variantRows($item['variants'] ?? null) as $variant) {
+                $variantId = $variant['id'] ?? null;
+                if (! is_numeric($variantId)) {
+                    continue;
+                }
+                $variantPrefix = $prefix.'.variant:'.(int) $variantId;
+                foreach (['name', 'price', 'currency', 'stock', 'availability'] as $field) {
+                    $value = $variant[$field] ?? null;
+                    if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+                        continue;
+                    }
+                    $facts[] = new FactRecord('chat_catalog', $variantPrefix.'.'.$field, $value);
+                }
+            }
         }
 
         return $facts;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function variantRows(mixed $variants): array
+    {
+        if (! is_array($variants)) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($variants as $variant) {
+            if (is_array($variant)) {
+                $rows[] = $variant;
+            }
+        }
+
+        return $rows;
     }
 }
