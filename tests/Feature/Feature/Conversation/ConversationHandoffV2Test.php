@@ -467,6 +467,22 @@ class ConversationHandoffV2Test extends TestCase
             ->assertDontSee('رد AI', false);
     }
 
+    public function test_disable_ai_refreshes_summary_without_changing_handoff_status(): void
+    {
+        [$user, , $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => true,
+            'handoff_status' => ConversationHandoffStatus::None->value,
+        ]);
+
+        $updated = app(ConversationHandoffService::class)->disableAi($conversation, $user);
+
+        $this->assertFalse((bool) $updated->ai_enabled);
+        $this->assertSame(ConversationHandoffStatus::None, $updated->handoffStatusEnum());
+        $this->assertSame('none', data_get($updated->metadata, 'handoff.structured.handoff_status'));
+        $this->assertSame('disabled', data_get($updated->metadata, 'handoff.structured.ai_state'));
+    }
+
     public function test_inbox_shows_end_handoff_when_human_handoff_is_active(): void
     {
         [$user, $workspace, $conversation] = $this->seedConversation();

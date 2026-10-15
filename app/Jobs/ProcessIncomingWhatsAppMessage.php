@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Conversation;
 use App\Models\WebhookEvent;
+use App\Services\Conversation\ConversationAiEligibilityService;
 use App\Services\Observability\OpsMetricsRecorder;
 use App\Services\WhatsApp\WhatsAppService;
 use App\Support\Observability\CorrelationContext;
@@ -57,7 +58,11 @@ class ProcessIncomingWhatsAppMessage implements ShouldBeUnique, ShouldQueue
                 $conversation = Conversation::withoutGlobalScopes()
                     ->where('workspace_id', $this->workspaceId)
                     ->find($message->conversation_id);
-                if ($conversation?->ai_enabled && $message->wasRecentlyCreated) {
+                if (
+                    $conversation
+                    && $message->wasRecentlyCreated
+                    && app(ConversationAiEligibilityService::class)->shouldDispatchAiJob($conversation, $message)
+                ) {
                     ProcessAIResponse::dispatch($conversation->id, $message->id, $this->workspaceId);
                 }
 

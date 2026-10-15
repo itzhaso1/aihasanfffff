@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Conversation;
 use App\Models\WebhookEvent;
+use App\Services\Conversation\ConversationAiEligibilityService;
 use App\Services\Meta\Facebook\FacebookWebhookService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -47,7 +48,11 @@ class ProcessIncomingFacebookMessage implements ShouldBeUnique, ShouldQueue
             $conversation = Conversation::withoutGlobalScopes()
                 ->where('workspace_id', $this->workspaceId)
                 ->find($message->conversation_id);
-            if ($conversation?->ai_enabled && $message->wasRecentlyCreated) {
+            if (
+                $conversation
+                && $message->wasRecentlyCreated
+                && app(ConversationAiEligibilityService::class)->shouldDispatchAiJob($conversation, $message)
+            ) {
                 ProcessAIResponse::dispatch($conversation->id, $message->id, $this->workspaceId);
             }
 

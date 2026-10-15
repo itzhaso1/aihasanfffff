@@ -82,11 +82,15 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             $incomingMessage,
             $started,
         ): void {
-            if (! $eligibility->mayGenerate($conversation->fresh() ?? $conversation, $incomingMessage)) {
+            $fresh = $conversation->fresh() ?? $conversation;
+            if (! $eligibility->mayGenerate($fresh, $incomingMessage)) {
                 Log::info('ai.reply.skipped_precheck', [
                     'workspace_id' => $conversation->workspace_id,
                     'conversation_id' => $conversation->id,
                     'message_id' => $incomingMessage->id,
+                    'reason' => $eligibility->skipReason($fresh, $incomingMessage),
+                    'ai_enabled' => (bool) $fresh->ai_enabled,
+                    'handoff_status' => $fresh->handoffStatusEnum()->value,
                 ]);
 
                 return;
@@ -141,6 +145,15 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
     ): void {
         $conversationFresh = $conversation->fresh() ?? $conversation;
         if (! $eligibility->mayGenerate($conversationFresh, $incomingMessage)) {
+            Log::info('ai.reply.skipped_precheck', [
+                'workspace_id' => $conversation->workspace_id,
+                'conversation_id' => $conversation->id,
+                'message_id' => $incomingMessage->id,
+                'reason' => $eligibility->skipReason($conversationFresh, $incomingMessage),
+                'ai_enabled' => (bool) $conversationFresh->ai_enabled,
+                'handoff_status' => $conversationFresh->handoffStatusEnum()->value,
+            ]);
+
             return;
         }
 

@@ -70,13 +70,15 @@ class FacebookOutboundService
 
         $durationMs = (int) round((microtime(true) - $started) * 1000);
 
-        if ($response->failed()) {
+        $graphError = $response->json('error');
+        if ($response->failed() || is_array($graphError)) {
             Log::warning('facebook.outbound.failed', [
                 'http_status' => $response->status(),
                 'conversation_id' => $conversation->id,
                 'message_id' => $message->id,
                 'workspace_id' => $conversation->workspace_id,
                 'duration_ms' => $durationMs,
+                'graph_error_code' => is_array($graphError) ? ($graphError['code'] ?? null) : null,
             ]);
 
             app(OpsMetricsRecorder::class)->increment('outbound.facebook.http_error', [
@@ -90,20 +92,32 @@ class FacebookOutboundService
         }
 
         $providerMessageId = trim((string) $response->json('message_id'));
-        if ($providerMessageId !== '') {
-            $metadata = is_array($message->metadata) ? $message->metadata : [];
-            $metadata['facebook_message_id'] = $providerMessageId;
-            $metadata['channel'] = 'facebook_messenger';
+        if ($providerMessageId === '') {
+            Log::warning('facebook.outbound.failed', [
+                'http_status' => $response->status(),
+                'conversation_id' => $conversation->id,
+                'message_id' => $message->id,
+                'workspace_id' => $conversation->workspace_id,
+                'duration_ms' => $durationMs,
+                'graph_error_code' => null,
+            ]);
+            $this->markFailed($delivery, 'missing_provider_message_id', retryable: false);
 
-            $message->forceFill([
-                'external_message_id' => $message->external_message_id ?: $providerMessageId,
-                'metadata' => $metadata,
-            ])->save();
+            return;
         }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        $metadata['facebook_message_id'] = $providerMessageId;
+        $metadata['channel'] = 'facebook_messenger';
+
+        $message->forceFill([
+            'external_message_id' => $message->external_message_id ?: $providerMessageId,
+            'metadata' => $metadata,
+        ])->save();
 
         $delivery->forceFill([
             'status' => ChannelOutboundDelivery::STATUS_SENT,
-            'provider_message_id' => $providerMessageId !== '' ? $providerMessageId : $delivery->provider_message_id,
+            'provider_message_id' => $providerMessageId,
             'last_error' => null,
             'sent_at' => now(),
             'failed_at' => null,

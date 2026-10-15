@@ -402,6 +402,114 @@ class ChannelOutboundArchitectureTest extends TestCase
         ]);
     }
 
+    public function test_facebook_delivery_is_sent_only_when_graph_returns_a_message_id(): void
+    {
+        [$workspace, $conversation, $message, $delivery] = $this->facebookQueuedDelivery();
+
+        Http::fake([
+            'graph.facebook.com/*' => Http::response([
+                'message_id' => 'mid.fb.ok',
+                'recipient_id' => 'fb_user_1',
+            ], 200),
+        ]);
+
+        (new SendChannelOutboundMessage($delivery->id, $workspace->id))->handle(
+            app(ChannelOutboundService::class),
+        );
+
+        $this->assertSame(ChannelOutboundDelivery::STATUS_SENT, $delivery->fresh()?->status);
+        $this->assertSame('mid.fb.ok', $delivery->fresh()?->provider_message_id);
+        $this->assertSame('mid.fb.ok', $message->fresh()?->external_message_id);
+    }
+
+    public function test_facebook_graph_error_payload_is_not_marked_sent(): void
+    {
+        [$workspace, , , $delivery] = $this->facebookQueuedDelivery();
+
+        Http::fake([
+            'graph.facebook.com/*' => Http::response([
+                'error' => ['message' => 'blocked', 'code' => 10],
+            ], 200),
+        ]);
+
+        (new SendChannelOutboundMessage($delivery->id, $workspace->id))->handle(
+            app(ChannelOutboundService::class),
+        );
+
+        $this->assertSame(ChannelOutboundDelivery::STATUS_FAILED, $delivery->fresh()?->status);
+        $this->assertSame('facebook_http_200', $delivery->fresh()?->last_error);
+        $this->assertNull($delivery->fresh()?->sent_at);
+    }
+
+    public function test_facebook_success_without_message_id_is_not_marked_sent(): void
+    {
+        [$workspace, , , $delivery] = $this->facebookQueuedDelivery();
+
+        Http::fake([
+            'graph.facebook.com/*' => Http::response(['recipient_id' => 'fb_user_1'], 200),
+        ]);
+
+        (new SendChannelOutboundMessage($delivery->id, $workspace->id))->handle(
+            app(ChannelOutboundService::class),
+        );
+
+        $this->assertSame(ChannelOutboundDelivery::STATUS_FAILED, $delivery->fresh()?->status);
+        $this->assertSame('missing_provider_message_id', $delivery->fresh()?->last_error);
+    }
+
+    /**
+     * @return array{0: Workspace, 1: Conversation, 2: Message, 3: ChannelOutboundDelivery}
+     */
+    private function facebookQueuedDelivery(): array
+    {
+        $user = User::factory()->create();
+        $workspace = Workspace::factory()->create(['owner_user_id' => $user->id]);
+        $connection = WorkspaceMetaConnection::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'kind' => MetaConnectionKind::FACEBOOK_PAGE,
+            'external_id' => 'page_1',
+            'display_name' => 'Test Page',
+            'status' => 'connected',
+            'scopes' => ['pages_messaging'],
+            'metadata' => [
+                'channel' => 'facebook_messenger',
+                'graph_api_version' => 'v20.0',
+            ],
+            'connected_by_user_id' => $user->id,
+        ]);
+        $connection->storeAccessToken('page-access-token-test');
+        $connection->save();
+
+        $conversation = Conversation::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'channel' => 'facebook_messenger',
+            'external_id' => 'facebook:fb_user_1',
+            'status' => 'open',
+            'metadata' => [
+                'channel_source' => 'facebook_messenger',
+                'facebook_user_id' => 'fb_user_1',
+                'facebook_page_id' => 'page_1',
+            ],
+        ]);
+        $message = Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'direction' => 'outbound',
+            'message_type' => 'text',
+            'content' => 'FB hello',
+        ]);
+        $delivery = ChannelOutboundDelivery::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'message_id' => $message->id,
+            'channel' => 'facebook_messenger',
+            'status' => ChannelOutboundDelivery::STATUS_QUEUED,
+            'attempts' => 0,
+        ]);
+
+        return [$workspace, $conversation, $message, $delivery];
+    }
+
     /**
      * @return array{0: Workspace, 1: User}
      */

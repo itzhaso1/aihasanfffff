@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Feature\Meta;
 
+use App\Enums\ConversationHandoffStatus;
 use App\Jobs\ProcessAIResponse;
 use App\Jobs\ProcessIncomingFacebookMessage;
 use App\Models\Conversation;
@@ -110,7 +111,10 @@ class FacebookWebhookInboundTest extends TestCase
 
         $this->postMetaWebhook($payload, 'meta_facebook_secret')->assertAccepted();
 
-        $this->assertSame('open', $conversation->fresh()->status);
+        $fresh = $conversation->fresh();
+        $this->assertSame('open', $fresh->status);
+        $this->assertSame(ConversationHandoffStatus::None, $fresh->handoffStatusEnum());
+        $this->assertTrue($fresh->isAiReplying());
         Bus::assertDispatched(ProcessAIResponse::class, function (ProcessAIResponse $job) use ($conversation): bool {
             return $job->conversationId === $conversation->id;
         });

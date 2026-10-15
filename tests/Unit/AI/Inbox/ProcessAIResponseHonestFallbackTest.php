@@ -191,6 +191,45 @@ class ProcessAIResponseHonestFallbackTest extends TestCase
         );
     }
 
+    public function test_inbound_reopen_from_resolved_allows_one_auto_reply(): void
+    {
+        [, $conversation, $message] = $this->seedHasimInbox();
+        Conversation::withoutGlobalScopes()->whereKey($conversation->id)->update([
+            'status' => 'archived',
+            'handoff_status' => ConversationHandoffStatus::Resolved,
+            'ai_enabled' => true,
+        ]);
+        $conversation = $conversation->fresh() ?? $conversation;
+        $conversation->update($conversation->attributesForInboundCustomerMessage([
+            'last_message_at' => now(),
+        ]));
+        $this->bindHasimRuntime(modelScript: [new ModelResponse('هلا، تفضل كيف أقدر أساعدك؟')]);
+
+        $this->runAiJob((int) $conversation->id, (int) $message->id, (int) $conversation->workspace_id);
+        $this->runAiJob((int) $conversation->id, (int) $message->id, (int) $conversation->workspace_id);
+
+        $this->assertSame(ConversationHandoffStatus::None, $conversation->fresh()?->handoffStatusEnum());
+        $this->assertSame(
+            ['هلا، تفضل كيف أقدر أساعدك؟'],
+            $this->outboundContents((int) $conversation->workspace_id, (int) $conversation->id),
+        );
+    }
+
+    public function test_active_handoff_is_not_cleared_by_inbound_attribute_normalization(): void
+    {
+        [, $conversation] = $this->seedHasimInbox();
+        Conversation::withoutGlobalScopes()->whereKey($conversation->id)->update([
+            'status' => 'archived',
+            'handoff_status' => ConversationHandoffStatus::Active,
+            'ai_enabled' => true,
+        ]);
+        $conversation = $conversation->fresh() ?? $conversation;
+        $attributes = $conversation->attributesForInboundCustomerMessage(['last_message_at' => now()]);
+
+        $this->assertSame('open', $attributes['status'] ?? null);
+        $this->assertArrayNotHasKey('handoff_status', $attributes);
+    }
+
     public function test_active_handoff_skips_auto_reply_and_fallback(): void
     {
         [, $conversation, $message] = $this->seedHasimInbox();
@@ -199,13 +238,28 @@ class ProcessAIResponseHonestFallbackTest extends TestCase
             'ai_enabled' => false,
         ]);
         $this->bindHasimRuntime(modelScript: [ModelGatewayException::httpError('google_ai_studio', 503)]);
+        $logs = [];
+        Log::listen(static function (MessageLogged $event) use (&$logs): void {
+            $logs[] = $event;
+        });
 
         $this->runAiJob((int) $conversation->id, (int) $message->id, (int) $conversation->workspace_id);
+
+        $skipLogs = array_values(array_filter(
+            $logs,
+            static fn (MessageLogged $event): bool => $event->message === 'ai.reply.skipped_precheck',
+        ));
 
         $this->assertSame(
             [],
             $this->outboundContents((int) $conversation->workspace_id, (int) $conversation->id),
         );
+        $this->assertNotEmpty($skipLogs);
+        $this->assertContains(
+            $skipLogs[0]->context['reason'] ?? null,
+            ['ai_disabled', 'handoff_active'],
+        );
+        $this->assertArrayNotHasKey('content', $skipLogs[0]->context);
     }
 
     public function test_resolved_handoff_blocks_auto_reply_even_when_ai_enabled(): void

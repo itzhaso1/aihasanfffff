@@ -31,6 +31,33 @@ final class AiReplyEligibility
         return $this->mayGenerate($fresh, $incomingMessage);
     }
 
+    public function skipReason(Conversation $conversation, Message $incomingMessage): string
+    {
+        $fresh = $conversation->fresh() ?? $conversation;
+
+        if (! $fresh->isOpen()) {
+            return 'conversation_not_open';
+        }
+
+        if (! (bool) $fresh->ai_enabled) {
+            return 'ai_disabled';
+        }
+
+        if (! $fresh->handoffStatusEnum()->allowsAiAutoReply()) {
+            return 'handoff_'.$fresh->handoffStatusEnum()->value;
+        }
+
+        if (! $this->aiEligibility->mayRespond($fresh, $incomingMessage)) {
+            return 'not_eligible';
+        }
+
+        if ($this->humanOutboundSupersedesInbound($fresh, $incomingMessage)) {
+            return 'human_outbound';
+        }
+
+        return 'ineligible';
+    }
+
     public function humanOutboundSupersedesInbound(Conversation $conversation, Message $incomingMessage): bool
     {
         return Message::withoutGlobalScopes()

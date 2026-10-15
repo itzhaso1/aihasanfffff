@@ -129,6 +129,14 @@ class Conversation extends WorkspaceScopedModel
             $attributes['status'] = 'open';
         }
 
+        if ((bool) $this->ai_enabled && $this->handoffStatusEnum() === ConversationHandoffStatus::Resolved) {
+            $attributes['handoff_status'] = ConversationHandoffStatus::None;
+            $attributes['handoff_reason'] = null;
+            $attributes['handoff_requested_at'] = null;
+            $attributes['handoff_assigned_at'] = null;
+            $attributes['handoff_resolved_at'] = null;
+        }
+
         return $attributes;
     }
 }
