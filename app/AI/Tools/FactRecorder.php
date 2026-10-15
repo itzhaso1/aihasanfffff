@@ -7,6 +7,7 @@ namespace App\AI\Tools;
 use App\AI\Core\AiRequest;
 use App\AI\Core\Decision\ConfirmedAction;
 use App\AI\Core\Decision\FactRecord;
+use App\Support\Chat\CatalogAvailabilityFact;
 
 final class FactRecorder
 {
@@ -66,11 +67,15 @@ final class FactRecorder
             }
             $id = $row['catalog_item_id'] ?? $row['item_id'] ?? null;
             $prefix = is_numeric($id) ? 'catalog_item:'.(int) $id : 'product:'.$index;
-            foreach (['name', 'price', 'currency', 'stock', 'availability', 'sku'] as $field) {
+            foreach (['name', 'price', 'currency', 'stock', 'sku'] as $field) {
                 if (! array_key_exists($field, $row) || ! $this->isScalar($row[$field])) {
                     continue;
                 }
                 $facts[] = new FactRecord(CanonicalTools::SEARCH_PRODUCTS, $prefix.'.'.$field, $row[$field]);
+            }
+            $availability = CatalogAvailabilityFact::token($row['availability'] ?? null);
+            if ($availability !== null) {
+                $facts[] = new FactRecord(CanonicalTools::SEARCH_PRODUCTS, $prefix.'.availability', $availability);
             }
         }
 

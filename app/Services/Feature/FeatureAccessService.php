@@ -370,6 +370,35 @@ class FeatureAccessService
         return (float) ($base ?? 0) + $addonBoost;
     }
 
+    /**
+     * True when this plan (or an add-on) sets the named meter itself.
+     * Alias lookup in {@see limitValue()} does not count as an explicit cap.
+     */
+    public function hasExplicitLimit(Workspace $workspace, string $meter): bool
+    {
+        $plan = $this->plan($workspace);
+        $limits = is_array($plan?->limits) ? $plan->limits : [];
+
+        if (array_key_exists($meter, $limits)) {
+            $value = $limits[$meter];
+            if ($value !== null && $value !== '' && $value !== -1) {
+                return true;
+            }
+        }
+
+        foreach ($this->activeAddonGrants($workspace) as $grant) {
+            $limitGrants = $grant['limits'] ?? [];
+            if (is_array($limitGrants) && array_key_exists($meter, $limitGrants)) {
+                return true;
+            }
+            if (($grant['meter_key'] ?? null) === $meter) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function currentUsage(Workspace $workspace, string $meter): float
     {
         return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $meter): float {

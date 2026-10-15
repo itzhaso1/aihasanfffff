@@ -46,6 +46,24 @@ class EntitlementLimitsTest extends TestCase
         $service->consumeUsage($workspace, 'whatsapp_messages', 1);
     }
 
+    public function test_meter_alias_copies_limit_without_sharing_counters(): void
+    {
+        [$workspace] = $this->workspaceWithPlan([
+            'ai_usage' => 2000,
+        ], ['ai']);
+
+        $service = app(FeatureAccessService::class);
+
+        $this->assertSame(2000.0, $service->limitValue($workspace, 'ai_tokens'));
+        $this->assertFalse($service->hasExplicitLimit($workspace, 'ai_tokens'));
+        $this->assertTrue($service->hasExplicitLimit($workspace, 'ai_usage'));
+
+        $service->consumeUsage($workspace, 'ai_usage', 5);
+
+        $this->assertSame(5.0, $service->currentUsage($workspace, 'ai_usage'));
+        $this->assertSame(0.0, $service->currentUsage($workspace, 'ai_tokens'));
+    }
+
     /**
      * @param  array<string, int|float|null>  $limits
      * @param  array<int, string>  $features

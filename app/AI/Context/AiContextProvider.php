@@ -8,6 +8,7 @@ use App\AI\Core\AiRequest;
 use App\AI\Core\Contracts\ContextProvider;
 use App\AI\Core\Data\ContextPayload;
 use App\AI\Core\Data\ResolvedEmployee;
+use App\AI\Core\Decision\FactRecord;
 
 final class AiContextProvider implements ContextProvider
 {
@@ -24,7 +25,38 @@ final class AiContextProvider implements ContextProvider
             sections: $this->renderer->sections($context),
             intent: $context->intent->canonical,
             references: $context->references->references,
+            facts: $this->catalogFacts($context),
             structuredContext: $context,
         );
+    }
+
+    /**
+     * @return list<FactRecord>
+     */
+    private function catalogFacts(AiContext $context): array
+    {
+        if ($context->references->retrievalStatus !== 'listed') {
+            return [];
+        }
+
+        $facts = [
+            new FactRecord('chat_catalog', 'result_status', 'available'),
+        ];
+        foreach (array_slice($context->references->catalogItems, 0, 8) as $item) {
+            $id = $item['catalog_item_id'] ?? null;
+            if (! is_numeric($id)) {
+                continue;
+            }
+            $prefix = 'catalog_item:'.(int) $id;
+            foreach (['name', 'price', 'currency', 'stock', 'availability'] as $field) {
+                $value = $item[$field] ?? null;
+                if (! is_string($value) && ! is_int($value) && ! is_float($value)) {
+                    continue;
+                }
+                $facts[] = new FactRecord('chat_catalog', $prefix.'.'.$field, $value);
+            }
+        }
+
+        return $facts;
     }
 }

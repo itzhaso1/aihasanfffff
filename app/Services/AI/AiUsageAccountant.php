@@ -19,6 +19,16 @@ class AiUsageAccountant
         return Cache::add($this->cacheKey($workspaceId, $eventKey), 1, now()->addDay());
     }
 
+    public function release(int $workspaceId, string $eventKey): void
+    {
+        $eventKey = trim($eventKey);
+        if ($eventKey === '') {
+            return;
+        }
+
+        Cache::forget($this->cacheKey($workspaceId, $eventKey));
+    }
+
     public function cacheKey(int $workspaceId, string $eventKey): string
     {
         return 'ai-usage-event:'.$workspaceId.':'.$eventKey;

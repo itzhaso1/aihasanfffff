@@ -72,6 +72,11 @@ return [
         'users' => ['overage' => 'upgrade_required', 'label' => 'المستخدمون'],
     ],
 
+    /*
+    | Aliases fill a missing plan.limits key from a sibling name. They do not
+    | merge counters: used(ai_tokens) and used(ai_usage) remain separate rows.
+    | Seeded plans store one commercial quota as ai_usage (deliverable replies).
+    */
     'meter_aliases' => [
         'ai_tokens' => ['ai_usage'],
         'ai_usage' => ['ai_tokens'],

@@ -10,10 +10,13 @@ use App\Models\ChatCatalogItemVariant;
 use App\Models\Workspace;
 use App\Support\Chat\ArabicSearchNormalizer;
 use App\Support\Chat\ArabicSearchTokenExpander;
+use App\Support\Chat\CatalogAvailabilityFact;
 use App\Support\Chat\CatalogBrowseQueryDetector;
 use App\Support\Chat\GulfArabicInterpreter;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Token search over Chat Catalog only. Never reads Product or PosMenuItem.
@@ -46,6 +49,99 @@ class ChatCatalogRetrievalService
             $workspace,
             fn (): array => $this->searchForPromptInWorkspace($workspace, $query, $limit, 'chat', forAi: true),
         );
+    }
+
+    public function shouldLookupForAssistant(string $query): bool
+    {
+        $tokens = $this->tokens($query);
+
+        return $tokens !== [] || $this->browseQueries->isBrowseCatalogQuery($query, $tokens);
+    }
+
+    /**
+     * Trusted catalog rows for an assistant turn.
+     *
+     * Status is one of: not_loaded, listed, catalog_empty, name_not_found, search_failed.
+     *
+     * @return array{status: string, items: list<array<string, mixed>>}
+     */
+    public function lookupForAssistant(Workspace $workspace, string $query, int $limit = 8): array
+    {
+        if (! $this->shouldLookupForAssistant($query)) {
+            return ['status' => 'not_loaded', 'items' => []];
+        }
+
+        try {
+            return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $query, $limit): array {
+                $rows = $this->searchForPromptInWorkspace($workspace, $query, $limit, 'chat', forAi: true);
+                $items = [];
+                foreach ($rows as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $item = $this->assistantItem($row);
+                    if ($item !== null) {
+                        $items[] = $item;
+                    }
+                }
+
+                if ($items !== []) {
+                    return ['status' => 'listed', 'items' => $items];
+                }
+
+                $catalog = $this->catalogRoot->forWorkspace($workspace);
+                $hasItems = $this->discoverableItemsQuery($workspace, $catalog, true)->exists();
+
+                return [
+                    'status' => $hasItems ? 'name_not_found' : 'catalog_empty',
+                    'items' => [],
+                ];
+            });
+        } catch (Throwable $exception) {
+            Log::warning('catalog.assistant_lookup_failed', [
+                'workspace_id' => $workspace->id,
+                'exception_type' => $exception::class,
+            ]);
+
+            return ['status' => 'search_failed', 'items' => []];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>|null
+     */
+    private function assistantItem(array $row): ?array
+    {
+        $id = $row['catalog_item_id'] ?? null;
+        $name = $row['name'] ?? null;
+        if (! is_numeric($id) || (int) $id <= 0 || ! is_string($name) || trim($name) === '') {
+            return null;
+        }
+
+        $item = [
+            'catalog_item_id' => (int) $id,
+            'name' => trim($name),
+        ];
+        $description = $row['description'] ?? null;
+        if (is_string($description) && trim($description) !== '') {
+            $item['description'] = mb_substr(trim($description), 0, 240);
+        }
+        if (is_scalar($row['price'] ?? null) && (string) $row['price'] !== '') {
+            $item['price'] = (string) $row['price'];
+        }
+        if (is_string($row['currency'] ?? null) && trim($row['currency']) !== '') {
+            $item['currency'] = trim($row['currency']);
+        }
+        $availability = CatalogAvailabilityFact::token($row['availability'] ?? null);
+        if ($availability !== null) {
+            $item['availability'] = $availability;
+        }
+        if (is_int($row['stock'] ?? null) || (is_string($row['stock'] ?? null) && is_numeric($row['stock']))) {
+            $item['stock'] = (int) $row['stock'];
+        }
+
+        return $item;
     }
 
     /**
@@ -376,6 +472,7 @@ class ChatCatalogRetrievalService
             'هل', 'من', 'على', 'الى', 'او',
             'the', 'a', 'an', 'is', 'do', 'you', 'have', 'please', 'with', 'for', 'and', 'or',
             'يوجد', 'توجد', 'هليوجد', 'ممكن', 'اريد',
+            'مرحبا', 'هلا', 'اهلين', 'السلام', 'عليكم', 'صباح', 'مساء', 'هاي', 'hello', 'hi',
         ];
 
         $surfaceForms = $this->surfaceForms($query);

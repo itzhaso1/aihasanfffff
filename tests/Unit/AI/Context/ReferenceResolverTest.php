@@ -89,8 +89,16 @@ class ReferenceResolverTest extends TestCase
 
         $this->assertFalse($foreign->resolved);
         $this->assertSame([], $foreign->productIds);
-        $this->assertFalse($ambiguous->resolved);
-        $this->assertSame([], $ambiguous->productIds);
+        $this->assertTrue($ambiguous->resolved);
+        $this->assertSame('listed', $ambiguous->retrievalStatus);
+        $this->assertEqualsCanonicalizing(
+            ChatCatalogItem::withoutGlobalScopes()
+                ->where('workspace_id', $workspaceA->id)
+                ->pluck('id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all(),
+            $ambiguous->productIds,
+        );
         $this->assertSame(1, ChatCatalogItem::withoutGlobalScopes()->where('workspace_id', $workspaceB->id)->count());
     }
 

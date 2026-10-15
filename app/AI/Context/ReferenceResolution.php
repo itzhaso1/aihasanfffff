@@ -15,15 +15,21 @@ final readonly class ReferenceResolution
     /** @var list<AiReference> */
     public array $references;
 
+    /** @var list<array<string, mixed>> */
+    public array $catalogItems;
+
     /**
      * @param  list<int>  $productIds
      * @param  list<AiReference>  $references
+     * @param  list<array<string, mixed>>  $catalogItems
      */
     public function __construct(
         public bool $resolved = false,
         public ?string $source = null,
         array $productIds = [],
         array $references = [],
+        public string $retrievalStatus = 'not_loaded',
+        array $catalogItems = [],
     ) {
         $ids = array_values(array_unique(array_map(
             static fn (mixed $value): int => (int) $value,
@@ -32,6 +38,10 @@ final readonly class ReferenceResolution
         sort($ids, SORT_NUMERIC);
         $this->productIds = $ids;
         $this->references = TypedList::of($references, AiReference::class, 'Context references');
+        $this->catalogItems = array_values(array_filter(
+            $catalogItems,
+            static fn (mixed $item): bool => is_array($item),
+        ));
     }
 
     /**
@@ -42,6 +52,7 @@ final readonly class ReferenceResolution
         return [
             'resolved' => $this->resolved,
             'source' => $this->source,
+            'retrieval_status' => $this->retrievalStatus,
             'product_ids' => $this->productIds,
             'references' => array_map(static fn (AiReference $reference): array => $reference->toArray(), $this->references),
         ];

@@ -161,13 +161,31 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
         try {
             $reply = $aiService->generateReply($conversationFresh, $incomingMessage);
-        } catch (FeatureNotAvailableException|UsageLimitExceededException $exception) {
+        } catch (FeatureNotAvailableException $exception) {
             Log::info('ai.reply.skipped_limits', [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
                 'message_id' => $incomingMessage->id,
-                'reason' => $exception->getMessage(),
+                'feature' => $exception->feature,
             ]);
+
+            return;
+        } catch (UsageLimitExceededException $exception) {
+            $payload = [
+                'workspace_id' => $conversation->workspace_id,
+                'conversation_id' => $conversation->id,
+                'message_id' => $incomingMessage->id,
+                'meter' => $exception->meter,
+                'limit' => $exception->limit,
+                'used' => $exception->used,
+                'phase' => $exception->phase,
+            ];
+
+            if ($exception->phase === UsageLimitExceededException::PHASE_AFTER_GENERATION) {
+                Log::warning('ai.reply.usage_accounting_failed', $payload);
+            } else {
+                Log::info('ai.reply.skipped_limits', $payload);
+            }
 
             return;
         } catch (InvalidArgumentException $exception) {

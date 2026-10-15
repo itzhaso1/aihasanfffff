@@ -44,6 +44,18 @@ final class AiContextRenderer
             'context.references',
             $this->json(['references' => $context->references->toArray()]),
         );
+        if ($context->references->retrievalStatus !== 'not_loaded') {
+            $sections[] = new PromptSection(
+                PromptLayer::Context,
+                'context.catalog',
+                $this->json([
+                    'catalog' => [
+                        'retrieval_status' => $context->references->retrievalStatus,
+                        'items' => $context->references->catalogItems,
+                    ],
+                ]),
+            );
+        }
         $sections[] = new PromptSection(
             PromptLayer::Context,
             'context.state',

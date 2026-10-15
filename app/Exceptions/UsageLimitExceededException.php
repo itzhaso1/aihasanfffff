@@ -4,17 +4,22 @@ namespace App\Exceptions;
 
 use Exception;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 class UsageLimitExceededException extends Exception
 {
+    public const PHASE_BEFORE_GENERATION = 'before_generation';
+
+    public const PHASE_AFTER_GENERATION = 'after_generation';
+
     public function __construct(
         public readonly string $meter,
         public readonly int|float $limit,
         public readonly int|float $used,
         public readonly string $overageBehavior = 'hard_block',
         string $message = '',
+        public readonly string $phase = self::PHASE_BEFORE_GENERATION,
     ) {
         parent::__construct($message !== '' ? $message : __('لقد وصلت إلى حد الاستخدام لهذه الميزة. يرجى ترقية الباقة أو شراء رصيد إضافي.'));
     }

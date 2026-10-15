@@ -5,6 +5,7 @@ namespace App\Services\AI;
 use App\AI\Inbox\HasimInboxRuntime;
 use App\Exceptions\FeatureNotAvailableException;
 use App\Exceptions\MissingWorkspaceContextException;
+use App\Exceptions\UsageLimitExceededException;
 use App\Jobs\UpdateAIUsage;
 use App\Models\AiLog;
 use App\Models\AiSetting;
@@ -13,7 +14,10 @@ use App\Models\Message;
 use App\Models\Workspace;
 use App\Services\Feature\FeatureAccessService;
 use App\Support\Tenancy\WorkspaceContext;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class AIService
 {
@@ -33,8 +37,7 @@ class AIService
 
         return app(WorkspaceContext::class)->runFor($workspace, function () use ($conversation, $message, $workspace): string {
             $this->assertAiFeature($workspace);
-            $this->featureAccess->assertWithinLimit($workspace, 'ai_usage', 1);
-            $this->featureAccess->assertWithinLimit($workspace, 'ai_tokens', 256);
+            $this->assertGenerationBudget($workspace);
 
             if ($this->inboxAiDisabled($conversation)) {
                 return '';
@@ -114,13 +117,70 @@ class AIService
         int $tokensUsed,
     ): void {
         $usageEventKey = 'aiservice:'.$conversation->id.':'.($message->exists ? (string) $message->id : 'ephemeral:'.sha1($userContent));
-        if ($this->usageAccountant->claim((int) $workspace->id, $usageEventKey)) {
+        $workspaceId = (int) $workspace->id;
+
+        if (! $this->usageAccountant->claim($workspaceId, $usageEventKey)) {
+            UpdateAIUsage::dispatch($workspace->id, 0, $usageEventKey);
+
+            return;
+        }
+
+        try {
+            $this->settleDeliverableUsage($workspace, $tokensUsed);
+        } catch (Throwable $exception) {
+            $this->usageAccountant->release($workspaceId, $usageEventKey);
+
+            if ($exception instanceof UsageLimitExceededException) {
+                Log::warning('ai.usage.accounting_failed', [
+                    'workspace_id' => $workspaceId,
+                    'conversation_id' => (int) $conversation->id,
+                    'message_id' => $message->exists ? (int) $message->id : null,
+                    'meter' => $exception->meter,
+                    'limit' => $exception->limit,
+                    'used' => $exception->used,
+                    'phase' => UsageLimitExceededException::PHASE_AFTER_GENERATION,
+                ]);
+
+                throw new UsageLimitExceededException(
+                    meter: $exception->meter,
+                    limit: $exception->limit,
+                    used: $exception->used,
+                    overageBehavior: $exception->overageBehavior,
+                    phase: UsageLimitExceededException::PHASE_AFTER_GENERATION,
+                );
+            }
+
+            throw $exception;
+        }
+
+        UpdateAIUsage::dispatch($workspace->id, 0, $usageEventKey);
+    }
+
+    private function assertGenerationBudget(Workspace $workspace): void
+    {
+        $this->featureAccess->assertWithinLimit($workspace, 'ai_usage', 1);
+
+        if ($this->featureAccess->hasExplicitLimit($workspace, 'ai_tokens')) {
+            $this->featureAccess->assertWithinLimit($workspace, 'ai_tokens', 256);
+        }
+    }
+
+    private function settleDeliverableUsage(Workspace $workspace, int $tokensUsed): void
+    {
+        $consumeTokens = $this->featureAccess->hasExplicitLimit($workspace, 'ai_tokens') && $tokensUsed > 0;
+
+        if ($consumeTokens) {
+            $this->featureAccess->assertWithinLimit($workspace, 'ai_tokens', $tokensUsed);
+        }
+
+        $this->featureAccess->assertWithinLimit($workspace, 'ai_usage', 1);
+
+        DB::transaction(function () use ($workspace, $tokensUsed, $consumeTokens): void {
             $this->featureAccess->consumeUsage($workspace, 'ai_usage', 1, enforce: true);
-            if ($tokensUsed > 0) {
+            if ($consumeTokens) {
                 $this->featureAccess->consumeUsage($workspace, 'ai_tokens', $tokensUsed, enforce: true);
             }
-        }
-        UpdateAIUsage::dispatch($workspace->id, 0, $usageEventKey);
+        });
     }
 
     /**

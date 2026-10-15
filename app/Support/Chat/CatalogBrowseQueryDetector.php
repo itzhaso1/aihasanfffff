@@ -29,6 +29,8 @@ final class CatalogBrowseQueryDetector
         'which', 'who', 'please', 'ممكن', 'please', 'show', 'list', 'display',
         'شو', 'وش', 'ايش', 'شنو', 'what', 'هل', 'عند', 'عندك', 'عندكم', 'عندنا',
         'لديكم', 'لدينا', 'لكم',
+        'ما', 'هي', 'هو',
+        'قولي', 'قلي', 'قل', 'ورني', 'عطني', 'اشوف', 'شوف', 'اعرض', 'عرض',
     ];
 
     public function __construct(
@@ -90,6 +92,7 @@ final class CatalogBrowseQueryDetector
             [
                 'معينة', 'معين',
                 'متوفرة', 'متوفره', 'متوفر', 'متوف',
+                'متاحة', 'متاحه', 'متاح',
                 'موجود', 'موجوده', 'موجودة',
                 'available', 'offer', 'offers', 'sell', 'selling',
             ],
@@ -126,14 +129,34 @@ final class CatalogBrowseQueryDetector
     {
         $normalized = [];
         foreach ($searchTokens as $token) {
+            if ($this->isFillerToken($token)) {
+                continue;
+            }
             $folded = $this->normalizeListingToken($token);
-            if ($folded === '' || in_array($folded, self::FILLER_TOKENS, true)) {
+            if ($folded === '' || $this->isFillerToken($folded)) {
                 continue;
             }
             $normalized[] = $folded;
         }
 
         return array_values(array_unique($normalized));
+    }
+
+    private function isFillerToken(string $token): bool
+    {
+        $normalized = $this->normalizer->normalize($token);
+        $normalized = preg_replace('/^(?:ال|ل)/u', '', $normalized) ?? $normalized;
+        $normalized = trim($normalized);
+        if ($normalized === '') {
+            return true;
+        }
+        if (in_array($normalized, self::FILLER_TOKENS, true)) {
+            return true;
+        }
+
+        $stripped = trim(preg_replace('/(?:كم|نا|ك|ي|ه)$/u', '', $normalized) ?? $normalized);
+
+        return $stripped !== '' && in_array($stripped, self::FILLER_TOKENS, true);
     }
 
     private function normalizeListingToken(string $token): string

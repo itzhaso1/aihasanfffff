@@ -69,7 +69,7 @@ final class AiContextBuilder
             intent: $intent,
             references: $references,
             conversationState: $state,
-            workspacePolicyContext: $this->workspacePolicyContext($request),
+            workspacePolicyContext: $this->workspacePolicyContext($request, $references),
             companyProfile: $this->companyProfiles->contextPayload($request->workspaceId),
         );
     }
@@ -181,26 +181,24 @@ final class AiContextBuilder
 
     /**
      * Inbox replies do not depend on Chat Catalog storefront settings.
-     * Product facts stay not_loaded until a tool returns them.
+     * Product, price, and availability slots follow the retrieval status for this turn.
      *
      * @return array<string, mixed>
      */
-    private function workspacePolicyContext(AiRequest $request): array
+    private function workspacePolicyContext(AiRequest $request, ReferenceResolution $references): array
     {
         return [
             'catalog_open' => false,
             'catalog_required_for_reply' => false,
             'customer_service_policy' => [],
-            'business_capabilities' => $this->businessCapabilities($request),
+            'business_capabilities' => $this->businessCapabilities($request, $references),
         ];
     }
 
     /**
-     * Product, price, and stock facts stay not_loaded until a tool returns them.
-     *
      * @return array<string, mixed>
      */
-    private function businessCapabilities(AiRequest $request): array
+    private function businessCapabilities(AiRequest $request, ReferenceResolution $references): array
     {
         $slot = static fn (string $status, ?string $source = null, ?int $count = null): array => [
             'status' => $status,
@@ -208,19 +206,57 @@ final class AiContextBuilder
             'count' => $count,
         ];
         $unloaded = $slot('not_loaded');
+        $catalog = $this->catalogSlot($references, $slot);
 
         return [
             'mode' => $request->runMode->isSandboxed() ? 'test' : 'live',
             'services' => $unloaded,
-            'products' => $unloaded,
-            'pricing' => $unloaded,
-            'availability' => $unloaded,
+            'products' => $catalog,
+            'pricing' => $this->evidenceSlot($references, 'price', $catalog, $slot),
+            'availability' => $this->evidenceSlot($references, 'availability', $catalog, $slot),
             'orders' => $unloaded,
             'policies' => $unloaded,
             'contact' => $unloaded,
             'hours' => $unloaded,
             'location' => $unloaded,
         ];
+    }
+
+    /**
+     * @param  callable(string, ?string, ?int): array<string, mixed>  $slot
+     * @return array<string, mixed>
+     */
+    private function catalogSlot(ReferenceResolution $references, callable $slot): array
+    {
+        $count = count($references->catalogItems);
+
+        return match ($references->retrievalStatus) {
+            'listed' => $slot('listed', 'chat_catalog', $count),
+            'catalog_empty' => $slot('catalog_empty', 'chat_catalog', 0),
+            'name_not_found' => $slot('name_not_found', 'chat_catalog', 0),
+            'search_failed' => $slot('search_failed', 'chat_catalog', null),
+            default => $slot('not_loaded'),
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $catalog
+     * @param  callable(string, ?string, ?int): array<string, mixed>  $slot
+     * @return array<string, mixed>
+     */
+    private function evidenceSlot(ReferenceResolution $references, string $field, array $catalog, callable $slot): array
+    {
+        if ($references->retrievalStatus !== 'listed') {
+            return $catalog;
+        }
+
+        foreach ($references->catalogItems as $item) {
+            if (array_key_exists($field, $item) && $item[$field] !== null && $item[$field] !== '') {
+                return $slot('listed', 'chat_catalog', count($references->catalogItems));
+            }
+        }
+
+        return $slot('not_loaded');
     }
 
     private function requestString(AiRequest $request, string $key): ?string

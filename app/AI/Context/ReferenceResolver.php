@@ -42,24 +42,35 @@ final class ReferenceResolver
             return new ReferenceResolution;
         }
 
-        $rows = $this->catalog->searchForAi($workspace, $query, 3);
+        $lookup = $this->catalog->lookupForAssistant($workspace, $query, 8);
+        $items = is_array($lookup['items'] ?? null) ? $lookup['items'] : [];
         $ids = array_values(array_unique(array_map(
             static fn (array $row): int => (int) ($row['catalog_item_id'] ?? 0),
-            array_filter($rows, static fn (array $row): bool => is_numeric($row['catalog_item_id'] ?? null) && (int) $row['catalog_item_id'] > 0),
+            array_filter($items, static fn (mixed $row): bool => is_array($row) && is_numeric($row['catalog_item_id'] ?? null) && (int) $row['catalog_item_id'] > 0),
         )));
+        $status = (string) ($lookup['status'] ?? 'not_loaded');
 
-        if (count($ids) !== 1) {
-            return new ReferenceResolution;
+        if ($status === 'listed' && $ids !== []) {
+            return $this->resolved('message_reference', $ids, $status, $items);
         }
 
-        return $this->resolved('message_reference', $ids);
+        if (in_array($status, ['catalog_empty', 'name_not_found', 'search_failed'], true)) {
+            return new ReferenceResolution(retrievalStatus: $status);
+        }
+
+        return new ReferenceResolution;
     }
 
     /**
      * @param  list<int>  $productIds
+     * @param  list<array<string, mixed>>  $catalogItems
      */
-    private function resolved(string $source, array $productIds): ReferenceResolution
-    {
+    private function resolved(
+        string $source,
+        array $productIds,
+        string $retrievalStatus = 'not_loaded',
+        array $catalogItems = [],
+    ): ReferenceResolution {
         return new ReferenceResolution(
             resolved: true,
             source: $source,
@@ -68,6 +79,8 @@ final class ReferenceResolver
                 static fn (int $id): AiReference => new AiReference('catalog_item', (string) $id),
                 $productIds,
             ),
+            retrievalStatus: $retrievalStatus,
+            catalogItems: $catalogItems,
         );
     }
 
@@ -91,12 +104,12 @@ final class ReferenceResolver
      */
     private function explicitReferenceQuery(string $currentMessage, array $recentMessages): ?string
     {
-        if ($this->catalog->tokens($currentMessage) !== []) {
+        if ($this->catalog->shouldLookupForAssistant($currentMessage)) {
             return $currentMessage;
         }
 
         foreach (array_reverse($recentMessages) as $message) {
-            if ($message->role !== 'customer' || $this->catalog->tokens($message->content) === []) {
+            if ($message->role !== 'customer' || ! $this->catalog->shouldLookupForAssistant($message->content)) {
                 continue;
             }
 

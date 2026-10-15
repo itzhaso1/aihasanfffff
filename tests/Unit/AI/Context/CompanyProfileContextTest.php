@@ -94,8 +94,9 @@ class CompanyProfileContextTest extends TestCase
 
         $this->assertTrue($builderContext->companyProfile['present']);
         $this->assertSame('شركة النور', $builderContext->companyProfile['company_name']);
-        $this->assertSame('not_loaded', $builderContext->workspacePolicyContext['business_capabilities']['pricing']['status']);
-        $this->assertSame('not_loaded', $builderContext->workspacePolicyContext['business_capabilities']['availability']['status']);
+        $this->assertSame('catalog_empty', $builderContext->workspacePolicyContext['business_capabilities']['products']['status']);
+        $this->assertSame('catalog_empty', $builderContext->workspacePolicyContext['business_capabilities']['pricing']['status']);
+        $this->assertSame('catalog_empty', $builderContext->workspacePolicyContext['business_capabilities']['availability']['status']);
         $this->assertArrayNotHasKey('price', $builderContext->companyProfile);
         $this->assertStringContainsString('not proof of a specific product, price', (string) $builderContext->companyProfile['usage']);
 
