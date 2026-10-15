@@ -94,6 +94,8 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     ('instagram', 'إنستغرام'),
   ];
 
+  static const _teamReviewLabel = 'يحتاج إلى مراجعة من الفريق';
+
   bool get _isFolder => widget.folder != null;
 
   ConversationsController get _inbox => _isFolder
@@ -612,6 +614,15 @@ class _ConversationsPanel extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 ConversationFilterChip(
+                  key: const Key('conversation-filter-team-review'),
+                  label: _ConversationsScreenState._teamReviewLabel,
+                  selected: state.filter == 'team_review',
+                  onTap: () => notifier.setTeamReview(
+                    state.filter != 'team_review',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ConversationFilterChip(
                   key: const Key('conversation-filter-important'),
                   label: 'مهم',
                   selected: state.customerPriority == 'important',
@@ -721,11 +732,28 @@ class _ConversationsPanel extends StatelessWidget {
                         ),
                         ('instagram', 'إنستغرام', Icons.camera_alt_outlined),
                       ];
-                      final hidden = channels.skip(promoted).toList();
+                      final hidden = [
+                        (
+                          'team_review',
+                          _ConversationsScreenState._teamReviewLabel,
+                          Icons.groups_outlined,
+                        ),
+                        ...channels.skip(promoted),
+                      ];
                       return ConversationChannelDropdown(
                         channels: hidden,
-                        selectedChannel: state.channel,
-                        onSelected: notifier.setChannel,
+                        selectedChannel: state.filter == 'team_review'
+                            ? 'team_review'
+                            : state.channel,
+                        onSelected: (value) {
+                          if (value == 'team_review') {
+                            notifier.setTeamReview(
+                              state.filter != 'team_review',
+                            );
+                            return;
+                          }
+                          notifier.setChannel(value);
+                        },
                       );
                     },
                   )
@@ -754,6 +782,15 @@ class _ConversationsPanel extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
               child: Row(
                 children: [
+                  ConversationFilterChip(
+                    key: const Key('conversation-filter-team-review'),
+                    label: _ConversationsScreenState._teamReviewLabel,
+                    selected: state.filter == 'team_review',
+                    onTap: () => notifier.setTeamReview(
+                      state.filter != 'team_review',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   for (final c in channels) ...[
                     ConversationChannelChip(
                       label: c.$2,

@@ -123,6 +123,7 @@ class _FakeConversationRepository extends ConversationRepository {
   List<ConversationModel> items;
   String lastFilter = 'all';
   String? lastChannel;
+  String? lastHandoff;
   String? lastSearch;
   int? lastArchivedId;
   bool? lastArchivedValue;
@@ -139,15 +140,18 @@ class _FakeConversationRepository extends ConversationRepository {
     String? customerPriority,
     String? paymentStatus,
     String? reviewStatus,
+    String? handoff,
     String? cursor,
     int? workspaceId,
   }) async {
     lastFilter = filter;
     lastChannel = channel;
+    lastHandoff = handoff;
     lastSearch = search;
     final visible = items.where((item) {
       if (filter == 'archived') return item.archived;
       if (item.archived) return false;
+      if (handoff == 'handoff' && !item.isHumanHandoffActive) return false;
       if (filter == 'unread') return item.unreadCount > 0;
       return true;
     }).toList();
@@ -1039,6 +1043,55 @@ void main() {
 
     expect(repo.lastArchivedId, 7);
     expect(repo.lastArchivedValue, isTrue);
+  });
+
+  testWidgets('team review filter lists only handed-off conversations', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repo = _FakeConversationRepository(
+      api,
+      items: const [
+        ConversationModel(
+          id: 7,
+          channel: 'whatsapp',
+          status: 'open',
+          handoffStatus: 'queued',
+          externalId: 'محادثة الفريق',
+        ),
+        ConversationModel(
+          id: 8,
+          channel: 'whatsapp',
+          status: 'open',
+          handoffStatus: 'none',
+          externalId: 'محادثة عادية',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(app(repo: repo));
+    await tester.pumpAndSettle();
+
+    final bar = find.byKey(const Key('desktop-conversation-filters-row'));
+    await tester.tap(
+      find
+          .descendant(
+            of: bar,
+            matching: find.byKey(const Key('conversation-channel-dropdown')),
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('conversation-filter-team-review')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastHandoff, 'handoff');
+    expect(find.text('محادثة الفريق'), findsOneWidget);
+    expect(find.text('محادثة عادية'), findsNothing);
   });
 
   testWidgets('dark channel menu keeps labels visible', (tester) async {

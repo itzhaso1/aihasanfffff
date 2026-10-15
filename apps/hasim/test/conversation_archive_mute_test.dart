@@ -106,6 +106,7 @@ class _RecordingRepo extends ConversationRepository {
     String? customerPriority,
     String? paymentStatus,
     String? reviewStatus,
+    String? handoff,
     String? cursor,
     int? workspaceId,
   }) async {

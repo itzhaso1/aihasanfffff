@@ -108,6 +108,10 @@ class InboxLocalStore {
       where.write(' AND archived = 0 AND unread_count > 0');
     } else if (filter == 'archived') {
       where.write(' AND archived = 1');
+    } else if (filter == 'team_review') {
+      where.write(
+        " AND archived = 0 AND handoff_status IN ('requested', 'queued', 'assigned', 'active')",
+      );
     } else {
       where.write(' AND archived = 0');
     }

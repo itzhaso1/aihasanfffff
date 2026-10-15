@@ -109,7 +109,7 @@ class ConversationChannelDropdown extends StatelessWidget {
         minimumSize: WidgetStatePropertyAll(Size(32, 32)),
         padding: WidgetStatePropertyAll(EdgeInsets.zero),
       ),
-      constraints: const BoxConstraints(minWidth: 220, maxWidth: 240),
+      constraints: const BoxConstraints(minWidth: 260, maxWidth: 300),
       menuPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
@@ -121,8 +121,11 @@ class ConversationChannelDropdown extends StatelessWidget {
       itemBuilder: (context) => [
         for (final channel in channels)
           PopupMenuItem<String>(
+            key: channel.$1 == 'team_review'
+                ? const Key('conversation-filter-team-review')
+                : null,
             value: channel.$1,
-            height: 48,
+            height: channel.$1 == 'team_review' ? 56 : 48,
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             child: _ChannelMenuRow(
               channel: channel.$1,
@@ -146,6 +149,25 @@ class ConversationChannelDropdown extends StatelessWidget {
             color: selected ? HasimTokens.chatGreen : idle.fg,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TeamReviewMark extends StatelessWidget {
+  const _TeamReviewMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 28,
+      height: 28,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Color(0xFFF59E0B),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(Icons.groups_rounded, color: Colors.white, size: 16),
       ),
     );
   }
@@ -176,12 +198,15 @@ class _ChannelMenuRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Row(
           children: [
-            HasimChannelMark(channel: channel, size: 28),
+            if (channel == 'team_review')
+              const _TeamReviewMark()
+            else
+              HasimChannelMark(channel: channel, size: 28),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 label,
-                maxLines: 1,
+                maxLines: channel == 'team_review' ? 2 : 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 14,

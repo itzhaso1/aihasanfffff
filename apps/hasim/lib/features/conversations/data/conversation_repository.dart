@@ -113,6 +113,7 @@ class ConversationRepository {
   Future<({List<ConversationModel> items, String? nextCursor})> list({
     String filter = 'all',
     String? channel,
+    String? handoff,
     String? search,
     String? customerPriority,
     String? paymentStatus,
@@ -127,6 +128,7 @@ class ConversationRepository {
         query: {
           'filter': filter,
           if (channel != null && channel.isNotEmpty) 'channel': channel,
+          if (handoff != null && handoff.isNotEmpty) 'handoff': handoff,
           if (search != null && search.isNotEmpty) 'search': search,
           if (customerPriority != null && customerPriority.isNotEmpty)
             'customer_priority': customerPriority,
@@ -150,6 +152,7 @@ class ConversationRepository {
               filter: filter,
               channel: channel,
               search: search,
+              handoff: handoff,
             ),
             res.nextCursor,
           );

@@ -200,6 +200,10 @@ class ChatCatalogRetrievalService
             }
         }
 
+        usort($variants, function (array $left, array $right): int {
+            return ((int) ($right['matches_question'] ?? false)) <=> ((int) ($left['matches_question'] ?? false));
+        });
+
         $limit = 8;
         $hasMore = count($variants) > $limit;
 
@@ -356,13 +360,14 @@ class ChatCatalogRetrievalService
             return [];
         }
         $searchTokens = $this->tokenExpander->expandAll($tokens);
+        $sqlTokens = $this->orthographicSearchTokens($searchTokens);
 
         $limit = max(1, min(20, $limit));
         $weights = is_array($catalog->search_weights) ? $catalog->search_weights : [];
 
         $items = $this->discoverableItemsQuery($workspace, $catalog, $forAi)
-            ->where(function ($builder) use ($searchTokens, $workspace, $catalog): void {
-                foreach ($searchTokens as $token) {
+            ->where(function ($builder) use ($sqlTokens, $workspace, $catalog): void {
+                foreach ($sqlTokens as $token) {
                     $like = '%'.$this->escapeLike($token).'%';
                     $builder->orWhere(function ($tokenQuery) use ($like, $workspace, $catalog): void {
                         $tokenQuery->where('name', 'like', $like)
@@ -442,16 +447,31 @@ class ChatCatalogRetrievalService
             ->limit(60)
             ->get();
 
+        $contentTokens = $this->contentTokens($searchTokens);
+        $languageTokens = array_values(array_filter(
+            $searchTokens,
+            fn (string $token): bool => $this->isLanguageQualifier($token),
+        ));
         $matched = $items
             ->map(fn (ChatCatalogItem $item): array => [
                 'score' => $this->score($catalog, $item, $searchTokens, $weights),
                 'token_hits' => $this->matchedTokenCount($catalog, $item, $searchTokens),
+                'content_hits' => $this->matchedTokenCount($catalog, $item, $contentTokens),
+                'language_hits' => $this->matchedTokenCount($catalog, $item, $languageTokens),
                 'item' => $item,
             ])
             ->filter(fn (array $row): bool => $row['score'] >= 2);
-        $bestTokenHits = (int) $matched->max('token_hits');
-        if ($bestTokenHits > 0) {
-            $matched = $matched->filter(fn (array $row): bool => $row['token_hits'] === $bestTokenHits);
+        $bestContentHits = (int) $matched->max('content_hits');
+        if ($bestContentHits > 0) {
+            $matched = $matched->filter(fn (array $row): bool => $row['content_hits'] === $bestContentHits);
+            if ($languageTokens !== [] && (int) $matched->max('language_hits') > 0) {
+                $matched = $matched->filter(fn (array $row): bool => $row['language_hits'] > 0);
+            }
+        } else {
+            $bestTokenHits = (int) $matched->max('token_hits');
+            if ($bestTokenHits > 0) {
+                $matched = $matched->filter(fn (array $row): bool => $row['token_hits'] === $bestTokenHits);
+            }
         }
         $matched = $matched
             ->sortByDesc('score')
@@ -635,7 +655,7 @@ class ChatCatalogRetrievalService
         $stop = [
             'هل', 'من', 'على', 'الى', 'او',
             'the', 'a', 'an', 'is', 'do', 'you', 'have', 'please', 'with', 'for', 'and', 'or',
-            'يوجد', 'توجد', 'هليوجد', 'ممكن', 'اريد',
+            'يوجد', 'توجد', 'هليوجد', 'ممكن', 'اريد', 'نعم', 'احتاج', 'نحتاج',
             'مرحبا', 'هلا', 'اهلين', 'السلام', 'عليكم', 'صباح', 'مساء', 'هاي', 'hello', 'hi',
         ];
 
@@ -798,6 +818,69 @@ class ChatCatalogRetrievalService
         }
 
         return $score;
+    }
+
+    /**
+     * Stored catalog text may use ة where the customer wrote ه, or the reverse.
+     * These forms are for SQL only so one word is not counted twice.
+     *
+     * @param  list<string>  $tokens
+     * @return list<string>
+     */
+    private function orthographicSearchTokens(array $tokens): array
+    {
+        $forms = $tokens;
+        foreach ($tokens as $token) {
+            if (str_contains($token, 'ه')) {
+                $forms[] = str_replace('ه', 'ة', $token);
+            }
+            if (str_contains($token, 'ة')) {
+                $forms[] = str_replace('ة', 'ه', $token);
+            }
+        }
+
+        return array_values(array_unique($forms));
+    }
+
+    /**
+     * Language and generic words such as "كتاب" choose a copy or a kind.
+     * They must not outrank the product the customer actually named.
+     *
+     * @param  list<string>  $searchTokens
+     * @return list<string>
+     */
+    private function contentTokens(array $searchTokens): array
+    {
+        $content = array_values(array_filter(
+            $searchTokens,
+            fn (string $token): bool => ! $this->isLanguageQualifier($token),
+        ));
+        $specific = array_values(array_filter(
+            $content,
+            fn (string $token): bool => ! $this->isGenericProductWord($token),
+        ));
+
+        return $specific !== [] ? $specific : $content;
+    }
+
+    private function isLanguageQualifier(string $token): bool
+    {
+        $folded = $this->normalizer->normalize($token);
+        $folded = preg_replace('/^(ال|بال|لل)/u', '', $folded) ?? $folded;
+
+        return str_starts_with($folded, 'عربي')
+            || str_starts_with($folded, 'انجليزي')
+            || in_array($folded, ['arabic', 'english'], true);
+    }
+
+    private function isGenericProductWord(string $token): bool
+    {
+        $folded = $this->normalizer->normalize($token);
+        $folded = preg_replace('/^(ال|بال|لل)/u', '', $folded) ?? $folded;
+
+        return in_array($folded, [
+            'كتاب', 'كتب', 'نسخه', 'نسخ', 'منتج', 'منتجات', 'خدمه', 'دوره', 'book', 'product',
+        ], true);
     }
 
     /**

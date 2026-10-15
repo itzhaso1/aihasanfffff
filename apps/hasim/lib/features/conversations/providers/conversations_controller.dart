@@ -142,7 +142,7 @@ class ConversationsController extends StateNotifier<ConversationsState> {
         .read(conversationRepositoryProvider)
         .watchConversations(
           workspaceId,
-          filter: _remoteFilter,
+          filter: _localFilter,
           channel: state.channel,
           search: state.search,
           customerPriority: state.customerPriority,
@@ -167,7 +167,7 @@ class ConversationsController extends StateNotifier<ConversationsState> {
           .read(conversationRepositoryProvider)
           .cachedConversations(
             workspaceId,
-            filter: _remoteFilter,
+            filter: _localFilter,
             channel: state.channel,
             search: state.search,
             customerPriority: state.customerPriority,
@@ -247,10 +247,22 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   }
 
   Future<void> setChannel(String? channel, {bool resetFilter = false}) async {
+    final leaveTeamReview = state.filter == 'team_review';
     state = state.copyWith(
       channel: channel,
       clearChannel: true,
-      filter: resetFilter ? 'all' : null,
+      filter: resetFilter || leaveTeamReview ? 'all' : null,
+    );
+    _bindLocalQuery();
+    await refresh();
+  }
+
+  Future<void> setTeamReview(bool enabled) async {
+    if (fixedFilter != null) return;
+    state = state.copyWith(
+      filter: enabled ? 'team_review' : 'all',
+      channel: null,
+      clearChannel: true,
     );
     _bindLocalQuery();
     await refresh();
@@ -320,6 +332,7 @@ class ConversationsController extends StateNotifier<ConversationsState> {
       final page = await repo.list(
         filter: _remoteFilter,
         channel: state.channel,
+        handoff: _handoffQuery,
         search: state.search,
         customerPriority: state.customerPriority,
         paymentStatus: state.paymentStatus,
@@ -368,6 +381,7 @@ class ConversationsController extends StateNotifier<ConversationsState> {
           .list(
             filter: _remoteFilter,
             channel: state.channel,
+            handoff: _handoffQuery,
             search: state.search,
             customerPriority: state.customerPriority,
             paymentStatus: state.paymentStatus,
@@ -394,7 +408,14 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     return inboxScopeIsCurrent(_ref, scope);
   }
 
-  String get _remoteFilter => state.filter == 'locked' ? 'all' : state.filter;
+  String get _remoteFilter => switch (state.filter) {
+    'locked' || 'team_review' => 'all',
+    _ => state.filter,
+  };
+
+  String get _localFilter => state.filter == 'locked' ? 'all' : state.filter;
+
+  String? get _handoffQuery => state.filter == 'team_review' ? 'handoff' : null;
 
   List<ConversationModel> _applyChatLock(List<ConversationModel> items) {
     return applyChatLockView(
@@ -408,6 +429,9 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     final lockedIds = _ref.read(lockedConversationIdsProvider);
     if (state.filter == 'locked') return lockedIds.contains(conversation.id);
     if (lockedIds.contains(conversation.id)) return false;
+    if (state.filter == 'team_review') {
+      return !conversation.archived && conversation.isHumanHandoffActive;
+    }
     if (state.filter == 'archived') return conversation.archived;
     if (conversation.archived) return false;
     if (state.filter == 'unread') return conversation.unreadCount > 0;

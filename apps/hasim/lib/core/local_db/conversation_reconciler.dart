@@ -36,8 +36,9 @@ class ConversationReconciler {
     required String filter,
     String? channel,
     String? search,
+    String? handoff,
   }) {
-    return 'conversations:$filter:${channel ?? ''}:${search ?? ''}';
+    return 'conversations:$filter:${channel ?? ''}:${handoff ?? ''}:${search ?? ''}';
   }
 
   static String messagesResource(int conversationId) => 'messages/$conversationId';

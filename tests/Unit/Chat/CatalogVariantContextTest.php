@@ -141,6 +141,35 @@ class CatalogVariantContextTest extends TestCase
         );
     }
 
+    public function test_an_arabic_programming_book_is_not_replaced_by_another_arabic_product(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'كتاب تعلم Excel للمبتدئين', '99.00', [[
+            'name' => 'النسخة العربية',
+            'price' => '10.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'not_tracked',
+        ]]);
+        $this->createBook($workspace, 'تعلم البرمجة', '40.00', [[
+            'name' => 'النسخة العربية',
+            'price' => '25.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'not_tracked',
+        ]]);
+
+        $lookup = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'نعم احتاج كتاب برمجه عربي ؟',
+        );
+        $programming = $this->itemNamed($lookup['items'], 'تعلم البرمجة');
+        $arabic = $this->variantNamed($programming['variants'], 'النسخة العربية');
+
+        $this->assertSame('listed', $lookup['status']);
+        $this->assertNotContains('كتاب تعلم Excel للمبتدئين', array_column($lookup['items'], 'name'));
+        $this->assertTrue($arabic['matches_question']);
+        $this->assertSame('25.00', $arabic['price']);
+    }
+
     public function test_similar_product_names_do_not_mix_their_variants(): void
     {
         [$workspace] = $this->excelBook();
@@ -266,6 +295,25 @@ class CatalogVariantContextTest extends TestCase
                 'variants' => $variants,
             ]);
         });
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $variants
+     * @return array<string, mixed>
+     */
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @return array<string, mixed>
+     */
+    private function itemNamed(array $items, string $name): array
+    {
+        foreach ($items as $item) {
+            if (($item['name'] ?? null) === $name) {
+                return $item;
+            }
+        }
+
+        $this->fail('Product ['.$name.'] was not retrieved.');
     }
 
     /**
