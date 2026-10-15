@@ -343,10 +343,10 @@ class InboxLocalStore {
       'SELECT * FROM ('
       'SELECT * FROM inbox_messages '
       'WHERE workspace_id = ? AND conversation_server_id = ? '
-      'ORDER BY created_at IS NULL, created_at DESC, id DESC '
+      'ORDER BY server_id IS NULL DESC, server_id DESC, id DESC '
       'LIMIT ?'
       ') AS recent '
-      'ORDER BY created_at IS NULL, created_at ASC, id ASC',
+      'ORDER BY server_id IS NULL ASC, server_id ASC, id ASC',
       [workspaceId, conversationId, limit],
     );
     return rows.map(_messageFromRow).toList();
@@ -362,10 +362,10 @@ class InboxLocalStore {
       'SELECT * FROM ('
       'SELECT * FROM inbox_messages '
       'WHERE workspace_id = ? AND conversation_server_id = ? AND created_at < ? '
-      'ORDER BY created_at DESC, id DESC '
+      'ORDER BY server_id DESC, id DESC '
       'LIMIT ?'
       ') AS older '
-      'ORDER BY created_at ASC, id ASC',
+      'ORDER BY server_id ASC, id ASC',
       [workspaceId, conversationId, _ms(before), limit],
     );
     return rows.map(_messageFromRow).toList();

@@ -676,17 +676,27 @@ class ChatController extends StateNotifier<ChatState> {
       byKey[key] = message;
     }
     final merged = byKey.values.toList();
-    merged.sort((a, b) {
-      final at = a.createdAt;
-      final bt = b.createdAt;
-      if (at == null && bt == null) return a.id.compareTo(b.id);
-      if (at == null) return 1;
-      if (bt == null) return -1;
-      final byTime = at.compareTo(bt);
-      if (byTime != 0) return byTime;
-      return a.id.compareTo(b.id);
-    });
+    merged.sort(_messageOrder);
     return merged;
+  }
+
+  /// Server rows follow their ids. An AI reply is inserted after the customer
+  /// message, so a missing or later timestamp must not draw the reply first.
+  static int _messageOrder(MessageModel a, MessageModel b) {
+    final aServer = a.id > 0;
+    final bServer = b.id > 0;
+    if (aServer != bServer) {
+      return aServer ? -1 : 1;
+    }
+    if (aServer && bServer && a.id != b.id) {
+      return a.id.compareTo(b.id);
+    }
+    final at = a.createdAt;
+    final bt = b.createdAt;
+    if (at != null && bt != null && !at.isAtSameMomentAs(bt)) {
+      return at.compareTo(bt);
+    }
+    return a.id.compareTo(b.id);
   }
 
   @override
@@ -1538,7 +1548,7 @@ class ChatController extends StateNotifier<ChatState> {
       if (!_canCommit(scope)) return;
       final local = await repo.cachedMessages(workspaceId, conversationId);
       if (!_canCommit(scope)) return;
-      state = state.copyWith(messages: local);
+      state = state.copyWith(messages: _mergeMessages(state.messages, local));
       if (!incoming.isOutbound) {
         _clearUnreadAfterSend();
         unawaited(_persistReadAfterSend(workspaceId));

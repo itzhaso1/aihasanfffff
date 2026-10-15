@@ -630,6 +630,45 @@ void main() {
     );
   });
 
+  test('a fast AI row cannot stay ahead of the customer message that caused it', () async {
+    const customer = MessageModel(
+      id: 21,
+      conversationId: 1,
+      direction: 'inbound',
+      messageType: 'text',
+      content: 'مرحبا من العميل',
+    );
+    final reply = MessageModel(
+      id: 22,
+      conversationId: 1,
+      direction: 'outbound',
+      messageType: 'text',
+      content: 'رد الذكاء',
+      aiGenerated: true,
+      createdAt: DateTime.utc(2026, 1, 2, 12),
+    );
+    // Newest-first, the shape the messages API returns. The customer row has
+    // no timestamp, which previously sorted it after the reply.
+    h.repo.remoteMessages = [reply, customer];
+
+    h.container.read(chatControllerProvider(1));
+    await h.container.read(chatControllerProvider(1).notifier).refresh(
+      silent: true,
+    );
+    await h.store.upsertMessages(1, 1, [reply]);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await h.store.upsertMessages(1, 1, [customer]);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final shown = h.container.read(chatControllerProvider(1)).messages;
+    final ids = shown.map((m) => m.id).toList();
+    expect(ids.where((id) => id == 21), hasLength(1));
+    expect(ids.where((id) => id == 22), hasLength(1));
+    expect(ids.indexOf(21), lessThan(ids.indexOf(22)));
+    expect(shown.singleWhere((m) => m.id == 21).content, 'مرحبا من العميل');
+    expect(shown.singleWhere((m) => m.id == 22).content, 'رد الذكاء');
+  });
+
   test('refresh keeps a fetched inbound that the painted list had missed', () async {
     await h.store.upsertConversations(1, [
       _conv(1, name: 'قديمة', unread: 1, lastMessageId: 10),

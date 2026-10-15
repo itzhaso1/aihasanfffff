@@ -23,7 +23,7 @@ class PollingRealtimeService implements RealtimeService {
   Timer? _listTimer;
   Timer? _chatTimer;
   int? _watchingConversationId;
-  int? _lastSeenMessageId;
+  final Set<int> _deliveredMessageIds = <int>{};
   int _pollGeneration = 0;
 
   @override
@@ -51,7 +51,7 @@ class PollingRealtimeService implements RealtimeService {
   void watchConversation(int? conversationId) {
     _pollGeneration++;
     _watchingConversationId = conversationId;
-    _lastSeenMessageId = null;
+    _deliveredMessageIds.clear();
     _chatTimer?.cancel();
     if (conversationId == null) return;
     _chatTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollChat());
@@ -66,17 +66,15 @@ class PollingRealtimeService implements RealtimeService {
       final page = await _repo.messages(id, workspaceId: _workspaceIdOf?.call());
       if (generation != _pollGeneration || _watchingConversationId != id) return;
       if (page.items.isEmpty) return;
-      // API returns newest-first
-      final newest = page.items.first;
-      if (_lastSeenMessageId == null) {
-        _lastSeenMessageId = newest.id;
-        return;
+      // Deliver by id, not by "newer than the newest id seen". A fast AI
+      // reply can be page[0] before the customer row is present; the lower
+      // customer id must still be delivered on a later poll.
+      final ordered = page.items.reversed.where((m) => m.id > 0);
+      for (final message in ordered) {
+        if (_deliveredMessageIds.add(message.id)) {
+          _messageController.add(message);
+        }
       }
-      final fresh = page.items.where((m) => m.id > _lastSeenMessageId!).toList().reversed;
-      for (final m in fresh) {
-        _messageController.add(m);
-      }
-      _lastSeenMessageId = newest.id;
     } catch (_) {
       // ignore transient poll errors
     }
