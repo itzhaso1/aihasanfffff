@@ -230,13 +230,17 @@ final class AiContextBuilder
     {
         $count = count($references->catalogItems);
 
-        return match ($references->retrievalStatus) {
+        $payload = match ($references->retrievalStatus) {
             'listed' => $slot('listed', 'chat_catalog', $count),
             'catalog_empty' => $slot('catalog_empty', 'chat_catalog', 0),
+            'no_matching_type' => $slot('no_matching_type', 'chat_catalog', 0),
             'name_not_found' => $slot('name_not_found', 'chat_catalog', 0),
             'search_failed' => $slot('search_failed', 'chat_catalog', null),
             default => $slot('not_loaded'),
         };
+        $payload['has_more'] = $references->retrievalStatus === 'listed' && $references->hasMore;
+
+        return $payload;
     }
 
     /**

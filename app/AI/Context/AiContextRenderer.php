@@ -51,6 +51,11 @@ final class AiContextRenderer
                 $this->json([
                     'catalog' => [
                         'retrieval_status' => $context->references->retrievalStatus,
+                        'has_more' => $context->references->hasMore,
+                        'list_scope' => $context->references->retrievalStatus === 'listed'
+                            ? ($context->references->hasMore ? 'partial' : 'complete')
+                            : null,
+                        'instruction' => $this->catalogInstruction($context->references),
                         'items' => $context->references->catalogItems,
                     ],
                 ]),
@@ -91,6 +96,20 @@ final class AiContextRenderer
         );
 
         return $sections;
+    }
+
+    private function catalogInstruction(ReferenceResolution $references): string
+    {
+        return match ($references->retrievalStatus) {
+            'listed' => $references->hasMore
+                ? 'The items below are a partial list of eligible catalog rows. More eligible items exist. Do not say this is the complete catalog.'
+                : 'The items below are the complete list of eligible catalog rows for this question. Do not invent additional items.',
+            'no_matching_type' => 'The catalog has eligible items, but none of the requested type. Do not say the catalog is empty and do not invent items of the requested type.',
+            'catalog_empty' => 'No eligible catalog items are available to show. Do not invent products, services, prices, or availability.',
+            'name_not_found' => 'The requested name was not found. Eligible catalog items may still exist. Do not say the catalog is empty.',
+            'search_failed' => 'Catalog lookup failed. Do not say the catalog is empty and do not invent items.',
+            default => '',
+        };
     }
 
     /**

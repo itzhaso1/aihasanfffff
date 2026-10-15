@@ -30,6 +30,7 @@ final readonly class ReferenceResolution
         array $references = [],
         public string $retrievalStatus = 'not_loaded',
         array $catalogItems = [],
+        public bool $hasMore = false,
     ) {
         $ids = array_values(array_unique(array_map(
             static fn (mixed $value): int => (int) $value,
@@ -53,6 +54,7 @@ final readonly class ReferenceResolution
             'resolved' => $this->resolved,
             'source' => $this->source,
             'retrieval_status' => $this->retrievalStatus,
+            'has_more' => $this->hasMore,
             'product_ids' => $this->productIds,
             'references' => array_map(static fn (AiReference $reference): array => $reference->toArray(), $this->references),
         ];

@@ -51,10 +51,10 @@ final class ReferenceResolver
         $status = (string) ($lookup['status'] ?? 'not_loaded');
 
         if ($status === 'listed' && $ids !== []) {
-            return $this->resolved('message_reference', $ids, $status, $items);
+            return $this->resolved('message_reference', $ids, $status, $items, (bool) ($lookup['has_more'] ?? false));
         }
 
-        if (in_array($status, ['catalog_empty', 'name_not_found', 'search_failed'], true)) {
+        if (in_array($status, ['catalog_empty', 'no_matching_type', 'name_not_found', 'search_failed'], true)) {
             return new ReferenceResolution(retrievalStatus: $status);
         }
 
@@ -70,6 +70,7 @@ final class ReferenceResolver
         array $productIds,
         string $retrievalStatus = 'not_loaded',
         array $catalogItems = [],
+        bool $hasMore = false,
     ): ReferenceResolution {
         return new ReferenceResolution(
             resolved: true,
@@ -81,6 +82,7 @@ final class ReferenceResolver
             ),
             retrievalStatus: $retrievalStatus,
             catalogItems: $catalogItems,
+            hasMore: $hasMore,
         );
     }
 

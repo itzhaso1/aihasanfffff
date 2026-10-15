@@ -61,19 +61,21 @@ class ChatCatalogRetrievalService
     /**
      * Trusted catalog rows for an assistant turn.
      *
-     * Status is one of: not_loaded, listed, catalog_empty, name_not_found, search_failed.
+     * Status is one of: not_loaded, listed, catalog_empty, no_matching_type, name_not_found, search_failed.
+     * has_more is true only when another eligible row exists beyond the returned page.
      *
-     * @return array{status: string, items: list<array<string, mixed>>}
+     * @return array{status: string, items: list<array<string, mixed>>, has_more: bool}
      */
     public function lookupForAssistant(Workspace $workspace, string $query, int $limit = 8): array
     {
         if (! $this->shouldLookupForAssistant($query)) {
-            return ['status' => 'not_loaded', 'items' => []];
+            return $this->assistantLookup('not_loaded');
         }
 
         try {
             return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $query, $limit): array {
-                $rows = $this->searchForPromptInWorkspace($workspace, $query, $limit, 'chat', forAi: true);
+                $limit = max(1, $limit);
+                $rows = $this->searchForPromptInWorkspace($workspace, $query, $limit + 1, 'chat', forAi: true);
                 $items = [];
                 foreach ($rows as $row) {
                     if (! is_array($row)) {
@@ -85,17 +87,26 @@ class ChatCatalogRetrievalService
                     }
                 }
 
+                $hasMore = count($items) > $limit;
+                if ($hasMore) {
+                    $items = array_slice($items, 0, $limit);
+                }
+
                 if ($items !== []) {
-                    return ['status' => 'listed', 'items' => $items];
+                    return $this->assistantLookup('listed', $items, $hasMore);
                 }
 
                 $catalog = $this->catalogRoot->forWorkspace($workspace);
-                $hasItems = $this->discoverableItemsQuery($workspace, $catalog, true)->exists();
+                $tokens = $this->tokens($query);
+                $typedBrowse = $this->browseQueries->isBrowseCatalogQuery($query, $tokens)
+                    && $this->browseQueries->browseItemKindFilter($query, $tokens) !== null;
+                $hasDisplayable = $this->listDiscoverableForPrompt($workspace, $catalog, 1, 'chat', null, true) !== [];
 
-                return [
-                    'status' => $hasItems ? 'name_not_found' : 'catalog_empty',
-                    'items' => [],
-                ];
+                if (! $hasDisplayable) {
+                    return $this->assistantLookup('catalog_empty');
+                }
+
+                return $this->assistantLookup($typedBrowse ? 'no_matching_type' : 'name_not_found');
             });
         } catch (Throwable $exception) {
             Log::warning('catalog.assistant_lookup_failed', [
@@ -103,8 +114,21 @@ class ChatCatalogRetrievalService
                 'exception_type' => $exception::class,
             ]);
 
-            return ['status' => 'search_failed', 'items' => []];
+            return $this->assistantLookup('search_failed');
         }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @return array{status: string, items: list<array<string, mixed>>, has_more: bool}
+     */
+    private function assistantLookup(string $status, array $items = [], bool $hasMore = false): array
+    {
+        return [
+            'status' => $status,
+            'items' => $items,
+            'has_more' => $hasMore,
+        ];
     }
 
     /**
