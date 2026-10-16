@@ -10,6 +10,7 @@ use App\Models\Conversation;
 use App\Models\ConversationUserState;
 use App\Services\Conversation\ConversationClassificationService;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
+use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Mobile\ConversationInboxService;
 use App\Services\Mobile\MobileInboxActor;
 use App\Services\Worker\WorkerInboxException;
@@ -82,6 +83,9 @@ class ConversationController extends MobileController
             return $this->fail('العنصر المطلوب غير موجود.', 404);
         }
         $conversation->load(['customer']);
+        if (app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation)) {
+            $conversation = $conversation->fresh(['customer']) ?? $conversation;
+        }
         $conversation->unread_count = $this->conversationInboxService->unreadCountForConversation($conversation, $user);
         $state = ConversationUserState::query()
             ->where('conversation_id', $conversation->id)
@@ -102,6 +106,8 @@ class ConversationController extends MobileController
         } catch (ModelNotFoundException) {
             return $this->fail('العنصر المطلوب غير موجود.', 404);
         }
+
+        app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation);
 
         $perPage = max(1, min(50, (int) $request->input('per_page', 30)));
         $paginator = $this->conversationInboxService->messages($conversation, $perPage);

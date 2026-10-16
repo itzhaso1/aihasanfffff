@@ -415,6 +415,48 @@ class MobileConversationApiTest extends TestCase
             ->assertOk();
     }
 
+    public function test_opening_a_chat_repairs_an_unrecorded_ai_handoff_promise(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [, $workspace, $token] = $this->authMember('repair-handoff@example.com');
+        $conversation = $this->makeConversation($workspace);
+        $conversation->update([
+            'channel' => 'facebook_messenger',
+            'ai_enabled' => true,
+            'handoff_status' => 'none',
+        ]);
+
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'content' => 'حولني على الفريق',
+        ]);
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'outbound',
+            'message_type' => 'text',
+            'content' => 'ابشر، الفريق بيكمل معك هنا',
+            'ai_generated' => true,
+        ]);
+
+        $headers = ['X-Workspace-Id' => (string) $workspace->id];
+
+        $this->withToken($token)
+            ->withHeaders($headers)
+            ->getJson("/api/mobile/v1/conversations/{$conversation->id}")
+            ->assertOk()
+            ->assertJsonPath('data.ai_replying', false)
+            ->assertJsonPath('data.handoff_status', 'queued');
+
+        $this->assertTrue($conversation->fresh()->handoffStatusEnum()->blocksAi());
+        $this->assertFalse($conversation->fresh()->isAiReplying());
+    }
+
     private function makeConversation(Workspace $workspace): Conversation
     {
         $customer = Customer::withoutGlobalScopes()->create([

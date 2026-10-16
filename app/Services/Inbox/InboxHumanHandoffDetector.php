@@ -19,6 +19,7 @@ final class InboxHumanHandoffDetector
         'حولني للفريق',
         'حولني إلى الفريق',
         'حولني الى الفريق',
+        'حولني الي الفريق',
         'حولني لفريق',
         'حولني على موظف',
         'حولني للموظف',
@@ -97,7 +98,11 @@ final class InboxHumanHandoffDetector
             return false;
         }
 
-        if (preg_match('/(بحولك|احولك|ساحولك|حولتك|تم تحويل)/u', $normalized) === 1) {
+        if (preg_match('/(بحولك|احولك|ساحولك|حولتك|تم تحويل|راح احولك|رح احولك)/u', $normalized) === 1) {
+            return true;
+        }
+
+        if (str_contains($normalized, 'فريق') && preg_match('/(بيكمل|يكمل|بتابع|يتابع|معك هنا)/u', $normalized) === 1) {
             return true;
         }
 
@@ -137,8 +142,9 @@ final class InboxHumanHandoffDetector
     {
         $text = mb_strtolower(trim((string) $value));
         $text = preg_replace('/[\x{064B}-\x{065F}\x{0670}\x{0640}]/u', '', $text) ?? $text;
+        $text = str_replace(['أ', 'إ', 'آ', 'ى', 'ئ', 'ؤ'], ['ا', 'ا', 'ا', 'ي', 'ي', 'و'], $text);
         $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
 
-        return str_replace(['أ', 'إ', 'آ'], 'ا', $text);
+        return $text;
     }
 }

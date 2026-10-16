@@ -55,6 +55,37 @@ class TeamReviewHandoffTest extends TestCase
             ->assertSee('تحتاج مراجعة من الفريق', false);
     }
 
+    public function test_asking_the_team_in_gulf_arabic_opens_review(): void
+    {
+        [, , $conversation] = $this->conversation();
+        $conversation->update(['channel' => 'facebook_messenger']);
+        $message = $this->inbound($conversation, 'حولني الى الفريق');
+
+        $this->assertTrue(app(InboxHumanHandoffDetector::class)->requestsHumanAgent($message->content));
+        $this->assertTrue(app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage($conversation, $message));
+        $this->assertTrue($conversation->fresh()->handoffStatusEnum()->blocksAi());
+        $this->assertFalse($conversation->fresh()->isAiReplying());
+    }
+
+    public function test_an_unrecorded_ai_promise_is_repaired_into_team_review(): void
+    {
+        [, , $conversation] = $this->conversation();
+        $this->inbound($conversation, 'حولني على الفريق');
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $conversation->workspace_id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'outbound',
+            'message_type' => 'text',
+            'content' => 'ابشر، الفريق بيكمل معك هنا',
+            'ai_generated' => true,
+        ]);
+
+        $this->assertTrue(app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation));
+        $this->assertTrue($conversation->fresh()->handoffStatusEnum()->blocksAi());
+        $this->assertFalse($conversation->fresh()->isAiReplying());
+    }
+
     public function test_an_ai_promise_to_transfer_is_recorded_when_the_customer_writes_again(): void
     {
         [, , $conversation] = $this->conversation();

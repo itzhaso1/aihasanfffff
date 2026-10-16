@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Conversation\ConversationHandoffService;
 use App\Services\Conversation\ConversationService;
+use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Worker\WorkerInboxService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Pagination\CursorPaginator;
@@ -114,10 +115,19 @@ class ConversationInboxService
             });
         }
 
-        return $query
+        $paginator = $query
             ->orderByDesc('conversations.last_message_at')
             ->orderByDesc('conversations.id')
             ->cursorPaginate($perPage);
+
+        $handoffRepair = app(InboxHumanHandoffService::class);
+        foreach ($paginator->items() as $conversation) {
+            if ($conversation instanceof Conversation && $handoffRepair->repairAssistantHandoffClaim($conversation)) {
+                $conversation->refresh();
+            }
+        }
+
+        return $paginator;
     }
 
     public function unreadConversationCount(User $user, Workspace $workspace): int

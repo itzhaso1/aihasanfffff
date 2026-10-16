@@ -16,13 +16,13 @@ final class InboxHumanHandoffService
     public function maybeHandoffFromInboundMessage(
         Conversation $conversation,
         Message $message,
-        bool $onlyIfJustCreated = true,
+        bool $onlyIfJustCreated = false,
     ): bool {
         if ($onlyIfJustCreated && ! $message->wasRecentlyCreated) {
             return false;
         }
 
-        if ($message->direction !== 'inbound' || $message->message_type !== 'text') {
+        if ($message->direction !== 'inbound' || trim((string) $message->content) === '') {
             return false;
         }
 
@@ -47,6 +47,43 @@ final class InboxHumanHandoffService
         } catch (\InvalidArgumentException) {
             return false;
         }
+    }
+
+    /**
+     * An assistant promise such as "أبشر، الفريق بيكمل معك هنا" is not a recorded review.
+     */
+    public function repairAssistantHandoffClaim(Conversation $conversation): bool
+    {
+        $fresh = $conversation->fresh() ?? $conversation;
+        if ($fresh->handoffStatusEnum()->blocksAi()) {
+            return false;
+        }
+
+        $latestAi = Message::withoutGlobalScopes()
+            ->where('workspace_id', $fresh->workspace_id)
+            ->where('conversation_id', $fresh->id)
+            ->where('direction', 'outbound')
+            ->where('ai_generated', true)
+            ->latest('id')
+            ->first();
+
+        if (! $latestAi instanceof Message || ! $this->detector->claimsUnconfirmedHandoff($latestAi->content)) {
+            return false;
+        }
+
+        $inbound = Message::withoutGlobalScopes()
+            ->where('workspace_id', $fresh->workspace_id)
+            ->where('conversation_id', $fresh->id)
+            ->where('direction', 'inbound')
+            ->where('id', '<=', $latestAi->id)
+            ->latest('id')
+            ->first();
+
+        if (! $inbound instanceof Message) {
+            return false;
+        }
+
+        return $this->recordCustomerHandoff($fresh, $inbound);
     }
 
     public function recordCustomerHandoff(Conversation $conversation, Message $message): bool

@@ -20,6 +20,7 @@ class InboxHumanHandoffDetectorTest extends TestCase
         return [
             ['حولني لشخص'],
             ['حولني على الفريق'],
+            ['حولني الى الفريق'],
             ['حَوِّلني لو سمحت على الفريق'],
             ['فيه احد اكلمه؟'],
             ['ابي انسان'],
@@ -38,6 +39,8 @@ class InboxHumanHandoffDetectorTest extends TestCase
         $this->assertFalse($detector->requestsHumanAgent('ما هي ساعات العمل؟'));
         $this->assertFalse($detector->requestsHumanAgent('حولني على المنتج'));
         $this->assertTrue($detector->claimsUnconfirmedHandoff('أبشر بحولك على الفريق وهم بيكملون معك'));
+        $this->assertTrue($detector->claimsUnconfirmedHandoff('ابشر، الفريق بيكمل معك هنا'));
+        $this->assertTrue($detector->claimsUnconfirmedHandoff('ابشر راح احولك على الفريق'));
         $this->assertFalse($detector->claimsUnconfirmedHandoff('أبشر، الكتاب سعره 10 ريال'));
         $this->assertNull($detector->staffDecisionReason('كم الكمية المتوفرة من الدفتر؟'));
         $this->assertSame(

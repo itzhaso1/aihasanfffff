@@ -102,7 +102,12 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
-            if ($this->existingReply($conversation, $incomingMessage)) {
+            $existingReply = $this->existingReply($conversation, $incomingMessage);
+            if ($existingReply !== null) {
+                if (app(InboxHumanHandoffDetector::class)->claimsUnconfirmedHandoff($existingReply->content)) {
+                    app(InboxHumanHandoffService::class)->recordCustomerHandoff($fresh, $incomingMessage);
+                }
+
                 return;
             }
 
@@ -304,6 +309,10 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
         if (! $outboundMessage instanceof Message) {
             return;
+        }
+
+        if (app(InboxHumanHandoffDetector::class)->claimsUnconfirmedHandoff($outboundMessage->content)) {
+            app(InboxHumanHandoffService::class)->recordCustomerHandoff($conversationFresh, $incomingMessage);
         }
 
         $conversationFresh->update(['last_message_at' => now()]);

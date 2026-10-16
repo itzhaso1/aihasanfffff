@@ -50,7 +50,7 @@ final class ConversationHandoffService
 
     public function requestFromCustomerPhrase(Conversation $conversation, Message $triggerMessage): bool
     {
-        if ($triggerMessage->direction !== 'inbound' || $triggerMessage->message_type !== 'text') {
+        if ($triggerMessage->direction !== 'inbound' || trim((string) $triggerMessage->content) === '') {
             return false;
         }
 

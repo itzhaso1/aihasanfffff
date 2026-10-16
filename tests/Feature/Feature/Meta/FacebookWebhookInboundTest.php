@@ -120,6 +120,29 @@ class FacebookWebhookInboundTest extends TestCase
         });
     }
 
+    public function test_asking_for_the_team_opens_review_and_does_not_queue_ai(): void
+    {
+        [$workspace] = $this->workspaceWithFacebookPage('112233445566778');
+        $payload = $this->facebookTextPayload(
+            pageId: '112233445566778',
+            senderId: '998877665544332',
+            messageId: 'mid.fb.handoff',
+            text: 'حولني على الفريق',
+        );
+
+        $this->postMetaWebhook($payload, 'meta_facebook_secret')->assertAccepted();
+
+        $conversation = Conversation::withoutGlobalScopes()->where('workspace_id', $workspace->id)->firstOrFail();
+        $this->assertTrue($conversation->handoffStatusEnum()->blocksAi());
+        $this->assertFalse($conversation->isAiReplying());
+        $this->assertSame(1, Message::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->where('conversation_id', $conversation->id)
+            ->where('metadata->handoff_acknowledgement', true)
+            ->count());
+        Bus::assertNotDispatched(ProcessAIResponse::class);
+    }
+
     /**
      * @return array{0: Workspace}
      */

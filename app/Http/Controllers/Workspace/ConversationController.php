@@ -16,6 +16,7 @@ use App\Models\MessageAttachment;
 use App\Services\Conversation\ConversationAiEligibilityService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
+use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Mobile\ConversationInboxService;
 use App\Services\Mobile\MessageAttachmentService;
 use App\Services\Workforce\WorkforceInboxAttribution;
@@ -127,6 +128,9 @@ class ConversationController extends Controller
         $conversations->setCollection(
             $conversations->getCollection()
                 ->map(function (Conversation $conversation) use ($user) {
+                    if (app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation)) {
+                        $conversation = $conversation->fresh() ?? $conversation;
+                    }
                     $displayChannel = $this->resolveDisplayChannel($conversation);
                     $conversation->setAttribute('display_channel', $displayChannel);
                     $conversation->setAttribute(
