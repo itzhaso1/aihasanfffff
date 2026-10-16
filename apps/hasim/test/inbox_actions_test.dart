@@ -515,10 +515,16 @@ void main() {
       isTrue,
     );
     expect(
-      ConversationHandoffValues.canEndHandoff(
+      ConversationHandoffValues.canMoveToTeamReview(
         _conv(handoff: 'none', aiEnabled: true),
       ),
       isTrue,
+    );
+    expect(
+      ConversationHandoffValues.canEndHandoff(
+        _conv(handoff: 'none', aiEnabled: true),
+      ),
+      isFalse,
     );
     expect(
       ConversationHandoffValues.canEndHandoff(
@@ -831,7 +837,7 @@ void main() {
     );
   });
 
-  test('ending handoff from an AI reply resolves in one action', () async {
+  test('ending handoff from an AI reply opens team review', () async {
     final h = await _openController(
       item: _conv(handoff: 'none', aiEnabled: true),
     );
@@ -848,10 +854,14 @@ void main() {
         .endHandoff();
     expect(error, isNull);
     expect(h.repo.takeoverCalls, 1);
-    expect(h.repo.resolveCalls, 1);
+    expect(h.repo.resolveCalls, 0);
     expect(
       h.container.read(chatControllerProvider(7)).conversation?.handoffStatus,
-      'resolved',
+      'active',
+    );
+    expect(
+      h.container.read(chatControllerProvider(7)).conversation?.isHumanHandoffActive,
+      isTrue,
     );
   });
 
@@ -1587,9 +1597,7 @@ void main() {
     );
   });
 
-  testWidgets('company chat ends an AI reply in one press', (
-    tester,
-  ) async {
+  testWidgets('company chat moves an AI reply to team review', (tester) async {
     setPhone(tester);
     SharedPreferences.setMockInitialValues({'workspace_id': 1});
     final prefs = await SharedPreferences.getInstance();
@@ -1611,12 +1619,14 @@ void main() {
     await openMore(tester);
     expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
     expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
-    expect(find.text('إنهاء التحويل'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('chat-action-end-handoff')));
+    expect(find.text('تحويل إلى الفريق'), findsOneWidget);
+    expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
+    await tester.tap(find.byKey(const Key('chat-action-move-to-team')));
     await tester.pumpAndSettle();
     expect(repo.takeoverCalls, 1);
-    expect(repo.resolveCalls, 1);
+    expect(repo.resolveCalls, 0);
     expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
+    expect(find.byKey(const Key('chat-team-review')), findsOneWidget);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ChatScreen)),
     );
@@ -1626,7 +1636,7 @@ void main() {
     );
     expect(
       container.read(chatControllerProvider(7)).conversation?.handoffStatus,
-      'resolved',
+      'active',
     );
   });
 

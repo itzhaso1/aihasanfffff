@@ -1433,9 +1433,7 @@ class ChatController extends StateNotifier<ChatState> {
     );
   }
 
-  /// One press of "إنهاء التحويل". A review that is already open is resolved
-  /// directly. Stopping an AI reply used to stop at takeover (`active`), so
-  /// the same button had to be pressed again.
+  /// Stopping an AI reply opens team review. Ending an open review resolves it.
   Future<String?> endHandoff() {
     if (!_companyInboxWriteAllowed()) {
       return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
@@ -1444,10 +1442,7 @@ class ChatController extends StateNotifier<ChatState> {
     if (current != null && ConversationHandoffValues.canResolve(current)) {
       return resolveHandoff();
     }
-    return _applyServerConversation((repo, workspaceId) async {
-      await repo.takeoverHandoff(conversationId, workspaceId: workspaceId);
-      return repo.resolveHandoff(conversationId, workspaceId: workspaceId);
-    });
+    return takeoverHandoff();
   }
 
   Future<String?> resumeAi() {

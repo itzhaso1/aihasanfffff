@@ -51,10 +51,13 @@ abstract final class ConversationHandoffValues {
       !conversation.isAiReplying &&
       !conversation.isHumanHandoffActive;
 
-  static bool canEndHandoff(ConversationModel conversation) =>
+  static bool canMoveToTeamReview(ConversationModel conversation) =>
       isOpen(conversation) &&
-      (canResolve(conversation) ||
-          (conversation.isAiReplying && conversation.handoffStatus == 'none'));
+      conversation.isAiReplying &&
+      conversation.handoffStatus == 'none';
+
+  static bool canEndHandoff(ConversationModel conversation) =>
+      canResolve(conversation);
 
   static bool isAiReplying(ConversationModel conversation) =>
       conversation.isAiReplying;

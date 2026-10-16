@@ -363,7 +363,7 @@ class WorkerInboxTest extends TestCase
             ->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
             ->assertSee('id="inbox-shell"', false)
-            ->assertSee('إنهاء التحويل', false)
+            ->assertSee('إنهاء المراجعة', false)
             ->assertDontSee('تعيين عامل مستقل', false)
             ->assertDontSee('تولي المحادثة', false)
             ->assertSee(route('workspace.conversations.messages.store', $conversation), false);

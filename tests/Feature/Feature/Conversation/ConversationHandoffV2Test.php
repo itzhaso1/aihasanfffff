@@ -496,8 +496,9 @@ class ConversationHandoffV2Test extends TestCase
 
         $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
-            ->assertSee('إنهاء التحويل', false)
+            ->assertSee('إنهاء المراجعة', false)
             ->assertSee(route('workspace.conversations.handoff.resolve', $conversation), false)
+            ->assertDontSee('تحويل إلى الفريق', false)
             ->assertDontSee('تحويل إلى AI', false)
             ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false);
     }
@@ -511,8 +512,9 @@ class ConversationHandoffV2Test extends TestCase
 
         $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
-            ->assertSee('إنهاء التحويل', false)
+            ->assertSee('تحويل إلى الفريق', false)
             ->assertSee(route('workspace.conversations.handoff.takeover', $conversation), false)
+            ->assertDontSee('إنهاء المراجعة', false)
             ->assertDontSee('تحويل إلى AI', false)
             ->assertDontSee('تولي المحادثة', false)
             ->assertDontSee(route('workspace.conversations.handoff.resume-ai', $conversation), false);
@@ -594,7 +596,7 @@ class ConversationHandoffV2Test extends TestCase
         $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
             ->assertDontSee('رد AI', false)
-            ->assertSee('إنهاء التحويل', false)
+            ->assertSee('إنهاء المراجعة', false)
             ->assertDontSee('تحويل إلى AI', false)
             ->assertDontSee('تعيين عامل مستقل', false);
     }

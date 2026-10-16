@@ -480,6 +480,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         if (conversation != null &&
             isCompanyUser &&
+            ConversationHandoffValues.canMoveToTeamReview(conversation))
+          const PopupMenuItem(
+            key: Key('chat-action-move-to-team'),
+            value: 'move_to_team',
+            child: Text('تحويل إلى الفريق'),
+          ),
+        if (conversation != null &&
+            isCompanyUser &&
             ConversationHandoffValues.canEndHandoff(conversation))
           const PopupMenuItem(
             key: Key('chat-action-end-handoff'),
@@ -537,7 +545,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (selected == 'classify' && conversation != null) {
       await _openClassification(conversation);
     }
-    if (selected == 'end_handoff' || selected == 'resume_ai') {
+    if (selected == 'end_handoff' ||
+        selected == 'move_to_team' ||
+        selected == 'resume_ai') {
       final notifier = ref.read(
         chatControllerProvider(widget.conversationId).notifier,
       );
