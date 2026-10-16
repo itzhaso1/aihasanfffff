@@ -2,6 +2,7 @@
 
 namespace App\Services\Inbox;
 
+use App\Enums\ConversationHandoffStatus;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\Conversation\ConversationHandoffService;
@@ -55,19 +56,12 @@ final class InboxHumanHandoffService
     public function repairAssistantHandoffClaim(Conversation $conversation): bool
     {
         $fresh = $conversation->fresh() ?? $conversation;
-        if ($fresh->handoffStatusEnum()->blocksAi()) {
+        if ($fresh->handoffStatusEnum() !== ConversationHandoffStatus::None) {
             return false;
         }
 
-        $latestAi = Message::withoutGlobalScopes()
-            ->where('workspace_id', $fresh->workspace_id)
-            ->where('conversation_id', $fresh->id)
-            ->where('direction', 'outbound')
-            ->where('ai_generated', true)
-            ->latest('id')
-            ->first();
-
-        if (! $latestAi instanceof Message || ! $this->detector->claimsUnconfirmedHandoff($latestAi->content)) {
+        $claim = $this->unrecordedAssistantHandoffClaim($fresh);
+        if (! $claim instanceof Message) {
             return false;
         }
 
@@ -75,7 +69,7 @@ final class InboxHumanHandoffService
             ->where('workspace_id', $fresh->workspace_id)
             ->where('conversation_id', $fresh->id)
             ->where('direction', 'inbound')
-            ->where('id', '<=', $latestAi->id)
+            ->where('id', '<=', $claim->id)
             ->latest('id')
             ->first();
 
@@ -110,8 +104,43 @@ final class InboxHumanHandoffService
             ->latest('id')
             ->first();
 
-        return $previous instanceof Message
-            && $this->detector->claimsUnconfirmedHandoff($previous->content);
+        if (! $previous instanceof Message || ! $this->detector->claimsUnconfirmedHandoff($previous->content)) {
+            return false;
+        }
+
+        return ! $this->handoffAcknowledgementExistsAfter($conversation, $previous);
+    }
+
+    private function unrecordedAssistantHandoffClaim(Conversation $conversation): ?Message
+    {
+        $latestAi = Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', 'outbound')
+            ->where('ai_generated', true)
+            ->latest('id')
+            ->first();
+
+        if (! $latestAi instanceof Message || ! $this->detector->claimsUnconfirmedHandoff($latestAi->content)) {
+            return null;
+        }
+
+        if ($this->handoffAcknowledgementExistsAfter($conversation, $latestAi)) {
+            return null;
+        }
+
+        return $latestAi;
+    }
+
+    private function handoffAcknowledgementExistsAfter(Conversation $conversation, Message $claim): bool
+    {
+        return Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', 'outbound')
+            ->where('metadata->handoff_acknowledgement', true)
+            ->where('id', '>=', $claim->id)
+            ->exists();
     }
 
     /**

@@ -104,9 +104,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
             $existingReply = $this->existingReply($conversation, $incomingMessage);
             if ($existingReply !== null) {
-                if (app(InboxHumanHandoffDetector::class)->claimsUnconfirmedHandoff($existingReply->content)) {
-                    app(InboxHumanHandoffService::class)->recordCustomerHandoff($fresh, $incomingMessage);
-                }
+                app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($fresh);
 
                 return;
             }

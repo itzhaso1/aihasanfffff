@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Mobile;
 
+use App\Enums\ConversationHandoffStatus;
 use App\Models\ApiIdempotencyKey;
 use App\Models\Conversation;
 use App\Models\Customer;
@@ -455,6 +456,22 @@ class MobileConversationApiTest extends TestCase
 
         $this->assertTrue($conversation->fresh()->handoffStatusEnum()->blocksAi());
         $this->assertFalse($conversation->fresh()->isAiReplying());
+
+        $this->withToken($token)
+            ->withHeaders($headers)
+            ->postJson("/api/mobile/v1/conversations/{$conversation->id}/resolve-handoff")
+            ->assertOk()
+            ->assertJsonPath('data.handoff_status', 'resolved')
+            ->assertJsonPath('data.ai_replying', false);
+
+        $this->withToken($token)
+            ->withHeaders($headers)
+            ->getJson("/api/mobile/v1/conversations/{$conversation->id}")
+            ->assertOk()
+            ->assertJsonPath('data.handoff_status', 'resolved')
+            ->assertJsonPath('data.ai_replying', false);
+
+        $this->assertSame(ConversationHandoffStatus::Resolved, $conversation->fresh()->handoffStatusEnum());
     }
 
     private function makeConversation(Workspace $workspace): Conversation

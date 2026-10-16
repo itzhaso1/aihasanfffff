@@ -1499,7 +1499,7 @@ class ChatController extends StateNotifier<ChatState> {
         );
       }
       if (!_canCommit(scope)) return null;
-      state = state.copyWith(mutating: false, conversation: next);
+      state = state.copyWith(conversation: next);
       _ref
           .read(conversationsControllerProvider.notifier)
           .applyRemoteConversation(next);
@@ -1512,13 +1512,15 @@ class ChatController extends StateNotifier<ChatState> {
       return null;
     } on ApiException catch (e) {
       if (!_canCommit(scope)) return e.userMessage;
-      state = state.copyWith(mutating: false);
       unawaited(_syncConversationFromServer(scope));
       return e.userMessage;
     } catch (_) {
       if (!_canCommit(scope)) return 'تعذر تحديث المحادثة.';
-      state = state.copyWith(mutating: false);
       return 'تعذر تحديث المحادثة.';
+    } finally {
+      if (state.mutating) {
+        state = state.copyWith(mutating: false);
+      }
     }
   }
 

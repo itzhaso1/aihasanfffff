@@ -298,9 +298,12 @@ final class ConversationHandoffService
             }
 
             $fresh = $this->transition($fresh, ConversationHandoffStatus::Resolved);
+            $metadata = is_array($fresh->metadata) ? $fresh->metadata : [];
+            $this->syncLegacyHandoffFlags($metadata, ConversationHandoffStatus::Resolved);
             $fresh->update([
                 'handoff_resolved_at' => now(),
                 'ai_enabled' => false,
+                'metadata' => $metadata,
             ]);
             $fresh = $this->appendHistory($fresh);
             $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);

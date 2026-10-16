@@ -86,6 +86,55 @@ class TeamReviewHandoffTest extends TestCase
         $this->assertFalse($conversation->fresh()->isAiReplying());
     }
 
+    public function test_repair_does_not_reopen_review_after_staff_ends_it(): void
+    {
+        [$user, , $conversation] = $this->conversation();
+        $this->inbound($conversation, 'حولني على الفريق');
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $conversation->workspace_id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'outbound',
+            'message_type' => 'text',
+            'content' => 'ابشر، الفريق بيكمل معك هنا',
+            'ai_generated' => true,
+        ]);
+
+        $this->assertTrue(app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation));
+        app(ConversationHandoffService::class)->resolve($conversation->fresh(), $user);
+
+        $this->assertSame(ConversationHandoffStatus::Resolved, $conversation->fresh()->handoffStatusEnum());
+        $this->assertFalse(app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation->fresh()));
+        $this->assertSame(ConversationHandoffStatus::Resolved, $conversation->fresh()->handoffStatusEnum());
+        $this->assertFalse($conversation->fresh()->handoffStatusEnum()->blocksAi());
+    }
+
+    public function test_an_old_ai_promise_does_not_reopen_after_the_review_ended(): void
+    {
+        [$user, , $conversation] = $this->conversation();
+        Message::withoutGlobalScopes()->create([
+            'workspace_id' => $conversation->workspace_id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'outbound',
+            'message_type' => 'text',
+            'content' => 'أبشر بحولك على الفريق وهم بيكملون معك',
+            'ai_generated' => true,
+        ]);
+
+        $this->assertTrue(app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage(
+            $conversation,
+            $this->inbound($conversation, 'هات وصفه'),
+        ));
+        app(ConversationHandoffService::class)->resolve($conversation->fresh(), $user);
+
+        $this->assertFalse(app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage(
+            $conversation->fresh(),
+            $this->inbound($conversation, 'شكرا'),
+        ));
+        $this->assertSame(ConversationHandoffStatus::Resolved, $conversation->fresh()->handoffStatusEnum());
+    }
+
     public function test_an_ai_promise_to_transfer_is_recorded_when_the_customer_writes_again(): void
     {
         [, , $conversation] = $this->conversation();
