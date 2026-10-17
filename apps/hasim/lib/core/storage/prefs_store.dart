@@ -15,6 +15,8 @@ class PrefsStore {
   static const _chatWallpaperKey = 'chat_wallpaper';
   static const _chatOutgoingBubbleColorKey = 'chat_outgoing_bubble_color';
   static const _conversationThemesKey = 'conversation_chat_themes';
+  static const _conversationMarksKey = 'conversation_marks';
+  static const _customerNotesKey = 'customer_notes';
   static const _pushDeviceIdKey = 'push_device_id';
   static const _pushDeviceWorkspaceKey = 'push_device_workspace_id';
   static const _pushDeviceTokenKey = 'push_device_token';
@@ -148,6 +150,69 @@ class PrefsStore {
 
   Map<String, dynamic> _readConversationThemes() {
     final raw = _prefs.getString(_conversationThemesKey);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return {};
+  }
+
+  /// تثبيت/نجمة/إخفاء محلي للمحادثات والرسائل — لا يعتمد على واجهة جديدة.
+  Map<String, dynamic> conversationMarks(int workspaceId) {
+    final all = _readConversationMarks();
+    return entryMap(all['$workspaceId']);
+  }
+
+  Future<void> setConversationMarks(
+    int workspaceId,
+    Map<String, dynamic> marks,
+  ) async {
+    final all = _readConversationMarks();
+    if (marks.isEmpty) {
+      all.remove('$workspaceId');
+    } else {
+      all['$workspaceId'] = marks;
+    }
+    await _prefs.setString(_conversationMarksKey, jsonEncode(all));
+  }
+
+  Map<String, dynamic> _readConversationMarks() =>
+      _readJsonMap(_conversationMarksKey);
+
+  /// ملاحظات العملاء المحلية لكل مساحة عمل (تُزامن مع جهة الاتصال إن وُجدت).
+  Map<int, String> customerNotes(int workspaceId) {
+    final entry = entryMap(_readJsonMap(_customerNotesKey)['$workspaceId']);
+    final notes = <int, String>{};
+    for (final item in entry.entries) {
+      final customerId = int.tryParse(item.key);
+      final note = item.value?.toString() ?? '';
+      if (customerId != null && note.trim().isNotEmpty) {
+        notes[customerId] = note;
+      }
+    }
+    return notes;
+  }
+
+  Future<void> setCustomerNotes(
+    int workspaceId,
+    Map<int, String> notes,
+  ) async {
+    final all = _readJsonMap(_customerNotesKey);
+    final entry = <String, String>{
+      for (final item in notes.entries)
+        if (item.value.trim().isNotEmpty) '${item.key}': item.value,
+    };
+    if (entry.isEmpty) {
+      all.remove('$workspaceId');
+    } else {
+      all['$workspaceId'] = entry;
+    }
+    await _prefs.setString(_customerNotesKey, jsonEncode(all));
+  }
+
+  Map<String, dynamic> _readJsonMap(String key) {
+    final raw = _prefs.getString(key);
     if (raw == null || raw.isEmpty) return {};
     try {
       final decoded = jsonDecode(raw);

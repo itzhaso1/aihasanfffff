@@ -11,6 +11,7 @@ import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/network/media_auth_headers.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
+import 'package:hasim/core/utils/quoted_reply.dart';
 import 'package:hasim/core/widgets/async_body.dart';
 import 'package:hasim/core/widgets/skeleton_list.dart';
 import 'package:file_picker/file_picker.dart';
@@ -27,6 +28,8 @@ import 'package:hasim/features/conversations/presentation/widgets/chat_message_b
 import 'package:hasim/features/conversations/presentation/widgets/chat_wallpaper.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_channel_avatar.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_classification_sheet.dart';
+import 'package:hasim/features/conversations/presentation/widgets/conversation_context_menu.dart';
+import 'package:hasim/features/conversations/providers/conversation_marks_controller.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
 import 'package:hasim/features/conversations/providers/desktop_conversation_selection.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
@@ -75,6 +78,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _messageSearch = TextEditingController();
   int _suggestGeneration = 0;
 
+  /// الرسالة التي يُرد عليها من قائمة «رد».
+  MessageModel? _replyTo;
+
+  /// مفاتيح الرسائل المحددة بعد اختيار «تحديد».
+  final Set<String> _selectedMessageKeys = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -99,6 +108,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _stickToBottom = true;
       _emojiPickerOpen = false;
       _attachMenuOpen = false;
+      _replyTo = null;
+      _selectedMessageKeys.clear();
     }
   }
 
@@ -163,6 +174,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _lastSendText;
   List<MessageModel>? _cachedRowsSource;
   String? _cachedRowsQuery;
+  Set<String>? _cachedHiddenKeys;
   List<_ChatRow> _cachedRows = const [];
 
   Future<void> _send() async {
@@ -182,18 +194,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     _lastSendAt = now;
     _lastSendText = text;
+    final reply = _replyTo;
+    final outgoing = reply == null
+        ? text
+        : composeQuotedReply(quoted: _messageText(reply), reply: text);
     _controller.clear();
+    if (reply != null) {
+      setState(() => _replyTo = null);
+    }
     _keepComposerFocus();
     _stickToBottom = true;
     final accepted = await ref
         .read(chatControllerProvider(widget.conversationId).notifier)
-        .send(text);
+        .send(outgoing);
     if (!mounted) return;
     if (!accepted) {
       _controller.value = TextEditingValue(
         text: text,
         selection: TextSelection.collapsed(offset: text.length),
       );
+      if (reply != null && _replyTo == null) {
+        setState(() => _replyTo = reply);
+      }
       final message =
           ref.read(chatControllerProvider(widget.conversationId)).error ??
           'تعذر إرسال الرسالة.';
@@ -202,6 +224,352 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ).showSnackBar(SnackBar(content: Text(message)));
     }
     _keepComposerFocus();
+  }
+
+  double get _composerHeight =>
+      ChatComposer.floatingOuterHeight +
+      (_replyTo != null ? ChatComposer.replyBarHeight : 0);
+
+  ConversationModel? get _currentConversation =>
+      ref.read(chatControllerProvider(widget.conversationId)).conversation ??
+      widget.initialConversation;
+
+  /// نص الرسالة للنسخ/الرد/الملاحظة — أو اسم المرفق إن لم يوجد نص.
+  String _messageText(MessageModel message) {
+    final text = message.content.trim();
+    if (text.isNotEmpty && text != '📎') {
+      return text;
+    }
+    for (final attachment in message.attachments) {
+      final name = attachment.originalName.trim();
+      if (name.isNotEmpty) {
+        return name;
+      }
+    }
+    return '';
+  }
+
+  String _replyTitle(MessageModel message) {
+    if (message.isOutbound) {
+      final sender = message.userName?.trim() ?? '';
+      if (sender.isNotEmpty) return 'الرد على $sender';
+      return message.aiGenerated ? 'الرد على رد AI' : 'الرد على رسالة مرسلة';
+    }
+    final name = message.customerName?.trim().isNotEmpty == true
+        ? message.customerName!.trim()
+        : _currentConversation?.title;
+    return name == null || name.isEmpty ? 'الرد على العميل' : 'الرد على $name';
+  }
+
+  List<MessageModel> _selectedMessages() {
+    final messages = ref
+        .read(chatControllerProvider(widget.conversationId))
+        .messages;
+    return [
+      for (final message in messages)
+        if (_selectedMessageKeys.contains(
+          ConversationMarks.messageKey(message),
+        ))
+          message,
+    ];
+  }
+
+  void _toggleMessageSelection(MessageModel message) {
+    final key = ConversationMarks.messageKey(message);
+    setState(() {
+      if (!_selectedMessageKeys.remove(key)) {
+        _selectedMessageKeys.add(key);
+      }
+    });
+  }
+
+  void _clearMessageSelection() {
+    if (_selectedMessageKeys.isEmpty) return;
+    setState(_selectedMessageKeys.clear);
+  }
+
+  Future<void> _showMessageMenu(
+    MessageModel message,
+    Offset globalPosition,
+  ) async {
+    if (_selectedMessageKeys.isNotEmpty) {
+      _toggleMessageSelection(message);
+      return;
+    }
+    final marks = ref.read(conversationMarksProvider);
+    final action = await showConversationContextMenu(
+      context: context,
+      globalPosition: globalPosition,
+      pinned: marks.isMessagePinned(message),
+      starred: marks.isMessageStarred(message),
+      preview: splitQuotedReply(_messageText(message)).body,
+    );
+    if (action == null || !mounted) return;
+    await _onMessageAction(action, message);
+  }
+
+  Future<void> _onMessageAction(
+    ConversationContextAction action,
+    MessageModel message,
+  ) async {
+    final marks = ref.read(conversationMarksProvider.notifier);
+    switch (action) {
+      case ConversationContextAction.reply:
+        if (_currentConversation?.canReply == false) {
+          showConversationContextToast(
+            context,
+            'لا يمكن الرد في هذه المحادثة.',
+          );
+          return;
+        }
+        setState(() => _replyTo = message);
+        _composerFocus.requestFocus();
+      case ConversationContextAction.copy:
+        await copyConversationContextText(
+          context,
+          _messageText(message),
+          copiedMessage: 'تم نسخ الرسالة.',
+        );
+      case ConversationContextAction.pin:
+        final pin = !ref
+            .read(conversationMarksProvider)
+            .isMessagePinned(message);
+        await marks.toggleMessagePinned(message);
+        if (!mounted) return;
+        showConversationContextToast(
+          context,
+          pin ? 'تم تثبيت الرسالة.' : 'تم إلغاء تثبيت الرسالة.',
+        );
+      case ConversationContextAction.star:
+        final star = !ref
+            .read(conversationMarksProvider)
+            .isMessageStarred(message);
+        await marks.toggleMessageStarred(message);
+        if (!mounted) return;
+        showConversationContextToast(
+          context,
+          star ? 'تم تمييز الرسالة بنجمة.' : 'تمت إزالة النجمة.',
+        );
+      case ConversationContextAction.addToNote:
+        final conversation = _currentConversation;
+        if (conversation == null) return;
+        await addConversationTextToNote(
+          context: context,
+          ref: ref,
+          conversation: conversation,
+          text: splitQuotedReply(_messageText(message)).body,
+          onView: _openCustomerFile,
+        );
+      case ConversationContextAction.select:
+        _toggleMessageSelection(message);
+      case ConversationContextAction.report:
+        await _reportConversation();
+      case ConversationContextAction.delete:
+        await _deleteMessages([message]);
+    }
+  }
+
+  /// الإبلاغ يعلّم المحادثة «يحتاج مراجعة» عبر واجهة التصنيف الموجودة.
+  Future<void> _reportConversation() async {
+    final conversation = _currentConversation;
+    if (conversation == null) return;
+    if (!ref.read(authControllerProvider).isCompanyUser) {
+      showConversationContextToast(
+        context,
+        'لا تملك صلاحية تنفيذ هذا الإجراء.',
+      );
+      return;
+    }
+    if (conversation.reviewStatus == 'needs_review') {
+      showConversationContextToast(
+        context,
+        'تم الإبلاغ مسبقًا: المحادثة معلّمة «يحتاج مراجعة».',
+      );
+      return;
+    }
+    if (!await confirmConversationContextReport(context, forMessage: true) ||
+        !mounted) {
+      return;
+    }
+    final error = await ref
+        .read(chatControllerProvider(widget.conversationId).notifier)
+        .updateClassification(
+          customerPriority:
+              ConversationClassificationValues.isAllowedPriority(
+                conversation.customerPriority,
+              )
+              ? conversation.customerPriority
+              : ConversationClassificationValues.defaultPriority,
+          paymentStatus:
+              ConversationClassificationValues.isAllowedPayment(
+                conversation.paymentStatus,
+              )
+              ? conversation.paymentStatus
+              : ConversationClassificationValues.defaultPayment,
+          reviewStatus: 'needs_review',
+        );
+    if (!mounted) return;
+    showConversationContextToast(
+      context,
+      error ?? 'تم الإبلاغ. المحادثة الآن «يحتاج مراجعة».',
+    );
+  }
+
+  Future<void> _deleteMessages(List<MessageModel> messages) async {
+    if (messages.isEmpty) return;
+    final confirmed = await confirmConversationContextDelete(
+      context,
+      forMessage: true,
+      count: messages.length,
+    );
+    if (!confirmed || !mounted) return;
+    await ref.read(conversationMarksProvider.notifier).hideMessages(messages);
+    if (!mounted) return;
+    final keys = messages.map(ConversationMarks.messageKey).toSet();
+    final reply = _replyTo;
+    setState(() {
+      _selectedMessageKeys.removeAll(keys);
+      if (reply != null && keys.contains(ConversationMarks.messageKey(reply))) {
+        _replyTo = null;
+      }
+    });
+    showConversationContextToast(
+      context,
+      messages.length > 1
+          ? 'تم حذف الرسائل من هذا الجهاز.'
+          : 'تم حذف الرسالة من هذا الجهاز.',
+    );
+  }
+
+  Future<void> _copySelectedMessages() async {
+    final selected = _selectedMessages();
+    final text = selected
+        .map(_messageText)
+        .where((value) => value.isNotEmpty)
+        .join('\n');
+    _clearMessageSelection();
+    await copyConversationContextText(
+      context,
+      text,
+      copiedMessage: selected.length > 1
+          ? 'تم نسخ الرسائل.'
+          : 'تم نسخ الرسالة.',
+    );
+  }
+
+  Future<void> _starSelectedMessages() async {
+    final selected = _selectedMessages();
+    if (selected.isEmpty) return;
+    final marks = ref.read(conversationMarksProvider);
+    final starAll = selected.any((m) => !marks.isMessageStarred(m));
+    await ref
+        .read(conversationMarksProvider.notifier)
+        .setMessagesStarred(selected, starred: starAll);
+    if (!mounted) return;
+    _clearMessageSelection();
+    showConversationContextToast(
+      context,
+      starAll ? 'تم تمييز الرسائل بنجمة.' : 'تمت إزالة النجمة.',
+    );
+  }
+
+  PreferredSizeWidget _messageSelectionAppBar(Color headerBg) {
+    return AppBar(
+      key: const Key('chat-selection-appbar'),
+      automaticallyImplyLeading: false,
+      centerTitle: false,
+      backgroundColor: headerBg,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      shape: Border(bottom: BorderSide(color: HasimTokens.lineColor(context))),
+      leading: IconButton(
+        key: const Key('chat-selection-close'),
+        tooltip: 'إلغاء التحديد',
+        onPressed: _clearMessageSelection,
+        icon: const Icon(Icons.close_rounded),
+      ),
+      title: Text(
+        '${_selectedMessageKeys.length}',
+        key: const Key('chat-selection-count'),
+        style: Theme.of(
+          context,
+        ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      actions: [
+        IconButton(
+          key: const Key('chat-selection-copy'),
+          tooltip: 'نسخ',
+          onPressed: _copySelectedMessages,
+          icon: const Icon(Icons.copy_rounded),
+        ),
+        IconButton(
+          key: const Key('chat-selection-star'),
+          tooltip: 'تمييز بنجمة',
+          onPressed: _starSelectedMessages,
+          icon: const Icon(Icons.star_outline_rounded),
+        ),
+        IconButton(
+          key: const Key('chat-selection-delete'),
+          tooltip: 'حذف',
+          onPressed: () => _deleteMessages(_selectedMessages()),
+          icon: const Icon(Icons.delete_outline_rounded),
+        ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+
+  Widget _pinnedMessageBar(MessageModel message) {
+    return Material(
+      key: const Key('chat-pinned-bar'),
+      color: HasimTokens.cardBg(context),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: HasimTokens.lineColor(context)),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 2, 4, 2),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.push_pin,
+                size: 18,
+                color: HasimTokens.chatGreen,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  splitQuotedReply(_messageText(message)).body,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: HasimTokens.inkColor(context),
+                  ),
+                ),
+              ),
+              IconButton(
+                key: const Key('chat-pinned-unpin'),
+                tooltip: 'إلغاء التثبيت',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => ref
+                    .read(conversationMarksProvider.notifier)
+                    .toggleMessagePinned(message),
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: HasimTokens.mutedColor(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   static const _voiceMax = Duration(minutes: 5);
@@ -953,15 +1321,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return rows;
   }
 
-  List<_ChatRow> _rowsFor(List<MessageModel> messages, String query) {
-    if (identical(_cachedRowsSource, messages) && _cachedRowsQuery == query) {
+  List<_ChatRow> _rowsFor(
+    List<MessageModel> messages,
+    String query,
+    Set<String> hiddenKeys,
+  ) {
+    if (identical(_cachedRowsSource, messages) &&
+        _cachedRowsQuery == query &&
+        identical(_cachedHiddenKeys, hiddenKeys)) {
       return _cachedRows;
     }
-    final visibleMessages = query.isEmpty
+    final visibleMessages = query.isEmpty && hiddenKeys.isEmpty
         ? messages
-        : messages.where((m) => m.content.contains(query)).toList();
+        : messages
+              .where(
+                (m) =>
+                    (query.isEmpty || m.content.contains(query)) &&
+                    !hiddenKeys.contains(ConversationMarks.messageKey(m)),
+              )
+              .toList();
     _cachedRowsSource = messages;
     _cachedRowsQuery = query;
+    _cachedHiddenKeys = hiddenKeys;
     _cachedRows = _rows(visibleMessages);
     return _cachedRows;
   }
@@ -1002,10 +1383,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
 
     final state = ref.watch(chatControllerProvider(widget.conversationId));
+    final marks = ref.watch(conversationMarksProvider);
     final l10n = AppLocalizations.of(context);
     final title = state.conversation?.title ?? 'محادثة';
     final query = _messageSearch.text.trim();
-    final rows = _rowsFor(state.messages, query);
+    final rows = _rowsFor(state.messages, query, marks.hiddenMessageKeys);
+    final selectingMessages = _selectedMessageKeys.isNotEmpty;
+    MessageModel? pinnedMessage;
+    for (final message in state.messages.reversed) {
+      if (marks.isMessagePinned(message) && !marks.isMessageHidden(message)) {
+        pinnedMessage = message;
+        break;
+      }
+    }
+    final replyTo = _replyTo;
     final conversation = state.conversation ?? widget.initialConversation;
     final initial = title.isNotEmpty ? title.characters.first : '#';
     final headerBg = HasimTokens.cardBg(context);
@@ -1063,9 +1454,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
     }
 
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: HasimTokens.chatCanvas(context),
-      appBar: AppBar(
+      appBar: selectingMessages
+          ? _messageSelectionAppBar(headerBg)
+          : AppBar(
         automaticallyImplyLeading: !widget.embedded,
         centerTitle: false,
         backgroundColor: headerBg,
@@ -1196,6 +1589,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ),
                   ),
                 ),
+              if (pinnedMessage != null) _pinnedMessageBar(pinnedMessage),
               Expanded(
                 child: state.loading && state.messages.isEmpty
                     ? const SkeletonList()
@@ -1224,10 +1618,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 : 0.0;
                             final emojiDock = _phoneEmojiDock(context);
                             final composerPad =
-                                ChatComposer.floatingOuterHeight +
-                                8 +
-                                attachDock +
-                                emojiDock;
+                                _composerHeight + 8 + attachDock + emojiDock;
                             final list = ListView.builder(
                               controller: _scroll,
                               reverse: true,
@@ -1281,6 +1672,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                           ),
                                         );
                                       },
+                                      pinned: marks.isMessagePinned(m),
+                                      starred: marks.isMessageStarred(m),
+                                      selected: _selectedMessageKeys.contains(
+                                        ConversationMarks.messageKey(m),
+                                      ),
+                                      selectionMode: selectingMessages,
+                                      onToggleSelected: () =>
+                                          _toggleMessageSelection(m),
+                                      onContextMenu: (position) =>
+                                          _showMessageMenu(m, position),
                                     ),
                                   ),
                                 );
@@ -1325,6 +1726,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 onTogglePause: _toggleVoicePause,
                 voicePaused: _voicePaused,
                 voiceAmplitude: _voiceAmplitude,
+                replyTitle: replyTo == null ? null : _replyTitle(replyTo),
+                replyPreview: replyTo == null
+                    ? null
+                    : splitQuotedReply(_messageText(replyTo)).body,
+                onCancelReply: () => setState(() => _replyTo = null),
               ),
             ),
           if (!_stickToBottom &&
@@ -1334,7 +1740,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               key: const Key('chat-scroll-to-bottom'),
               end: HasimLayout.isCompact(context) ? 12 : 20,
               bottom:
-                  ChatComposer.floatingOuterHeight +
+                  _composerHeight +
                   10 +
                   (HasimLayout.isCompact(context) && _attachMenuOpen
                       ? ChatAttachmentGridPanel.heightFor(context)
@@ -1444,6 +1850,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
         ],
       ),
+    );
+
+    if (!selectingMessages || widget.embedded) {
+      return scaffold;
+    }
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _clearMessageSelection();
+      },
+      child: scaffold,
     );
   }
 }

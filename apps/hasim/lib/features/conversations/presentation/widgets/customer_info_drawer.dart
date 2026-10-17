@@ -89,10 +89,7 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
         if (notes.isEmpty) return;
         final current = ref.read(desktopCustomerNotesProvider);
         if ((current[id] ?? '').isEmpty) {
-          ref.read(desktopCustomerNotesProvider.notifier).state = {
-            ...current,
-            id: notes,
-          };
+          ref.read(desktopCustomerNotesProvider.notifier).setNote(id, notes);
         }
       }
     } catch (_) {
@@ -224,10 +221,7 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
     );
     controller.dispose();
     if (next == null || id == null || !mounted) return;
-    ref.read(desktopCustomerNotesProvider.notifier).state = {
-      ...ref.read(desktopCustomerNotesProvider),
-      id: next,
-    };
+    ref.read(desktopCustomerNotesProvider.notifier).setNote(id, next);
     final email = _customer?.email?.trim();
     if (email == null || email.isEmpty) return;
     try {

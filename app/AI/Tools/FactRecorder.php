@@ -101,6 +101,41 @@ final class FactRecorder
                     $facts[] = new FactRecord(CanonicalTools::SEARCH_PRODUCTS, $variantPrefix.'.availability', $variantAvailability);
                 }
             }
+            $variantMatchStatus = $row['variant_match_status'] ?? null;
+            if (is_string($variantMatchStatus) && $variantMatchStatus !== '') {
+                $facts[] = new FactRecord(
+                    CanonicalTools::SEARCH_PRODUCTS,
+                    $prefix.'.variant_match_status',
+                    $variantMatchStatus,
+                );
+                if ($variantMatchStatus === 'not_found') {
+                    $facts[] = new FactRecord(
+                        CanonicalTools::SEARCH_PRODUCTS,
+                        $prefix.'.requested_variant.status',
+                        'not_found',
+                    );
+                }
+                foreach (array_slice($variants, 0, self::MAX_PRODUCT_FACTS) as $variant) {
+                    if (! is_array($variant) || ($variant['matches_question'] ?? false) !== true) {
+                        continue;
+                    }
+                    $requestedAvailability = CatalogAvailabilityFact::token($variant['availability'] ?? null);
+                    if ($requestedAvailability !== null) {
+                        $facts[] = new FactRecord(
+                            CanonicalTools::SEARCH_PRODUCTS,
+                            $prefix.'.requested_variant.availability',
+                            $requestedAvailability,
+                        );
+                    }
+                    if ($this->isScalar($variant['stock'] ?? null)) {
+                        $facts[] = new FactRecord(
+                            CanonicalTools::SEARCH_PRODUCTS,
+                            $prefix.'.requested_variant.stock',
+                            $variant['stock'],
+                        );
+                    }
+                }
+            }
         }
 
         return $facts;

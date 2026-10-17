@@ -167,10 +167,19 @@ class ChatCatalogRetrievalService
             $item['stock'] = (int) $row['stock'];
         }
 
-        $variants = $this->assistantVariants($row['variants'] ?? null, $queryTokens);
+        $variants = $this->assistantVariants(
+            $row['variants'] ?? null,
+            $queryTokens,
+            (string) ($row['name'] ?? ''),
+        );
         if ($variants['variants'] !== []) {
             $item['variants'] = $variants['variants'];
             $item['has_more_variants'] = $variants['has_more'];
+        }
+        foreach (['variant_match_status', 'matched_variant_ids'] as $key) {
+            if (array_key_exists($key, $row)) {
+                $item[$key] = $row[$key];
+            }
         }
 
         return $item;
@@ -183,8 +192,11 @@ class ChatCatalogRetrievalService
      * @param  list<string>  $queryTokens
      * @return array{variants: list<array<string, mixed>>, has_more: bool}
      */
-    private function assistantVariants(mixed $rows, array $queryTokens): array
-    {
+    private function assistantVariants(
+        mixed $rows,
+        array $queryTokens,
+        string $parentName,
+    ): array {
         if (! is_array($rows)) {
             return ['variants' => [], 'has_more' => false];
         }
@@ -194,7 +206,7 @@ class ChatCatalogRetrievalService
             if (! is_array($row)) {
                 continue;
             }
-            $variant = $this->assistantVariant($row, $queryTokens);
+            $variant = $this->assistantVariant($row, $queryTokens, $parentName);
             if ($variant !== null) {
                 $variants[] = $variant;
             }
@@ -218,8 +230,11 @@ class ChatCatalogRetrievalService
      * @param  list<string>  $queryTokens
      * @return array<string, mixed>|null
      */
-    private function assistantVariant(array $row, array $queryTokens): ?array
-    {
+    private function assistantVariant(
+        array $row,
+        array $queryTokens,
+        string $parentName,
+    ): ?array {
         $id = $row['id'] ?? null;
         $name = $row['name'] ?? null;
         if (! is_numeric($id) || (int) $id <= 0 || ! is_string($name) || trim($name) === '') {
@@ -247,7 +262,9 @@ class ChatCatalogRetrievalService
         if ($attributes !== []) {
             $variant['attributes'] = $attributes;
         }
-        $variant['matches_question'] = $this->variantMatchesQuestion($variant, $queryTokens);
+        $variant['matches_question'] = array_key_exists('matches_question', $row)
+            ? $row['matches_question'] === true
+            : $this->variantMatchesQuestionInText($parentName, $variant, $queryTokens);
 
         return $variant;
     }
@@ -256,27 +273,262 @@ class ChatCatalogRetrievalService
      * @param  array<string, mixed>  $variant
      * @param  list<string>  $queryTokens
      */
-    private function variantMatchesQuestion(array $variant, array $queryTokens): bool
-    {
-        if ($queryTokens === []) {
+    private function variantMatchesQuestionInText(
+        string $parentName,
+        array $variant,
+        array $queryTokens,
+    ): bool {
+        $terms = $this->variantQueryTerms($queryTokens);
+        if ($terms === []) {
             return false;
         }
 
         $haystack = $this->normalizer->normalize(implode(' ', [
+            $parentName,
             (string) ($variant['name'] ?? ''),
             json_encode($variant['attributes'] ?? [], JSON_UNESCAPED_UNICODE) ?: '',
         ]));
-        foreach ($this->tokenExpander->expandAll($queryTokens) as $token) {
-            $needle = $this->normalizer->normalize($token);
-            if (mb_strlen($needle) < 3) {
+
+        $parentHaystack = $this->normalizer->normalize($parentName);
+        $variantSpecific = array_filter(
+            $terms,
+            fn (array $term): bool => ! $this->matchesSearchTerm($term, $parentHaystack),
+        );
+        if ($variantSpecific === []) {
+            return false;
+        }
+
+        foreach ($terms as $term) {
+            if (! $this->matchesSearchTerm($term, $haystack)) {
+                return false;
+            }
+        }
+        foreach ($variantSpecific as $term) {
+            if (! $this->matchesSearchTerm($term, $this->normalizer->normalize(
+                implode(' ', [
+                    (string) ($variant['name'] ?? ''),
+                    json_encode($variant['attributes'] ?? [], JSON_UNESCAPED_UNICODE) ?: '',
+                ]),
+            ))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  list<string>  $queryTokens
+     * @return list<array{forms:list<string>}>
+     */
+    private function variantQueryTerms(array $queryTokens): array
+    {
+        $terms = [];
+        foreach ($queryTokens as $token) {
+            $normalized = $this->normalizer->normalize($token);
+            if ($normalized === ''
+                || $this->isVariantQueryFiller($normalized)
+                || $this->isVariantQualifier($normalized)
+                || $this->isGenericProductWord($token)) {
                 continue;
             }
-            if ($haystack !== '' && mb_strpos($haystack, $needle) !== false) {
+
+            $forms = $this->matchingForms($token);
+            if ($forms !== []) {
+                $terms[] = ['forms' => $forms];
+            }
+        }
+
+        return $terms;
+    }
+
+    private function isVariantQueryFiller(string $token): bool
+    {
+        $token = $this->stripQueryPrefix($token);
+
+        return in_array($token, [
+            'سعر', 'اسعار', 'كم', 'يوجد', 'توجد', 'متوفر', 'متوفره', 'متاح',
+            'متاحه', 'موجود', 'موجوده', 'الحين', 'الان', 'عند', 'عندك',
+            'عندكم', 'عندنا', 'ابي', 'ابغى', 'اريد', 'ممكن',
+            'نعم', 'اي', 'ايه', 'ايوه', 'هو', 'هي', 'هذا', 'هذه', 'ذا',
+            'بس', 'الي', 'اللي', 'الذي', 'التي', 'احتاج', 'احتاجه', 'فقط',
+            'من', 'على', 'في', 'مع', 'ل', 'لي', 'لك', 'لكم', 'لنا',
+            'ي', 'ه',
+            'price', 'prices', 'available', 'availability', 'stock',
+        ], true);
+    }
+
+    /**
+     * @return array{requested:bool, matched:bool, matched_variant_ids:list<int>}
+     */
+    private function variantQueryProfile(ChatCatalogItem $item, array $queryTokens): array
+    {
+        $terms = $this->variantQueryTerms($queryTokens);
+        if ($terms === [] || $item->variants->isEmpty()) {
+            return [
+                'requested' => false,
+                'matched' => false,
+                'matched_variant_ids' => [],
+            ];
+        }
+
+        $parentHaystack = $this->itemSearchHaystack($item);
+        $variantSpecific = array_values(array_filter(
+            $terms,
+            fn (array $term): bool => ! $this->matchesSearchTerm($term, $parentHaystack),
+        ));
+        if ($variantSpecific === []) {
+            return [
+                'requested' => false,
+                'matched' => false,
+                'matched_variant_ids' => [],
+            ];
+        }
+
+        $matchedIds = [];
+        foreach ($item->variants as $variant) {
+            $variantHaystack = $this->variantSearchHaystack($variant);
+            $combinedHaystack = $this->normalizer->normalize(
+                $parentHaystack.' '.$variantHaystack,
+            );
+            $allTermsMatch = collect($terms)->every(
+                fn (array $term): bool => $this->matchesSearchTerm($term, $combinedHaystack),
+            );
+            $variantTermsMatch = collect($variantSpecific)->every(
+                fn (array $term): bool => $this->matchesSearchTerm($term, $variantHaystack),
+            );
+            if ($allTermsMatch && $variantTermsMatch) {
+                $matchedIds[] = (int) $variant->id;
+            }
+        }
+
+        return [
+            'requested' => true,
+            'matched' => $matchedIds !== [],
+            'matched_variant_ids' => $matchedIds,
+        ];
+    }
+
+    /**
+     * @param  array{forms:list<string>}  $term
+     */
+    private function matchesSearchTerm(array $term, string $haystack): bool
+    {
+        if ($haystack === '') {
+            return false;
+        }
+
+        foreach ($term['forms'] as $form) {
+            $needle = $this->normalizer->normalize($form);
+            if ($needle === '') {
+                continue;
+            }
+            if (mb_strlen($needle) === 1 && preg_match('/^[a-z0-9]$/i', $needle) === 1) {
+                if (preg_match(
+                    '/(?<![a-z0-9])'.preg_quote($needle, '/').'(?=[^a-z0-9]|$)/iu',
+                    $haystack,
+                ) === 1) {
+                    return true;
+                }
+
+                continue;
+            }
+            if (mb_strpos($haystack, $needle) !== false) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function matchingForms(string $token): array
+    {
+        $normalized = $this->normalizer->normalize($token);
+        $forms = $this->tokenExpander->expand($token);
+        $forms[] = $normalized;
+        $forms = array_merge($forms, match ($normalized) {
+            'صغير' => ['s', 'xs', 'small'],
+            'وسط', 'متوسط', 'متوسطه' => ['m', 'medium', 'وسط', 'متوسط'],
+            'كبير' => ['l', 'xl', 'large'],
+            'قصير' => ['short'],
+            'طويل' => ['long'],
+            'احمر' => ['red'],
+            'ازرق' => ['blue'],
+            'اسود' => ['black'],
+            'ابيض' => ['white'],
+            'اخضر' => ['green'],
+            'اصفر' => ['yellow'],
+            'وردي' => ['pink'],
+            'بنفسجي' => ['purple'],
+            'بني' => ['brown'],
+            'رمادي' => ['gray', 'grey'],
+            'بيج' => ['beige'],
+            default => [],
+        });
+
+        return array_values(array_unique(array_filter(
+            array_map(fn (string $form): string => $this->normalizer->normalize($form), $forms),
+            fn (string $form): bool => $form !== ''
+                && (mb_strlen($form) >= 2 || preg_match('/^[a-z0-9]$/i', $form) === 1),
+        )));
+    }
+
+    private function isVariantQualifier(string $token): bool
+    {
+        $token = $this->stripQueryPrefix($token);
+
+        return in_array($token, [
+            'مقاس', 'مقاسه', 'قياس', 'قياسه', 'لون', 'الوان', 'طول', 'نوع',
+            'نسخه', 'اصدار', 'موديل', 'ستايل', 'خامه', 'قماش',
+            'size', 'sizes', 'color', 'colors', 'colour', 'length', 'type',
+            'variant', 'variants', 'option', 'options',
+        ], true);
+    }
+
+    private function stripQueryPrefix(string $token): string
+    {
+        foreach (['بال', 'لل', 'ال', 'ب', 'و'] as $prefix) {
+            if (str_starts_with($token, $prefix)
+                && mb_strlen($token) > mb_strlen($prefix) + 2) {
+                return mb_substr($token, mb_strlen($prefix));
+            }
+        }
+
+        return $token;
+    }
+
+    private function itemSearchHaystack(ChatCatalogItem $item): string
+    {
+        $parts = [
+            (string) $item->name,
+            (string) $item->sku,
+            (string) $item->brand,
+            json_encode($item->attributes ?? [], JSON_UNESCAPED_UNICODE) ?: '',
+            json_encode($item->aliases ?? [], JSON_UNESCAPED_UNICODE) ?: '',
+            json_encode($item->search_phrases ?? [], JSON_UNESCAPED_UNICODE) ?: '',
+        ];
+        foreach ($item->structuredAttributes as $attribute) {
+            $parts[] = $attribute->attribute_key.' '.$attribute->attribute_value;
+        }
+
+        return $this->normalizer->normalize(implode(' ', $parts));
+    }
+
+    private function variantSearchHaystack(ChatCatalogItemVariant $variant): string
+    {
+        $parts = [
+            (string) $variant->name,
+            (string) $variant->sku,
+            json_encode($variant->attributes ?? [], JSON_UNESCAPED_UNICODE) ?: '',
+        ];
+        foreach ($variant->structuredAttributes as $attribute) {
+            $parts[] = $attribute->attribute_key.' '.$attribute->attribute_value;
+        }
+
+        return $this->normalizer->normalize(implode(' ', $parts));
     }
 
     /**
@@ -458,9 +710,15 @@ class ChatCatalogRetrievalService
                 'token_hits' => $this->matchedTokenCount($catalog, $item, $searchTokens),
                 'content_hits' => $this->matchedTokenCount($catalog, $item, $contentTokens),
                 'language_hits' => $this->matchedTokenCount($catalog, $item, $languageTokens),
+                'variant_match' => $this->variantQueryProfile($item, $tokens)['matched'],
                 'item' => $item,
             ])
             ->filter(fn (array $row): bool => $row['score'] >= 2);
+        if ($matched->contains(fn (array $row): bool => $row['variant_match'] === true)) {
+            $matched = $matched->filter(
+                fn (array $row): bool => $row['variant_match'] === true,
+            );
+        }
         $bestContentHits = (int) $matched->max('content_hits');
         if ($bestContentHits > 0) {
             $matched = $matched->filter(fn (array $row): bool => $row['content_hits'] === $bestContentHits);
@@ -1042,7 +1300,18 @@ class ChatCatalogRetrievalService
 
         if (($display['show_variants'] ?? true) && $catalog->discoveryEnabled('variant_discovery')) {
             $row['variants'] = $item->variants
-                ->map(fn (ChatCatalogItemVariant $variant): array => $this->variantRow($catalog, $item, $variant))
+                ->map(function (ChatCatalogItemVariant $variant) use ($catalog, $item, $forAi, $queryTokens): array {
+                    $variantRow = $this->variantRow($catalog, $item, $variant);
+                    if ($variantRow !== [] && $forAi && $queryTokens !== []) {
+                        $variantRow['matches_question'] = $this->variantMatchesQuestion(
+                            $item,
+                            $variant,
+                            $queryTokens,
+                        );
+                    }
+
+                    return $variantRow;
+                })
                 ->filter(fn (array $v): bool => $v !== [])
                 ->values()
                 ->all();
@@ -1051,17 +1320,60 @@ class ChatCatalogRetrievalService
         }
 
         if ($forAi && $queryTokens !== [] && $row['variants'] !== []) {
-            $row['variants'] = array_map(function (array $variant) use ($queryTokens): array {
-                $variant['matches_question'] = $this->variantMatchesQuestion($variant, $queryTokens);
-
-                return $variant;
-            }, $row['variants']);
             usort($row['variants'], function (array $left, array $right): int {
                 return ((int) ($right['matches_question'] ?? false)) <=> ((int) ($left['matches_question'] ?? false));
             });
         }
+        if ($forAi && $queryTokens !== []) {
+            $variantProfile = $this->variantQueryProfile($item, $queryTokens);
+            $row['variant_match_status'] = ! $variantProfile['requested']
+                ? 'not_requested'
+                : ($variantProfile['matched'] ? 'matched' : 'not_found');
+            $row['matched_variant_ids'] = $variantProfile['matched_variant_ids'];
+        }
 
         return $row;
+    }
+
+    /**
+     * @param  list<string>  $queryTokens
+     */
+    private function variantMatchesQuestion(
+        ChatCatalogItem $item,
+        ChatCatalogItemVariant $variant,
+        array $queryTokens,
+    ): bool {
+        $terms = $this->variantQueryTerms($queryTokens);
+        if ($terms === []) {
+            return false;
+        }
+
+        $parentHaystack = $this->itemSearchHaystack($item);
+        $variantSpecific = array_values(array_filter(
+            $terms,
+            fn (array $term): bool => ! $this->matchesSearchTerm($term, $parentHaystack),
+        ));
+        if ($variantSpecific === []) {
+            return false;
+        }
+
+        $variantHaystack = $this->variantSearchHaystack($variant);
+        $combinedHaystack = $this->normalizer->normalize(
+            $parentHaystack.' '.$variantHaystack,
+        );
+
+        foreach ($terms as $term) {
+            if (! $this->matchesSearchTerm($term, $combinedHaystack)) {
+                return false;
+            }
+        }
+        foreach ($variantSpecific as $term) {
+            if (! $this->matchesSearchTerm($term, $variantHaystack)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

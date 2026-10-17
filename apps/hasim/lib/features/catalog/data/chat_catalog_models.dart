@@ -2,11 +2,34 @@ import 'package:equatable/equatable.dart';
 import 'package:hasim/core/models/models.dart';
 
 /// Parses Laravel [Money::of] string or numeric price fields.
-num parseCatalogMoney(dynamic value) {
-  if (value == null) return 0;
+num parseCatalogMoney(dynamic value) => parseOptionalCatalogMoney(value) ?? 0;
+
+num? parseOptionalCatalogMoney(dynamic value) {
+  if (value == null) return null;
   if (value is num) return value;
-  if (value is String) return num.tryParse(value.trim()) ?? 0;
-  return 0;
+  if (value is! String) return null;
+  final text = normalizeCatalogMoneyText(value);
+  if (text.isEmpty) return null;
+  return num.tryParse(text);
+}
+
+String formatCatalogMoney(num value) => value.toStringAsFixed(2);
+
+String normalizeCatalogMoneyText(String raw) {
+  var text = raw.trim().replaceAll(' ', '').replaceAll('٫', '.');
+  const western = '0123456789';
+  const arabicIndic = '٠١٢٣٤٥٦٧٨٩';
+  const easternIndic = '۰۱۲۳۴۵۶۷۸۹';
+  for (var i = 0; i < 10; i++) {
+    text = text
+        .replaceAll(arabicIndic[i], western[i])
+        .replaceAll(easternIndic[i], western[i]);
+  }
+  if (text.contains(',') && !text.contains('.')) {
+    return text.replaceAll(',', '.');
+  }
+
+  return text.replaceAll(',', '');
 }
 
 const chatCatalogInventoryPolicies = [
@@ -166,11 +189,11 @@ class ChatCatalogVariantModel extends Equatable {
       if (!isNew) 'id': id,
       'name': name,
       if (sku != null && sku!.isNotEmpty) 'sku': sku,
-      if (price != null) 'price': price,
+      if (price != null) 'price': formatCatalogMoney(price!),
       if (currency != null && currency!.isNotEmpty) 'currency': currency,
       if (stock != null) 'stock': stock,
       if (inventoryPolicy != null && inventoryPolicy!.isNotEmpty)
-        'inventory_policy': inventoryPolicy,
+        'inventory_policy': selectableInventoryPolicy(inventoryPolicy),
       'is_active': isActive,
       'is_visible': isVisible,
       if (status != null && status!.isNotEmpty) 'status': status,

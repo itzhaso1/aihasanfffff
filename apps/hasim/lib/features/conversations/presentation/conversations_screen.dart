@@ -5,6 +5,7 @@ import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
+import 'package:hasim/core/utils/quoted_reply.dart';
 import 'package:hasim/core/utils/relative_time.dart';
 import 'package:hasim/core/widgets/async_body.dart';
 import 'package:hasim/core/widgets/empty_state.dart';
@@ -16,10 +17,12 @@ import 'package:hasim/core/storage/inbox_scope.dart';
 import 'package:hasim/features/conversations/data/chat_wallpaper_catalog.dart';
 import 'package:hasim/features/conversations/presentation/chat_screen.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_channel_avatar.dart';
+import 'package:hasim/features/conversations/presentation/widgets/conversation_context_menu.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_filter_chip.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_panel_resize_handle.dart';
 import 'package:hasim/features/conversations/presentation/widgets/customer_info_drawer.dart';
 import 'package:hasim/features/conversations/presentation/widgets/inbox_empty_illustration.dart';
+import 'package:hasim/features/conversations/providers/conversation_marks_controller.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
 import 'package:hasim/features/conversations/providers/desktop_conversation_panel_width.dart';
 import 'package:hasim/features/conversations/providers/desktop_conversation_selection.dart';
@@ -187,10 +190,119 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
   }
 
   void _startConversationActionMode(int id) {
-    if (!HasimLayout.isCompact(context)) {
+    setState(() => _actionConversationId = id);
+  }
+
+  Future<void> _showConversationMenu(
+    BuildContext anchorContext,
+    ConversationModel conversation,
+    Offset? globalPosition,
+  ) async {
+    final marks = ref.read(conversationMarksProvider);
+    final action = await showConversationContextMenu(
+      context: anchorContext,
+      globalPosition: globalPosition,
+      pinned: marks.isPinned(conversation.id),
+      starred: marks.isStarred(conversation.id),
+      preview: conversation.title,
+    );
+    if (action == null || !mounted) return;
+    await _onConversationAction(action, conversation);
+  }
+
+  /// «رد/نسخ/ملاحظة» على صف المحادثة تعمل على آخر رسالة فيها.
+  Future<void> _onConversationAction(
+    ConversationContextAction action,
+    ConversationModel conversation,
+  ) async {
+    final marks = ref.read(conversationMarksProvider.notifier);
+    final lastText = conversation.lastMessage == null
+        ? ''
+        : splitQuotedReply(conversation.lastMessage!.content.trim()).body;
+    switch (action) {
+      case ConversationContextAction.reply:
+        _openConversation(conversation.id);
+      case ConversationContextAction.copy:
+        await copyConversationContextText(
+          context,
+          lastText,
+          copiedMessage: 'تم نسخ آخر رسالة.',
+        );
+      case ConversationContextAction.pin:
+        final pin = !ref.read(conversationMarksProvider).isPinned(
+          conversation.id,
+        );
+        await marks.togglePinned(conversation.id);
+        if (!mounted) return;
+        showConversationContextToast(
+          context,
+          pin ? 'تم تثبيت المحادثة في الأعلى.' : 'تم إلغاء تثبيت المحادثة.',
+        );
+      case ConversationContextAction.star:
+        final star = !ref.read(conversationMarksProvider).isStarred(
+          conversation.id,
+        );
+        await marks.toggleStarred(conversation.id);
+        if (!mounted) return;
+        showConversationContextToast(
+          context,
+          star ? 'تم تمييز المحادثة بنجمة.' : 'تمت إزالة النجمة.',
+        );
+      case ConversationContextAction.addToNote:
+        await addConversationTextToNote(
+          context: context,
+          ref: ref,
+          conversation: conversation,
+          text: lastText,
+        );
+      case ConversationContextAction.select:
+        _startConversationActionMode(conversation.id);
+      case ConversationContextAction.report:
+        await _reportConversation(conversation);
+      case ConversationContextAction.delete:
+        final confirmed = await confirmConversationContextDelete(
+          context,
+          forMessage: false,
+        );
+        if (!confirmed || !mounted) return;
+        await marks.hideConversation(conversation);
+        if (!mounted) return;
+        if (_actionConversationId == conversation.id) {
+          _closeConversationActionMode();
+        }
+        showConversationContextToast(
+          context,
+          'تم حذف المحادثة من القائمة على هذا الجهاز.',
+        );
+    }
+  }
+
+  Future<void> _reportConversation(ConversationModel conversation) async {
+    if (!ref.read(authControllerProvider).isCompanyUser) {
+      showConversationContextToast(
+        context,
+        'لا تملك صلاحية تنفيذ هذا الإجراء.',
+      );
       return;
     }
-    setState(() => _actionConversationId = id);
+    if (conversation.reviewStatus == 'needs_review') {
+      showConversationContextToast(
+        context,
+        'تم الإبلاغ مسبقًا: المحادثة معلّمة «يحتاج مراجعة».',
+      );
+      return;
+    }
+    final confirmed = await confirmConversationContextReport(
+      context,
+      forMessage: false,
+    );
+    if (!confirmed || !mounted) return;
+    final error = await _inbox.markNeedsReview(conversation.id);
+    if (!mounted) return;
+    showConversationContextToast(
+      context,
+      error ?? 'تم الإبلاغ. المحادثة الآن «يحتاج مراجعة».',
+    );
   }
 
   void _closeConversationActionMode() {
@@ -298,7 +410,6 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     final theme = Theme.of(context);
     final canvas = HasimTokens.chatCanvas(context);
     final navRailWidth = HasimLayout.navRailWidth;
-    final isMobile = HasimLayout.isCompact(context);
     final split = HasimLayout.useConversationSplit(
       context,
       navRailWidth: navRailWidth,
@@ -343,9 +454,28 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
         }
       }
     }
-    final selectionMode = isMobile && !split && actionConversation != null;
+    final selectionMode = actionConversation != null;
 
     final lockedIds = ref.watch(lockedConversationIdsProvider);
+    final marks = ref.watch(conversationMarksProvider);
+    final selectionAppBar = actionConversation == null
+        ? null
+        : _ConversationSelectionAppBar(
+            conversation: actionConversation,
+            locked: lockedIds.contains(actionConversation.id),
+            pinned: marks.isPinned(actionConversation.id),
+            showSpecialInboxSections: showSpecialInboxSections,
+            onClose: _closeConversationActionMode,
+            onArchive: () => _archiveSelectedConversation(actionConversation!),
+            onMute: () => _muteSelectedConversation(actionConversation!),
+            onLock: () => _toggleSelectedConversationLock(
+              actionConversation!,
+              lockedIds.contains(actionConversation.id),
+            ),
+            onPin: () => ref
+                .read(conversationMarksProvider.notifier)
+                .togglePinned(actionConversation!.id),
+          );
     final panel = _ConversationsPanel(
       search: _search,
       state: state,
@@ -358,13 +488,14 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       selectionMode: selectionMode,
       compactEmpty: split,
       lockedIds: lockedIds,
+      marks: marks,
       chatsUnlocked: chatsUnlocked,
       folder: widget.folder,
       canStartConversation: canStartConversation,
       emptySubtitle: emptySubtitle,
       onRetry: retry,
       onOpen: _openConversation,
-      onSelectForActions: _startConversationActionMode,
+      onContextMenu: _showConversationMenu,
       onRefresh: () async {
         if (auth.isIndependentWorker && !_isFolder) {
           await ref
@@ -384,36 +515,18 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
         }
         openLockedPage(context);
       },
-      onLock: (id) => lockConversation(context, ref, id),
-      onUnlock: (id) => ref
-          .read(chatLockControllerProvider.notifier)
-          .setConversationLocked(id, locked: false),
       showSpecialInboxSections: showSpecialInboxSections,
     );
 
     final scaffold = !split
         ? Scaffold(
             backgroundColor: HasimTokens.cardBg(context),
-            appBar: selectionMode
-                ? _ConversationSelectionAppBar(
-                    conversation: actionConversation,
-                    locked: lockedIds.contains(actionConversation.id),
-                    showSpecialInboxSections: showSpecialInboxSections,
-                    onClose: _closeConversationActionMode,
-                    onArchive: () =>
-                        _archiveSelectedConversation(actionConversation!),
-                    onMute: () =>
-                        _muteSelectedConversation(actionConversation!),
-                    onLock: () => _toggleSelectedConversationLock(
-                      actionConversation!,
-                      lockedIds.contains(actionConversation.id),
-                    ),
-                  )
-                : _isFolder
-                ? null
-                : HasimShellHeader(
-                    backgroundColor: HasimTokens.cardBg(context),
-                  ),
+            appBar: selectionAppBar ??
+                (_isFolder
+                    ? null
+                    : HasimShellHeader(
+                        backgroundColor: HasimTokens.cardBg(context),
+                      )),
             body: _isFolder
                 ? SafeArea(top: !selectionMode, bottom: false, child: panel)
                 : panel,
@@ -427,7 +540,15 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
                   width: panelWidth,
                   child: ColoredBox(
                     color: HasimTokens.cardBg(context),
-                    child: panel,
+                    child: selectionAppBar == null
+                        ? panel
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              selectionAppBar,
+                              Expanded(child: panel),
+                            ],
+                          ),
                   ),
                 ),
                 ConversationPanelResizeHandle(navRailWidth: navRailWidth),
@@ -506,14 +627,13 @@ class _ConversationsPanel extends StatelessWidget {
     required this.selectionMode,
     required this.compactEmpty,
     required this.onOpen,
-    required this.onSelectForActions,
+    required this.onContextMenu,
     required this.onRefresh,
     required this.onOpenArchive,
     required this.onOpenLocked,
     required this.showSpecialInboxSections,
-    required this.onLock,
-    required this.onUnlock,
     required this.lockedIds,
+    required this.marks,
     required this.chatsUnlocked,
     required this.canStartConversation,
     required this.emptySubtitle,
@@ -532,14 +652,20 @@ class _ConversationsPanel extends StatelessWidget {
   final bool selectionMode;
   final bool compactEmpty;
   final ValueChanged<int> onOpen;
-  final ValueChanged<int> onSelectForActions;
+
+  /// ضغط مطوّل أو زر أيمن على الصف — الموضع فارغ عند الضغط المطوّل.
+  final void Function(
+    BuildContext anchorContext,
+    ConversationModel conversation,
+    Offset? globalPosition,
+  )
+  onContextMenu;
   final Future<void> Function() onRefresh;
   final VoidCallback onOpenArchive;
   final VoidCallback onOpenLocked;
   final bool showSpecialInboxSections;
-  final ValueChanged<int> onLock;
-  final ValueChanged<int> onUnlock;
   final Set<int> lockedIds;
+  final ConversationMarks marks;
   final bool chatsUnlocked;
   final bool canStartConversation;
   final String emptySubtitle;
@@ -549,8 +675,13 @@ class _ConversationsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = HasimLayout.isCompact(context);
-    final l10n = AppLocalizations.of(context);
     final gated = folder == 'locked' && !chatsUnlocked;
+    final visibleItems = [
+      for (final c in state.items)
+        if (marks.isPinned(c.id) && !marks.isHidden(c)) c,
+      for (final c in state.items)
+        if (!marks.isPinned(c.id) && !marks.isHidden(c)) c,
+    ];
     final title = switch (folder) {
       'locked' => 'الدردشات المقفلة',
       'archived' => 'الدردشات المؤرشفة',
@@ -851,10 +982,10 @@ class _ConversationsPanel extends StatelessWidget {
                             },
                             child: ListView.builder(
                               itemCount:
-                                  state.items.length +
+                                  visibleItems.length +
                                   (state.loadingMore ? 1 : 0),
                               itemBuilder: (context, index) {
-                                if (index >= state.items.length) {
+                                if (index >= visibleItems.length) {
                                   return const Padding(
                                     padding: EdgeInsets.all(16),
                                     child: Center(
@@ -862,7 +993,7 @@ class _ConversationsPanel extends StatelessWidget {
                                     ),
                                   );
                                 }
-                                final c = state.items[index];
+                                final c = visibleItems[index];
                                 final time = inboxListTimeAr(c.lastMessageAt);
                                 final selected =
                                     (selectedId != null &&
@@ -882,33 +1013,14 @@ class _ConversationsPanel extends StatelessWidget {
                                   child: Builder(
                                     builder: (rowContext) => InkWell(
                                       onTap: () => onOpen(c.id),
-                                      onLongPress: isMobile
-                                          ? () => onSelectForActions(c.id)
-                                          : () => _showConversationActions(
-                                              rowContext,
-                                              conversation: c,
-                                              busy:
-                                                  state
-                                                      .mutatingConversationId ==
-                                                  c.id,
-                                              l10n: l10n,
-                                              locked: lockedIds.contains(c.id),
-                                              showSpecialInboxSections:
-                                                  showSpecialInboxSections,
-                                              onArchive: () =>
-                                                  notifier.setArchived(
-                                                    c.id,
-                                                    archived: !c.archived,
-                                                  ),
-                                              onMute: () => notifier.setMuted(
-                                                c.id,
-                                                muted: !c.muted,
-                                              ),
-                                              onLock: () =>
-                                                  lockedIds.contains(c.id)
-                                                  ? onUnlock(c.id)
-                                                  : onLock(c.id),
-                                            ),
+                                      onLongPress: () =>
+                                          onContextMenu(rowContext, c, null),
+                                      onSecondaryTapUp: (details) =>
+                                          onContextMenu(
+                                            rowContext,
+                                            c,
+                                            details.globalPosition,
+                                          ),
                                       child: Padding(
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 16,
@@ -968,6 +1080,45 @@ class _ConversationsPanel extends StatelessWidget {
                                                               tooltip: c
                                                                   .channelLabel,
                                                             ),
+                                                            if (marks.isPinned(
+                                                              c.id,
+                                                            ))
+                                                              Padding(
+                                                                padding:
+                                                                    const EdgeInsetsDirectional.only(
+                                                                      start: 4,
+                                                                    ),
+                                                                child: Icon(
+                                                                  Icons.push_pin,
+                                                                  key: Key(
+                                                                    'conversation-pinned-${c.id}',
+                                                                  ),
+                                                                  size: 14,
+                                                                  color: theme
+                                                                      .colorScheme
+                                                                      .onSurfaceVariant,
+                                                                ),
+                                                              ),
+                                                            if (marks.isStarred(
+                                                              c.id,
+                                                            ))
+                                                              Padding(
+                                                                padding:
+                                                                    const EdgeInsetsDirectional.only(
+                                                                      start: 4,
+                                                                    ),
+                                                                child: Icon(
+                                                                  Icons
+                                                                      .star_rounded,
+                                                                  key: Key(
+                                                                    'conversation-starred-${c.id}',
+                                                                  ),
+                                                                  size: 15,
+                                                                  color:
+                                                                      HasimTokens
+                                                                          .warning,
+                                                                ),
+                                                              ),
                                                             if (c.muted)
                                                               Padding(
                                                                 padding:
@@ -1209,20 +1360,24 @@ class _ConversationSelectionAppBar extends StatelessWidget
   const _ConversationSelectionAppBar({
     required this.conversation,
     required this.locked,
+    required this.pinned,
     required this.showSpecialInboxSections,
     required this.onClose,
     required this.onArchive,
     required this.onMute,
     required this.onLock,
+    required this.onPin,
   });
 
   final ConversationModel conversation;
   final bool locked;
+  final bool pinned;
   final bool showSpecialInboxSections;
   final VoidCallback onClose;
   final VoidCallback onArchive;
   final VoidCallback onMute;
   final VoidCallback onLock;
+  final VoidCallback onPin;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -1303,6 +1458,9 @@ class _ConversationSelectionAppBar extends StatelessWidget
             if (value == 'mute') {
               onMute();
             }
+            if (value == 'pin') {
+              onPin();
+            }
           },
           itemBuilder: (context) => [
             PopupMenuItem<String>(
@@ -1327,12 +1485,10 @@ class _ConversationSelectionAppBar extends StatelessWidget
             ),
             PopupMenuItem<String>(
               value: 'pin',
-              enabled: false,
               padding: const EdgeInsets.symmetric(horizontal: 10),
               child: menuRow(
-                Icons.push_pin_outlined,
-                'تثبيت الدردشة',
-                color: theme.disabledColor,
+                pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                pinned ? 'إلغاء تثبيت الدردشة' : 'تثبيت الدردشة',
               ),
             ),
           ],
@@ -1414,88 +1570,6 @@ class _DesktopChatPane extends StatelessWidget {
       illustration: illustration,
     );
   }
-}
-
-Future<void> _showConversationActions(
-  BuildContext context, {
-  required ConversationModel conversation,
-  required bool busy,
-  required AppLocalizations l10n,
-  required bool locked,
-  required bool showSpecialInboxSections,
-  required Future<String?> Function() onArchive,
-  required Future<String?> Function() onMute,
-  required VoidCallback onLock,
-}) async {
-  if (busy) {
-    return;
-  }
-
-  final renderObject = context.findRenderObject();
-  final item = renderObject is RenderBox ? renderObject : null;
-  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-  final position = item == null || overlay == null
-      ? const RelativeRect.fromLTRB(8, 56, 8, 0)
-      : RelativeRect.fromRect(
-          Rect.fromLTWH(
-            item.localToGlobal(Offset.zero, ancestor: overlay).dx,
-            item.localToGlobal(Offset.zero, ancestor: overlay).dy +
-                item.size.height,
-            item.size.width,
-            0,
-          ),
-          Offset.zero & overlay.size,
-        );
-
-  final selected = await showMenu<String>(
-    context: context,
-    position: position,
-    color: HasimTokens.cardBg(context),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
-      side: BorderSide(color: HasimTokens.lineColor(context)),
-    ),
-    items: [
-      if (showSpecialInboxSections)
-        PopupMenuItem(
-          value: 'archive',
-          child: Text(
-            conversation.archived
-                ? l10n.unarchiveConversation
-                : l10n.archiveConversation,
-          ),
-        ),
-      PopupMenuItem(
-        value: 'mute',
-        child: Text(
-          conversation.muted ? l10n.unmuteConversation : l10n.muteConversation,
-        ),
-      ),
-      if (showSpecialInboxSections)
-        PopupMenuItem(
-          value: 'lock',
-          child: Text(locked ? 'إلغاء القفل' : 'قفل الدردشة'),
-        ),
-    ],
-  );
-
-  if (!context.mounted || selected == null) {
-    return;
-  }
-  if (selected == 'lock') {
-    onLock();
-    return;
-  }
-
-  final error = selected == 'archive' ? await onArchive() : await onMute();
-  if (!context.mounted || error == null) {
-    return;
-  }
-
-  final fallback = selected == 'archive'
-      ? (conversation.archived ? l10n.unarchiveFailed : l10n.archiveFailed)
-      : (conversation.muted ? l10n.unmuteFailed : l10n.muteFailed);
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(fallback)));
 }
 
 class _ClassBadge extends StatelessWidget {

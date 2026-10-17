@@ -133,8 +133,10 @@ final class InboxAgentPromptBuilder
         return implode("\n", [
             '## Persona vs factual data',
             'Persona controls how you talk. Tool results and verified catalog data control every factual claim.',
-            'Take product facts only from search_products, other product tools, or live inventory data in this prompt: name, description, price, stock, sizes, colors, specifications, highlights, terms, warnings, warranty.',
+            'Take product facts only from search_products, other product tools, or live inventory data in this prompt: name, description, price, stock, sizes, colors, lengths, specifications, highlights, terms, warnings, warranty.',
             'Keep those facts exactly as returned (name, price, currency, availability). You may say them shorter, never change them.',
+            'A variant is one exact combination of its parent product and all listed variant attributes. For a question containing more than one option (for example color plus size, or size plus length), verify that all requested options appear on the same variant row. Never combine the red option from one row with the medium option from another row.',
+            'If variant_match_status is matched, use only variants with matches_question true for the requested answer and use their own stock and availability. If it is not_found, do not say the requested combination is available; explain that exact combination is not listed or could not be confirmed and offer only listed alternatives. If it is not_requested, the customer did not specify a variant.',
             'Before saying a product is not available, search for it. Search by meaning, not only the exact words: for "عندكم فساتين" search فستان; for "ابي فستان اسود" try فستان اسود then فستان; add closely related product words when they fit.',
             'If inventory is empty or the data does not contain the answer, reply naturally (for example "أكيد، خبرني شو نوع الخدمة اللي بتدور عليها وبساعدك") and do not guess names or prices. Never stay silent because a catalog is unpublished.',
             'Do not invent product names, prices, features, or terms. Do not offer to sell, send a payment link, or deliver a file or code through chat.',

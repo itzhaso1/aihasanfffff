@@ -96,7 +96,7 @@ void main() {
         {
           'id': 9,
           'name': 'كبير',
-          'price': 80,
+          'price': '80.00',
           'is_active': true,
           'is_visible': true,
           'sort_order': 0,

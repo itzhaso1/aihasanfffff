@@ -515,6 +515,50 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     ].where(_matchesCurrentFilter).toList();
     state = state.copyWith(items: next);
   }
+
+  /// «إبلاغ» من قائمة المحادثة: يعلّمها «يحتاج مراجعة» عبر واجهة التصنيف.
+  Future<String?> markNeedsReview(int conversationId) async {
+    if (!_ref.read(authControllerProvider).isCompanyUser) {
+      return 'لا تملك صلاحية تنفيذ هذا الإجراء.';
+    }
+    ConversationModel? current;
+    for (final item in state.items) {
+      if (item.id == conversationId) {
+        current = item;
+        break;
+      }
+    }
+    if (current == null) return 'تعذر تحديث المحادثة.';
+    final scope = captureInboxScope(_ref);
+    try {
+      final updated = await _ref
+          .read(conversationRepositoryProvider)
+          .updateClassification(
+            conversationId,
+            customerPriority:
+                ConversationClassificationValues.isAllowedPriority(
+                  current.customerPriority,
+                )
+                ? current.customerPriority
+                : ConversationClassificationValues.defaultPriority,
+            paymentStatus:
+                ConversationClassificationValues.isAllowedPayment(
+                  current.paymentStatus,
+                )
+                ? current.paymentStatus
+                : ConversationClassificationValues.defaultPayment,
+            reviewStatus: 'needs_review',
+            workspaceId: scope.workspaceId,
+          );
+      if (!_canCommit(scope)) return null;
+      applyRemoteConversation(updated);
+      return null;
+    } on ApiException catch (e) {
+      return e.userMessage;
+    } catch (_) {
+      return 'تعذر تحديث المحادثة.';
+    }
+  }
 }
 
 final conversationsControllerProvider =

@@ -24,6 +24,9 @@ class ChatComposer extends StatefulWidget {
     this.voiceAmplitude = 0.35,
     this.emojiAsKeyboard = false,
     this.bottomSafe = true,
+    this.replyTitle,
+    this.replyPreview,
+    this.onCancelReply,
   });
 
   final TextEditingController controller;
@@ -48,10 +51,18 @@ class ChatComposer extends StatefulWidget {
   final bool emojiAsKeyboard;
   final bool bottomSafe;
 
+  /// شريط «الرد على» فوق حقل الكتابة عند اختيار «رد» من قائمة الرسالة.
+  final String? replyTitle;
+  final String? replyPreview;
+  final VoidCallback? onCancelReply;
+
   static const double actionSize = 40;
 
   /// ارتفاع تقريبي للشريط العائم (لحشو أسفل قائمة الرسائل).
   static const double floatingOuterHeight = 76;
+
+  /// ارتفاع شريط الرد الإضافي فوق حقل الكتابة.
+  static const double replyBarHeight = 60;
 
   @override
   State<ChatComposer> createState() => _ChatComposerState();
@@ -133,12 +144,27 @@ class _ChatComposerState extends State<ChatComposer> {
       return _recordingBar(context, barColor);
     }
 
+    final replyPreview = widget.replyPreview;
     return SafeArea(
       top: false,
       bottom: widget.bottomSafe,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (replyPreview != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: _ReplyBar(
+                  title: widget.replyTitle ?? 'الرد على رسالة',
+                  preview: replyPreview,
+                  background: barColor,
+                  onCancel: widget.onCancelReply,
+                ),
+              ),
+            Row(
           textDirection: TextDirection.ltr,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -269,6 +295,8 @@ class _ChatComposerState extends State<ChatComposer> {
                   ),
                 ),
               ),
+            ),
+          ],
             ),
           ],
         ),
@@ -534,6 +562,90 @@ class _VoiceWaveform extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _ReplyBar extends StatelessWidget {
+  const _ReplyBar({
+    required this.title,
+    required this.preview,
+    required this.background,
+    this.onCancel,
+  });
+
+  final String title;
+  final String preview;
+  final Color background;
+  final VoidCallback? onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      key: const Key('chat-reply-bar'),
+      color: background,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 4, 6),
+          child: Row(
+            children: [
+              Container(
+                width: 3,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: HasimTokens.chatGreen,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: HasimTokens.chatGreen,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      preview,
+                      key: const Key('chat-reply-preview'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: HasimTokens.mutedColor(context),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                key: const Key('chat-reply-cancel'),
+                tooltip: 'إلغاء الرد',
+                visualDensity: VisualDensity.compact,
+                onPressed: onCancel,
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 20,
+                  color: HasimTokens.mutedColor(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

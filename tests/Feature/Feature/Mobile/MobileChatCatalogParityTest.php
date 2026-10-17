@@ -238,6 +238,66 @@ class MobileChatCatalogParityTest extends TestCase
         $this->assertSame('draft', $variant->status);
     }
 
+    public function test_mobile_can_change_a_variant_price_even_when_stock_is_zero(): void
+    {
+        [, $workspace] = $this->seedWorkspace('Catalog Variant Price');
+        $this->enableWorkspaceFeature($workspace, 'products');
+        $manager = $this->memberWithPermissions($workspace, ['chat.catalog.view', 'chat.catalog.manage']);
+
+        $created = $this->actingAsMobile($manager, $workspace)
+            ->postJson('/api/mobile/v1/catalog', [
+                'name' => 'تعلم Excel للمبتدئين',
+                'price' => '10.00',
+                'currency' => 'SAR',
+                'inventory_policy' => 'not_tracked',
+                'variants' => [[
+                    'name' => 'عربي PDF',
+                    'sku' => 'SKU-VAR-1',
+                    'price' => 10,
+                    'currency' => 'SAR',
+                    'stock' => 0,
+                    'inventory_policy' => 'finite_stock',
+                    'is_active' => true,
+                    'is_visible' => true,
+                    'status' => 'published',
+                    'sort_order' => 0,
+                ]],
+            ])
+            ->assertCreated();
+
+        $itemId = (int) $created->json('data.id');
+        $variantId = (int) $created->json('data.variants.0.id');
+
+        $this->actingAsMobile($manager, $workspace)
+            ->patchJson('/api/mobile/v1/catalog/'.$itemId, [
+                'name' => 'تعلم Excel للمبتدئين',
+                'price' => '10.00',
+                'currency' => 'SAR',
+                'inventory_policy' => 'not_tracked',
+                'variants' => [[
+                    'id' => $variantId,
+                    'name' => 'عربي PDF',
+                    'sku' => 'SKU-VAR-1',
+                    'price' => 15.5,
+                    'currency' => 'SAR',
+                    'stock' => 0,
+                    'inventory_policy' => 'backorder',
+                    'is_active' => true,
+                    'is_visible' => true,
+                    'status' => 'published',
+                    'sort_order' => 0,
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.variants.0.price', '15.50')
+            ->assertJsonPath('data.variants.0.inventory_policy', 'finite_stock');
+
+        $this->assertSame(
+            '15.50',
+            (string) ChatCatalogItemVariant::withoutGlobalScopes()->find($variantId)?->price,
+        );
+    }
+
     public function test_store_and_inventory_update_reject_backorder_but_legacy_rows_still_read(): void
     {
         [, $workspace] = $this->seedWorkspace('Catalog Backorder Guard');

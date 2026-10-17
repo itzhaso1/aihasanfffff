@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,7 @@ import 'package:hasim/features/conversations/presentation/conversations_screen.d
 import 'support/isolated_api_client.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_filter_chip.dart';
 import 'package:hasim/features/conversations/presentation/widgets/inbox_empty_illustration.dart';
+import 'package:hasim/features/conversations/providers/conversation_marks_controller.dart';
 import 'package:hasim/features/privacy/providers/chat_lock_controller.dart';
 import 'package:hasim/features/settings/data/plan_channel_repository.dart';
 import 'package:hasim/l10n/app_localizations.dart';
@@ -302,6 +304,175 @@ void main() {
     );
   }
 
+  Future<void> openConversationSelection(WidgetTester tester) async {
+    await tester.longPress(find.byKey(const Key('conversation-item-7')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('conversation-context-select')));
+    await tester.pumpAndSettle();
+  }
+
+  const contextMenuLabels = [
+    'رد',
+    'نسخ',
+    'تثبيت',
+    'تمييز بنجمة',
+    'إضافة النص إلى الملاحظة',
+    'تحديد',
+    'إبلاغ',
+    'حذف',
+  ];
+
+  void expectContextMenuInOrder(WidgetTester tester) {
+    expect(find.byKey(const Key('conversation-context-menu')), findsOneWidget);
+    double? previousTop;
+    for (final label in contextMenuLabels) {
+      final item = find.descendant(
+        of: find.byKey(const Key('conversation-context-menu')),
+        matching: find.text(label),
+      );
+      expect(item, findsOneWidget, reason: label);
+      final top = tester.getTopLeft(item).dy;
+      if (previousTop != null) {
+        expect(top, greaterThan(previousTop), reason: label);
+      }
+      previousTop = top;
+    }
+  }
+
+  testWidgets('mobile long press on a conversation shows the full menu', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repo = _FakeConversationRepository(
+      api,
+      items: const [
+        ConversationModel(
+          id: 7,
+          channel: 'whatsapp',
+          status: 'open',
+          externalId: 'أحمد',
+        ),
+      ],
+    );
+    await tester.pumpWidget(app(repo: repo, authState: _ownerAuthWithWorkspace));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.byKey(const Key('conversation-item-7')));
+    await tester.pumpAndSettle();
+
+    expectContextMenuInOrder(tester);
+    expect(
+      find.byKey(const Key('conversation-selection-appbar')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('desktop right click shows the menu and pin moves the row up', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repo = _FakeConversationRepository(
+      api,
+      items: const [
+        ConversationModel(
+          id: 7,
+          channel: 'whatsapp',
+          status: 'open',
+          externalId: 'أحمد',
+        ),
+        ConversationModel(
+          id: 8,
+          channel: 'whatsapp',
+          status: 'open',
+          externalId: 'سارة',
+        ),
+      ],
+    );
+    await tester.pumpWidget(app(repo: repo, authState: _ownerAuthWithWorkspace));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('أحمد')).dy,
+      lessThan(tester.getTopLeft(find.text('سارة')).dy),
+    );
+
+    await tester.tap(
+      find.byKey(const Key('conversation-item-8')),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expectContextMenuInOrder(tester);
+
+    await tester.tap(find.byKey(const Key('conversation-context-pin')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('conversation-pinned-8')), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('سارة')).dy,
+      lessThan(tester.getTopLeft(find.text('أحمد')).dy),
+    );
+  });
+
+  testWidgets('deleting a conversation hides it until a newer message', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repo = _FakeConversationRepository(
+      api,
+      items: [
+        ConversationModel(
+          id: 7,
+          channel: 'whatsapp',
+          status: 'open',
+          externalId: 'أحمد',
+          lastMessageAt: DateTime.utc(2026, 1, 1, 10),
+        ),
+      ],
+    );
+    await tester.pumpWidget(app(repo: repo, authState: _ownerAuthWithWorkspace));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.byKey(const Key('conversation-item-7')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('conversation-context-delete')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('conversation-context-delete-confirm')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('أحمد'), findsNothing);
+    expect(repo.lastArchivedId, isNull);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ConversationsScreen)),
+    );
+    final marks = container.read(conversationMarksProvider);
+    expect(
+      marks.isHidden(
+        ConversationModel(
+          id: 7,
+          channel: 'whatsapp',
+          status: 'open',
+          lastMessageAt: DateTime.utc(2026, 1, 1, 11),
+        ),
+      ),
+      isFalse,
+    );
+  });
+
   testWidgets('empty conversations matches inbox chrome and CTA', (
     tester,
   ) async {
@@ -375,8 +546,7 @@ void main() {
     expect(find.text('مؤرشفة'), findsNothing);
     expect(find.text('الدردشات المقفلة'), findsNothing);
 
-    await tester.longPress(find.byKey(const Key('conversation-item-7')));
-    await tester.pumpAndSettle();
+    await openConversationSelection(tester);
     expect(
       find.byKey(const Key('conversation-selection-appbar')),
       findsOneWidget,
@@ -824,8 +994,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('أحمد'), findsOneWidget);
 
-    await tester.longPress(find.byKey(const Key('conversation-item-7')));
-    await tester.pumpAndSettle();
+    await openConversationSelection(tester);
     await tester.tap(find.byKey(const Key('conversation-selection-archive')));
     await tester.pumpAndSettle();
 
@@ -842,8 +1011,7 @@ void main() {
     expect(find.text('الكل'), findsNothing);
     expect(find.text('أحمد'), findsOneWidget);
 
-    await tester.longPress(find.byKey(const Key('conversation-item-7')));
-    await tester.pumpAndSettle();
+    await openConversationSelection(tester);
     await tester.tap(find.byKey(const Key('conversation-selection-archive')));
     await tester.pumpAndSettle();
     expect(repo.lastArchivedValue, isFalse);
@@ -911,8 +1079,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.longPress(find.byKey(const Key('conversation-item-7')));
-    await tester.pumpAndSettle();
+    await openConversationSelection(tester);
     await tester.tap(find.byKey(const Key('conversation-selection-archive')));
     await tester.pumpAndSettle();
 
@@ -945,8 +1112,7 @@ void main() {
     await tester.pumpWidget(app(repo: repo));
     await tester.pumpAndSettle();
 
-    await tester.longPress(find.byKey(const Key('conversation-item-7')));
-    await tester.pumpAndSettle();
+    await openConversationSelection(tester);
     await tester.tap(find.byKey(const Key('conversation-selection-mute')));
     await tester.pumpAndSettle();
 
@@ -954,8 +1120,7 @@ void main() {
     expect(repo.lastMutedValue, isTrue);
     expect(find.byIcon(Icons.notifications_off_outlined), findsOneWidget);
 
-    await tester.longPress(find.byKey(const Key('conversation-item-7')));
-    await tester.pumpAndSettle();
+    await openConversationSelection(tester);
     await tester.tap(find.byKey(const Key('conversation-selection-mute')));
     await tester.pumpAndSettle();
     expect(repo.lastMutedValue, isFalse);
@@ -989,8 +1154,7 @@ void main() {
     await tester.pumpWidget(app(repo: repo));
     await tester.pumpAndSettle();
 
-    await tester.longPress(find.byKey(const Key('conversation-item-7')));
-    await tester.pumpAndSettle();
+    await openConversationSelection(tester);
     await tester.tap(find.byKey(const Key('conversation-selection-mute')));
     await tester.pumpAndSettle();
 

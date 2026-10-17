@@ -5,10 +5,12 @@ namespace App\Http\Requests\Chat;
 use App\Enums\ChatCatalog\ChatCatalogInventoryPolicy;
 use App\Http\Requests\Chat\Concerns\NormalizesCatalogBooleanInput;
 use App\Models\ChatCatalogItem;
+use App\Support\Money\Money;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use InvalidArgumentException;
 
 class StoreChatCatalogItemRequest extends FormRequest
 {
@@ -26,15 +28,70 @@ class StoreChatCatalogItemRequest extends FormRequest
         $variants = $this->input('variants');
         if (is_array($variants)) {
             foreach ($variants as $index => $variant) {
-                if (! is_array($variant) || ! is_array($variant['structured_attributes'] ?? null)) {
+                if (! is_array($variant)) {
                     continue;
                 }
-                $variants[$index]['structured_attributes'] = $this->normalizeStructuredAttributes(
-                    $variant['structured_attributes']
-                );
+                if (is_array($variant['structured_attributes'] ?? null)) {
+                    $variants[$index]['structured_attributes'] = $this->normalizeStructuredAttributes(
+                        $variant['structured_attributes']
+                    );
+                }
+                if (array_key_exists('price', $variant)) {
+                    $variants[$index]['price'] = $this->normalizedMoney($variant['price']);
+                }
+                if (is_string($variant['inventory_policy'] ?? null) && $variant['inventory_policy'] !== '') {
+                    $variants[$index]['inventory_policy'] = $this->selectableVariantInventoryPolicy(
+                        $variant['inventory_policy']
+                    );
+                }
             }
             $this->merge(['variants' => $variants]);
         }
+
+        $money = [];
+        foreach (['price', 'worker_min_price'] as $field) {
+            if (! $this->exists($field)) {
+                continue;
+            }
+            $money[$field] = $this->normalizedMoney($this->input($field));
+        }
+        if ($money !== []) {
+            $this->merge($money);
+        }
+    }
+
+    private function normalizedMoney(mixed $value): mixed
+    {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+        if (is_bool($value) || ! is_scalar($value)) {
+            return $value;
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return $value;
+        }
+        if (str_contains($raw, ',') && ! str_contains($raw, '.')) {
+            $raw = str_replace(',', '.', $raw);
+        }
+
+        try {
+            return Money::of($raw);
+        } catch (InvalidArgumentException) {
+            return $value;
+        }
+    }
+
+    private function selectableVariantInventoryPolicy(string $policy): string
+    {
+        return match ($policy) {
+            ChatCatalogInventoryPolicy::Backorder->value => ChatCatalogInventoryPolicy::FiniteStock->value,
+            ChatCatalogInventoryPolicy::DigitalPool->value,
+            ChatCatalogInventoryPolicy::FileAsset->value => ChatCatalogInventoryPolicy::NotTracked->value,
+            default => $policy,
+        };
     }
 
     /**

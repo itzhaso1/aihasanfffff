@@ -33,12 +33,29 @@ final class TruthCheck implements GuardCheck
             }
         }
 
-        $availability = $this->trustedStrings($input->facts, 'availability');
+        $requestedVariantStatus = $this->trustedStrings(
+            $input->facts,
+            'variant_match_status',
+        );
+        $requestedAvailability = $this->trustedStrings(
+            $input->facts,
+            'requested_variant.availability',
+        );
+        $availability = $requestedVariantStatus !== []
+            ? $requestedAvailability
+            : $this->trustedStrings($input->facts, 'availability');
+        if (in_array('not_found', $requestedVariantStatus, true)
+            && $requestedAvailability === []
+            && $this->assertsPositiveProductAvailability($text)) {
+            return GuardFinding::rejected(self::NAME, 'ungrounded_variant_availability');
+        }
         if ($availability !== [] && $this->availabilityConflicts($text, $availability)) {
             return GuardFinding::rejected(self::NAME, 'availability_contradiction');
         }
 
-        if ($availability === [] && $this->assertsProductAvailability($text)) {
+        if ($availability === []
+            && $requestedVariantStatus === []
+            && $this->assertsProductAvailability($text)) {
             return GuardFinding::rejected(self::NAME, 'ungrounded_availability');
         }
 
@@ -144,6 +161,15 @@ final class TruthCheck implements GuardCheck
             '/(?:المنتج|الصنف|المخزون|القطعة).{0,24}(?:متوفر|غير متوفر|نفد)|(?:متوفر|غير متوفر|نفد)\s*(?:الحين|الآن)|(?:in|out)[_ ]of[_ ]stock/iu',
             $text,
         ) === 1;
+    }
+
+    private function assertsPositiveProductAvailability(string $text): bool
+    {
+        if (preg_match('/غير\s+متوفر|غير\s+متاح|نفد|out[_ ]of[_ ]stock/iu', $text) === 1) {
+            return false;
+        }
+
+        return preg_match('/(?:متوفر|متاحة|متاح|موجود|available|in[_ ]stock)/iu', $text) === 1;
     }
 
     /**

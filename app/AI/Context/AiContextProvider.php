@@ -9,6 +9,7 @@ use App\AI\Core\Contracts\ContextProvider;
 use App\AI\Core\Data\ContextPayload;
 use App\AI\Core\Data\ResolvedEmployee;
 use App\AI\Core\Decision\FactRecord;
+use App\Support\Chat\CatalogAvailabilityFact;
 
 final class AiContextProvider implements ContextProvider
 {
@@ -74,6 +75,42 @@ final class AiContextProvider implements ContextProvider
                         $variantPrefix.'.matches_question',
                         ($variant['matches_question'] === true || $variant['matches_question'] === 1) ? 1 : 0,
                     );
+                }
+            }
+            $variantMatchStatus = $item['variant_match_status'] ?? null;
+            if (is_string($variantMatchStatus) && $variantMatchStatus !== '') {
+                $facts[] = new FactRecord(
+                    'chat_catalog',
+                    $prefix.'.variant_match_status',
+                    $variantMatchStatus,
+                );
+                if ($variantMatchStatus === 'not_found') {
+                    $facts[] = new FactRecord(
+                        'chat_catalog',
+                        $prefix.'.requested_variant.status',
+                        'not_found',
+                    );
+                }
+                foreach ($this->variantRows($item['variants'] ?? null) as $variant) {
+                    if (($variant['matches_question'] ?? false) !== true) {
+                        continue;
+                    }
+                    $availability = CatalogAvailabilityFact::token($variant['availability'] ?? null);
+                    if ($availability !== null) {
+                        $facts[] = new FactRecord(
+                            'chat_catalog',
+                            $prefix.'.requested_variant.availability',
+                            $availability,
+                        );
+                    }
+                    if (is_int($variant['stock'] ?? null)
+                        || (is_string($variant['stock'] ?? null) && is_numeric($variant['stock']))) {
+                        $facts[] = new FactRecord(
+                            'chat_catalog',
+                            $prefix.'.requested_variant.stock',
+                            (int) $variant['stock'],
+                        );
+                    }
                 }
             }
         }

@@ -11,6 +11,7 @@ use App\AI\Core\AiRequest;
 use App\AI\Core\AiRunMode;
 use App\AI\Core\Data\GuardInput;
 use App\AI\Core\Data\ResolvedEmployee;
+use App\AI\Core\Decision\FactRecord;
 use App\AI\Core\Decision\GuardVerdict;
 use App\AI\Guard\HasimResponseGuard;
 use App\Models\ChatCatalogItem;
@@ -88,7 +89,6 @@ class CatalogVariantContextTest extends TestCase
             $workspace,
             'نعم هو بس احتاج الي نسخه عربيه ؟',
         );
-
         $this->assertSame('listed', $asked['status']);
         $this->assertSame('تعلم Excel للمبتدئين', $asked['items'][0]['name']);
         $this->assertTrue($arabic['matches_question']);
@@ -217,6 +217,210 @@ class CatalogVariantContextTest extends TestCase
         $this->assertSame(['كتاب Excel'], array_column($excel['items'], 'name'));
         $this->assertSame(['كتاب Excel'], array_column($arabic['items'], 'name'));
         $this->assertNotContains('النسخة العادية', array_column($arabic['items'][0]['variants'], 'name'));
+    }
+
+    public function test_requested_size_and_length_must_match_the_same_variant(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'فستان أحمر', '99.00', [
+            [
+                'name' => 'صغير قصير',
+                'price' => '99.00',
+                'currency' => 'SAR',
+                'inventory_policy' => 'finite_stock',
+                'stock' => 4,
+                'attributes' => ['size' => 'صغير', 'length' => 'قصير'],
+            ],
+            [
+                'name' => 'وسط قصير',
+                'price' => '109.00',
+                'currency' => 'SAR',
+                'inventory_policy' => 'finite_stock',
+                'stock' => 0,
+                'attributes' => ['size' => 'وسط', 'length' => 'قصير'],
+            ],
+            [
+                'name' => 'وسط طويل',
+                'price' => '119.00',
+                'currency' => 'SAR',
+                'inventory_policy' => 'finite_stock',
+                'stock' => 2,
+                'attributes' => ['size' => 'وسط', 'length' => 'طويل'],
+            ],
+        ]);
+
+        $lookup = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'هل يوجد فستان أحمر بمقاس وسط وطول طويل؟',
+        );
+        $variants = $lookup['items'][0]['variants'];
+
+        $this->assertSame('listed', $lookup['status']);
+        $this->assertSame('matched', $lookup['items'][0]['variant_match_status']);
+        $this->assertTrue($this->variantNamed($variants, 'وسط طويل')['matches_question']);
+        $this->assertFalse($this->variantNamed($variants, 'وسط قصير')['matches_question']);
+        $this->assertFalse($this->variantNamed($variants, 'صغير قصير')['matches_question']);
+        $this->assertSame('in_stock', $this->variantNamed($variants, 'وسط طويل')['availability']);
+        $this->assertSame(2, $this->variantNamed($variants, 'وسط طويل')['stock']);
+    }
+
+    public function test_exact_requested_variant_can_be_listed_as_out_of_stock(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'فستان أحمر', '99.00', [[
+            'name' => 'وسط قصير',
+            'price' => '109.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 0,
+            'attributes' => ['size' => 'وسط', 'length' => 'قصير'],
+        ], [
+            'name' => 'وسط طويل',
+            'price' => '119.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 2,
+            'attributes' => ['size' => 'وسط', 'length' => 'طويل'],
+        ]]);
+
+        $lookup = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'هل يوجد فستان أحمر بمقاس وسط وطول قصير؟',
+        );
+        $requested = $this->variantNamed($lookup['items'][0]['variants'], 'وسط قصير');
+
+        $this->assertSame('matched', $lookup['items'][0]['variant_match_status']);
+        $this->assertTrue($requested['matches_question']);
+        $this->assertSame('out_of_stock', $requested['availability']);
+        $this->assertSame(0, $requested['stock']);
+    }
+
+    public function test_truth_facts_use_the_exact_requested_variant_not_the_parent_stock(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'فستان أحمر', '99.00', [[
+            'name' => 'وسط قصير',
+            'price' => '109.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 0,
+            'attributes' => ['size' => 'وسط', 'length' => 'قصير'],
+        ]]);
+
+        $request = $this->request(
+            $workspace,
+            'هل يوجد فستان أحمر بمقاس وسط وطول قصير؟',
+        );
+        $facts = app(AiContextProvider::class)->build(
+            $request,
+            new ResolvedEmployee(1),
+        )->facts;
+        $requestedAvailability = collect($facts)->first(
+            fn (FactRecord $fact): bool => str_ends_with(
+                $fact->key,
+                '.requested_variant.availability',
+            ),
+        );
+
+        $this->assertNotNull($requestedAvailability);
+        $this->assertSame('out_of_stock', $requestedAvailability->value);
+    }
+
+    public function test_guard_rejects_availability_claims_for_an_unverified_combination(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'فستان أحمر', '99.00', [[
+            'name' => 'وسط قصير',
+            'price' => '109.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 2,
+            'attributes' => ['size' => 'وسط', 'length' => 'قصير'],
+        ]]);
+
+        $request = $this->request(
+            $workspace,
+            'هل يوجد فستان أحمر بمقاس كبير وطول قصير؟',
+        );
+        $facts = app(AiContextProvider::class)->build(
+            $request,
+            new ResolvedEmployee(1),
+        )->facts;
+        $guard = new HasimResponseGuard;
+
+        $positive = $guard->review(new GuardInput(
+            request: $request,
+            text: 'نعم، فستان أحمر بمقاس كبير وطول قصير متوفر.',
+            facts: $facts,
+        ));
+        $negative = $guard->review(new GuardInput(
+            request: $request,
+            text: 'المقاس الكبير مع الطول القصير غير متوفر ضمن النسخ المسجلة.',
+            facts: $facts,
+        ));
+
+        $this->assertSame(GuardVerdict::Rejected, $positive->verdict);
+        $this->assertNotSame(GuardVerdict::Rejected, $negative->verdict);
+    }
+
+    public function test_missing_requested_combination_is_not_reported_as_available(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'فستان أحمر', '99.00', [[
+            'name' => 'وسط قصير',
+            'price' => '109.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 2,
+            'attributes' => ['size' => 'وسط', 'length' => 'قصير'],
+        ]]);
+
+        $lookup = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'هل يوجد فستان أحمر بمقاس كبير وطول قصير؟',
+        );
+
+        $this->assertSame('listed', $lookup['status']);
+        $this->assertSame('not_found', $lookup['items'][0]['variant_match_status']);
+        $this->assertFalse($lookup['items'][0]['variants'][0]['matches_question']);
+    }
+
+    public function test_variant_constraints_do_not_cross_similar_products(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'فستان أحمر', '99.00', [[
+            'name' => 'وسط طويل',
+            'price' => '119.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 2,
+            'attributes' => ['size' => 'وسط', 'length' => 'طويل'],
+        ]]);
+        $this->createBook($workspace, 'فستان أزرق', '99.00', [[
+            'name' => 'وسط طويل',
+            'price' => '119.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 7,
+            'attributes' => ['size' => 'وسط', 'length' => 'طويل'],
+        ]]);
+
+        $lookup = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'هل يوجد فستان أحمر بمقاس وسط وطول طويل؟',
+        );
+
+        $this->assertSame(['فستان أحمر'], array_column($lookup['items'], 'name'));
+        $this->assertSame(
+            ['وسط طويل'],
+            array_column(
+                array_filter(
+                    $lookup['items'][0]['variants'],
+                    static fn (array $variant): bool => $variant['matches_question'] === true,
+                ),
+                'name',
+            ),
+        );
     }
 
     public function test_variants_do_not_cross_workspaces(): void

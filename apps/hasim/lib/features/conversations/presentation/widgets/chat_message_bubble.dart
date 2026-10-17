@@ -8,6 +8,7 @@ import 'package:hasim/features/conversations/providers/chat_bubble_color_control
 import 'package:hasim/features/conversations/providers/conversation_theme_controller.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
+import 'package:hasim/core/utils/quoted_reply.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_attachment_content.dart';
 import 'package:hasim/l10n/app_localizations.dart';
 import 'package:intl/intl.dart' hide TextDirection;
@@ -21,6 +22,12 @@ class ChatMessageBubble extends ConsumerWidget {
     this.onMediaUrlExpired,
     this.onOpenFailed,
     this.maxWidth,
+    this.onContextMenu,
+    this.pinned = false,
+    this.starred = false,
+    this.selected = false,
+    this.selectionMode = false,
+    this.onToggleSelected,
   });
 
   final MessageModel message;
@@ -29,6 +36,16 @@ class ChatMessageBubble extends ConsumerWidget {
   final VoidCallback? onMediaUrlExpired;
   final VoidCallback? onOpenFailed;
   final double? maxWidth;
+
+  /// ضغط مطوّل (الجوال) أو زر أيمن (الكمبيوتر) — يمرَّر موضع المؤشر.
+  final void Function(Offset globalPosition)? onContextMenu;
+  final bool pinned;
+  final bool starred;
+  final bool selected;
+
+  /// أثناء التحديد: النقر يبدّل تحديد الرسالة بدل فتح المرفقات.
+  final bool selectionMode;
+  final VoidCallback? onToggleSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -113,14 +130,28 @@ class ChatMessageBubble extends ConsumerWidget {
     final meta = HasimTokens.mutedColor(context);
     final showCaption = message.content.isNotEmpty && message.content != '📎';
 
-    return SizedBox(
+    final openMenu = onContextMenu;
+    final bubbleTap = selectionMode ? onToggleSelected : onRetry;
+
+    final row = SizedBox(
       width: double.infinity,
       child: Align(
         alignment: alignment,
         child: Padding(
           padding: bubblePadding,
-          child: InkWell(
-            onTap: onRetry,
+          child: GestureDetector(
+            key: Key('chat-message-gesture-${message.id}'),
+            onLongPressStart: openMenu == null
+                ? null
+                : (details) {
+                    Feedback.forLongPress(context);
+                    openMenu(details.globalPosition);
+                  },
+            onSecondaryTapUp: openMenu == null
+                ? null
+                : (details) => openMenu(details.globalPosition),
+            child: InkWell(
+            onTap: bubbleTap,
             borderRadius: BorderRadius.circular(18),
             child: ConstrainedBox(
               constraints: BoxConstraints(
@@ -154,24 +185,45 @@ class ChatMessageBubble extends ConsumerWidget {
                   ),
                   child: Directionality(
                     textDirection: TextDirection.rtl,
-                    child: _BubbleBody(
-                      message: message,
-                      mine: mine,
-                      failed: failed,
-                      showCaption: showCaption,
-                      fg: fg,
-                      meta: meta,
-                      l10n: l10n,
-                      onImageTap: onImageTap,
-                      onMediaUrlExpired: onMediaUrlExpired,
-                      onOpenFailed: onOpenFailed,
+                    child: AbsorbPointer(
+                      absorbing: selectionMode,
+                      child: _BubbleBody(
+                        message: message,
+                        mine: mine,
+                        failed: failed,
+                        showCaption: showCaption,
+                        fg: fg,
+                        meta: meta,
+                        l10n: l10n,
+                        pinned: pinned,
+                        starred: starred,
+                        onImageTap: onImageTap,
+                        onMediaUrlExpired: onMediaUrlExpired,
+                        onOpenFailed: onOpenFailed,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
           ),
+          ),
         ),
+      ),
+    );
+
+    if (!selectionMode && !selected) {
+      return row;
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: selectionMode ? onToggleSelected : null,
+      child: ColoredBox(
+        key: selected ? Key('chat-message-selected-${message.id}') : null,
+        color: selected
+            ? HasimTokens.accent.withValues(alpha: 0.16)
+            : Colors.transparent,
+        child: row,
       ),
     );
   }
@@ -186,6 +238,8 @@ class _BubbleBody extends StatelessWidget {
     required this.fg,
     required this.meta,
     required this.l10n,
+    this.pinned = false,
+    this.starred = false,
     this.onImageTap,
     this.onMediaUrlExpired,
     this.onOpenFailed,
@@ -198,6 +252,8 @@ class _BubbleBody extends StatelessWidget {
   final Color fg;
   final Color meta;
   final AppLocalizations l10n;
+  final bool pinned;
+  final bool starred;
   final void Function(String url)? onImageTap;
   final VoidCallback? onMediaUrlExpired;
   final VoidCallback? onOpenFailed;
@@ -212,6 +268,24 @@ class _BubbleBody extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (pinned) ...[
+          Icon(
+            Icons.push_pin,
+            key: const Key('chat-message-pinned'),
+            size: 12,
+            color: meta,
+          ),
+          const SizedBox(width: 3),
+        ],
+        if (starred) ...[
+          Icon(
+            Icons.star_rounded,
+            key: const Key('chat-message-starred'),
+            size: 13,
+            color: meta,
+          ),
+          const SizedBox(width: 3),
+        ],
         Text(
           message.createdAt == null
               ? ''
@@ -269,15 +343,30 @@ class _BubbleBody extends StatelessWidget {
     final textOnly = showCaption && !hasAttachments && !pendingUpload;
 
     if (textOnly) {
-      return Wrap(
+      final quoted = splitQuotedReply(message.content);
+      final textRow = Wrap(
         spacing: 6,
         runSpacing: 2,
         crossAxisAlignment: WrapCrossAlignment.end,
         alignment: WrapAlignment.end,
         children: [
-          Text(message.content, style: _textStyle.copyWith(color: fg)),
+          Text(quoted.body, style: _textStyle.copyWith(color: fg)),
           _metaRow(),
         ],
+      );
+      if (quoted.quote == null) {
+        return textRow;
+      }
+      return IntrinsicWidth(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _QuotedReplyBlock(text: quoted.quote!, mine: mine),
+            const SizedBox(height: 4),
+            textRow,
+          ],
+        ),
       );
     }
 
@@ -332,6 +421,41 @@ class _BubbleBody extends StatelessWidget {
           child: _metaRow(),
         ),
       ],
+    );
+  }
+}
+
+/// اقتباس الرد داخل الفقاعة — مثل واتساب: شريط جانبي ونص مختصر.
+class _QuotedReplyBlock extends StatelessWidget {
+  const _QuotedReplyBlock({required this.text, required this.mine});
+
+  final String text;
+  final bool mine;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = HasimTokens.chatGreen;
+    return DecoratedBox(
+      key: const Key('chat-message-quote'),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: mine ? 0.06 : 0.04),
+        borderRadius: BorderRadius.circular(6),
+        border: BorderDirectional(start: BorderSide(color: accent, width: 3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(8, 5, 8, 5),
+        child: Text(
+          text,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12.5,
+            height: 1.3,
+            fontWeight: FontWeight.w500,
+            color: HasimTokens.mutedColor(context),
+          ),
+        ),
+      ),
     );
   }
 }

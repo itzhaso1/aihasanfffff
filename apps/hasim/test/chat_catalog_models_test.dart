@@ -47,9 +47,24 @@ void main() {
       expect(model.inventoryPolicy, 'finite_stock');
       expect(selectableInventoryPolicy('backorder'), 'finite_stock');
       expect(chatCatalogInventoryPolicies.contains('backorder'), isFalse);
+      expect(model.toWriteJson()['price'], '19.50');
       expect(model.toWriteJson().containsKey('sale_price'), isFalse);
       expect(model.toWriteJson().containsKey('compare_at_price'), isFalse);
       expect(model.toWriteJson().containsKey('barcode'), isFalse);
+    });
+
+    test('write payload remaps retired inventory policy and money text', () {
+      const variant = ChatCatalogVariantModel(
+        id: 4,
+        name: 'عربي PDF',
+        price: 10,
+        inventoryPolicy: 'backorder',
+      );
+
+      expect(variant.toWriteJson()['price'], '10.00');
+      expect(variant.toWriteJson()['inventory_policy'], 'finite_stock');
+      expect(parseOptionalCatalogMoney('15,5'), 15.5);
+      expect(parseOptionalCatalogMoney('١٥.٥'), 15.5);
     });
 
     test('toWriteJson omits id for new variants', () {

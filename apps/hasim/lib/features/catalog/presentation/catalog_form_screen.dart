@@ -79,9 +79,13 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
     _name = TextEditingController(text: item?.name ?? '');
     _description = TextEditingController(text: item?.description ?? '');
     _sku = TextEditingController(text: item?.sku ?? '');
-    _price = TextEditingController(text: item?.price.toString() ?? '0');
+    _price = TextEditingController(
+      text: item == null ? '0.00' : formatCatalogMoney(item.price),
+    );
     _workerMinimumPrice = TextEditingController(
-      text: item?.workerMinimumPrice?.toString() ?? '',
+      text: item?.workerMinimumPrice == null
+          ? ''
+          : formatCatalogMoney(item!.workerMinimumPrice!),
     );
     _currency = TextEditingController(text: item?.currency ?? 'SAR');
     _stock = TextEditingController(text: item?.stock?.toString() ?? '');
@@ -121,7 +125,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
   }
 
   bool get _nameOk => _name.text.trim().isNotEmpty;
-  bool get _priceOk => num.tryParse(_price.text.trim()) != null;
+  bool get _priceOk => parseOptionalCatalogMoney(_price.text) != null;
   bool get _currencyOk => _currency.text.trim().isNotEmpty;
   int get _readyCount =>
       (_nameOk ? 1 : 0) + (_priceOk ? 1 : 0) + (_currencyOk ? 1 : 0);
@@ -216,7 +220,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ).showSnackBar(SnackBar(content: Text(e.userMessage)));
     } catch (_) {
       if (!mounted) {
         return;
@@ -349,8 +353,10 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
     final l10n = AppLocalizations.of(context);
     try {
       final repo = ref.read(chatCatalogRepositoryProvider);
-      final price = num.tryParse(_price.text.trim()) ?? 0;
-      final workerMinimumPrice = num.tryParse(_workerMinimumPrice.text.trim());
+      final price = parseOptionalCatalogMoney(_price.text) ?? 0;
+      final workerMinimumPrice = parseOptionalCatalogMoney(
+        _workerMinimumPrice.text,
+      );
       final stock = int.tryParse(_stock.text.trim());
       final current = _currentItem;
       final saved = current != null
@@ -411,7 +417,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ).showSnackBar(SnackBar(content: Text(e.userMessage)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -520,7 +526,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              validator: (value) => num.tryParse(value ?? '') == null
+              validator: (value) => parseOptionalCatalogMoney(value) == null
                   ? 'أدخل سعراً صحيحاً'
                   : null,
               decoration: catalogInputDecoration(context, hint: '0'),
@@ -541,7 +547,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
               ),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) return null;
-                return num.tryParse(value.trim()) == null
+                return parseOptionalCatalogMoney(value) == null
                     ? 'أدخل سعراً صحيحاً'
                     : null;
               },

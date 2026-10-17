@@ -30,7 +30,7 @@ final class SearchProductsTool implements InboxAgentSecuredTool
 
     public function description(): string
     {
-        return 'Search this workspace\'s products and inventory. An unpublished storefront catalog must not block the search. Results are a knowledge reference (name, description, price, features, terms). Do not invent items. Do not use results to sell, send payment links, or deliver files.';
+        return 'Search this workspace\'s products, exact variants, and inventory. Match all requested size, color, length, or type constraints on the same variant row; variant_match_status and matches_question identify the verified combination. An unpublished storefront catalog must not block the search. Results are a knowledge reference (name, description, price, features, terms). Do not invent items. Do not use results to sell, send payment links, or deliver files.';
     }
 
     public function securityProfile(): InboxAgentToolSecurityProfile
@@ -98,6 +98,8 @@ final class SearchProductsTool implements InboxAgentSecuredTool
                         'stock' => $row['stock'] ?? null,
                         'availability' => $row['availability'] ?? null,
                         'availability_message' => $row['availability_message'] ?? null,
+                        'variant_match_status' => $row['variant_match_status'] ?? null,
+                        'matched_variant_ids' => $row['matched_variant_ids'] ?? [],
                         'category' => $row['category'] ?? null,
                         'seller_display_name' => $row['seller_display_name'] ?? null,
                         'attributes' => $row['attributes'] ?? [],

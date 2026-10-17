@@ -292,7 +292,9 @@ class _VariantCardState extends State<_VariantCard> {
     _name = TextEditingController(text: widget.variant.name);
     _sku = TextEditingController(text: widget.variant.sku ?? '');
     _price = TextEditingController(
-      text: widget.variant.price == null ? '' : widget.variant.price.toString(),
+      text: widget.variant.price == null
+          ? ''
+          : formatCatalogMoney(widget.variant.price!),
     );
     _stock = TextEditingController(
       text: widget.variant.stock == null ? '' : widget.variant.stock.toString(),
@@ -313,9 +315,12 @@ class _VariantCardState extends State<_VariantCard> {
       widget.variant.copyWith(
         name: _name.text.trim(),
         sku: _sku.text.trim(),
-        price: num.tryParse(_price.text.trim()),
+        price: parseOptionalCatalogMoney(_price.text),
         stock: int.tryParse(_stock.text.trim()),
-        inventoryPolicy: inventoryPolicy ?? widget.variant.inventoryPolicy,
+        inventoryPolicy: selectableInventoryPolicy(
+          inventoryPolicy ?? widget.variant.inventoryPolicy,
+          fallback: 'finite_stock',
+        ),
         currency: currency ?? widget.variant.currency,
         isActive: isActive ?? widget.variant.isActive,
         isVisible: widget.variant.isVisible,

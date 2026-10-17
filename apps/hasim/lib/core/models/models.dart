@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:hasim/core/config/app_config.dart';
+import 'package:hasim/core/utils/quoted_reply.dart';
 
 class UserModel extends Equatable {
   const UserModel({
@@ -406,7 +407,7 @@ class ConversationModel extends Equatable {
   String get title => customer?.name ?? externalId ?? 'محادثة #$id';
 
   String get preview {
-    final text = lastMessage?.content.trim() ?? '';
+    final text = splitQuotedReply(lastMessage?.content.trim() ?? '').body;
     if (text.isNotEmpty) return text;
     return 'لا توجد رسائل';
   }
