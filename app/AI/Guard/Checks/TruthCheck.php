@@ -33,6 +33,10 @@ final class TruthCheck implements GuardCheck
             }
         }
 
+        if ($this->claimsOneSizeAgainstMultipleVariants($text, $input->facts)) {
+            return GuardFinding::rejected(self::NAME, 'variant_count_contradiction');
+        }
+
         $requestedVariantStatus = $this->trustedStrings(
             $input->facts,
             'variant_match_status',
@@ -80,6 +84,33 @@ final class TruthCheck implements GuardCheck
         }
 
         return GuardFinding::pass(self::NAME, $text);
+    }
+
+    /**
+     * @param  list<FactRecord>  $facts
+     */
+    private function claimsOneSizeAgainstMultipleVariants(string $text, array $facts): bool
+    {
+        if (preg_match(
+            '/(?:مقاس|نسخه|خيار|نوع)\s*(?:واحد|واحدة)|one\s+size|single\s+(?:size|variant|option)/iu',
+            $text,
+        ) !== 1) {
+            return false;
+        }
+
+        $variantCounts = [];
+        foreach ($facts as $fact) {
+            if (! preg_match(
+                '/^(?:catalog_item|product):(\d+)\.variant:\d+\.name$/',
+                $fact->key,
+                $match,
+            )) {
+                continue;
+            }
+            $variantCounts[$match[1]] = ($variantCounts[$match[1]] ?? 0) + 1;
+        }
+
+        return max($variantCounts ?: [0]) >= 2;
     }
 
     /**

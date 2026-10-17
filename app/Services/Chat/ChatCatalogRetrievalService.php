@@ -354,6 +354,7 @@ class ChatCatalogRetrievalService
             'بس', 'الي', 'اللي', 'الذي', 'التي', 'احتاج', 'احتاجه', 'فقط',
             'من', 'على', 'في', 'مع', 'ل', 'لي', 'لك', 'لكم', 'لنا',
             'ي', 'ه',
+            'ساعد', 'ساعدني', 'تساعد', 'تساعدني', 'مساعده', 'مساعدتك',
             'price', 'prices', 'available', 'availability', 'stock',
         ], true);
     }
@@ -457,6 +458,7 @@ class ChatCatalogRetrievalService
         $forms = $this->tokenExpander->expand($token);
         $forms[] = $normalized;
         $forms = array_merge($forms, match ($normalized) {
+            'مقاص' => ['مقاس', 'قياس'],
             'صغير' => ['s', 'xs', 'small'],
             'وسط', 'متوسط', 'متوسطه' => ['m', 'medium', 'وسط', 'متوسط'],
             'كبير' => ['l', 'xl', 'large'],
@@ -488,7 +490,7 @@ class ChatCatalogRetrievalService
         $token = $this->stripQueryPrefix($token);
 
         return in_array($token, [
-            'مقاس', 'مقاسه', 'قياس', 'قياسه', 'لون', 'الوان', 'طول', 'نوع',
+            'مقاس', 'مقاص', 'مقاسه', 'قياس', 'قياسه', 'لون', 'الوان', 'طول', 'نوع',
             'نسخه', 'اصدار', 'موديل', 'ستايل', 'خامه', 'قماش',
             'size', 'sizes', 'color', 'colors', 'colour', 'length', 'type',
             'variant', 'variants', 'option', 'options',

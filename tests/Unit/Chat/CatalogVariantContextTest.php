@@ -264,6 +264,64 @@ class CatalogVariantContextTest extends TestCase
         $this->assertSame(2, $this->variantNamed($variants, 'وسط طويل')['stock']);
     }
 
+    public function test_misspelled_size_qualifier_still_matches_the_small_variant(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'فستان احمر', '14.00', [
+            [
+                'name' => 'مقاس وسط',
+                'price' => '14.00',
+                'currency' => 'SAR',
+                'inventory_policy' => 'finite_stock',
+                'stock' => 3,
+                'attributes' => [],
+            ],
+            [
+                'name' => 'مقاس صغير ميدوم',
+                'price' => '14.00',
+                'currency' => 'SAR',
+                'inventory_policy' => 'finite_stock',
+                'stock' => 2,
+                'attributes' => [],
+            ],
+        ]);
+
+        $lookup = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'اي ابي تساعدني ابي مقاص صغير',
+        );
+        $variants = $lookup['items'][0]['variants'];
+
+        $this->assertSame('matched', $lookup['items'][0]['variant_match_status']);
+        $this->assertTrue($this->variantNamed($variants, 'مقاس صغير ميدوم')['matches_question']);
+        $this->assertFalse($this->variantNamed($variants, 'مقاس وسط')['matches_question']);
+
+        $correctSpelling = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'ابي مقاس صغير',
+        );
+        $this->assertSame(
+            'matched',
+            $correctSpelling['items'][0]['variant_match_status'],
+        );
+        $this->assertTrue(
+            $this->variantNamed($correctSpelling['items'][0]['variants'], 'مقاس صغير ميدوم')['matches_question'],
+        );
+
+        $request = $this->request($workspace, 'اي ابي تساعدني ابي مقاص صغير');
+        $facts = app(AiContextProvider::class)->build(
+            $request,
+            new ResolvedEmployee(1),
+        )->facts;
+        $guard = (new HasimResponseGuard)->review(new GuardInput(
+            request: $request,
+            text: 'الفستان متوفر بمقاس واحد حاليا.',
+            facts: $facts,
+        ));
+
+        $this->assertSame(GuardVerdict::Rejected, $guard->verdict);
+    }
+
     public function test_exact_requested_variant_can_be_listed_as_out_of_stock(): void
     {
         $workspace = Workspace::factory()->create(['type' => 'company']);
