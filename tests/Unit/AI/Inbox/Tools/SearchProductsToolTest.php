@@ -166,6 +166,43 @@ class SearchProductsToolTest extends TestCase
         $this->assertSame('فستان أسود', $result->payload['products'][0]['name']);
     }
 
+    public function test_executor_preserves_exact_variant_evidence_for_the_model(): void
+    {
+        [$workspace, $conversation, $message, $setting] = $this->seedFixtures();
+        $message->content = 'هل يوجد فستان أسود بمقاس وسط وطول طويل؟';
+        app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace): void {
+            $item = ChatCatalogItem::query()->where('sku', 'DRESS-SEARCH')->firstOrFail();
+            $item->variants()->create([
+                'workspace_id' => $workspace->id,
+                'name' => 'وسط طويل',
+                'price' => 12,
+                'currency' => 'USD',
+                'status' => 'published',
+                'is_visible' => true,
+                'stock' => 0,
+                'inventory_policy' => 'finite_stock',
+                'is_active' => true,
+                'attributes' => ['size' => 'وسط', 'length' => 'طويل'],
+            ]);
+        });
+        $context = app(InboxAgentContextBuilder::class)->build($workspace, $conversation, $message, $setting);
+        app(InboxAgentToolRegistry::class)->register(app(SearchProductsTool::class));
+
+        $result = app(InboxAgentToolExecutor::class)->executeOne($context, new InboxAgentToolCall(
+            toolName: 'search_products',
+            callId: 'variant_call',
+            arguments: ['query' => 'فستان أسود'],
+        ));
+
+        $product = $result->payload['products'][0];
+        $variant = $product['variants'][0];
+        $this->assertTrue($result->success);
+        $this->assertSame('matched', $product['variant_match_status']);
+        $this->assertTrue($variant['matches_question']);
+        $this->assertSame('out_of_stock', $variant['availability']);
+        $this->assertSame(0, $variant['stock']);
+    }
+
     public function test_search_service_exception_returns_controlled_failure(): void
     {
         [$workspace, $conversation, $message, $setting] = $this->seedFixtures();
@@ -193,7 +230,7 @@ class SearchProductsToolTest extends TestCase
 
         $this->assertStringNotContainsString('workspace_id', $encoded);
         $this->assertStringNotContainsString('SQL', $encoded);
-        $this->assertArrayNotHasKey('catalog_item_id', $result->payload['products'][0]);
+        $this->assertIsInt($result->payload['products'][0]['catalog_item_id']);
         $this->assertArrayHasKey('name', $result->payload['products'][0]);
     }
 

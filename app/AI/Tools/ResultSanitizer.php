@@ -56,7 +56,7 @@ final class ResultSanitizer
     private function sanitizeSearchProducts(array $payload): array
     {
         $products = is_array($payload['products'] ?? null) ? $payload['products'] : [];
-        $payload['products'] = array_map(static function (mixed $row): array {
+        $payload['products'] = array_map(function (mixed $row): array {
             if (! is_array($row)) {
                 return [];
             }
@@ -76,15 +76,24 @@ final class ResultSanitizer
                     'id' => $variant['id'] ?? null,
                     'name' => $variant['name'] ?? null,
                     'price' => $variant['price'] ?? null,
+                    'display_price' => $variant['display_price'] ?? null,
                     'currency' => $variant['currency'] ?? null,
                     'stock' => $variant['stock'] ?? null,
-                    'availability' => is_array($variantAvailability)
-                        ? ($variantAvailability['label'] ?? $variantAvailability['available'] ?? null)
-                        : $variantAvailability,
+                    'availability' => $this->availabilityLabel(
+                        $variantAvailability,
+                        $variant['stock'] ?? null,
+                    ),
                     'attributes' => is_array($variant['attributes'] ?? null) ? $variant['attributes'] : null,
                     'matches_question' => $variant['matches_question'] ?? null,
                 ], static fn (mixed $value): bool => $value !== null);
             }
+
+            $matchedVariantIds = is_array($row['matched_variant_ids'] ?? null)
+                ? array_values(array_filter(
+                    $row['matched_variant_ids'],
+                    static fn (mixed $id): bool => is_int($id) || (is_string($id) && is_numeric($id)),
+                ))
+                : null;
 
             return array_filter([
                 'catalog_item_id' => $row['catalog_item_id'] ?? $row['item_id'] ?? null,
@@ -98,12 +107,39 @@ final class ResultSanitizer
                 'availability' => $availability,
                 'variants' => $variants === [] ? null : $variants,
                 'has_more_variants' => ($row['has_more_variants'] ?? false) === true ? true : null,
+                'variant_match_status' => $row['variant_match_status'] ?? null,
+                'matched_variant_ids' => $matchedVariantIds,
             ], static fn (mixed $value): bool => $value !== null);
         }, $products);
         $payload['count'] = count($payload['products']);
         $payload['result_status'] = $payload['count'] === 0 ? 'empty' : 'available';
 
         return $payload;
+    }
+
+    private function availabilityLabel(mixed $availability, mixed $stock = null): ?string
+    {
+        $label = is_array($availability)
+            ? ($availability['label'] ?? null)
+            : $availability;
+        if (is_string($label) && trim($label) !== '') {
+            return match (strtolower(trim($label))) {
+                'available', 'in_stock' => 'in_stock',
+                'out_of_stock', 'unavailable', 'show_unavailable', 'hide_unavailable' => 'out_of_stock',
+                default => trim($label),
+            };
+        }
+        if (is_bool($availability)) {
+            return $availability ? 'in_stock' : 'out_of_stock';
+        }
+        if (is_array($availability) && is_bool($availability['available'] ?? null)) {
+            return $availability['available'] ? 'in_stock' : 'out_of_stock';
+        }
+        if (is_int($stock) || (is_string($stock) && is_numeric($stock))) {
+            return (int) $stock > 0 ? 'in_stock' : 'out_of_stock';
+        }
+
+        return null;
     }
 
     /**

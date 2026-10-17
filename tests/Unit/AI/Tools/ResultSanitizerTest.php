@@ -60,4 +60,33 @@ class ResultSanitizerTest extends TestCase
         $this->assertSame('فستان أسود', $name->value);
         $this->assertSame('count', $facts[0]->key);
     }
+
+    public function test_variant_match_evidence_and_exact_availability_are_preserved(): void
+    {
+        $payload = (new ResultSanitizer)->sanitize([
+            'count' => 1,
+            'products' => [[
+                'catalog_item_id' => 12,
+                'name' => 'فستان أسود',
+                'variant_match_status' => 'matched',
+                'matched_variant_ids' => [44],
+                'variants' => [[
+                    'id' => 44,
+                    'name' => 'وسط طويل',
+                    'stock' => 0,
+                    'availability' => ['label' => 'show_unavailable', 'available' => false],
+                    'attributes' => ['size' => 'وسط', 'length' => 'طويل'],
+                    'matches_question' => true,
+                ]],
+            ]],
+        ], CanonicalTools::SEARCH_PRODUCTS, true);
+
+        $product = $payload['products'][0];
+        $variant = $product['variants'][0];
+        $this->assertSame('matched', $product['variant_match_status']);
+        $this->assertSame([44], $product['matched_variant_ids']);
+        $this->assertTrue($variant['matches_question']);
+        $this->assertSame('out_of_stock', $variant['availability']);
+        $this->assertSame(['size' => 'وسط', 'length' => 'طويل'], $variant['attributes']);
+    }
 }

@@ -67,14 +67,48 @@ final class SearchProductsTool implements InboxAgentSecuredTool
     public function execute(InboxAgentContext $context, array $arguments): InboxAgentToolExecutionResult
     {
         $query = trim((string) ($arguments['query'] ?? ''));
+        $customerMessage = trim((string) $context->message->content);
+        $attributeFilters = is_array($arguments['attribute_filters'] ?? null)
+            ? $arguments['attribute_filters']
+            : [];
+        $filterTerms = [];
+        foreach (array_slice($attributeFilters, 0, 12, true) as $key => $value) {
+            if (! is_string($key) || ! is_scalar($value)) {
+                continue;
+            }
+            $filterTerms[] = $key.' '.$value;
+        }
+        $baseQuery = $query !== '' ? $query : $customerMessage;
+        $effectiveQuery = trim(implode(' ', array_filter([
+            $baseQuery,
+            ...$filterTerms,
+        ])));
         $limit = (int) ($arguments['limit'] ?? 8);
         $limit = max(1, min(self::MAX_LIMIT, $limit));
 
         try {
             $rows = array_values(array_filter(
-                $this->catalogRetrieval->searchForAi($context->workspace, $query, $limit),
+                $this->catalogRetrieval->searchForAi(
+                    $context->workspace,
+                    $effectiveQuery,
+                    $limit,
+                ),
                 static fn (array $row): bool => $row !== [],
             ));
+            if ($rows !== [] && $query !== '' && $customerMessage !== '') {
+                $refinedRows = array_values(array_filter(
+                    $this->catalogRetrieval->searchForAi(
+                        $context->workspace,
+                        $query.' '.$customerMessage,
+                        $limit,
+                    ),
+                    static fn (array $row): bool => $row !== [],
+                ));
+                if ($this->hasVariantEvidence($refinedRows)
+                    || ! $this->hasVariantEvidence($rows)) {
+                    $rows = $refinedRows !== [] ? $refinedRows : $rows;
+                }
+            }
 
             return InboxAgentToolExecutionResult::success(
                 $this->name(),
@@ -126,5 +160,19 @@ final class SearchProductsTool implements InboxAgentSecuredTool
                 'Product search is temporarily unavailable.',
             );
         }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function hasVariantEvidence(array $rows): bool
+    {
+        foreach ($rows as $row) {
+            if (in_array($row['variant_match_status'] ?? null, ['matched', 'not_found'], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -364,7 +364,7 @@ class ChatCatalogRetrievalService
     private function variantQueryProfile(ChatCatalogItem $item, array $queryTokens): array
     {
         $terms = $this->variantQueryTerms($queryTokens);
-        if ($terms === [] || $item->variants->isEmpty()) {
+        if ($terms === []) {
             return [
                 'requested' => false,
                 'matched' => false,
@@ -380,6 +380,13 @@ class ChatCatalogRetrievalService
         if ($variantSpecific === []) {
             return [
                 'requested' => false,
+                'matched' => false,
+                'matched_variant_ids' => [],
+            ];
+        }
+        if ($item->variants->isEmpty()) {
+            return [
+                'requested' => true,
                 'matched' => false,
                 'matched_variant_ids' => [],
             ];

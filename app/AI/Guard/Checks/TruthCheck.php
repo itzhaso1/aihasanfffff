@@ -37,11 +37,15 @@ final class TruthCheck implements GuardCheck
             $input->facts,
             'variant_match_status',
         );
+        $hasRequestedVariant = (bool) array_intersect(
+            ['matched', 'not_found'],
+            $requestedVariantStatus,
+        );
         $requestedAvailability = $this->trustedStrings(
             $input->facts,
             'requested_variant.availability',
         );
-        $availability = $requestedVariantStatus !== []
+        $availability = $hasRequestedVariant
             ? $requestedAvailability
             : $this->trustedStrings($input->facts, 'availability');
         if (in_array('not_found', $requestedVariantStatus, true)
@@ -54,7 +58,7 @@ final class TruthCheck implements GuardCheck
         }
 
         if ($availability === []
-            && $requestedVariantStatus === []
+            && ! $hasRequestedVariant
             && $this->assertsProductAvailability($text)) {
             return GuardFinding::rejected(self::NAME, 'ungrounded_availability');
         }
@@ -182,14 +186,16 @@ final class TruthCheck implements GuardCheck
             return false;
         }
 
-        $trusted = [];
-        foreach ($facts as $fact) {
-            if (! str_ends_with(strtolower($fact->key), '.stock') && strtolower($fact->key) !== 'stock') {
-                continue;
-            }
-            if (is_int($fact->value) || (is_string($fact->value) && is_numeric($fact->value))) {
-                $trusted[] = (string) (int) $fact->value;
-            }
+        $requestedStatus = $this->trustedStrings($facts, 'variant_match_status');
+        $hasRequestedVariant = (bool) array_intersect(
+            ['matched', 'not_found'],
+            $requestedStatus,
+        );
+        $trusted = ! $hasRequestedVariant
+            ? $this->trustedNumericValues($facts, 'stock')
+            : $this->trustedNumericValues($facts, 'requested_variant.stock');
+        if ($hasRequestedVariant && $trusted === []) {
+            return true;
         }
 
         foreach ($claimed as $amount) {
@@ -199,6 +205,26 @@ final class TruthCheck implements GuardCheck
         }
 
         return false;
+    }
+
+    /**
+     * @param  list<FactRecord>  $facts
+     * @return list<string>
+     */
+    private function trustedNumericValues(array $facts, string $suffix): array
+    {
+        $values = [];
+        foreach ($facts as $fact) {
+            if (! str_ends_with(strtolower($fact->key), '.'.$suffix)
+                && strtolower($fact->key) !== $suffix) {
+                continue;
+            }
+            if (is_int($fact->value) || (is_string($fact->value) && is_numeric($fact->value))) {
+                $values[] = (string) (int) $fact->value;
+            }
+        }
+
+        return array_values(array_unique($values));
     }
 
     /**
