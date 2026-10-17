@@ -68,6 +68,37 @@ class CatalogVariantContextTest extends TestCase
         $this->assertSame('34.00', $advanced['price']);
     }
 
+    public function test_an_arabic_pdf_copy_is_found_even_when_stock_is_zero(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'تعلم Excel للمبتدئين', '10.00', [[
+            'name' => 'عربي PDF',
+            'price' => '10.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 0,
+        ]]);
+
+        $asked = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'عندك نسخه عربي من كتاب اكسل؟',
+        );
+        $arabic = $this->variantNamed($asked['items'][0]['variants'], 'عربي PDF');
+        $followUp = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'نعم هو بس احتاج الي نسخه عربيه ؟',
+        );
+
+        $this->assertSame('listed', $asked['status']);
+        $this->assertSame('تعلم Excel للمبتدئين', $asked['items'][0]['name']);
+        $this->assertTrue($arabic['matches_question']);
+        $this->assertSame('out_of_stock', $arabic['availability']);
+        $this->assertSame(0, $arabic['stock']);
+        $this->assertTrue(
+            $this->variantNamed($followUp['items'][0]['variants'], 'عربي PDF')['matches_question'],
+        );
+    }
+
     public function test_availability_question_uses_the_variant_stock_state(): void
     {
         [$workspace] = $this->excelBook();
@@ -205,6 +236,59 @@ class CatalogVariantContextTest extends TestCase
         $this->assertNotContains('نسخة مساحة أخرى', array_column($lookup['items'][0]['variants'], 'name'));
     }
 
+    public function test_follow_up_arabic_copy_question_keeps_the_excel_book(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'تعلم Excel للمبتدئين', '10.00', [[
+            'name' => 'عربي PDF',
+            'price' => '10.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 0,
+        ]]);
+
+        $resolution = app(ReferenceResolver::class)->resolve(
+            workspace: $workspace,
+            conversationMetadata: [],
+            state: new ConversationState,
+            currentMessage: 'نعم هو بس احتاج الي نسخه عربيه ؟',
+            recentMessages: [
+                new ContextMessage('customer', 'عندك نسخه عربي من كتاب اكسل؟'),
+                new ContextMessage('ai', 'الكتاب اللي عندنا تعلم Excel للمبتدئين'),
+                new ContextMessage('customer', 'نعم هو بس احتاج الي نسخه عربيه ؟'),
+            ],
+        );
+        $arabic = $this->variantNamed($resolution->catalogItems[0]['variants'], 'عربي PDF');
+
+        $this->assertSame('listed', $resolution->retrievalStatus);
+        $this->assertSame('تعلم Excel للمبتدئين', $resolution->catalogItems[0]['name']);
+        $this->assertTrue($arabic['matches_question']);
+    }
+
+    public function test_listed_catalog_instruction_names_the_matching_copy_even_when_out_of_stock(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'تعلم Excel للمبتدئين', '10.00', [[
+            'name' => 'عربي PDF',
+            'price' => '10.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 0,
+        ]]);
+        $request = $this->request($workspace, 'عندك نسخه عربي من كتاب اكسل؟');
+        $catalog = '';
+        foreach (app(AiContextProvider::class)->build($request, new ResolvedEmployee(1))->sections as $section) {
+            if ($section->key === 'context.catalog') {
+                $catalog = $section->content;
+            }
+        }
+
+        $this->assertStringContainsString('عربي PDF', $catalog);
+        $this->assertStringContainsString('"matches_question":true', $catalog);
+        $this->assertStringContainsString('Listed copies exist even when availability is out_of_stock', $catalog);
+        $this->assertStringContainsString('Do not say the copy is missing, do not say you will check later', $catalog);
+    }
+
     public function test_a_correct_variant_price_passes_the_guard_and_another_variants_price_is_not_required(): void
     {
         [$workspace] = $this->excelBook();
@@ -297,10 +381,6 @@ class CatalogVariantContextTest extends TestCase
         });
     }
 
-    /**
-     * @param  list<array<string, mixed>>  $variants
-     * @return array<string, mixed>
-     */
     /**
      * @param  list<array<string, mixed>>  $items
      * @return array<string, mixed>

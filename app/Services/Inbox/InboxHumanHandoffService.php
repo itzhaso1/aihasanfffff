@@ -137,7 +137,6 @@ final class InboxHumanHandoffService
         return Message::withoutGlobalScopes()
             ->where('workspace_id', $conversation->workspace_id)
             ->where('conversation_id', $conversation->id)
-            ->where('direction', 'outbound')
             ->where('metadata->handoff_acknowledgement', true)
             ->where('id', '>=', $claim->id)
             ->exists();

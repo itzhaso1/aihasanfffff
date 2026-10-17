@@ -217,7 +217,10 @@ class MessageModel extends Equatable {
   final int? senderUserId;
   final String? participantType;
 
-  bool get isOutbound => direction == 'outbound';
+  bool get isOutbound => direction == 'outbound' && !isInternalNote;
+
+  bool get isInternalNote =>
+      direction == 'internal_note' || messageType == 'system';
 
   static Map<String, dynamic> _unwrapMessageJson(Map<String, dynamic> json) {
     final nested = json['data'];

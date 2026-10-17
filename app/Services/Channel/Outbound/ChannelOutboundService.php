@@ -48,6 +48,15 @@ final class ChannelOutboundService
             return;
         }
 
+        if ($message->message_type === 'system') {
+            return;
+        }
+
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if (($metadata['handoff_acknowledgement'] ?? false) === true) {
+            return;
+        }
+
         $hasStoredMedia = MessageAttachment::withoutGlobalScopes()
             ->where('message_id', $message->id)
             ->where('workspace_id', $message->workspace_id)

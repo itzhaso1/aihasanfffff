@@ -45,27 +45,42 @@ final class ArabicSearchTokenExpander
 
         $folded = $this->normalizer->normalize($raw);
         $variants = array_values(array_unique(array_filter([$raw, $folded])));
+        $languageStem = $this->languageStem($folded);
+        if ($languageStem !== null) {
+            $variants[] = $languageStem;
+        }
+        if (in_array($folded, ['اكسل', 'اكسيل'], true)) {
+            $variants[] = 'excel';
+        }
+        if ($folded === 'excel') {
+            $variants[] = 'اكسل';
+        }
 
+        $forms = [$folded];
         $stem = $folded;
         if (preg_match('/^[بوفكل]/u', $stem) === 1 && mb_strlen($stem) >= 5) {
             $stem = mb_substr($stem, 1);
             $variants[] = $stem;
+            $forms[] = $stem;
         }
         if (str_starts_with($stem, 'ال') && mb_strlen($stem) > 4) {
-            $variants[] = mb_substr($stem, 2);
             $stem = mb_substr($stem, 2);
+            $variants[] = $stem;
+            $forms[] = $stem;
         }
 
-        if (preg_match('/^(.)(.)ا(.)ين$/u', $stem, $m) === 1) {
-            $variants[] = $m[1].$m[2].$m[3].'ان';
-        }
+        foreach (array_values(array_unique($forms)) as $form) {
+            if (preg_match('/^(.)(.)ا(.)ين$/u', $form, $m) === 1) {
+                $variants[] = $m[1].$m[2].$m[3].'ان';
+            }
 
-        if (preg_match('/^(.)(.)(.)ان$/u', $stem, $m) === 1) {
-            $variants[] = $m[1].$m[2].'ا'.$m[3].'ين';
-        }
+            if (preg_match('/^(.)(.)(.)ان$/u', $form, $m) === 1) {
+                $variants[] = $m[1].$m[2].'ا'.$m[3].'ين';
+            }
 
-        if (str_ends_with($stem, 'ات') && mb_strlen($stem) >= 5) {
-            $variants[] = mb_substr($stem, 0, mb_strlen($stem) - 2);
+            if (str_ends_with($form, 'ات') && mb_strlen($form) >= 5) {
+                $variants[] = mb_substr($form, 0, mb_strlen($form) - 2);
+            }
         }
 
         $variants = array_values(array_unique(array_filter(
@@ -74,5 +89,25 @@ final class ArabicSearchTokenExpander
         )));
 
         return array_slice($variants, 0, self::MAX_VARIANTS_PER_TOKEN);
+    }
+
+    private function languageStem(string $folded): ?string
+    {
+        $stem = $folded;
+        foreach (['بال', 'لل', 'ال', 'ب', 'ل', 'ف', 'ك', 'و'] as $prefix) {
+            if (str_starts_with($stem, $prefix) && mb_strlen($stem) > mb_strlen($prefix) + 2) {
+                $stem = mb_substr($stem, mb_strlen($prefix));
+                break;
+            }
+        }
+
+        if (str_starts_with($stem, 'عربي') && $stem !== 'عربي') {
+            return 'عربي';
+        }
+        if (str_starts_with($stem, 'انجليزي') && $stem !== 'انجليزي') {
+            return 'انجليزي';
+        }
+
+        return null;
     }
 }

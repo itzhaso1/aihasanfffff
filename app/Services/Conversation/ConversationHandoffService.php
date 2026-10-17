@@ -72,7 +72,7 @@ final class ConversationHandoffService
                 queueImmediately: true,
             );
 
-            $this->sendCustomerAcknowledgement($fresh->fresh() ?? $fresh);
+            $this->recordInternalHandoffNote($fresh->fresh() ?? $fresh);
 
             return true;
         });
@@ -104,7 +104,7 @@ final class ConversationHandoffService
                 $this->baseContext($fresh, 'staff_review', $triggerMessage),
                 queueImmediately: true,
             );
-            $this->sendCustomerAcknowledgement($fresh->fresh() ?? $fresh);
+            $this->recordInternalHandoffNote($fresh->fresh() ?? $fresh);
 
             return true;
         });
@@ -566,7 +566,7 @@ final class ConversationHandoffService
         return $conversation->fresh() ?? $conversation;
     }
 
-    private function sendCustomerAcknowledgement(Conversation $conversation): void
+    private function recordInternalHandoffNote(Conversation $conversation): void
     {
         $content = 'تم تحويل المحادثة للفريق، وسيتم الرد عليك من أحد أعضاء الفريق.';
 
@@ -574,12 +574,13 @@ final class ConversationHandoffService
             'workspace_id' => $conversation->workspace_id,
             'conversation_id' => $conversation->id,
             'customer_id' => $conversation->customer_id,
-            'direction' => 'outbound',
+            'direction' => 'internal_note',
             'message_type' => 'system',
             'content' => $content,
             'ai_generated' => false,
             'metadata' => [
                 'handoff_acknowledgement' => true,
+                'visibility' => 'staff',
             ],
         ]);
 

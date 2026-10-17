@@ -174,20 +174,23 @@
     <div id="inbox-message-list" class="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-5">
         @forelse($activeConversation->messages as $message)
             @php
+                $isInternalNote = $message->direction === 'internal_note'
+                    || $message->message_type === 'system'
+                    || (bool) data_get($message->metadata, 'handoff_acknowledgement');
                 $outbound = in_array($message->direction, ['outbound', 'internal_note'], true);
-                $statusLabel = $message->direction === 'internal_note'
+                $statusLabel = $isInternalNote
                     ? 'ملاحظة داخلية'
                     : ($outbound ? 'صادرة' : 'واردة');
             @endphp
             <div @class([
                     'hs-inbox-message-row',
-                    $outbound ? 'hs-inbox-message-row--sent' : 'hs-inbox-message-row--received',
+                    $isInternalNote ? 'justify-center' : ($outbound ? 'hs-inbox-message-row--sent' : 'hs-inbox-message-row--received'),
                 ]) data-message-id="{{ $message->id }}">
                 <div @class([
                     'hs-inbox-message-bubble max-w-[78%] rounded-2xl px-3 py-1.5 shadow-sm',
-                    'rounded-es-md bg-[#DDF6F1] text-slate-900' => $outbound && $message->direction !== 'internal_note',
-                    'rounded-es-md border border-amber-200 bg-amber-50 text-slate-900' => $message->direction === 'internal_note',
-                    'rounded-ee-md border border-slate-200 bg-white text-slate-800' => ! $outbound,
+                    'rounded-es-md bg-[#DDF6F1] text-slate-900' => $outbound && ! $isInternalNote,
+                    'mx-auto border border-amber-200 bg-amber-50 text-slate-900' => $isInternalNote,
+                    'rounded-ee-md border border-slate-200 bg-white text-slate-800' => ! $outbound && ! $isInternalNote,
                 ])>
                     @if($message->attachments && $message->attachments->isNotEmpty())
                         <div class="mb-2 space-y-2">
@@ -225,6 +228,9 @@
                                 @endif
                             @endforeach
                         </div>
+                    @endif
+                    @if($isInternalNote)
+                        <p class="mb-1 text-[11px] font-semibold text-amber-800">{{ $statusLabel }}</p>
                     @endif
                     <p class="text-sm leading-snug">
                         {{ $message->content ?: '—' }}

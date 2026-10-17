@@ -81,6 +81,45 @@ class ChannelOutboundArchitectureTest extends TestCase
             ->count());
     }
 
+    public function test_handoff_acknowledgement_is_not_queued_to_the_customer_channel(): void
+    {
+        [$workspace] = $this->workspaceWithWhatsApp();
+        Queue::fake();
+
+        $customer = Customer::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'WA Buyer',
+            'phone' => '966511111112',
+        ]);
+        $conversation = Conversation::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'customer_id' => $customer->id,
+            'channel' => 'whatsapp',
+            'external_id' => '966511111112',
+            'status' => 'open',
+            'metadata' => [
+                'channel_source' => 'whatsapp',
+                'phone_number_id' => 'pnid_manual',
+            ],
+        ]);
+        $message = Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $customer->id,
+            'direction' => 'outbound',
+            'message_type' => 'system',
+            'content' => 'تم تحويل المحادثة للفريق، وسيتم الرد عليك من أحد أعضاء الفريق.',
+            'metadata' => ['handoff_acknowledgement' => true],
+        ]);
+
+        app(ChannelOutboundService::class)->queueOutboundForMessage($conversation, $message);
+
+        Queue::assertNotPushed(SendChannelOutboundMessage::class);
+        $this->assertSame(0, ChannelOutboundDelivery::withoutGlobalScopes()
+            ->where('message_id', $message->id)
+            ->count());
+    }
+
     public function test_manual_instagram_reply_dispatches_channel_outbound_job_not_http_inline(): void
     {
         [$workspace, , $user] = $this->workspaceWithInstagram('ig_acct_1');

@@ -165,6 +165,15 @@ class ArabicCatalogSearchTest extends TestCase
         $this->assertLessThanOrEqual(ArabicSearchTokenExpander::MAX_VARIANTS_PER_TOKEN, count($variants));
     }
 
+    public function test_expander_maps_arabic_and_excel_spellings(): void
+    {
+        $expander = app(ArabicSearchTokenExpander::class);
+
+        $this->assertContains('عربي', $expander->expand('عربيه'));
+        $this->assertContains('عربي', $expander->expand('عربية'));
+        $this->assertContains('excel', $expander->expand('اكسل'));
+    }
+
     public static function matchingQueries(): array
     {
         return [

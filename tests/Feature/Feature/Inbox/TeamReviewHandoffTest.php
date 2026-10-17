@@ -4,6 +4,7 @@ namespace Tests\Feature\Feature\Inbox;
 
 use App\Enums\ConversationHandoffReason;
 use App\Enums\ConversationHandoffStatus;
+use App\Models\ChannelOutboundDelivery;
 use App\Models\Conversation;
 use App\Models\Customer;
 use App\Models\Message;
@@ -47,12 +48,22 @@ class TeamReviewHandoffTest extends TestCase
         $this->assertFalse($fresh->isAiReplying());
         $this->assertFalse(app(ConversationAiEligibilityService::class)->shouldDispatchAiJob($fresh, $message));
         $this->assertSame(1, $this->acknowledgements($conversation));
+        $ack = Message::withoutGlobalScopes()
+            ->where('conversation_id', $conversation->id)
+            ->where('metadata->handoff_acknowledgement', true)
+            ->firstOrFail();
+        $this->assertSame('internal_note', $ack->direction);
+        $this->assertSame(0, ChannelOutboundDelivery::withoutGlobalScopes()
+            ->where('conversation_id', $conversation->id)
+            ->count());
 
         $this->actingAs($user)
             ->withSession(['current_workspace_id' => $workspace->id])
             ->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
             ->assertOk()
-            ->assertSee('تحتاج مراجعة من الفريق', false);
+            ->assertSee('تحتاج مراجعة من الفريق', false)
+            ->assertSee('ملاحظة داخلية', false)
+            ->assertSee('تم تحويل المحادثة للفريق', false);
     }
 
     public function test_asking_the_team_in_gulf_arabic_opens_review(): void
@@ -301,7 +312,6 @@ class TeamReviewHandoffTest extends TestCase
         return Message::withoutGlobalScopes()
             ->where('workspace_id', $conversation->workspace_id)
             ->where('conversation_id', $conversation->id)
-            ->where('direction', 'outbound')
             ->where('metadata->handoff_acknowledgement', true)
             ->count();
     }

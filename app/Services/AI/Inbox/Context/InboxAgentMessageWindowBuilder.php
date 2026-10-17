@@ -38,6 +38,7 @@ final class InboxAgentMessageWindowBuilder
             ->where('workspace_id', $conversation->workspace_id)
             ->where('conversation_id', $conversation->id)
             ->whereIn('direction', ['inbound', 'outbound'])
+            ->where('message_type', '!=', 'system')
             ->when($currentMessage->exists, fn ($builder) => $builder->where('id', '!=', $currentMessage->id))
             ->orderByDesc('id')
             ->limit($maxMessages);

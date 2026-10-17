@@ -64,6 +64,22 @@ class HasimResponseGuardTest extends TestCase
         $this->assertSame('availability_contradiction', $this->reason($outcome, TruthCheck::NAME));
     }
 
+    public function test_listing_a_copy_is_not_an_in_stock_claim(): void
+    {
+        $guard = new HasimResponseGuard;
+        $facts = [
+            new FactRecord('search_products', 'catalog_item:12.variant:4.name', 'عربي PDF'),
+            new FactRecord('search_products', 'catalog_item:12.variant:4.availability', 'out_of_stock'),
+        ];
+        $exists = $guard->review($this->input('نعم عندنا نسخة عربي PDF', facts: $facts));
+        $listed = $guard->review($this->input('نعم النسخة العربية موجودة', facts: $facts));
+
+        $this->assertSame(GuardVerdict::Pass, $exists->verdict);
+        $this->assertSame('نعم عندنا نسخة عربي PDF', $exists->text);
+        $this->assertSame(GuardVerdict::Pass, $listed->verdict);
+        $this->assertSame('نعم النسخة العربية موجودة', $listed->text);
+    }
+
     public function test_product_availability_stock_and_currency_without_facts_are_rejected(): void
     {
         $guard = new HasimResponseGuard;

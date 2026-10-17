@@ -32,6 +32,49 @@ class ChatMessageBubble extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (message.isInternalNote) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
+        child: Center(
+          child: DecoratedBox(
+            key: const Key('chat-internal-note'),
+            decoration: BoxDecoration(
+              color: HasimTokens.cardBg(context),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: HasimTokens.lineColor(context)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'ملاحظة داخلية',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: HasimTokens.mutedColor(context),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    message.content,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                      color: HasimTokens.inkColor(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final l10n = AppLocalizations.of(context);
     final sharedBubble = ref.watch(chatBubbleColorControllerProvider);
     final bubbleOverride = ref

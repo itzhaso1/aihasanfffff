@@ -429,4 +429,32 @@ void main() {
     expect(find.text('SYSTEM:'), findsNothing);
     expect(find.textContaining('suggestion'), findsNothing);
   });
+
+  testWidgets('handoff note is an internal chip without delivery ticks', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        ChatMessageBubble(
+          message: MessageModel(
+            id: 9,
+            conversationId: 1,
+            direction: 'internal_note',
+            messageType: 'system',
+            content:
+                'تم تحويل المحادثة للفريق، وسيتم الرد عليك من أحد أعضاء الفريق.',
+            createdAt: DateTime(2026, 1, 1, 1, 5),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('chat-internal-note')), findsOneWidget);
+    expect(find.text('ملاحظة داخلية'), findsOneWidget);
+    expect(
+      find.text('تم تحويل المحادثة للفريق، وسيتم الرد عليك من أحد أعضاء الفريق.'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.done_all_rounded), findsNothing);
+  });
 }

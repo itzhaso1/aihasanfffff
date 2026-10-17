@@ -1061,7 +1061,7 @@ class ChatCatalogRetrievalService
         $display = is_array($catalog->display_settings) ? $catalog->display_settings : [];
         $price = $this->prices->forVariant($catalog, $variant);
 
-        return [
+        $row = [
             'id' => (int) $variant->id,
             'name' => $variant->name,
             'sku' => ($display['show_sku'] ?? false) ? $variant->sku : null,
@@ -1073,6 +1073,11 @@ class ChatCatalogRetrievalService
             'availability' => $availability,
             'attributes' => $this->safeVariantAttributes($item, $variant),
         ];
+        if ($display['show_stock'] ?? true) {
+            $row['stock'] = $availability['quantity'];
+        }
+
+        return $row;
     }
 
     /**

@@ -60,6 +60,7 @@ class ConversationHandoffV2Test extends TestCase
         $this->assertSame(ConversationHandoffReason::CustomerRequest, $conversation->handoff_reason);
         $this->assertDatabaseHas('messages', [
             'conversation_id' => $conversation->id,
+            'direction' => 'internal_note',
             'message_type' => 'system',
             'metadata->handoff_acknowledgement' => true,
         ]);

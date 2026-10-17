@@ -125,7 +125,7 @@ final class TruthCheck implements GuardCheck
     {
         $unique = array_values(array_unique($availability));
         $claimsOut = preg_match('/غير متوفر|نفد|out[_ ]of[_ ]stock/iu', $text) === 1;
-        $claimsInStock = ! $claimsOut && preg_match('/متوفر|موجود|in[_ ]stock/iu', $text) === 1;
+        $claimsInStock = ! $claimsOut && preg_match('/متوفر|in[_ ]stock/iu', $text) === 1;
 
         if ($unique === ['out_of_stock'] && $claimsInStock) {
             return true;
