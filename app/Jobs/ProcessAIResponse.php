@@ -7,6 +7,7 @@ use App\Exceptions\FeatureNotAvailableException;
 use App\Exceptions\UsageLimitExceededException;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\Workspace;
 use App\Services\AI\AiOutputValidator;
 use App\Services\AI\AIService;
 use App\Services\AI\Inbox\AiReplyEligibility;
@@ -188,6 +189,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 'limit' => $exception->limit,
                 'used' => $exception->used,
                 'phase' => $exception->phase,
+                'reason' => 'usage_limit_exceeded',
             ];
 
             if ($exception->phase === UsageLimitExceededException::PHASE_AFTER_GENERATION) {
@@ -240,7 +242,10 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             ]);
 
             $validated = $outputValidator->validateForOutbound(
-                app(InboxHonestReplyFallback::class)->forInbound((string) $incomingMessage->content),
+                app(InboxHonestReplyFallback::class)->forInbound(
+                    (string) $incomingMessage->content,
+                    Workspace::query()->find((int) $conversationFresh->workspace_id),
+                ),
             );
             if ($validated === null) {
                 Log::warning('ai.reply.fallback_rejected', [

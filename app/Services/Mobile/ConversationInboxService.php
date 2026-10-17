@@ -29,7 +29,7 @@ class ConversationInboxService
     ) {}
 
     /**
-     * @param  array{filter?:string,channel?:string,search?:string,customer_priority?:string,payment_status?:string,review_status?:string,per_page?:int}  $filters
+     * @param  array{filter?:string,channel?:string,search?:string,customer_priority?:string,payment_status?:string,review_status?:string,per_page?:int,cursor?:string|null}  $filters
      */
     public function listForUser(User $user, Workspace $workspace, array $filters = []): CursorPaginator
     {
@@ -118,7 +118,7 @@ class ConversationInboxService
         $paginator = $query
             ->orderByDesc('conversations.last_message_at')
             ->orderByDesc('conversations.id')
-            ->cursorPaginate($perPage);
+            ->cursorPaginate($perPage, ['*'], 'cursor', $filters['cursor'] ?? null);
 
         $handoffRepair = app(InboxHumanHandoffService::class);
         foreach ($paginator->items() as $conversation) {
@@ -128,6 +128,40 @@ class ConversationInboxService
         }
 
         return $paginator;
+    }
+
+    /**
+     * @param  array{filter?:string,channel?:string,search?:string,customer_priority?:string,payment_status?:string,review_status?:string}  $filters
+     * @return array{ids:list<int>,limited:bool}
+     */
+    public function idsForUser(
+        User $user,
+        Workspace $workspace,
+        array $filters = [],
+        int $limit = 500,
+    ): array {
+        $limit = max(1, min(500, $limit));
+        $ids = [];
+        $cursor = null;
+
+        do {
+            $page = $this->listForUser($user, $workspace, [
+                ...$filters,
+                'per_page' => min(50, $limit - count($ids)),
+                'cursor' => $cursor,
+            ]);
+            foreach ($page->items() as $conversation) {
+                if ($conversation instanceof Conversation) {
+                    $ids[] = (int) $conversation->id;
+                }
+            }
+            $cursor = $page->nextCursor()?->encode();
+        } while ($cursor !== null && count($ids) < $limit);
+
+        return [
+            'ids' => array_values(array_unique(array_slice($ids, 0, $limit))),
+            'limited' => $cursor !== null,
+        ];
     }
 
     public function unreadConversationCount(User $user, Workspace $workspace): int

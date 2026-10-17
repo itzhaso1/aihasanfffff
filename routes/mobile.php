@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Mobile\V1\CommerceOrderController;
 use App\Http\Controllers\Api\Mobile\V1\Company\WorkerDiscoveryController;
 use App\Http\Controllers\Api\Mobile\V1\Company\WorkerEngagementCapabilityController;
 use App\Http\Controllers\Api\Mobile\V1\CompanyProfileController;
+use App\Http\Controllers\Api\Mobile\V1\ConversationBulkMessageController;
 use App\Http\Controllers\Api\Mobile\V1\ConversationController;
 use App\Http\Controllers\Api\Mobile\V1\ConversationHandoffController;
 use App\Http\Controllers\Api\Mobile\V1\CustomerController;
@@ -162,6 +163,10 @@ Route::middleware([
     Route::get('/conversations/{conversation}/messages', [ConversationController::class, 'messages']);
     Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])
         ->middleware('throttle:mobile-messages');
+    Route::post('/conversations/bulk-messages', [ConversationBulkMessageController::class, 'store'])
+        ->middleware('throttle:mobile-write');
+    Route::get('/conversations/bulk-messages/{bulkSend}', [ConversationBulkMessageController::class, 'show'])
+        ->whereUuid('bulkSend');
     Route::post('/conversations/{conversation}/read', [ConversationController::class, 'read']);
 });
 

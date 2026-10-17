@@ -33,6 +33,7 @@ use App\Http\Controllers\Workspace\Commerce\CommerceIntelligenceController as Wo
 use App\Http\Controllers\Workspace\Commerce\CommerceOrderController as WorkspaceCommerceOrderController;
 use App\Http\Controllers\Workspace\Commerce\CommerceTaxSettingController as WorkspaceCommerceTaxSettingController;
 use App\Http\Controllers\Workspace\CompanyProfileController;
+use App\Http\Controllers\Workspace\ConversationBulkMessageController;
 use App\Http\Controllers\Workspace\ConversationController;
 use App\Http\Controllers\Workspace\ConversationHandoffController;
 use App\Http\Controllers\Workspace\CustomerController;
@@ -308,6 +309,10 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         });
         Route::resource('conversations', ConversationController::class)->except(['show']);
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');
+        Route::post('conversations/bulk-messages', [ConversationBulkMessageController::class, 'store'])->name('conversations.bulk-messages.store');
+        Route::get('conversations/bulk-messages/{bulkSend}', [ConversationBulkMessageController::class, 'show'])
+            ->whereUuid('bulkSend')
+            ->name('conversations.bulk-messages.show');
         Route::post('conversations/{conversation}/handoff', [ConversationHandoffController::class, 'requestHandoff'])->name('conversations.handoff.request');
         Route::post('conversations/{conversation}/assign', [ConversationHandoffController::class, 'assign'])->name('conversations.handoff.assign');
         Route::post('conversations/{conversation}/takeover', [ConversationHandoffController::class, 'takeover'])->name('conversations.handoff.takeover');

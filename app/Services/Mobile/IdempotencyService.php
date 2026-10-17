@@ -139,7 +139,10 @@ class IdempotencyService
 
     public function keyFromRequest(Request $request): ?string
     {
-        $key = trim((string) $request->header('Idempotency-Key', ''));
+        $key = trim((string) (
+            $request->header('Idempotency-Key')
+            ?? $request->input('idempotency_key', '')
+        ));
 
         return $key !== '' ? $key : null;
     }

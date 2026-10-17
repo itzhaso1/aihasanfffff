@@ -284,6 +284,34 @@ class ConversationRepository {
     return MessageModel.fromJson(map).copyWith(clientId: key);
   }
 
+  Future<Map<String, dynamic>> sendBulkMessage({
+    List<int> conversationIds = const [],
+    bool selectAll = false,
+    Map<String, dynamic> filters = const {},
+    required String content,
+    String? idempotencyKey,
+  }) async {
+    final key = idempotencyKey ?? newIdempotencyKey();
+    final res = await _api.post(
+      'conversations/bulk-messages',
+      body: {
+        'conversation_ids': conversationIds,
+        'select_all': selectAll,
+        if (filters.isNotEmpty) 'filters': filters,
+        'content': content,
+        'idempotency_key': key,
+      },
+      headers: {'Idempotency-Key': key},
+      mapData: asMap,
+    );
+    final data = res.data;
+    if (data == null) {
+      throw ApiException(res.message ?? 'تعذر جدولة الإرسال الجماعي.');
+    }
+
+    return data;
+  }
+
   Future<void> enqueueOutboundText({
     required int workspaceId,
     required int conversationId,

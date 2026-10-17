@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/models/models.dart';
+import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
@@ -84,6 +86,9 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
   final _search = TextEditingController();
   int? _folderSelectedId;
   int? _actionConversationId;
+  final Set<int> _selectedConversationIds = <int>{};
+  bool _selectAllConversations = false;
+  bool _bulkSending = false;
 
   /// فلاتر مدعومة في Mobile API: all | unread | archived
   /// «المفضلة» غير متاحة كفلتر محادثات في الـ API — لا نخترع فلترًا وهميًا.
@@ -167,7 +172,11 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       }
     }
     if (_actionConversationId != null) {
-      setState(() => _actionConversationId = null);
+      setState(() {
+        _actionConversationId = null;
+        _selectedConversationIds.clear();
+        _selectAllConversations = false;
+      });
     }
     final navRailWidth = HasimLayout.navRailWidth;
     final split = HasimLayout.useConversationSplit(
@@ -190,7 +199,37 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
   }
 
   void _startConversationActionMode(int id) {
-    setState(() => _actionConversationId = id);
+    setState(() {
+      _actionConversationId = id;
+      _selectedConversationIds
+        ..clear()
+        ..add(id);
+      _selectAllConversations = false;
+    });
+  }
+
+  void _toggleConversationSelection(int id) {
+    setState(() {
+      if (!_selectedConversationIds.remove(id)) {
+        _selectedConversationIds.add(id);
+      }
+      _selectAllConversations = false;
+      _actionConversationId = _selectedConversationIds.isEmpty
+          ? null
+          : _selectedConversationIds.first;
+    });
+  }
+
+  void _selectAllVisibleConversations(Iterable<int> ids) {
+    setState(() {
+      _selectedConversationIds
+        ..clear()
+        ..addAll(ids);
+      _selectAllConversations = true;
+      _actionConversationId = _selectedConversationIds.isEmpty
+          ? null
+          : _selectedConversationIds.first;
+    });
   }
 
   Future<void> _showConversationMenu(
@@ -309,7 +348,76 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     if (!mounted) {
       return;
     }
-    setState(() => _actionConversationId = null);
+    setState(() {
+      _actionConversationId = null;
+      _selectedConversationIds.clear();
+      _selectAllConversations = false;
+    });
+  }
+
+  Future<void> _showBulkMessageComposer({
+    required List<int> visibleIds,
+    required Map<String, dynamic> filters,
+  }) async {
+    if (_bulkSending || _selectedConversationIds.isEmpty) {
+      return;
+    }
+    final content = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: HasimTokens.cardBg(context),
+      shape: RoundedRectangleBorder(
+        borderRadius: HasimLayout.modalSheetRadius(context),
+      ),
+      builder: (_) => _BulkSendSheet(
+        recipientLabel: _selectAllConversations
+            ? 'المحادثات المحددة في الفلتر'
+            : '${_selectedConversationIds.length} محادثة',
+      ),
+    );
+    if (content == null || content.trim().isEmpty || !mounted) {
+      return;
+    }
+
+    setState(() => _bulkSending = true);
+    try {
+      final result = await ref.read(conversationRepositoryProvider).sendBulkMessage(
+        conversationIds: _selectAllConversations
+            ? const []
+            : _selectedConversationIds.toList(),
+        selectAll: _selectAllConversations,
+        filters: filters,
+        content: content,
+      );
+      if (!mounted) return;
+      final queued = result['queued_count'] ?? 0;
+      final skipped = result['skipped_count'] ?? 0;
+      final limited = result['selection_limited'] == true;
+      _closeConversationActionMode();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'تمت جدولة $queued رسالة'
+            '${skipped == 0 ? '' : '، تم تخطي $skipped'}'
+            '${limited ? '، تم الاكتفاء بأول 500 محادثة' : ''}',
+          ),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.userMessage)),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر جدولة الإرسال الجماعي.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _bulkSending = false);
+    }
   }
 
   Future<void> _archiveSelectedConversation(
@@ -446,35 +554,75 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     }
 
     ConversationModel? actionConversation;
-    if (_actionConversationId != null) {
+    final firstSelectedId = _selectedConversationIds.isEmpty
+        ? _actionConversationId
+        : _selectedConversationIds.first;
+    if (firstSelectedId != null) {
       for (final item in state.items) {
-        if (item.id == _actionConversationId) {
+        if (item.id == firstSelectedId) {
           actionConversation = item;
           break;
         }
       }
     }
-    final selectionMode = actionConversation != null;
+    final selectionMode = _selectedConversationIds.isNotEmpty;
+    final marks = ref.watch(conversationMarksProvider);
+    final visibleConversationIds = [
+      for (final item in state.items)
+        if (!marks.isHidden(item)) item.id,
+    ];
+    final bulkFilters = <String, dynamic>{
+      'filter': widget.folder == 'archived' || state.filter == 'archived'
+          ? 'archived'
+          : (state.filter == 'team_review' ? 'all' : state.filter),
+      if (state.filter == 'team_review') 'handoff': 'handoff',
+      if (state.channel != null && state.channel!.isNotEmpty)
+        'channel': state.channel,
+      if (state.search.trim().isNotEmpty) 'search': state.search.trim(),
+      if (state.customerPriority != null)
+        'customer_priority': state.customerPriority,
+      if (state.paymentStatus != null) 'payment_status': state.paymentStatus,
+      if (state.reviewStatus != null) 'review_status': state.reviewStatus,
+    };
 
     final lockedIds = ref.watch(lockedConversationIdsProvider);
-    final marks = ref.watch(conversationMarksProvider);
-    final selectionAppBar = actionConversation == null
+    final selectionAppBar = !selectionMode
         ? null
         : _ConversationSelectionAppBar(
             conversation: actionConversation,
-            locked: lockedIds.contains(actionConversation.id),
-            pinned: marks.isPinned(actionConversation.id),
+            locked: actionConversation != null &&
+                lockedIds.contains(actionConversation.id),
+            pinned: actionConversation != null &&
+                marks.isPinned(actionConversation.id),
+            selectedCount: _selectAllConversations
+                ? visibleConversationIds.length
+                : _selectedConversationIds.length,
+            selectAll: _selectAllConversations,
             showSpecialInboxSections: showSpecialInboxSections,
             onClose: _closeConversationActionMode,
-            onArchive: () => _archiveSelectedConversation(actionConversation!),
-            onMute: () => _muteSelectedConversation(actionConversation!),
-            onLock: () => _toggleSelectedConversationLock(
-              actionConversation!,
-              lockedIds.contains(actionConversation.id),
+            onArchive: actionConversation == null
+                ? null
+                : () => _archiveSelectedConversation(actionConversation!),
+            onMute: actionConversation == null
+                ? null
+                : () => _muteSelectedConversation(actionConversation!),
+            onLock: actionConversation == null
+                ? null
+                : () => _toggleSelectedConversationLock(
+                    actionConversation!,
+                    lockedIds.contains(actionConversation.id),
+                  ),
+            onPin: actionConversation == null
+                ? null
+                : () => ref
+                    .read(conversationMarksProvider.notifier)
+                    .togglePinned(actionConversation!.id),
+            onSelectAll: () =>
+                _selectAllVisibleConversations(visibleConversationIds),
+            onBulkSend: () => _showBulkMessageComposer(
+              visibleIds: visibleConversationIds,
+              filters: bulkFilters,
             ),
-            onPin: () => ref
-                .read(conversationMarksProvider.notifier)
-                .togglePinned(actionConversation!.id),
           );
     final panel = _ConversationsPanel(
       search: _search,
@@ -485,6 +633,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       channels: _channels,
       selectedId: split ? selectedId : null,
       actionSelectedId: actionConversation?.id,
+      selectedIds: _selectedConversationIds,
       selectionMode: selectionMode,
       compactEmpty: split,
       lockedIds: lockedIds,
@@ -496,6 +645,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       onRetry: retry,
       onOpen: _openConversation,
       onContextMenu: _showConversationMenu,
+      onToggleSelection: _toggleConversationSelection,
       onRefresh: () async {
         if (auth.isIndependentWorker && !_isFolder) {
           await ref
@@ -614,6 +764,81 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
   }
 }
 
+class _BulkSendSheet extends StatefulWidget {
+  const _BulkSendSheet({required this.recipientLabel});
+
+  final String recipientLabel;
+
+  @override
+  State<_BulkSendSheet> createState() => _BulkSendSheetState();
+}
+
+class _BulkSendSheetState extends State<_BulkSendSheet> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          18,
+          16,
+          16 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          key: const Key('bulk-send-sheet'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'إرسال رسالة جماعية',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'سيتم إرسال نفس الرسالة إلى ${widget.recipientLabel}. لا يمكن التراجع عن الإرسال.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('bulk-send-content'),
+              controller: _controller,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 6,
+              textDirection: TextDirection.rtl,
+              decoration: const InputDecoration(
+                labelText: 'نص الرسالة',
+                hintText: 'اكتب الرسالة التي ستصل للجميع',
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              key: const Key('bulk-send-confirm'),
+              onPressed: () {
+                final text = _controller.text.trim();
+                if (text.isEmpty) return;
+                Navigator.of(context).pop(text);
+              },
+              icon: const Icon(Icons.send_rounded),
+              label: const Text('إرسال'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ConversationsPanel extends StatelessWidget {
   const _ConversationsPanel({
     required this.search,
@@ -624,10 +849,12 @@ class _ConversationsPanel extends StatelessWidget {
     required this.channels,
     required this.selectedId,
     required this.actionSelectedId,
+    required this.selectedIds,
     required this.selectionMode,
     required this.compactEmpty,
     required this.onOpen,
     required this.onContextMenu,
+    required this.onToggleSelection,
     required this.onRefresh,
     required this.onOpenArchive,
     required this.onOpenLocked,
@@ -649,9 +876,11 @@ class _ConversationsPanel extends StatelessWidget {
   final List<(String, String)> channels;
   final int? selectedId;
   final int? actionSelectedId;
+  final Set<int> selectedIds;
   final bool selectionMode;
   final bool compactEmpty;
   final ValueChanged<int> onOpen;
+  final ValueChanged<int> onToggleSelection;
 
   /// ضغط مطوّل أو زر أيمن على الصف — الموضع فارغ عند الضغط المطوّل.
   final void Function(
@@ -998,7 +1227,8 @@ class _ConversationsPanel extends StatelessWidget {
                                 final selected =
                                     (selectedId != null &&
                                         selectedId == c.id) ||
-                                    actionSelectedId == c.id;
+                                    actionSelectedId == c.id ||
+                                    selectedIds.contains(c.id);
                                 final unread = c.unreadCount > 0 && !selected;
                                 final titleInitial = c.title.isNotEmpty
                                     ? c.title.characters.first
@@ -1012,7 +1242,9 @@ class _ConversationsPanel extends StatelessWidget {
                                       : Colors.transparent,
                                   child: Builder(
                                     builder: (rowContext) => InkWell(
-                                      onTap: () => onOpen(c.id),
+                                      onTap: selectionMode
+                                          ? () => onToggleSelection(c.id)
+                                          : () => onOpen(c.id),
                                       onLongPress: () =>
                                           onContextMenu(rowContext, c, null),
                                       onSecondaryTapUp: (details) =>
@@ -1028,6 +1260,15 @@ class _ConversationsPanel extends StatelessWidget {
                                         ),
                                         child: Row(
                                           children: [
+                                            if (selectionMode)
+                                              Checkbox(
+                                                key: Key(
+                                                  'conversation-selection-checkbox-${c.id}',
+                                                ),
+                                                value: selectedIds.contains(c.id),
+                                                onChanged: (_) =>
+                                                    onToggleSelection(c.id),
+                                              ),
                                             CircleAvatar(
                                               radius: 22,
                                               backgroundColor: HasimTokens
@@ -1361,23 +1602,31 @@ class _ConversationSelectionAppBar extends StatelessWidget
     required this.conversation,
     required this.locked,
     required this.pinned,
+    required this.selectedCount,
+    required this.selectAll,
     required this.showSpecialInboxSections,
     required this.onClose,
     required this.onArchive,
     required this.onMute,
     required this.onLock,
     required this.onPin,
+    required this.onSelectAll,
+    required this.onBulkSend,
   });
 
-  final ConversationModel conversation;
+  final ConversationModel? conversation;
   final bool locked;
   final bool pinned;
+  final int selectedCount;
+  final bool selectAll;
   final bool showSpecialInboxSections;
   final VoidCallback onClose;
-  final VoidCallback onArchive;
-  final VoidCallback onMute;
-  final VoidCallback onLock;
-  final VoidCallback onPin;
+  final VoidCallback? onArchive;
+  final VoidCallback? onMute;
+  final VoidCallback? onLock;
+  final VoidCallback? onPin;
+  final VoidCallback onSelectAll;
+  final VoidCallback onBulkSend;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -1385,7 +1634,7 @@ class _ConversationSelectionAppBar extends StatelessWidget
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = conversation.muted;
+    final muted = conversation?.muted ?? false;
     Widget menuRow(IconData icon, String label, {Color? color}) {
       return Row(
         children: [
@@ -1412,41 +1661,60 @@ class _ConversationSelectionAppBar extends StatelessWidget
         icon: const Icon(Icons.arrow_forward_rounded),
       ),
       title: Text(
-        '1',
+        '$selectedCount',
+        key: const Key('conversation-selection-count'),
         style: theme.textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w700,
         ),
       ),
       actions: [
-        if (showSpecialInboxSections)
+        IconButton(
+          key: const Key('conversation-selection-bulk-send'),
+          tooltip: 'إرسال رسالة جماعية',
+          onPressed: onBulkSend,
+          icon: const Icon(Icons.send_rounded),
+        ),
+        IconButton(
+          key: const Key('conversation-selection-select-all'),
+          tooltip: selectAll ? 'تم تحديد الكل' : 'تحديد الكل',
+          onPressed: selectAll ? null : onSelectAll,
+          icon: Icon(
+            selectAll
+                ? Icons.check_box_rounded
+                : Icons.select_all_rounded,
+          ),
+        ),
+        if (conversation != null && showSpecialInboxSections)
           IconButton(
             key: const Key('conversation-selection-archive'),
-            tooltip: conversation.archived ? 'إلغاء الأرشفة' : 'أرشفة',
+            tooltip: conversation!.archived ? 'إلغاء الأرشفة' : 'أرشفة',
             onPressed: onArchive,
             icon: Icon(
-              conversation.archived
+              conversation!.archived
                   ? Icons.unarchive_outlined
                   : Icons.archive_outlined,
             ),
           ),
-        IconButton(
-          key: const Key('conversation-selection-mute'),
-          tooltip: muted ? 'إلغاء الكتم' : 'كتم',
-          onPressed: onMute,
-          icon: Icon(
-            muted
-                ? Icons.notifications_active_outlined
-                : Icons.notifications_off_outlined,
+        if (conversation != null)
+          IconButton(
+            key: const Key('conversation-selection-mute'),
+            tooltip: muted ? 'إلغاء الكتم' : 'كتم',
+            onPressed: onMute,
+            icon: Icon(
+              muted
+                  ? Icons.notifications_active_outlined
+                  : Icons.notifications_off_outlined,
+            ),
           ),
-        ),
-        if (showSpecialInboxSections)
+        if (conversation != null && showSpecialInboxSections)
           IconButton(
             key: const Key('conversation-selection-lock'),
             tooltip: locked ? 'إلغاء القفل' : 'قفل الدردشة',
             onPressed: onLock,
             icon: Icon(locked ? Icons.lock_open_outlined : Icons.lock_outline),
           ),
-        PopupMenuButton<String>(
+        if (conversation != null)
+          PopupMenuButton<String>(
           key: const Key('conversation-selection-more'),
           tooltip: 'المزيد',
           padding: EdgeInsets.zero,
@@ -1456,10 +1724,10 @@ class _ConversationSelectionAppBar extends StatelessWidget
           icon: const Icon(Icons.more_vert_rounded),
           onSelected: (value) {
             if (value == 'mute') {
-              onMute();
+              onMute!();
             }
             if (value == 'pin') {
-              onPin();
+              onPin!();
             }
           },
           itemBuilder: (context) => [

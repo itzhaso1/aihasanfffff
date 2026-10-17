@@ -63,6 +63,24 @@ class EmployeeResolverTest extends TestCase
         $this->assertSame('Omar', $this->employeeName($this->resolver()->resolve($this->request($workspace, $conversation->id))->sections));
     }
 
+    public function test_changing_the_default_moves_conversations_bound_to_the_previous_default(): void
+    {
+        $workspace = $this->workspace();
+        $previous = $this->employee($workspace, ['name' => 'مشعل']);
+        $current = $this->employee($workspace, ['name' => 'محمد']);
+        $conversation = $this->conversation($workspace, (int) $previous->id);
+
+        app(EmployeeService::class)->setDefault($current);
+
+        $this->assertSame(
+            (int) $current->id,
+            (int) Conversation::withoutGlobalScopes()->whereKey($conversation->id)->value('ai_employee_id'),
+        );
+        $resolved = $this->resolver()->resolve($this->request($workspace, $conversation->id));
+        $this->assertSame((int) $current->id, $resolved->employeeId);
+        $this->assertSame('محمد', $this->employeeName($resolved->sections));
+    }
+
     public function test_another_workspace_conversation_or_employee_is_ignored(): void
     {
         $workspaceA = $this->workspace('A');

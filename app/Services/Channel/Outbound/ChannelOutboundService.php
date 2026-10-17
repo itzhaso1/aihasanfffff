@@ -191,6 +191,11 @@ final class ChannelOutboundService
         };
     }
 
+    public function supportsChannel(string $channel): bool
+    {
+        return $this->driverFor(strtolower(trim($channel))) !== null;
+    }
+
     private function driverFor(string $channel): ?ChannelOutboundDriver
     {
         foreach ($this->drivers as $driver) {

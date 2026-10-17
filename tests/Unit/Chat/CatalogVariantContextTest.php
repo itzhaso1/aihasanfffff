@@ -19,6 +19,7 @@ use App\Models\Conversation;
 use App\Models\Customer;
 use App\Models\Message;
 use App\Models\Workspace;
+use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Chat\ChatCatalogRetrievalService;
 use App\Services\Chat\ChatCatalogService;
 use App\Support\Tenancy\WorkspaceContext;
@@ -320,6 +321,14 @@ class CatalogVariantContextTest extends TestCase
         ));
 
         $this->assertSame(GuardVerdict::Rejected, $guard->verdict);
+
+        $fallback = app(InboxHonestReplyFallback::class)->forInbound(
+            'اي ابي تساعدني ابي مقاص صغير',
+            $workspace,
+        );
+        $this->assertStringContainsString('مقاس وسط', $fallback);
+        $this->assertStringContainsString('مقاس صغير ميدوم', $fallback);
+        $this->assertStringNotContainsString('مقاس واحد', $fallback);
     }
 
     public function test_exact_requested_variant_can_be_listed_as_out_of_stock(): void

@@ -29,4 +29,16 @@ final class ConversationEmployeeBinder
             ->toBase()
             ->update(['ai_employee_id' => $employeeId]) === 1;
     }
+
+    public function syncBinding(int $workspaceId, int $conversationId, int $employeeId): bool
+    {
+        if (! $this->employees->exists($workspaceId, $employeeId)) {
+            return false;
+        }
+
+        return Conversation::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->whereKey($conversationId)
+            ->update(['ai_employee_id' => $employeeId]) === 1;
+    }
 }

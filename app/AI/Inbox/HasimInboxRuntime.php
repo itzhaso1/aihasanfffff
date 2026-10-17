@@ -186,7 +186,7 @@ final class HasimInboxRuntime
             return;
         }
 
-        $this->binder->bindIfUnassigned(
+        $this->binder->syncBinding(
             (int) $conversation->workspace_id,
             (int) $conversation->id,
             $employeeId,

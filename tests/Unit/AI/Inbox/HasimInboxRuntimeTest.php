@@ -150,7 +150,7 @@ class HasimInboxRuntimeTest extends TestCase
         $this->assertSame('هلا، أقدر أساعدك.', $result->response?->text);
     }
 
-    public function test_conversation_employee_is_bound_and_stays_sticky_by_id(): void
+    public function test_conversation_follows_the_current_default_employee_after_a_default_change(): void
     {
         [$workspace, $conversation, $message, $first, $customer] = $this->seedHasimInbox(['name' => 'Nora']);
         $second = $this->employee($workspace, ['name' => 'Omar']);
@@ -171,10 +171,10 @@ class HasimInboxRuntimeTest extends TestCase
 
         $secondResult = app(HasimInboxRuntime::class)->reply($conversation->fresh() ?? $conversation, $followUp);
 
-        $this->assertSame((int) $second->id, $secondResult->response?->decision->employeeId);
-        $this->assertSame((int) $second->id, $this->boundEmployeeId($conversation));
-        $this->assertSame((int) $second->id, $gateway->requests[1]->employeeId);
-        $this->assertNotSame((int) $first->id, $this->boundEmployeeId($conversation));
+        $this->assertSame((int) $first->id, $secondResult->response?->decision->employeeId);
+        $this->assertSame((int) $first->id, $this->boundEmployeeId($conversation));
+        $this->assertSame((int) $first->id, $gateway->requests[1]->employeeId);
+        $this->assertNotSame((int) $second->id, $this->boundEmployeeId($conversation));
         $this->assertSame('Renamed', $second->fresh()?->name);
         $this->assertSame('Nora', $first->fresh()?->name);
     }

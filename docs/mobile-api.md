@@ -73,6 +73,8 @@ Errors (Arabic user messages):
 | GET | `/conversations/{id}` | view |
 | GET | `/conversations/{id}/messages` | view | cursor pagination |
 | POST | `/conversations/{id}/messages` | update | supports `Idempotency-Key` + `idempotency_key` |
+| POST | `/conversations/bulk-messages` | update | sends one text to up to 500 scoped conversations; accepts `conversation_ids` or `select_all` with the same list filters; supports idempotency |
+| GET | `/conversations/bulk-messages/{bulk_send_id}` | member | bulk progress and skipped/failed counts |
 | POST | `/conversations/{id}/read` | view |
 | POST | `/conversations/{id}/archive` | update |
 | POST | `/conversations/{id}/mute` | update |
@@ -81,6 +83,11 @@ Errors (Arabic user messages):
 | GET | `/attachments/{id}/download` | signed URL |
 
 Channels are opaque strings from core (`whatsapp`, `web`, `manual`, …). App does not implement provider logic.
+
+Bulk messages create ordinary outbound messages and reuse the channel outbound queue.
+Conversations with an active handoff, missing channel recipient, or unsupported channel
+are skipped and returned in `skipped_preview`. The endpoint is capped at 500
+conversations and does not support attachments, scheduling, variables, or campaigns.
 
 ## Email
 

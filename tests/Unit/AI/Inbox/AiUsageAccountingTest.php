@@ -177,7 +177,7 @@ class AiUsageAccountingTest extends TestCase
         $this->assertSame([], $accountingLogs);
         $this->assertSame('ai_usage', $skipLogs[0]->context['meter'] ?? null);
         $this->assertSame(UsageLimitExceededException::PHASE_BEFORE_GENERATION, $skipLogs[0]->context['phase'] ?? null);
-        $this->assertArrayNotHasKey('reason', $skipLogs[0]->context);
+        $this->assertSame('usage_limit_exceeded', $skipLogs[0]->context['reason'] ?? null);
         $this->assertArrayNotHasKey('content', $skipLogs[0]->context);
         $this->assertSame(0.0, $this->meterUsed((int) $conversation->workspace_id, 'ai_usage'));
     }

@@ -2,6 +2,8 @@
 
 namespace App\Services\AI\Inbox;
 
+use App\Models\Workspace;
+use App\Services\Chat\ChatCatalogRetrievalService;
 use App\Support\Chat\CatalogBrowseQueryDetector;
 use App\Support\Chat\GulfArabicInterpreter;
 
@@ -20,13 +22,21 @@ final class InboxHonestReplyFallback
     public function __construct(
         private readonly GulfArabicInterpreter $gulfArabic,
         private readonly CatalogBrowseQueryDetector $browseQueries,
+        private readonly ChatCatalogRetrievalService $catalogRetrieval,
     ) {}
 
-    public function forInbound(string $content): string
+    public function forInbound(string $content, ?Workspace $workspace = null): string
     {
         $query = trim($content);
         if ($query === '') {
             return self::GENERIC;
+        }
+
+        if ($workspace !== null && $this->asksAboutVariant($query)) {
+            $catalogReply = $this->catalogFallback($workspace, $query);
+            if ($catalogReply !== null) {
+                return $catalogReply;
+            }
         }
 
         if ($this->isGreeting($query)) {
@@ -39,6 +49,51 @@ final class InboxHonestReplyFallback
         }
 
         return self::GENERIC;
+    }
+
+    private function asksAboutVariant(string $query): bool
+    {
+        return preg_match(
+            '/مقاس|مقاص|قياس|لون|الوان|نسخه|نسخة|طول|قصير|طويل|صغير|وسط|كبير|size|color|colour|length|variant/iu',
+            $query,
+        ) === 1;
+    }
+
+    private function catalogFallback(Workspace $workspace, string $query): ?string
+    {
+        try {
+            $lookup = $this->catalogRetrieval->lookupForAssistant($workspace, $query, 8);
+        } catch (\Throwable) {
+            return null;
+        }
+        if (($lookup['status'] ?? null) !== 'listed') {
+            return null;
+        }
+
+        $items = is_array($lookup['items'] ?? null) ? $lookup['items'] : [];
+        $variantNames = [];
+        foreach ($items as $item) {
+            if (! is_array($item) || ! is_array($item['variants'] ?? null)) {
+                continue;
+            }
+            foreach ($item['variants'] as $variant) {
+                if (! is_array($variant)) {
+                    continue;
+                }
+                $name = trim((string) ($variant['name'] ?? ''));
+                if ($name !== '') {
+                    $variantNames[] = $name;
+                }
+            }
+        }
+        $variantNames = array_values(array_unique($variantNames));
+        if ($variantNames === []) {
+            return 'ما قدرت أثبت تفاصيل المقاس أو النسخة المطلوبة من الكتالوج حالياً.';
+        }
+
+        return 'ما قدرت أثبت التوليفة المطلوبة بالضبط. المسجّل لدينا: '
+            .implode('، ', array_slice($variantNames, 0, 8))
+            .'، أي واحد تبي؟';
     }
 
     private function isGreeting(string $query): bool

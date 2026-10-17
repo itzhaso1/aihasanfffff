@@ -133,6 +133,8 @@ class _FakeConversationRepository extends ConversationRepository {
   bool? lastMutedValue;
   Object? archiveError;
   Object? muteError;
+  Map<String, dynamic>? lastBulkMessage;
+  Object? bulkError;
 
   @override
   Future<({List<ConversationModel> items, String? nextCursor})> list({
@@ -212,6 +214,29 @@ class _FakeConversationRepository extends ConversationRepository {
       for (final item in items)
         if (item.id == conversationId) item.copyWith(muted: muted) else item,
     ];
+  }
+
+  @override
+  Future<Map<String, dynamic>> sendBulkMessage({
+    List<int> conversationIds = const [],
+    bool selectAll = false,
+    Map<String, dynamic> filters = const {},
+    required String content,
+    String? idempotencyKey,
+  }) async {
+    if (bulkError != null) throw bulkError!;
+    lastBulkMessage = {
+      'conversation_ids': conversationIds,
+      'select_all': selectAll,
+      'filters': filters,
+      'content': content,
+    };
+
+    return const {
+      'bulk_send_id': 'bulk-test',
+      'queued_count': 1,
+      'skipped_count': 0,
+    };
   }
 }
 
@@ -369,6 +394,46 @@ void main() {
       find.byKey(const Key('conversation-selection-appbar')),
       findsNothing,
     );
+  });
+
+  testWidgets('selection mode opens the bulk message composer', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repo = _FakeConversationRepository(
+      api,
+      items: const [
+        ConversationModel(
+          id: 7,
+          channel: 'whatsapp',
+          status: 'open',
+          externalId: 'أحمد',
+        ),
+      ],
+    );
+    await tester.pumpWidget(app(repo: repo, authState: _ownerAuthWithWorkspace));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.byKey(const Key('conversation-item-7')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('conversation-context-select')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('conversation-selection-bulk-send')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('bulk-send-sheet')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('bulk-send-content')),
+      'رسالة جماعية',
+    );
+    await tester.tap(find.byKey(const Key('bulk-send-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastBulkMessage?['conversation_ids'], [7]);
+    expect(repo.lastBulkMessage?['content'], 'رسالة جماعية');
+    expect(find.textContaining('تمت جدولة 1 رسالة'), findsOneWidget);
   });
 
   testWidgets('desktop right click shows the menu and pin moves the row up', (

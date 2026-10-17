@@ -14,6 +14,7 @@ use App\AI\Employees\Models\AiEmployeePersona;
 use App\AI\Employees\Models\AiEmployeeSkill;
 use App\AI\Employees\Models\AiEmployeeToolPermission;
 use App\AI\Training\TrainingRepository;
+use App\Models\Conversation;
 use App\Models\Workspace;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Support\Facades\DB;
@@ -98,6 +99,7 @@ final class EmployeeService
 
         return $this->write($this->workspaceOf($employee), function () use ($employee, $actorId): AiEmployee {
             $this->lockWorkspace($this->workspaceOf($employee));
+            $previousDefault = $this->employees->findDefault((int) $employee->workspace_id);
             AiEmployee::queryForWorkspace((int) $employee->workspace_id)
                 ->where('default_slot', AiEmployee::DEFAULT_SLOT)
                 ->whereKeyNot($employee->id)
@@ -105,6 +107,12 @@ final class EmployeeService
             $employee->default_slot = AiEmployee::DEFAULT_SLOT;
             $employee->updated_by = $actorId;
             $employee->save();
+            if ($previousDefault !== null && (int) $previousDefault->id !== (int) $employee->id) {
+                Conversation::withoutGlobalScopes()
+                    ->where('workspace_id', $employee->workspace_id)
+                    ->where('ai_employee_id', $previousDefault->id)
+                    ->update(['ai_employee_id' => $employee->id]);
+            }
 
             return $this->employees->reload($employee);
         });
