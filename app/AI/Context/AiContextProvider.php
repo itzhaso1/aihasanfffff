@@ -68,6 +68,13 @@ final class AiContextProvider implements ContextProvider
                     }
                     $facts[] = new FactRecord('chat_catalog', $variantPrefix.'.'.$field, $value);
                 }
+                if (array_key_exists('matches_question', $variant)) {
+                    $facts[] = new FactRecord(
+                        'chat_catalog',
+                        $variantPrefix.'.matches_question',
+                        ($variant['matches_question'] === true || $variant['matches_question'] === 1) ? 1 : 0,
+                    );
+                }
             }
         }
 

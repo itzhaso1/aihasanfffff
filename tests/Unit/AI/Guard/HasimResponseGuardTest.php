@@ -80,6 +80,33 @@ class HasimResponseGuardTest extends TestCase
         $this->assertSame('نعم النسخة العربية موجودة', $listed->text);
     }
 
+    public function test_english_only_claim_is_rejected_when_an_arabic_copy_is_listed(): void
+    {
+        $guard = new HasimResponseGuard;
+        $facts = [
+            new FactRecord('search_products', 'catalog_item:12.name', 'تعلم Excel للمبتدئين'),
+            new FactRecord('search_products', 'catalog_item:12.availability', 'in_stock'),
+            new FactRecord('search_products', 'catalog_item:12.variant:4.name', 'عربي PDF'),
+            new FactRecord('search_products', 'catalog_item:12.variant:4.availability', 'out_of_stock'),
+        ];
+        $denied = $guard->review($this->input(
+            'اعتذر منك، الكتاب متوفر فقط باللغة الإنجليزية حاليا',
+            facts: $facts,
+        ));
+        $exists = $guard->review($this->input(
+            'نعم النسخة العربية موجودة، عربي PDF، حاليا غير متوفرة',
+            facts: $facts,
+        ));
+
+        $this->assertSame(GuardVerdict::Rejected, $denied->verdict);
+        $this->assertSame('listed_copy_denied', $this->reason($denied, TruthCheck::NAME));
+        $this->assertSame(GuardVerdict::Pass, $exists->verdict);
+        $this->assertSame(
+            GuardVerdict::Pass,
+            $guard->review($this->input('ما عندنا نسخة إنجليزية', facts: $facts))->verdict,
+        );
+    }
+
     public function test_product_availability_stock_and_currency_without_facts_are_rejected(): void
     {
         $guard = new HasimResponseGuard;

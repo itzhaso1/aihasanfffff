@@ -54,6 +54,10 @@ final class TruthCheck implements GuardCheck
             return GuardFinding::rejected(self::NAME, 'invented_offering');
         }
 
+        if ($this->deniesListedCopy($input, $text)) {
+            return GuardFinding::rejected(self::NAME, 'listed_copy_denied');
+        }
+
         return GuardFinding::pass(self::NAME, $text);
     }
 
@@ -216,6 +220,53 @@ final class TruthCheck implements GuardCheck
         }
 
         return false;
+    }
+
+    private function deniesListedCopy(GuardInput $input, string $text): bool
+    {
+        $names = $this->trustedNames($input->facts);
+        if ($names === []) {
+            return false;
+        }
+
+        $haystack = $this->fold(implode(' ', $names));
+        $listedArabic = str_contains($haystack, 'عربي') || str_contains($haystack, 'arabic');
+        if (! $listedArabic) {
+            return false;
+        }
+
+        return preg_match(
+            '/فقط.{0,40}(?:باللغة\s+)?الإنجليز|فقط.{0,40}انجليز|باللغة\s+الإنجليزية\s+فقط|ما (?:في|فيه|عندنا|عندي).{0,24}عربي|لا توجد.{0,24}عربي|ليس.{0,24}عربي|مو موجود.{0,24}عربي|only.{0,20}english|english only|no arabic/iu',
+            $text,
+        ) === 1;
+    }
+
+    /**
+     * @param  list<FactRecord>  $facts
+     * @return list<string>
+     */
+    private function trustedNames(array $facts): array
+    {
+        $names = [];
+        foreach ($facts as $fact) {
+            if (! str_ends_with(strtolower($fact->key), '.name') || ! is_string($fact->value)) {
+                continue;
+            }
+            $name = trim($fact->value);
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
+    private function fold(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = str_replace(['ى', 'ة', 'أ', 'إ', 'آ'], ['ي', 'ه', 'ا', 'ا', 'ا'], $value);
+
+        return $value;
     }
 
     private function inventedOffering(GuardInput $input, string $text): bool

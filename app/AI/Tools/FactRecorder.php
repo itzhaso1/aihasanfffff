@@ -89,6 +89,13 @@ final class FactRecorder
                     }
                     $facts[] = new FactRecord(CanonicalTools::SEARCH_PRODUCTS, $variantPrefix.'.'.$field, $variant[$field]);
                 }
+                if (array_key_exists('matches_question', $variant)) {
+                    $facts[] = new FactRecord(
+                        CanonicalTools::SEARCH_PRODUCTS,
+                        $variantPrefix.'.matches_question',
+                        ($variant['matches_question'] === true || $variant['matches_question'] === 1) ? 1 : 0,
+                    );
+                }
                 $variantAvailability = CatalogAvailabilityFact::token($variant['availability'] ?? null);
                 if ($variantAvailability !== null) {
                     $facts[] = new FactRecord(CanonicalTools::SEARCH_PRODUCTS, $variantPrefix.'.availability', $variantAvailability);

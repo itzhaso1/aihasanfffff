@@ -490,7 +490,7 @@ class ChatCatalogRetrievalService
 
         $ordered = [];
         foreach ($sortedItems as $item) {
-            $row = $this->toPromptRow($catalog, $item, $forAi);
+            $row = $this->toPromptRow($catalog, $item, $forAi, $forAi ? $tokens : []);
             if ($row === []) {
                 continue;
             }
@@ -956,9 +956,10 @@ class ChatCatalogRetrievalService
     }
 
     /**
+     * @param  list<string>  $queryTokens
      * @return array<string, mixed>
      */
-    private function toPromptRow(ChatCatalog $catalog, ChatCatalogItem $item, bool $forAi = false): array
+    private function toPromptRow(ChatCatalog $catalog, ChatCatalogItem $item, bool $forAi = false, array $queryTokens = []): array
     {
         if (! $item->isDiscoverable()) {
             return [];
@@ -1047,6 +1048,17 @@ class ChatCatalogRetrievalService
                 ->all();
         } else {
             $row['variants'] = [];
+        }
+
+        if ($forAi && $queryTokens !== [] && $row['variants'] !== []) {
+            $row['variants'] = array_map(function (array $variant) use ($queryTokens): array {
+                $variant['matches_question'] = $this->variantMatchesQuestion($variant, $queryTokens);
+
+                return $variant;
+            }, $row['variants']);
+            usort($row['variants'], function (array $left, array $right): int {
+                return ((int) ($right['matches_question'] ?? false)) <=> ((int) ($left['matches_question'] ?? false));
+            });
         }
 
         return $row;

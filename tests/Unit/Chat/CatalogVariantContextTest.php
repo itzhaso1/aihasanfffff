@@ -285,8 +285,31 @@ class CatalogVariantContextTest extends TestCase
 
         $this->assertStringContainsString('عربي PDF', $catalog);
         $this->assertStringContainsString('"matches_question":true', $catalog);
+        $this->assertStringContainsString('"requested_copies"', $catalog);
+        $this->assertStringContainsString('"exists":true', $catalog);
         $this->assertStringContainsString('Listed copies exist even when availability is out_of_stock', $catalog);
-        $this->assertStringContainsString('Do not say the copy is missing, do not say you will check later', $catalog);
+        $this->assertStringContainsString('never say the product is English-only when an Arabic copy is listed', $catalog);
+    }
+
+    public function test_search_for_ai_marks_the_arabic_pdf_copy(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'تعلم Excel للمبتدئين', '10.00', [[
+            'name' => 'عربي PDF',
+            'price' => '10.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 0,
+        ]]);
+
+        $rows = app(ChatCatalogRetrievalService::class)->searchForAi(
+            $workspace,
+            'عندك نسخه عربي من كتاب اكسل؟',
+        );
+        $arabic = $this->variantNamed($rows[0]['variants'], 'عربي PDF');
+
+        $this->assertSame('تعلم Excel للمبتدئين', $rows[0]['name']);
+        $this->assertTrue($arabic['matches_question']);
     }
 
     public function test_a_correct_variant_price_passes_the_guard_and_another_variants_price_is_not_required(): void
@@ -308,6 +331,26 @@ class CatalogVariantContextTest extends TestCase
 
         $this->assertSame(GuardVerdict::Pass, $arabic->verdict);
         $this->assertSame(GuardVerdict::Rejected, $invented->verdict);
+    }
+
+    public function test_english_only_reply_is_rejected_when_the_arabic_pdf_is_listed(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'تعلم Excel للمبتدئين', '10.00', [[
+            'name' => 'عربي PDF',
+            'price' => '10.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'finite_stock',
+            'stock' => 0,
+        ]]);
+        $request = $this->request($workspace, 'عندك نسخه عربي من كتاب اكسل؟');
+        $outcome = (new HasimResponseGuard)->review(new GuardInput(
+            request: $request,
+            text: 'للأسف الكتاب متوفر فقط باللغة الإنجليزية حاليا',
+            facts: app(AiContextProvider::class)->build($request, new ResolvedEmployee(1))->facts,
+        ));
+
+        $this->assertSame(GuardVerdict::Rejected, $outcome->verdict);
     }
 
     private function request(Workspace $workspace, string $text): AiRequest
