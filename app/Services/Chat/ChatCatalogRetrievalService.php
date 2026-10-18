@@ -120,6 +120,42 @@ class ChatCatalogRetrievalService
     }
 
     /**
+     * Rehydrate previously referenced products for a short follow-up.
+     *
+     * @param  list<int>  $ids
+     * @return list<array<string, mixed>>
+     */
+    public function rowsForAssistantIds(Workspace $workspace, array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map(static fn (mixed $id): int => (int) $id, $ids),
+            static fn (int $id): bool => $id > 0,
+        )));
+        if ($ids === []) {
+            return [];
+        }
+
+        return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $ids): array {
+            $catalog = $this->catalogRoot->forWorkspace($workspace);
+            $items = $this->discoverableItemsQuery($workspace, $catalog, true)
+                ->whereIn('id', $ids)
+                ->get()
+                ->sortBy(fn (ChatCatalogItem $item): int => array_search((int) $item->id, $ids, true))
+                ->values();
+
+            return $items
+                ->map(fn (ChatCatalogItem $item): array => $this->toPromptRow(
+                    $catalog,
+                    $item,
+                    forAi: true,
+                ))
+                ->filter(fn (array $row): bool => $row !== [])
+                ->values()
+                ->all();
+        });
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $items
      * @return array{status: string, items: list<array<string, mixed>>, has_more: bool}
      */

@@ -99,7 +99,7 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     _sub = _ref
         .read(realtimeServiceProvider)
         .conversationsChanged
-        .listen((_) => refresh(silent: true));
+        .listen((_) => _scheduleRealtimeRefresh());
     _workspaceSub = _ref.listen<int?>(activeWorkspaceIdProvider, (
       previous,
       next,
@@ -131,6 +131,8 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   StreamSubscription<List<ConversationModel>>? _localSub;
   ProviderSubscription<int?>? _workspaceSub;
   ProviderSubscription<Set<int>>? _lockSub;
+  Timer? _realtimeRefreshTimer;
+  Timer? _searchDebounce;
   int? _boundWorkspaceId;
   final Set<int> _prefetchedIds = <int>{};
 
@@ -207,6 +209,8 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   void dispose() {
     _sub?.cancel();
     _localSub?.cancel();
+    _realtimeRefreshTimer?.cancel();
+    _searchDebounce?.cancel();
     _workspaceSub?.close();
     _lockSub?.close();
     super.dispose();
@@ -278,10 +282,26 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     state = state.copyWith(items: next);
   }
 
-  Future<void> setSearch(String search) async {
+  Future<void> setSearch(String search, {bool immediate = false}) async {
     state = state.copyWith(search: search);
-    _bindLocalQuery();
-    await refresh();
+    _searchDebounce?.cancel();
+    if (immediate) {
+      _bindLocalQuery();
+      await refresh();
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _bindLocalQuery();
+      unawaited(refresh());
+    });
+  }
+
+  void _scheduleRealtimeRefresh() {
+    _realtimeRefreshTimer?.cancel();
+    _realtimeRefreshTimer = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) unawaited(refresh(silent: true));
+    });
   }
 
   Future<void> toggleClassification({

@@ -34,6 +34,7 @@ class ReferenceResolverTest extends TestCase
         $this->assertTrue($resolution->resolved);
         $this->assertSame('conversation_state', $resolution->source);
         $this->assertSame([$stateItem], $resolution->productIds);
+        $this->assertSame('فستان أسود', $resolution->catalogItems[0]['name'] ?? null);
     }
 
     public function test_attached_product_falls_back_when_state_is_empty(): void

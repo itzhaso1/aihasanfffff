@@ -1133,6 +1133,7 @@ class InboxLocalStore {
     return Stream<T>.multi((listener) {
       var alive = true;
       var request = 0;
+      Timer? pending;
       Future<void> emit() async {
         final token = ++request;
         try {
@@ -1146,13 +1147,18 @@ class InboxLocalStore {
           if (alive && token == request) listener.addError(error, stack);
         }
       }
+      void scheduleEmit() {
+        pending?.cancel();
+        pending = Timer(const Duration(milliseconds: 16), emit);
+      }
 
       final subscription = _changes.stream.listen((_) {
-        unawaited(emit());
+        scheduleEmit();
       });
       unawaited(emit());
       listener.onCancel = () {
         alive = false;
+        pending?.cancel();
         unawaited(subscription.cancel());
       };
     });

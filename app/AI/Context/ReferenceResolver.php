@@ -29,12 +29,26 @@ final class ReferenceResolver
     ): ReferenceResolution {
         $stateIds = $this->knownWorkspaceIds($workspace, $state->referencedProductIds);
         if ($stateIds !== []) {
-            return $this->resolved('conversation_state', $stateIds);
+            $items = $this->catalog->rowsForAssistantIds($workspace, $stateIds);
+
+            return $this->resolved(
+                'conversation_state',
+                $stateIds,
+                $items === [] ? 'name_not_found' : 'listed',
+                $items,
+            );
         }
 
         $attachedId = $this->attachedProductId($conversationMetadata);
         if ($attachedId !== null && $this->belongsToWorkspace($workspace, $attachedId)) {
-            return $this->resolved('attached_product', [$attachedId]);
+            $items = $this->catalog->rowsForAssistantIds($workspace, [$attachedId]);
+
+            return $this->resolved(
+                'attached_product',
+                [$attachedId],
+                $items === [] ? 'name_not_found' : 'listed',
+                $items,
+            );
         }
 
         $query = $this->explicitReferenceQuery($currentMessage, $recentMessages);

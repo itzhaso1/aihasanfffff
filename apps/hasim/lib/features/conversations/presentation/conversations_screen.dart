@@ -954,11 +954,9 @@ class _ConversationsPanel extends StatelessWidget {
                 _ => 'ابحث في المحادثات',
               },
               flat: true,
-              onSubmitted: notifier.setSearch,
-              onChanged: (v) {
-                if (v.isEmpty) notifier.setSearch('');
-              },
-              onClear: () => notifier.setSearch(''),
+              onSubmitted: (v) => notifier.setSearch(v, immediate: true),
+              onChanged: notifier.setSearch,
+              onClear: () => notifier.setSearch('', immediate: true),
             ),
           ),
         if (folder == null && isMobile)

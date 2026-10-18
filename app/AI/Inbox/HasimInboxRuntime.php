@@ -6,6 +6,7 @@ namespace App\AI\Inbox;
 
 use App\AI\Constitution\ConstitutionLoader;
 use App\AI\Context\AiContextProvider;
+use App\AI\Context\ConversationState;
 use App\AI\Core\AiInboundMessage;
 use App\AI\Core\AiRequest;
 use App\AI\Core\AiResponse;
@@ -115,6 +116,7 @@ final class HasimInboxRuntime
 
         $response = $this->runtime()->handle($request);
         $this->bindEmployee($conversation, $response);
+        $this->persistConversationState($conversation, $response);
         $evaluation = $this->evaluate($request, $response);
 
         if (! $response->isDeliverable()) {
@@ -191,6 +193,55 @@ final class HasimInboxRuntime
             (int) $conversation->id,
             $employeeId,
         );
+    }
+
+    private function persistConversationState(Conversation $conversation, AiResponse $response): void
+    {
+        if (! $response->isDeliverable()) {
+            return;
+        }
+
+        try {
+            $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
+            $state = ConversationState::fromConversationMetadata(
+                $metadata,
+                $response->decision->employeeId,
+            );
+            $references = [];
+            foreach ($response->decision->resolvedReferences as $reference) {
+                if ($reference->type === 'catalog_item' && is_numeric($reference->id)) {
+                    $references[] = (int) $reference->id;
+                }
+            }
+            if ($references === []) {
+                foreach ($response->decision->facts as $fact) {
+                    if (preg_match('/^catalog_item:(\d+)\./', $fact->key, $match) === 1) {
+                        $references[] = (int) $match[1];
+                    }
+                }
+            }
+
+            $state = $state
+                ->withEmployeeId($response->decision->employeeId ?? $state->employeeId)
+                ->withLastIntent($response->decision->intent ?? $state->lastIntent);
+            if ($references !== []) {
+                $state = $state->withReferencedProducts($references);
+            }
+
+            $metadata['ai'] = is_array($metadata['ai'] ?? null) ? $metadata['ai'] : [];
+            $metadata['ai']['state'] = $state->toArray();
+            Conversation::withoutGlobalScopes()
+                ->where('workspace_id', $conversation->workspace_id)
+                ->whereKey($conversation->id)
+                ->update(['metadata' => $metadata]);
+            $conversation->metadata = $metadata;
+        } catch (Throwable $exception) {
+            Log::warning('hasim.inbox.state_persist_failed', [
+                'workspace_id' => $conversation->workspace_id,
+                'conversation_id' => $conversation->id,
+                'exception_type' => $exception::class,
+            ]);
+        }
     }
 
     private function evaluate(AiRequest $request, AiResponse $response): ?EvaluationResult

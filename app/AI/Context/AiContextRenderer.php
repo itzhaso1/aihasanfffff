@@ -44,6 +44,14 @@ final class AiContextRenderer
             'context.references',
             $this->json(['references' => $context->references->toArray()]),
         );
+        $activeThread = $this->activeThread($context);
+        if ($activeThread !== []) {
+            $sections[] = new PromptSection(
+                PromptLayer::Context,
+                'context.active_thread',
+                $this->json(['active_thread' => $activeThread]),
+            );
+        }
         if ($context->references->retrievalStatus !== 'not_loaded') {
             $catalog = [
                 'retrieval_status' => $context->references->retrievalStatus,
@@ -99,6 +107,35 @@ final class AiContextRenderer
         );
 
         return $sections;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function activeThread(AiContext $context): array
+    {
+        $ids = $context->conversationState->referencedProductIds;
+        $names = [];
+        foreach ($context->references->catalogItems as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $name = trim((string) ($item['name'] ?? ''));
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+
+        if ($ids === [] && $names === [] && $context->conversationState->lastIntent === null) {
+            return [];
+        }
+
+        return [
+            'product_ids' => $ids,
+            'product_names' => array_values(array_unique($names)),
+            'last_intent' => $context->conversationState->lastIntent,
+            'instruction' => 'The latest customer message continues this thread. Use the active product and intent; do not ask which product unless multiple products were discussed recently or the current message explicitly names a new one.',
+        ];
     }
 
     private function catalogInstruction(ReferenceResolution $references): string

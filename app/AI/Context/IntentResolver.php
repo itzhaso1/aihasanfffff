@@ -16,7 +16,9 @@ final class IntentResolver
 
     /** @var list<string> */
     private const CONTEXTUAL_MESSAGES = [
-        'هذا', 'هذي', 'هذه', 'ذا', 'الثاني', 'الثالث', 'الاول', 'الأول', 'طيب', 'تمام', 'اوكي',
+        'اي', 'ايه', 'نعم', 'هذا', 'هذي', 'هذه', 'ذا', 'الثاني', 'الثالث',
+        'الاول', 'الأول', 'طيب', 'تمام', 'اوكي', 'موجود', 'والأسود', 'والاسود',
+        'ابي', 'ابغى', 'كم', 'كم حقه',
     ];
 
     public function __construct(private readonly GulfArabicInterpreter $interpreter) {}
@@ -35,7 +37,12 @@ final class IntentResolver
             $canonical = 'purchase_intent';
         }
 
-        if ($canonical === null && $this->isContextualFollowUp($reading['normalized'], $rawIntents, $reading['search_tokens']) && $state->lastIntent !== null) {
+        if ($canonical === null && $this->isContextualFollowUp(
+            $reading['normalized'],
+            $rawIntents,
+            $reading['search_tokens'],
+            $hasProductContext || $state->referencedProductIds !== [],
+        ) && $state->lastIntent !== null) {
             $canonical = $state->lastIntent;
             $usedState = true;
         }
@@ -67,16 +74,17 @@ final class IntentResolver
      * @param  list<string>  $rawIntents
      * @param  list<string>  $searchTokens
      */
-    private function isContextualFollowUp(string $normalized, array $rawIntents, array $searchTokens): bool
-    {
-        if ($searchTokens !== []) {
-            return false;
-        }
-
+    private function isContextualFollowUp(
+        string $normalized,
+        array $rawIntents,
+        array $searchTokens,
+        bool $hasProductContext,
+    ): bool {
         if (in_array('followup', $rawIntents, true)) {
             return true;
         }
 
-        return in_array(trim($normalized), self::CONTEXTUAL_MESSAGES, true);
+        return in_array(trim($normalized), self::CONTEXTUAL_MESSAGES, true)
+            || ($hasProductContext && count($searchTokens) <= 3);
     }
 }

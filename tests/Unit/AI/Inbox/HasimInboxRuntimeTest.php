@@ -18,12 +18,15 @@ use App\AI\Inbox\HasimInboxRuntime;
 use App\AI\Models\ModelGatewayException;
 use App\Jobs\ProcessAIResponse;
 use App\Models\AiLog;
+use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\AI\AiOutputValidator;
 use App\Services\AI\AIService;
 use App\Services\AI\Inbox\AiReplyEligibility;
 use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Channel\Outbound\ChannelOutboundService;
+use App\Services\Chat\ChatCatalogService;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Log;
@@ -131,6 +134,57 @@ class HasimInboxRuntimeTest extends TestCase
         $this->assertTrue($result->deliverable);
         $this->assertSame($guard->inputs[0]->text, $result->reply);
         $this->assertSame(GuardVerdict::Pass->value, $result->response?->decision->metadata['guard_verdict'] ?? null);
+    }
+
+    public function test_runtime_persists_last_intent_for_the_next_follow_up(): void
+    {
+        [, $conversation, $message] = $this->seedHasimInbox();
+        Message::withoutGlobalScopes()->whereKey($message->id)->update([
+            'content' => 'كم السعر؟',
+        ]);
+        $this->bindHasimRuntime(modelScript: [new ModelResponse('السعر حسب النسخة المسجلة.')]);
+
+        $result = app(HasimInboxRuntime::class)->reply(
+            $conversation->fresh() ?? $conversation,
+            $message->fresh() ?? $message,
+        );
+
+        $this->assertTrue($result->deliverable);
+        $state = data_get(
+            Conversation::withoutGlobalScopes()->findOrFail($conversation->id)->metadata,
+            'ai.state',
+        );
+        $this->assertSame('price_question', $state['last_intent'] ?? null);
+    }
+
+    public function test_runtime_persists_referenced_catalog_product_ids(): void
+    {
+        [$workspace, $conversation, $message] = $this->seedHasimInbox();
+        $item = app(WorkspaceContext::class)->runFor(
+            $workspace,
+            fn () => app(ChatCatalogService::class)->createItem($workspace, [
+                'name' => 'حذاء أسود',
+                'price' => '100.00',
+                'currency' => 'SAR',
+                'inventory_policy' => 'not_tracked',
+            ]),
+        );
+        Message::withoutGlobalScopes()->whereKey($message->id)->update([
+            'content' => 'هل عندكم حذاء أسود؟',
+        ]);
+        $this->bindHasimRuntime(modelScript: [new ModelResponse('نعم، المنتج مسجل لدينا.')]);
+
+        $result = app(HasimInboxRuntime::class)->reply(
+            $conversation->fresh() ?? $conversation,
+            $message->fresh() ?? $message,
+        );
+
+        $this->assertTrue($result->deliverable);
+        $state = data_get(
+            Conversation::withoutGlobalScopes()->findOrFail($conversation->id)->metadata,
+            'ai.state',
+        );
+        $this->assertContains((int) $item->id, $state['referenced_products'] ?? []);
     }
 
     public function test_evaluation_runs_on_the_guarded_result(): void
