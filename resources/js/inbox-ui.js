@@ -271,6 +271,73 @@ const bindComposeForm = () => {
     });
 };
 
+let pollTimer = null;
+
+const bindLivePolling = () => {
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+
+    const root = document.getElementById('inbox-shell');
+    const messageList = document.getElementById('inbox-message-list');
+    if (!root || !messageList) {
+        return;
+    }
+
+    const conversationId = root.dataset.activeConversationId || new URLSearchParams(window.location.search).get('conversation');
+    if (!conversationId) {
+        return;
+    }
+
+    let isPolling = false;
+
+    // Check for new messages every 2.5 seconds
+    pollTimer = setInterval(async () => {
+        if (isPolling) return;
+        const currentList = document.getElementById('inbox-message-list');
+        if (!currentList) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            return;
+        }
+
+        const ids = [...currentList.querySelectorAll('[data-message-id]')]
+            .map((el) => Number(el.dataset.messageId))
+            .filter((id) => !isNaN(id) && id > 0);
+
+        const afterId = ids.length > 0 ? Math.max(...ids) : 0;
+
+        try {
+            isPolling = true;
+            const res = await fetch(`/workspace/conversations/${conversationId}/poll-messages?after_id=${afterId}`, {
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (Array.isArray(data?.messages) && data.messages.length > 0) {
+                let anyAppended = false;
+                for (const msg of data.messages) {
+                    if (appendInboxMessage(msg)) {
+                        anyAppended = true;
+                    }
+                }
+                if (anyAppended) {
+                    scrollMessagesToBottom(false);
+                }
+            }
+        } catch (_) {
+            // silent ignore
+        } finally {
+            isPolling = false;
+        }
+    }, 2500);
+};
+
 let inboxBooted = false;
 
 const bootInbox = (event) => {
@@ -290,6 +357,7 @@ const bootInbox = (event) => {
     bindConversationListScroll(workspaceId);
     bindConversationLinks(workspaceId);
     bindComposeForm();
+    bindLivePolling();
     scrollMessagesToBottom(true);
 
     window.__INBOX_UI__ = {

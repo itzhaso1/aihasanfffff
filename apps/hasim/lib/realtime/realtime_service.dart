@@ -35,7 +35,7 @@ class PollingRealtimeService implements RealtimeService {
   @override
   Future<void> start() async {
     _listTimer?.cancel();
-    _listTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+    _listTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       _listController.add(null);
     });
   }
@@ -54,7 +54,7 @@ class PollingRealtimeService implements RealtimeService {
     _deliveredMessageIds.clear();
     _chatTimer?.cancel();
     if (conversationId == null) return;
-    _chatTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollChat());
+    _chatTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) => _pollChat());
     _pollChat();
   }
 

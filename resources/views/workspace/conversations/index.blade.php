@@ -13,6 +13,7 @@
     <div
         id="inbox-shell"
         data-workspace-id="{{ $workspaceId ?? app(\App\Support\Tenancy\WorkspaceContext::class)->workspaceId() }}"
+        data-active-conversation-id="{{ $activeConversation?->id }}"
         x-data="{ detailsOpen: false }"
         @keydown.escape.window="detailsOpen = false"
         class="hs-inbox-shell hs-inbox-shell--embedded flex min-h-0 flex-1 flex-col"

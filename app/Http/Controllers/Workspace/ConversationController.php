@@ -324,6 +324,36 @@ class ConversationController extends Controller
         ])->with('success', 'تم إرسال الرسالة.');
     }
 
+    public function pollMessages(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+
+        $afterId = $request->integer('after_id', 0);
+
+        $messages = Message::query()
+            ->where('conversation_id', $conversation->id)
+            ->when($afterId > 0, fn ($query) => $query->where('id', '>', $afterId))
+            ->with([
+                'user',
+                'workerEngagement.workerProfile:id,display_name',
+                'attachments',
+            ])
+            ->orderBy('id', 'asc')
+            ->limit(50)
+            ->get();
+
+        return response()->json([
+            'messages' => $messages->map(fn (Message $m): array => $this->serializeMessageForInbox($m))->values(),
+            'conversation' => [
+                'id' => $conversation->id,
+                'ai_enabled' => (bool) $conversation->ai_enabled,
+                'handoff_status' => $conversation->handoff_status instanceof ConversationHandoffStatus
+                    ? $conversation->handoff_status->value
+                    : ($conversation->handoff_status ?? 'none'),
+            ],
+        ]);
+    }
+
     /**
      * @return array<string, mixed>
      */

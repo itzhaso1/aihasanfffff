@@ -308,6 +308,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::post('commerce/intelligence/items/{item}/attributes', [WorkspaceCommerceIntelligenceController::class, 'storeItemAttributes'])->name('commerce.intelligence.items.attributes.store');
         });
         Route::resource('conversations', ConversationController::class)->except(['show']);
+        Route::get('conversations/{conversation}/poll-messages', [ConversationController::class, 'pollMessages'])->name('conversations.messages.poll');
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');
         Route::post('conversations/bulk-messages', [ConversationBulkMessageController::class, 'store'])->name('conversations.bulk-messages.store');
         Route::get('conversations/bulk-messages/{bulkSend}', [ConversationBulkMessageController::class, 'show'])
