@@ -125,7 +125,7 @@ class AiDiagnoseCommand extends Command
                 $samples = (clone $itemsQuery)->where('is_active', true)->where('is_searchable', true)->limit(5)->get();
                 $this->line('   • Sample items currently in database:');
                 foreach ($samples as $sample) {
-                    $price = $sample->effectivePrice()->amount();
+                    $price = $sample->price ?? '0.00';
                     $this->line("     - [ID: {$sample->id}] <fg=green>{$sample->name}</> (Price: {$price} {$sample->currency})");
                 }
             }
