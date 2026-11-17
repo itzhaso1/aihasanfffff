@@ -119,9 +119,9 @@ final class TruthCheck implements GuardCheck
     private function claimedPrices(string $text): array
     {
         $matches = [];
-        preg_match_all('/(\d+(?:[.,]\d+)?)\s*(?:ريال|ر\.س|sar|usd|\$)/iu', $text, $currencyAfter);
-        preg_match_all('/(?:ريال|ر\.س|sar|\$)\s*(\d+(?:[.,]\d+)?)/iu', $text, $currencyBefore);
-        preg_match_all('/(?:سعر(?:ه|ها)?|price)\s*:?\s*(\d+(?:[.,]\d+)?)/iu', $text, $labeled);
+        preg_match_all('/([0-9٠-٩۰-۹]+(?:[.,][0-9٠-٩۰-۹]+)?)\s*(?:ريال|ر\.س|sar|usd|\$)/iu', $text, $currencyAfter);
+        preg_match_all('/(?:ريال|ر\.س|sar|\$)\s*([0-9٠-٩۰-۹]+(?:[.,][0-9٠-٩۰-۹]+)?)/iu', $text, $currencyBefore);
+        preg_match_all('/(?:سعر(?:ه|ها)?|price)\s*:?\s*([0-9٠-٩۰-۹]+(?:[.,][0-9٠-٩۰-۹]+)?)/iu', $text, $labeled);
         foreach ([$currencyAfter[1] ?? [], $currencyBefore[1] ?? [], $labeled[1] ?? []] as $group) {
             foreach ($group as $raw) {
                 $normalized = $this->normalizeAmount((string) $raw);
@@ -264,11 +264,17 @@ final class TruthCheck implements GuardCheck
     private function claimedStock(string $text): array
     {
         $matches = [];
-        preg_match_all('/(?:كمية|مخزون)\s*[:：]?\s*(\d+)/u', $text, $labeled);
-        preg_match_all('/(\d+)\s*(?:قطع|قطعة|حبات|حبة)/u', $text, $units);
+        preg_match_all('/(?:كمية|مخزون)\s*[:：]?\s*([0-9٠-٩۰-۹]+)/u', $text, $labeled);
+        preg_match_all('/([0-9٠-٩۰-۹]+)\s*(?:قطع|قطعة|حبات|حبة)/u', $text, $units);
         foreach ([...($labeled[1] ?? []), ...($units[1] ?? [])] as $raw) {
-            if (is_numeric($raw)) {
-                $matches[] = (string) (int) $raw;
+            $converted = strtr((string) $raw, [
+                '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+                '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+                '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+                '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+            ]);
+            if (is_numeric($converted)) {
+                $matches[] = (string) (int) $converted;
             }
         }
 
@@ -390,6 +396,12 @@ final class TruthCheck implements GuardCheck
 
     private function normalizeAmount(string $raw): ?string
     {
+        $raw = strtr($raw, [
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+            '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+            '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+            '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+        ]);
         $clean = str_replace([',', ' '], ['', ''], trim($raw));
         if ($clean === '' || ! is_numeric($clean)) {
             return null;

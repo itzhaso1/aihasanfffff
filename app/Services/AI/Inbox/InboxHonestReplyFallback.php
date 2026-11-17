@@ -32,6 +32,10 @@ final class InboxHonestReplyFallback
             return self::GENERIC;
         }
 
+        if ($this->isGreeting($query)) {
+            return self::GREETING;
+        }
+
         if ($workspace !== null && $this->asksAboutVariant($query)) {
             $catalogReply = $this->catalogFallback($workspace, $query);
             if ($catalogReply !== null) {
@@ -39,8 +43,11 @@ final class InboxHonestReplyFallback
             }
         }
 
-        if ($this->isGreeting($query)) {
-            return self::GREETING;
+        if ($workspace !== null && $this->catalogRetrieval->shouldLookupForAssistant($query)) {
+            $productReply = $this->catalogProductListingFallback($workspace, $query);
+            if ($productReply !== null) {
+                return $productReply;
+            }
         }
 
         $tokens = $this->gulfArabic->interpret($query)['search_tokens'];
@@ -49,6 +56,50 @@ final class InboxHonestReplyFallback
         }
 
         return self::GENERIC;
+    }
+
+    private function catalogProductListingFallback(Workspace $workspace, string $query): ?string
+    {
+        try {
+            $lookup = $this->catalogRetrieval->lookupForAssistant($workspace, $query, 5);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $status = (string) ($lookup['status'] ?? '');
+        $items = is_array($lookup['items'] ?? null) ? $lookup['items'] : [];
+
+        if ($status === 'listed' && $items !== []) {
+            $itemLines = [];
+            foreach ($items as $item) {
+                $name = trim((string) ($item['name'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+                $price = $item['price'] ?? null;
+                $currency = $item['currency'] ?? 'ر.س';
+                if ($price !== null && $price !== '') {
+                    $itemLines[] = "• {$name} ({$price} {$currency})";
+                } else {
+                    $itemLines[] = "• {$name}";
+                }
+            }
+            if ($itemLines !== []) {
+                return "أهلاً بك! المتوفر لدينا حالياً:\n"
+                    .implode("\n", $itemLines)
+                    ."\n\nهل تود طلب أي منها أو الاستفسار عن تفاصيل إضافية؟";
+            }
+        }
+
+        if (in_array($status, ['no_matching_type', 'name_not_found'], true)) {
+            return 'عفواً، الصنف أو الطلب غير متوفر حالياً لدينا. هل تود الاطلاع على الأصناف الأخرى المتوفرة؟';
+        }
+
+        if ($status === 'catalog_empty') {
+            return 'أهلاً بك! لا توجد منتجات معروضة حالياً في الكتالوج، يسعدنا تواصلك لأي استفسار وسنكون سعداء بمساعدتك.';
+        }
+
+        return null;
     }
 
     private function asksAboutVariant(string $query): bool

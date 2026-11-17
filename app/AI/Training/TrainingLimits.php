@@ -19,7 +19,7 @@ final readonly class TrainingLimits
 
     public const DEFAULT_MAX_LIBRARY_BYTES = 1_048_576;
 
-    public const DEFAULT_CONTEXT_BUDGET_CHARS = 6_000;
+    public const DEFAULT_CONTEXT_BUDGET_CHARS = 8_000;
 
     public const MIN_CONTEXT_BUDGET_CHARS = 500;
 

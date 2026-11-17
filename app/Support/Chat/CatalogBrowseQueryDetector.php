@@ -8,6 +8,26 @@ namespace App\Support\Chat;
 final class CatalogBrowseQueryDetector
 {
     /** @var list<string> */
+    public const BOOK_SURFACE_FORMS = [
+        'كتب', 'كتاب', 'كتيب', 'كتيبات', 'مؤلفات', 'مؤلف', 'روايات', 'رواية', 'مجلدات', 'مجلد',
+        'اصدارات', 'إصدارات', 'منشورات', 'عناوين',
+        'books', 'book', 'novels', 'novel', 'titles',
+    ];
+
+    /** @var list<string> */
+    public const CLOTHING_SURFACE_FORMS = [
+        'فساتين', 'فستان', 'ملابس', 'لبس', 'قمصان', 'قميص', 'عبايات', 'عباية',
+        'تنورة', 'بناطيل', 'بنطلون', 'تيشيرت', 'احذية', 'حذاء', 'شوز',
+        'dress', 'dresses', 'clothes', 'clothing', 'shirt', 'abaya', 'shoes',
+    ];
+
+    /** @var list<string> */
+    public const PERFUME_SURFACE_FORMS = [
+        'عطور', 'عطر', 'بخور', 'معطرات', 'روائح',
+        'perfume', 'perfumes', 'fragrance', 'oud',
+    ];
+
+    /** @var list<string> */
     private const PRODUCT_SURFACE_FORMS = [
         'منتجات', 'منتج', 'منتجاتكم', 'منتجاتنا', 'بضائع', 'بضاعة', 'سلع', 'سلعة',
         'كتب', 'كتاب', 'كتيب', 'كتيبات', 'مؤلفات', 'مؤلف', 'روايات', 'رواية', 'مجلدات', 'مجلد',
@@ -85,6 +105,48 @@ final class CatalogBrowseQueryDetector
         }
 
         return null;
+    }
+
+    /**
+     * @param  list<string>  $searchTokens
+     * @return list<string>
+     */
+    public function browseEntityTokens(string $query, array $searchTokens): array
+    {
+        $forms = $this->collectNormalizedForms($query, $searchTokens);
+        $matches = [];
+        foreach ([self::BOOK_SURFACE_FORMS, self::CLOTHING_SURFACE_FORMS, self::PERFUME_SURFACE_FORMS] as $group) {
+            $hits = array_intersect($forms, $group);
+            if ($hits !== []) {
+                $matches = array_merge($matches, $hits);
+            }
+        }
+
+        return array_values(array_unique($matches));
+    }
+
+    /**
+     * @param  list<string>  $entityTokens
+     * @return list<string>
+     */
+    public function conflictingTokensFor(array $entityTokens): array
+    {
+        $conflicts = [];
+        $isBook = (bool) array_intersect($entityTokens, self::BOOK_SURFACE_FORMS);
+        $isClothing = (bool) array_intersect($entityTokens, self::CLOTHING_SURFACE_FORMS);
+        $isPerfume = (bool) array_intersect($entityTokens, self::PERFUME_SURFACE_FORMS);
+
+        if ($isBook) {
+            $conflicts = array_merge($conflicts, self::CLOTHING_SURFACE_FORMS, self::PERFUME_SURFACE_FORMS);
+        }
+        if ($isClothing) {
+            $conflicts = array_merge($conflicts, self::BOOK_SURFACE_FORMS, self::PERFUME_SURFACE_FORMS);
+        }
+        if ($isPerfume) {
+            $conflicts = array_merge($conflicts, self::BOOK_SURFACE_FORMS, self::CLOTHING_SURFACE_FORMS);
+        }
+
+        return array_values(array_unique($conflicts));
     }
 
     /**

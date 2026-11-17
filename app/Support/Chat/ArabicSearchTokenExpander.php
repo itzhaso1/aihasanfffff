@@ -49,7 +49,33 @@ final class ArabicSearchTokenExpander
         if ($languageStem !== null) {
             $variants[] = $languageStem;
         }
-        if (in_array($folded, ['اكسل', 'اكسيل'], true)) {
+
+        $brokenPlurals = [
+            'كتب' => 'كتاب',
+            'كتاب' => 'كتب',
+            'عطور' => 'عطر',
+            'عطر' => 'عطور',
+            'روايات' => 'رواية',
+            'رواية' => 'روايات',
+            'ساعات' => 'ساعة',
+            'ساعة' => 'ساعات',
+            'دورات' => 'دورة',
+            'دورة' => 'دورات',
+            'كورسات' => 'كورس',
+            'كورس' => 'كورسات',
+            'ملابس' => 'لبس',
+            'حسابات' => 'حساب',
+            'حساب' => 'حسابات',
+            'احذية' => 'حذاء',
+            'حذاء' => 'احذية',
+            'اجهزة' => 'جهاز',
+            'جهاز' => 'اجهزة',
+        ];
+        if (isset($brokenPlurals[$folded])) {
+            $variants[] = $brokenPlurals[$folded];
+        }
+
+        if (in_array($folded, ['اكسل', 'اكسيل', 'ايسكل', 'ايكسل'], true)) {
             $variants[] = 'excel';
         }
         if ($folded === 'excel') {

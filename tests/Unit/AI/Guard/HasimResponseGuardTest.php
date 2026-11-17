@@ -191,6 +191,28 @@ class HasimResponseGuardTest extends TestCase
         $this->assertSame('output_trimmed', $this->reason($truncated, StyleCheck::NAME));
     }
 
+    public function test_eastern_arabic_numerals_price_passes_when_grounded(): void
+    {
+        $outcome = (new HasimResponseGuard)->review($this->input(
+            'الفستان الأسود سعره ١٠ ريال',
+            facts: [new FactRecord('search_products', 'catalog_item:12.price', 10)],
+        ));
+
+        $this->assertSame(GuardVerdict::Pass, $outcome->verdict);
+        $this->assertSame('الفستان الأسود سعره ١٠ ريال', $outcome->text);
+    }
+
+    public function test_eastern_arabic_numerals_price_rejected_when_ungrounded(): void
+    {
+        $outcome = (new HasimResponseGuard)->review($this->input(
+            'الفستان الأسود سعره ٥٠ ريال',
+            facts: [new FactRecord('search_products', 'catalog_item:12.price', 10)],
+        ));
+
+        $this->assertSame(GuardVerdict::Rejected, $outcome->verdict);
+        $this->assertSame('ungrounded_price', $this->reason($outcome, TruthCheck::NAME));
+    }
+
     /**
      * @param  list<FactRecord>  $facts
      * @param  list<ConfirmedAction>  $actions

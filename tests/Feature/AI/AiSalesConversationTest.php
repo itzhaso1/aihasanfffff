@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\AI;
 
+use App\AI\Context\AiContextProvider;
 use App\AI\Context\ConversationState;
 use App\AI\Context\IntentResolver;
 use App\AI\Context\ReferenceResolver;
@@ -13,6 +14,7 @@ use App\AI\Core\AiRunMode;
 use App\AI\Core\Data\GuardInput;
 use App\AI\Core\Data\ModelResponse;
 use App\AI\Core\Decision\GuardVerdict;
+use App\AI\Employees\DatabaseEmployeeResolver;
 use App\AI\Guard\Checks\TruthCheck;
 use App\AI\Inbox\HasimInboxRuntime;
 use App\Models\ChatCatalog;
@@ -21,6 +23,7 @@ use App\Models\ChatCatalogItem;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Workspace;
+use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Chat\ChatCatalogRetrievalService;
 use App\Services\Chat\ChatCatalogRootService;
 use App\Support\Chat\CatalogBrowseQueryDetector;
@@ -669,15 +672,15 @@ class AiSalesConversationTest extends TestCase
             'message_type' => 'text',
         ]);
 
-        $resolver = app(\App\AI\Employees\DatabaseEmployeeResolver::class);
-        $contextProvider = app(\App\AI\Context\AiContextProvider::class);
+        $resolver = app(DatabaseEmployeeResolver::class);
+        $contextProvider = app(AiContextProvider::class);
 
-        $aiReq = new \App\AI\Core\AiRequest(
+        $aiReq = new AiRequest(
             workspaceId: (int) $workspace->id,
             conversationId: (int) $conversation->id,
             employeeId: null,
-            message: new \App\AI\Core\AiInboundMessage($currentMessage->content, $currentMessage->id),
-            runMode: \App\AI\Core\AiRunMode::Live,
+            message: new AiInboundMessage($currentMessage->content, $currentMessage->id),
+            runMode: AiRunMode::Live,
             channel: 'chat',
         );
 
@@ -687,5 +690,70 @@ class AiSalesConversationTest extends TestCase
         $payload = $contextProvider->build($aiReq, $employee);
         $this->assertNotEmpty($payload->sections);
         $this->assertSame('listed', $payload->structuredContext->references->retrievalStatus);
+    }
+
+    /**
+     * Case 17: Browse books query prioritizes book items and excludes conflicting domains (dresses/perfumes).
+     * Also verifies that InboxHonestReplyFallback generates catalog-backed responses during offline/fallback.
+     */
+    public function test_case_17_browse_books_prioritizes_books_and_excludes_conflicting_categories(): void
+    {
+        [$workspace] = $this->seedHasimInbox();
+
+        app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace): void {
+            $this->provisionCatalog($workspace);
+
+            ChatCatalogItem::factory()->create([
+                'workspace_id' => $workspace->id,
+                'name' => 'فستان سهرة احمر',
+                'price' => 150.00,
+                'currency' => 'SAR',
+                'stock' => 5,
+                'is_active' => true,
+                'is_visible' => true,
+                'is_searchable' => true,
+            ]);
+
+            ChatCatalogItem::factory()->create([
+                'workspace_id' => $workspace->id,
+                'name' => 'عطر فرنسي فاخر',
+                'price' => 300.00,
+                'currency' => 'SAR',
+                'stock' => 3,
+                'is_active' => true,
+                'is_visible' => true,
+                'is_searchable' => true,
+            ]);
+
+            ChatCatalogItem::factory()->create([
+                'workspace_id' => $workspace->id,
+                'name' => 'كتاب تعلم البرمجة للمبتدئين',
+                'price' => 45.00,
+                'currency' => 'SAR',
+                'stock' => 10,
+                'is_active' => true,
+                'is_visible' => true,
+                'is_searchable' => true,
+            ]);
+        });
+
+        $retrieval = app(ChatCatalogRetrievalService::class);
+        $lookup = $retrieval->lookupForAssistant($workspace, 'شو الكتب المتوفرة عندك؟', 8);
+
+        $this->assertSame('listed', $lookup['status']);
+        $names = array_column($lookup['items'], 'name');
+
+        // Book must be present
+        $this->assertContains('كتاب تعلم البرمجة للمبتدئين', $names);
+
+        // Conflicting categories (dresses, perfumes) must be excluded
+        $this->assertNotContains('فستان سهرة احمر', $names);
+        $this->assertNotContains('عطر فرنسي فاخر', $names);
+
+        // Offline / failure fallback must return real products from DB
+        $fallback = app(InboxHonestReplyFallback::class)->forInbound('شو الكتب المتوفرة عندك؟', $workspace);
+        $this->assertStringContainsString('كتاب تعلم البرمجة للمبتدئين', $fallback);
+        $this->assertStringContainsString('45.00', $fallback);
+        $this->assertStringNotContainsString('فستان', $fallback);
     }
 }

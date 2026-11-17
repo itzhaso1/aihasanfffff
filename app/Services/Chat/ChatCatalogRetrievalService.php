@@ -555,11 +555,30 @@ class ChatCatalogRetrievalService
             json_encode($item->aliases ?? [], JSON_UNESCAPED_UNICODE) ?: '',
             json_encode($item->search_phrases ?? [], JSON_UNESCAPED_UNICODE) ?: '',
         ];
+        if ($item->relationLoaded('category') && $item->category !== null) {
+            $parts[] = (string) $item->category->name;
+        }
         foreach ($item->structuredAttributes as $attribute) {
             $parts[] = $attribute->attribute_key.' '.$attribute->attribute_value;
         }
 
         return $this->normalizer->normalize(implode(' ', $parts));
+    }
+
+    /**
+     * @param  list<string>  $tokens
+     */
+    private function itemMatchesAnyToken(ChatCatalogItem $item, array $tokens): bool
+    {
+        $haystack = $this->itemSearchHaystack($item);
+        foreach ($tokens as $token) {
+            $norm = $this->normalizer->normalize($token);
+            if ($norm !== '' && mb_strlen($norm) >= 2 && str_contains($haystack, $norm)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function variantSearchHaystack(ChatCatalogItemVariant $variant): string
@@ -649,8 +668,9 @@ class ChatCatalogRetrievalService
         $tokens = $this->tokens($query);
         if ($this->browseQueries->isBrowseCatalogQuery($query, $tokens)) {
             $itemKind = $this->browseQueries->browseItemKindFilter($query, $tokens);
+            $entityTokens = $this->browseQueries->browseEntityTokens($query, $tokens);
 
-            return $this->listDiscoverableForPrompt($workspace, $catalog, $limit, $channel, $itemKind, $forAi);
+            return $this->listDiscoverableForPrompt($workspace, $catalog, $limit, $channel, $itemKind, $forAi, $entityTokens);
         }
 
         if ($tokens === []) {
@@ -811,6 +831,7 @@ class ChatCatalogRetrievalService
     }
 
     /**
+     * @param  list<string>  $entityTokens
      * @return list<array<string, mixed>>
      */
     private function listDiscoverableForPrompt(
@@ -820,6 +841,7 @@ class ChatCatalogRetrievalService
         string $channel,
         ?string $itemKind,
         bool $forAi = false,
+        array $entityTokens = [],
     ): array {
         unset($channel);
 
@@ -830,13 +852,24 @@ class ChatCatalogRetrievalService
             ->limit(120)
             ->get();
 
+        if ($entityTokens !== []) {
+            $conflicts = $this->browseQueries->conflictingTokensFor($entityTokens);
+            $expandedEntity = $this->tokenExpander->expandAll($entityTokens);
+
+            if ($conflicts !== []) {
+                $items = $items->reject(fn (ChatCatalogItem $item): bool => $this->itemMatchesAnyToken($item, $conflicts));
+            }
+
+            $items = $items->sortByDesc(fn (ChatCatalogItem $item): int => $this->itemMatchesAnyToken($item, $expandedEntity) ? 1 : 0)->values();
+        }
+
         $sortPolicy = $catalog->sort_policy ?? ChatCatalogSortPolicy::Manual;
         if (! $catalog->discoveryEnabled('featured_items_enabled')
             && $sortPolicy === ChatCatalogSortPolicy::FeaturedFirst) {
             $sortPolicy = ChatCatalogSortPolicy::Manual;
         }
 
-        $sortedItems = $this->sortService->sort($items, $sortPolicy);
+        $sortedItems = $entityTokens !== [] ? $items : $this->sortService->sort($items, $sortPolicy);
 
         $ordered = [];
         foreach ($sortedItems as $item) {
@@ -960,7 +993,8 @@ class ChatCatalogRetrievalService
         $gulf = $this->gulfArabic->interpret($query);
         $parts = $gulf['search_tokens'];
         $stop = [
-            'هل', 'من', 'على', 'الى', 'او',
+            'هل', 'من', 'على', 'الى', 'الي', 'اللي', 'او', 'في', 'عن', 'مع',
+            'هو', 'هي', 'بس', 'فقط', 'هذا', 'هذه', 'هذي', 'ذا',
             'the', 'a', 'an', 'is', 'do', 'you', 'have', 'please', 'with', 'for', 'and', 'or',
             'يوجد', 'توجد', 'هليوجد', 'ممكن', 'اريد', 'نعم', 'احتاج', 'نحتاج',
             'مرحبا', 'هلا', 'اهلين', 'السلام', 'عليكم', 'صباح', 'مساء', 'هاي', 'hello', 'hi',
@@ -1167,7 +1201,7 @@ class ChatCatalogRetrievalService
             fn (string $token): bool => ! $this->isGenericProductWord($token),
         ));
 
-        return $specific !== [] ? $specific : $content;
+        return $specific;
     }
 
     private function isLanguageQualifier(string $token): bool
