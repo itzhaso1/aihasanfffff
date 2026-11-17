@@ -229,6 +229,8 @@ Route::middleware([
     Route::get('/unread', [UnreadController::class, 'index']);
     Route::get('/search', [SearchController::class, 'search'])->middleware('throttle:mobile-search');
 
+    Route::post('/conversations', [ConversationController::class, 'store'])->middleware('throttle:mobile-write');
+    Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy'])->middleware('throttle:mobile-write');
     Route::post('/conversations/{conversation}/archive', [ConversationController::class, 'archive']);
     Route::post('/conversations/{conversation}/mute', [ConversationController::class, 'mute']);
     Route::patch('/conversations/{conversation}/ai', [ConversationController::class, 'updateAi']);

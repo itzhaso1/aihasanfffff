@@ -268,4 +268,39 @@ class ConversationController extends MobileController
 
         return $this->ok(new ConversationResource($conversation), message: 'تم تحديث تصنيف المحادثة.');
     }
+
+    public function store(Request $request): JsonResponse
+    {
+        $this->authorize('create', Conversation::class);
+
+        $validated = $request->validate([
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'channel' => ['required', 'string', 'in:whatsapp,instagram,facebook_messenger,email,web,manual,telegram,tiktok'],
+            'external_id' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'in:open,closed,archived'],
+            'ai_enabled' => ['nullable', 'boolean'],
+            'metadata' => ['nullable', 'array'],
+        ]);
+
+        $workspace = $this->requireWorkspace($this->workspaceContext);
+        $validated['workspace_id'] = $workspace->id;
+        $validated['status'] = $validated['status'] ?? 'open';
+        $validated['ai_enabled'] = $request->boolean('ai_enabled', true);
+
+        $conversation = app(\App\Services\Conversation\ConversationService::class)->create($validated);
+
+        return $this->ok(
+            new ConversationResource($conversation->load(['customer'])),
+            message: 'تم إنشاء المحادثة بنجاح.',
+            status: 201,
+        );
+    }
+
+    public function destroy(Conversation $conversation): JsonResponse
+    {
+        $this->authorize('delete', $conversation);
+        $conversation->delete();
+
+        return $this->ok(message: 'تم حذف المحادثة.');
+    }
 }
