@@ -139,8 +139,9 @@ class AiDiagnoseCommand extends Command
             $isBrowse = $browseDetector->isBrowseCatalogQuery($testQuery, $tokens);
             $this->line('   • isBrowseCatalogQuery: '.($isBrowse ? '<fg=green>true (Catalog lookup triggered)</>' : '<fg=red>false</>'));
 
-            $shouldGreet = $greetingSelector->shouldIncludeGreeting($testQuery);
-            $this->line('   • shouldIncludeGreeting: '.($shouldGreet ? '<fg=red>true (Canned greeting will trigger!)</>' : '<fg=green>false (Direct answer mode)</>'));
+            $greetingRecords = $greetingSelector->select($testQuery);
+            $shouldGreet = $greetingRecords !== [];
+            $this->line('   • Greeting selected: '.($shouldGreet ? '<fg=red>true (Canned greeting will trigger!)</>' : '<fg=green>false (Direct answer mode, no canned greeting)</>'));
 
             $lookup = $catalogRetrieval->lookupForAssistant($workspace, $testQuery, 8);
             $this->line('   • Catalog Lookup Status: <fg=yellow>'.($lookup['status'] ?? 'unknown').'</>');
