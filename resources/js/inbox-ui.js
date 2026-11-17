@@ -145,8 +145,8 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
 
     const bubble = document.createElement('div');
     bubble.className = outbound
-        ? 'hs-inbox-message-bubble max-w-[78%] rounded-2xl rounded-es-md bg-[#DDF6F1] px-4 py-2 text-slate-900 shadow-sm'
-        : 'hs-inbox-message-bubble max-w-[78%] rounded-2xl rounded-ee-md border border-slate-200 bg-white px-4 py-2 text-slate-800 shadow-sm';
+        ? 'hs-inbox-message-bubble max-w-[78%] rounded-2xl rounded-es-md bg-[#D8F6F0] px-4 py-2 text-slate-900 shadow-2xs border border-[#C2EFE6]'
+        : 'hs-inbox-message-bubble max-w-[78%] rounded-2xl rounded-ee-md border border-slate-200/90 bg-white px-4 py-2 text-slate-900 shadow-2xs';
 
     if (Array.isArray(payload.attachments) && payload.attachments.length > 0) {
         const attachmentsWrap = document.createElement('div');
@@ -176,6 +176,31 @@ const bindComposeForm = () => {
     }
 
     form.dataset.hsBound = 'compose';
+
+    const textarea = form.querySelector('textarea[name="content"]');
+    if (textarea) {
+        const resizeTextarea = () => {
+            textarea.style.height = 'auto';
+            const nextHeight = Math.min(Math.max(textarea.scrollHeight, 40), 160);
+            textarea.style.height = `${nextHeight}px`;
+        };
+
+        textarea.addEventListener('input', resizeTextarea);
+
+        // Enter submits form, Shift+Enter creates a new line
+        textarea.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                if (textarea.value.trim() !== '') {
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.dispatchEvent(new Event('submit', { cancelable: true }));
+                    }
+                }
+            }
+        });
+    }
 
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -228,9 +253,9 @@ const bindComposeForm = () => {
                 appendInboxMessage(data.message);
             }
 
-            const textarea = form.querySelector('textarea[name="content"]');
             if (textarea) {
                 textarea.value = '';
+                textarea.style.height = '';
             }
         } catch (_) {
             const node = document.querySelector(`[data-temp-id="${tempId}"]`);

@@ -621,4 +621,71 @@ class AiSalesConversationTest extends TestCase
         $this->assertContains('كتاب خاص لشركة ب', $namesB);
         $this->assertNotContains('كتاب سري لشركة أ', $namesB);
     }
+
+    public function test_case_16_history_with_empty_or_media_messages_does_not_crash_context_builder(): void
+    {
+        [$workspace, $employee, $conversation] = $this->seedHasimInbox();
+
+        app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $conversation): void {
+            $this->provisionCatalog($workspace);
+
+            ChatCatalogItem::factory()->create([
+                'workspace_id' => $workspace->id,
+                'name' => 'تعلم لغة بايثون',
+                'price' => 45.00,
+                'currency' => 'SAR',
+                'stock' => 15,
+                'is_active' => true,
+                'is_visible' => true,
+                'is_searchable' => true,
+            ]);
+
+            // Insert messages with null or empty content (e.g. image/attachment messages)
+            Message::factory()->create([
+                'workspace_id' => $workspace->id,
+                'conversation_id' => $conversation->id,
+                'customer_id' => $conversation->customer_id,
+                'direction' => 'inbound',
+                'content' => '',
+                'message_type' => 'image',
+            ]);
+            Message::factory()->create([
+                'workspace_id' => $workspace->id,
+                'conversation_id' => $conversation->id,
+                'customer_id' => $conversation->customer_id,
+                'direction' => 'outbound',
+                'content' => '   ',
+                'message_type' => 'document',
+            ]);
+        });
+
+        // Customer sends real question after empty/media messages
+        $currentMessage = Message::factory()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'inbound',
+            'content' => 'شو الكتب المتوفرة عندك؟',
+            'message_type' => 'text',
+        ]);
+
+        $resolver = app(\App\AI\Employees\DatabaseEmployeeResolver::class);
+        $contextProvider = app(\App\AI\Context\AiContextProvider::class);
+
+        $aiReq = new \App\AI\Core\AiRequest(
+            workspaceId: (int) $workspace->id,
+            conversationId: (int) $conversation->id,
+            employeeId: null,
+            message: new \App\AI\Core\AiInboundMessage($currentMessage->content, $currentMessage->id),
+            runMode: \App\AI\Core\AiRunMode::Live,
+            channel: 'chat',
+        );
+
+        $employee = $resolver->resolve($aiReq);
+
+        // Building context must NOT throw InvalidArgumentException
+        $payload = $contextProvider->build($aiReq, $employee);
+        $this->assertNotEmpty($payload->sections);
+        $this->assertSame('listed', $payload->structuredContext->references->retrievalStatus);
+    }
 }

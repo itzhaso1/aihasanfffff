@@ -108,16 +108,26 @@ final class AiContextBuilder
     {
         $window = $this->messageWindowBuilder->build($conversation, $currentMessage);
 
-        return array_map(
-            static fn ($message): ContextMessage => new ContextMessage(
-                role: $message->role,
-                content: $message->content,
-                messageId: $message->messageId,
-                occurredAt: $message->occurredAt,
-                channel: $message->channel,
-            ),
-            $window->history,
-        );
+        $messages = [];
+        foreach ($window->history as $message) {
+            $content = trim((string) $message->content);
+            if ($content === '') {
+                continue;
+            }
+            try {
+                $messages[] = new ContextMessage(
+                    role: $message->role,
+                    content: $content,
+                    messageId: $message->messageId,
+                    occurredAt: $message->occurredAt,
+                    channel: $message->channel,
+                );
+            } catch (\InvalidArgumentException) {
+                // Safeguard against any malformed history row crashing the pipeline
+            }
+        }
+
+        return $messages;
     }
 
     /**

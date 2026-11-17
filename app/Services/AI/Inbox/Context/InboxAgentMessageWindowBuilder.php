@@ -53,6 +53,10 @@ final class InboxAgentMessageWindowBuilder
         $normalized = [];
 
         foreach ($rows as $row) {
+            $raw = (string) ($row->content ?? '');
+            if (trim($raw) === '') {
+                continue;
+            }
             $normalizedRow = $this->normalizeHistoryRow($row, (string) $conversation->channel, $perMessageLimit);
             if ($normalizedRow['truncated']) {
                 $perMessageTruncated = true;
