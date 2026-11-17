@@ -72,7 +72,7 @@
                         type="button"
                         @click="open = !open"
                         :aria-expanded="open.toString()"
-                        aria-label="تصفية المحادثات"
+                        aria-label="كل المحادثات"
                         class="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-2xs transition hover:bg-slate-50 focus:outline-none"
                         :class="(open || {{ $handoffFilter ? 'true' : 'false' }}) ? 'border-[#C9F0E8] bg-[#E8FAF6] text-[#067e6b]' : ''"
                     >
@@ -160,7 +160,7 @@
                 type="button"
                 @click="open = !open"
                 :aria-expanded="open.toString()"
-                aria-label="تصفية حسب القنوات"
+                aria-label="القنوات"
                 class="{{ $channelFilter ? 'border-[#C9F0E8] bg-[#E8FAF6] text-[#067e6b]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }} inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition"
             >
                 <span>{{ $channelFilter ? ($availableChannels[$channelFilter] ?? $channelFilter) : 'القناة' }}</span>
@@ -175,12 +175,6 @@
                 @click.outside="open = false"
                 class="absolute end-0 top-full z-20 mt-1 min-w-[11rem] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-lg"
             >
-                <a
-                    href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['channel' => null]) }}"
-                    class="{{ ! $channelFilter ? 'bg-[#E8FAF6] text-[#067e6b]' : 'text-slate-600 hover:bg-slate-50' }} block rounded-xl px-3 py-1.5 text-xs font-semibold"
-                >
-                    كل القنوات
-                </a>
                 @foreach($availableChannels as $channelKey => $channelLabel)
                     <a
                         href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['channel' => $channelFilter === $channelKey ? null : $channelKey]) }}"
@@ -208,55 +202,153 @@
                 $initial = mb_substr($customerName, 0, 1);
                 $assignedType = \App\Services\Workforce\WorkforceInboxAttribution::typeForConversation($conversation);
             @endphp
-            <a
-                href="{{ $inboxUrl($conversation->id) }}"
-                data-conversation-id="{{ $conversation->id }}"
-                class="{{ $isActive ? 'border-s-[3px] border-s-[#00BFAE] bg-[#F0FBF8]' : 'border-s-[3px] border-s-transparent hover:bg-slate-50/80' }} block px-4 py-3.5 transition"
+            <div
+                x-data="{ menuOpen: false }"
+                class="{{ $isActive ? 'border-s-[3px] border-s-[#00BFAE] bg-[#F0FBF8]' : 'border-s-[3px] border-s-transparent hover:bg-slate-50/80' }} group relative block transition"
             >
-                <div class="flex items-start gap-3">
-                    <div class="relative shrink-0">
-                        <span class="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#E8FAF6] to-[#C9F0E8] text-sm font-bold text-[#067e6b] shadow-2xs">
-                            {{ $initial }}
-                        </span>
-                        <span class="absolute -bottom-0.5 -end-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white shadow-2xs ring-1 ring-white">
-                            <span class="h-2.5 w-2.5 rounded-full {{ $channelChip['dot'] ?? 'bg-slate-400' }}"></span>
-                        </span>
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <div class="flex items-start justify-between gap-2">
-                            <p class="truncate text-sm font-bold text-slate-900">{{ $customerName }}</p>
-                            <span class="shrink-0 text-[11px] font-medium text-slate-400">
-                                {{ $conversation->last_message_at?->format('h:i A') ?? '' }}
+                <a
+                    href="{{ $inboxUrl($conversation->id) }}"
+                    data-conversation-id="{{ $conversation->id }}"
+                    class="block px-4 py-3.5"
+                >
+                    <div class="flex items-start gap-3">
+                        <div class="relative shrink-0">
+                            <span class="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#E8FAF6] to-[#C9F0E8] text-sm font-bold text-[#067e6b] shadow-2xs">
+                                {{ $initial }}
+                            </span>
+                            <span class="absolute -bottom-0.5 -end-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white shadow-2xs ring-1 ring-white">
+                                <span class="h-2.5 w-2.5 rounded-full {{ $channelChip['dot'] ?? 'bg-slate-400' }}"></span>
                             </span>
                         </div>
-                        <p class="mt-0.5 truncate text-xs {{ $unreadCount > 0 ? 'font-semibold text-slate-800' : 'text-slate-500' }}">
-                            {{ $preview?->content ?: 'لا توجد رسائل بعد' }}
-                        </p>
-                        <div class="mt-2 flex flex-wrap items-center justify-between gap-1.5">
-                            <div class="flex flex-wrap items-center gap-1">
-                                <span class="{{ $channelChip['badge'] }} rounded-full px-2 py-0.5 text-[10px] font-semibold">{{ $channelChip['label'] }}</span>
-                                @if($conversation->isAiReplying())
-                                    <span class="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
-                                        <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                                        <span>رد AI</span>
-                                    </span>
-                                @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
-                                    <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">AI Employee</span>
-                                @endif
-                                @if($conversation->handoffStatusEnum()->blocksAi())
-                                    <span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
-                                        <svg class="h-2.5 w-2.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                                        <span>تحتاج مراجعة</span>
-                                    </span>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-start justify-between gap-2">
+                                <p class="truncate text-sm font-bold text-slate-900">{{ $customerName }}</p>
+                                <span class="shrink-0 text-[11px] font-medium text-slate-400 group-hover:invisible md:group-hover:invisible transition-all">
+                                    {{ $conversation->last_message_at?->format('h:i A') ?? '' }}
+                                </span>
+                            </div>
+                            <p class="mt-0.5 truncate text-xs {{ $unreadCount > 0 ? 'font-semibold text-slate-800' : 'text-slate-500' }}">
+                                {{ $preview?->content ?: 'لا توجد رسائل بعد' }}
+                            </p>
+                            <div class="mt-2 flex flex-wrap items-center justify-between gap-1.5">
+                                <div class="flex flex-wrap items-center gap-1">
+                                    <span class="{{ $channelChip['badge'] }} rounded-full px-2 py-0.5 text-[10px] font-semibold">{{ $channelChip['label'] }}</span>
+                                    @if($conversation->isAiReplying())
+                                        <span class="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
+                                            <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                            <span>رد AI</span>
+                                        </span>
+                                    @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
+                                        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">AI Employee</span>
+                                    @endif
+                                    @if($conversation->handoffStatusEnum()->blocksAi())
+                                        <span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+                                            <svg class="h-2.5 w-2.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                            <span>تحتاج مراجعة</span>
+                                        </span>
+                                    @endif
+                                </div>
+                                @if($unreadCount > 0)
+                                    <span class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#00BFAE] px-1.5 text-[10px] font-bold text-white shadow-2xs">{{ $unreadCount }}</span>
                                 @endif
                             </div>
-                            @if($unreadCount > 0)
-                                <span class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#00BFAE] px-1.5 text-[10px] font-bold text-white shadow-2xs">{{ $unreadCount }}</span>
-                            @endif
                         </div>
                     </div>
+                </a>
+
+                {{-- Desktop WhatsApp-style action chevron dropdown --}}
+                <div class="absolute top-3 end-3 z-20 hidden md:block">
+                    <button
+                        type="button"
+                        @click.stop.prevent="menuOpen = !menuOpen"
+                        :class="menuOpen ? 'opacity-100 bg-slate-200/80 text-slate-800' : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700'"
+                        class="flex h-6 w-6 items-center justify-center rounded-full transition"
+                        title="خيارات المحادثة"
+                        aria-label="خيارات المحادثة"
+                    >
+                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7"/></svg>
+                    </button>
+                    <div
+                        x-show="menuOpen"
+                        x-cloak
+                        x-transition:enter="transition ease-out duration-100"
+                        x-transition:enter-start="transform opacity-0 scale-95"
+                        x-transition:enter-end="transform opacity-100 scale-100"
+                        x-transition:leave="transition ease-in duration-75"
+                        x-transition:leave-start="transform opacity-100 scale-100"
+                        x-transition:leave-end="transform opacity-0 scale-95"
+                        @click.outside="menuOpen = false"
+                        class="absolute end-0 top-full mt-1 w-48 overflow-hidden rounded-2xl border border-slate-200/90 bg-white py-1.5 shadow-xl z-50 text-xs"
+                    >
+                        {{-- 1. أرشفة الدردشة / إلغاء الأرشفة --}}
+                        <form method="POST" action="{{ route('workspace.conversations.update', $conversation) }}">
+                            @csrf
+                            @method('PUT')
+                            <input type="hidden" name="status" value="{{ $conversation->status === 'archived' ? 'open' : 'archived' }}">
+                            <button type="submit" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 transition text-start">
+                                <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 8h14M5 8a2 2 0 1 1 0-4h14a2 2 0 1 1 0 4M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8m-9 4h4" /></svg>
+                                <span>{{ $conversation->status === 'archived' ? 'إلغاء أرشفة الدردشة' : 'أرشفة الدردشة' }}</span>
+                            </button>
+                        </form>
+
+                        {{-- 2. كتم الإشعارات --}}
+                        <button type="button" @click="menuOpen = false" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 transition text-start">
+                            <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5.586 15H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z m11.414-4a4.978 4.978 0 0 0-1.073-3.111M3 3l18 18" /></svg>
+                            <span>كتم الإشعارات</span>
+                        </button>
+
+                        {{-- 3. تثبيت الدردشة --}}
+                        <button type="button" @click="menuOpen = false" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 transition text-start">
+                            <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 4v4l2 3v2h-7v6l-1 1-1-1v-6H4V9l2-3V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1z" /></svg>
+                            <span>تثبيت الدردشة</span>
+                        </button>
+
+                        {{-- 4. تمييز كغير مقروءة --}}
+                        <a href="{{ $inboxUrl($conversation->id, ['unread' => $unreadCount > 0 ? null : 1]) }}" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 transition text-start">
+                            <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 8l7.89 5.26a2 2 0 0 0 2.22 0L21 8M5 19h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z" /></svg>
+                            <span>{{ $unreadCount > 0 ? 'تمييز كمقروءة' : 'تمييز كغير مقروءة' }}</span>
+                        </a>
+
+                        {{-- 5. إضافة إلى المفضلة --}}
+                        <button type="button" @click="menuOpen = false" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 transition text-start">
+                            <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                            <span>إضافة إلى المفضلة</span>
+                        </button>
+
+                        {{-- 6. إضافة إلى القائمة --}}
+                        <button type="button" @click="menuOpen = false" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 transition text-start">
+                            <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                            <span>إضافة إلى القائمة</span>
+                        </button>
+
+                        <div class="my-1 border-t border-slate-100"></div>
+
+                        {{-- 7. حظر --}}
+                        <button type="button" @click="menuOpen = false" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 transition text-start">
+                            <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                            <span>حظر</span>
+                        </button>
+
+                        {{-- 8. مسح الدردشة --}}
+                        <button type="button" @click="menuOpen = false" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 transition text-start">
+                            <svg class="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <span>مسح الدردشة</span>
+                        </button>
+
+                        {{-- 9. حذف الدردشة --}}
+                        @if($inboxAllowsCompanyActions)
+                            <form method="POST" action="{{ route('workspace.conversations.destroy', $conversation) }}" onsubmit="return confirm('هل أنت متأكد من حذف هذه المحادثة؟ لا يمكن التراجع عن هذا الإجراء.');">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-rose-600 hover:bg-rose-50 transition text-start">
+                                    <svg class="h-4 w-4 shrink-0 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    <span>حذف الدردشة</span>
+                                </button>
+                            </form>
+                        @endif
+                    </div>
                 </div>
-            </a>
+            </div>
         @empty
             <div class="flex h-full items-center justify-center p-6">
                 <div class="w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-10 text-center">
