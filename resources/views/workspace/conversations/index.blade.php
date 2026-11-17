@@ -1,12 +1,12 @@
-<x-communication-layout flush :show-navbar="false" :show-assistant="false" secondary-sidebar page-title="التواصل — حاسم">
+<x-communication-layout flush :show-navbar="false" :show-assistant="false" secondary-sidebar page-title="المحادثات — حاسم">
     @php
         $channelUi = [
-            'whatsapp' => ['label' => 'WhatsApp', 'badge' => 'bg-emerald-100 text-emerald-700'],
-            'instagram' => ['label' => 'Instagram', 'badge' => 'bg-pink-100 text-pink-700'],
-            'facebook_messenger' => ['label' => 'Facebook Messenger', 'badge' => 'bg-blue-100 text-blue-700'],
-            'email' => ['label' => 'Email', 'badge' => 'bg-amber-100 text-amber-700'],
-            'web' => ['label' => 'Web', 'badge' => 'bg-slate-100 text-slate-700'],
-            'manual' => ['label' => 'Manual', 'badge' => 'bg-slate-100 text-slate-700'],
+            'whatsapp' => ['label' => 'WhatsApp', 'badge' => 'bg-emerald-50 text-emerald-700 border border-emerald-200/80', 'color' => '#25D366', 'dot' => 'bg-emerald-500'],
+            'instagram' => ['label' => 'Instagram', 'badge' => 'bg-pink-50 text-pink-700 border border-pink-200/80', 'color' => '#E4405F', 'dot' => 'bg-pink-500'],
+            'facebook_messenger' => ['label' => 'Messenger', 'badge' => 'bg-blue-50 text-blue-700 border border-blue-200/80', 'color' => '#0084FF', 'dot' => 'bg-blue-500'],
+            'email' => ['label' => 'Email', 'badge' => 'bg-amber-50 text-amber-700 border border-amber-200/80', 'color' => '#F59E0B', 'dot' => 'bg-amber-500'],
+            'web' => ['label' => 'Web', 'badge' => 'bg-teal-50 text-teal-700 border border-teal-200/80', 'color' => '#00BFAE', 'dot' => 'bg-teal-500'],
+            'manual' => ['label' => 'Manual', 'badge' => 'bg-slate-100 text-slate-700 border border-slate-200/80', 'color' => '#64748B', 'dot' => 'bg-slate-400'],
         ];
     @endphp
 

@@ -17,69 +17,17 @@
 @endphp
 
 <aside @class([
-    'h-full min-h-0 w-full max-w-full flex-col border-slate-200 bg-white md:flex md:w-[22rem] md:max-w-[22rem] md:border-e xl:w-[23rem] xl:max-w-[23rem]',
+    'h-full min-h-0 w-full max-w-full flex-col border-slate-200/90 bg-white md:flex md:w-[22rem] md:max-w-[22rem] md:border-e lg:w-[24rem] lg:max-w-[24rem] xl:w-[26rem] xl:max-w-[26rem]',
     'flex' => ! $activeConversation,
     'hidden' => $activeConversation,
 ])>
-    <style>
-        .inbox-filter-trigger {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 999px;
-            background: #fff;
-            color: #475569;
-            padding: 0.2rem 0.7rem;
-            font-size: 11px;
-            font-weight: 600;
-            line-height: 1.25rem;
-            cursor: pointer;
-        }
-        .inbox-filter-trigger.is-on {
-            border-color: #C9F0E8;
-            background: #E8FAF6;
-            color: #067e6b;
-        }
-        .inbox-filter-menu {
-            position: absolute;
-            z-index: 30;
-            top: 100%;
-            margin-top: 0.3rem;
-            min-width: 11.25rem;
-            overflow: hidden;
-            border-radius: 0.85rem;
-            border: 1px solid #e8eef3;
-            background: #fff;
-            padding: 0.3rem;
-            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
-        }
-        .inbox-filter-item {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            border-radius: 0.65rem;
-            padding: 0.45rem 0.6rem;
-            font-size: 12px;
-            font-weight: 600;
-            color: #64748b;
-        }
-        .inbox-filter-item svg {
-            height: 0.95rem;
-            width: 0.95rem;
-            flex: none;
-        }
-        .inbox-filter-item:hover,
-        .inbox-filter-item.is-active {
-            background: #E8FAF6;
-            color: #067e6b;
-        }
-    </style>
-    <div class="border-b border-slate-100 px-4 py-3">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="shrink-0">
-                <h3 class="text-sm font-bold text-slate-900">المحادثات</h3>
-                <p class="text-[11px] text-slate-500">{{ $conversations->total() }} محادثة</p>
+    <div class="border-b border-slate-100 bg-white px-4 py-3.5">
+        <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+                <h3 class="text-base font-bold text-slate-900">المحادثات</h3>
+                <span class="inline-flex items-center rounded-full bg-[#E8FAF6] px-2.5 py-0.5 text-xs font-bold text-[#067e6b]">
+                    {{ $conversations->total() }}
+                </span>
             </div>
             @php
                 $handoffOptions = [
@@ -100,11 +48,21 @@
                 ];
                 $handoffFilter = request('handoff');
             @endphp
-            <div class="flex min-w-0 flex-wrap items-center gap-1">
+            <div class="flex items-center gap-1.5">
+                @if($inboxAllowsCompanyActions)
+                    <a
+                        href="{{ route('workspace.conversations.create') }}"
+                        class="inline-flex items-center gap-1 rounded-xl bg-[#00BFAE] px-2.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#06a89a]"
+                        title="إنشاء محادثة جديدة"
+                    >
+                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 4v16m8-8H4"/></svg>
+                        <span>جديدة</span>
+                    </a>
+                @endif
                 @if(! $inboxAllowsCompanyActions)
                     <form method="POST" action="{{ route('logout') }}" class="ms-auto">
                         @csrf
-                        <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                        <button type="submit" class="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                             تسجيل الخروج
                         </button>
                     </form>
@@ -114,17 +72,34 @@
                         type="button"
                         @click="open = !open"
                         :aria-expanded="open.toString()"
-                        aria-label="كل المحادثات"
-                        class="inbox-filter-trigger"
-                        :class="(open || {{ $handoffFilter ? 'true' : 'false' }}) ? 'is-on' : ''"
+                        aria-label="تصفية المحادثات"
+                        class="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-2xs transition hover:bg-slate-50 focus:outline-none"
+                        :class="(open || {{ $handoffFilter ? 'true' : 'false' }}) ? 'border-[#C9F0E8] bg-[#E8FAF6] text-[#067e6b]' : ''"
                     >
-                        <span data-hs-filter-label>{{ $handoffOptions[$handoffFilter] ?? 'كل المحادثات' }}</span>
-                        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6"/></svg>
+                        <span data-hs-filter-label>{{ $handoffOptions[$handoffFilter] ?? 'كل الحالات' }}</span>
+                        <svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6"/></svg>
                     </button>
-                    <div x-show="open" x-cloak @click.outside="open = false" class="inbox-filter-menu" style="inset-inline-end:0">
+                    <div
+                        x-show="open"
+                        x-cloak
+                        x-transition.origin.top
+                        @click.outside="open = false"
+                        class="absolute z-30 mt-1.5 min-w-[12rem] overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl"
+                        style="inset-inline-end:0"
+                    >
+                        <a
+                            href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['handoff' => null]) }}"
+                            class="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold {{ ! $handoffFilter ? 'bg-[#E8FAF6] text-[#067e6b]' : 'text-slate-600 hover:bg-slate-50' }}"
+                        >
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
+                            <span>كل الحالات</span>
+                        </a>
                         @foreach($handoffOptions as $handoffKey => $handoffLabel)
-                            <a href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['handoff' => $handoffFilter === $handoffKey ? null : $handoffKey]) }}" class="inbox-filter-item {{ $handoffFilter === $handoffKey ? 'is-active' : '' }}">
-                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="{{ $handoffIcons[$handoffKey] }}"/></svg>
+                            <a
+                                href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['handoff' => $handoffFilter === $handoffKey ? null : $handoffKey]) }}"
+                                class="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold {{ $handoffFilter === $handoffKey ? 'bg-[#E8FAF6] text-[#067e6b]' : 'text-slate-600 hover:bg-slate-50' }}"
+                            >
+                                <svg class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="{{ $handoffIcons[$handoffKey] }}"/></svg>
                                 <span>{{ $handoffLabel }}</span>
                             </a>
                         @endforeach
@@ -132,65 +107,84 @@
                 </div>
             </div>
         </div>
+
         <form method="GET" action="{{ route($inboxIndexRoute, $inboxRouteParameters) }}" class="mt-3">
             @foreach(['conversation', 'channel', 'status', 'handoff', 'unread'] as $queryKey)
                 @if(request()->filled($queryKey))
                     <input type="hidden" name="{{ $queryKey }}" value="{{ request($queryKey) }}">
                 @endif
             @endforeach
-            <label class="relative block">
-                <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400">
+            <div class="relative">
+                <span class="pointer-events-none absolute inset-y-0 start-3 flex items-center text-slate-400">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="m21 21-4.35-4.35M17 10.5A6.5 6.5 0 1 1 4 10.5a6.5 6.5 0 0 1 13 0Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m21 21-4.35-4.35M17 10.5A6.5 6.5 0 1 1 4 10.5a6.5 6.5 0 0 1 13 0Z" />
                     </svg>
                 </span>
                 <input
                     name="search"
                     value="{{ request('search') }}"
-                    class="hs-input w-full pr-10"
-                    placeholder="ابحث باسم العميل أو رقم الهاتف أو External ID..."
+                    class="w-full rounded-xl border border-slate-200/90 bg-slate-50/80 py-2 pe-3 ps-9 text-xs text-slate-800 placeholder-slate-400 transition focus:border-[#00BFAE] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/15"
+                    placeholder="ابحث باسم العميل أو رقم الهاتف..."
                 />
-            </label>
+                @if(request('search'))
+                    <a
+                        href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['search' => null]) }}"
+                        class="absolute inset-y-0 end-2.5 flex items-center text-slate-400 hover:text-slate-600"
+                        title="مسح البحث"
+                    >
+                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </a>
+                @endif
+            </div>
         </form>
     </div>
 
-    <div class="flex flex-wrap items-center gap-1 border-b border-slate-100 px-3 py-2">
-        <span data-hs-filter-group class="inline-flex items-center gap-1">
-        <a
-            href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['unread' => null]) }}"
-            class="{{ ! request()->boolean('unread') ? 'bg-[#E8FAF6] text-[#067e6b]' : 'text-slate-500 hover:bg-slate-50' }} rounded-full px-3 py-1 text-[11px] font-semibold transition"
-        >
-            الكل ({{ $conversations->total() }})
-        </a>
-        <a
-            href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['unread' => 1]) }}"
-            class="{{ request()->boolean('unread') ? 'bg-[#E8FAF6] text-[#067e6b]' : 'text-slate-500 hover:bg-slate-50' }} rounded-full px-3 py-1 text-[11px] font-semibold transition"
-        >
-            غير مقروءة
-        </a>
+    <div class="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50/50 px-3 py-2 overflow-x-auto">
+        <span data-hs-filter-group class="inline-flex items-center gap-1.5">
+            <a
+                href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['unread' => null]) }}"
+                class="{{ ! request()->boolean('unread') ? 'bg-[#00BFAE] text-white shadow-2xs font-bold' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 font-semibold' }} rounded-full px-3 py-1 text-[11px] transition"
+            >
+                الكل ({{ $conversations->total() }})
+            </a>
+            <a
+                href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['unread' => 1]) }}"
+                class="{{ request()->boolean('unread') ? 'bg-[#00BFAE] text-white shadow-2xs font-bold' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 font-semibold' }} inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] transition"
+            >
+                <span class="h-1.5 w-1.5 rounded-full {{ request()->boolean('unread') ? 'bg-white' : 'bg-teal-500' }}"></span>
+                <span>غير مقروءة</span>
+            </a>
         </span>
-        <div class="relative" data-hs-menu x-data="{ open: false }" @keydown.escape.window="open = false">
+        <div class="relative ms-auto" data-hs-menu x-data="{ open: false }" @keydown.escape.window="open = false">
             <button
                 type="button"
                 @click="open = !open"
                 :aria-expanded="open.toString()"
-                aria-label="القنوات"
-                class="{{ $channelFilter ? 'border-[#C9F0E8] bg-[#E8FAF6] text-[#067e6b]' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50' }} inline-flex h-6 w-6 items-center justify-center rounded-full border transition"
+                aria-label="تصفية حسب القنوات"
+                class="{{ $channelFilter ? 'border-[#C9F0E8] bg-[#E8FAF6] text-[#067e6b]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }} inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition"
             >
-                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <span>{{ $channelFilter ? ($availableChannels[$channelFilter] ?? $channelFilter) : 'القناة' }}</span>
+                <svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6" />
                 </svg>
             </button>
             <div
                 x-show="open"
                 x-cloak
+                x-transition.origin.top
                 @click.outside="open = false"
-                class="absolute start-0 top-full z-20 mt-1 min-w-[11rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                class="absolute end-0 top-full z-20 mt-1 min-w-[11rem] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-lg"
             >
+                <a
+                    href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['channel' => null]) }}"
+                    class="{{ ! $channelFilter ? 'bg-[#E8FAF6] text-[#067e6b]' : 'text-slate-600 hover:bg-slate-50' }} block rounded-xl px-3 py-1.5 text-xs font-semibold"
+                >
+                    كل القنوات
+                </a>
                 @foreach($availableChannels as $channelKey => $channelLabel)
                     <a
                         href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['channel' => $channelFilter === $channelKey ? null : $channelKey]) }}"
-                        class="{{ $channelFilter === $channelKey ? 'bg-[#E8FAF6] text-[#067e6b]' : 'text-slate-600 hover:bg-slate-50' }} block px-3 py-1.5 text-[11px] font-semibold"
+                        class="{{ $channelFilter === $channelKey ? 'bg-[#E8FAF6] text-[#067e6b]' : 'text-slate-600 hover:bg-slate-50' }} block rounded-xl px-3 py-1.5 text-xs font-semibold"
                     >
                         {{ $channelLabel }}
                     </a>
@@ -199,7 +193,7 @@
         </div>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto" data-inbox-conversation-list data-hs-result>
+    <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100" data-inbox-conversation-list data-hs-result>
         @forelse($conversations as $conversation)
             @php
                 $isActive = $activeConversation && $activeConversation->id === $conversation->id;
@@ -217,56 +211,67 @@
             <a
                 href="{{ $inboxUrl($conversation->id) }}"
                 data-conversation-id="{{ $conversation->id }}"
-                class="{{ $isActive ? 'border-[#C9F0E8] bg-[#E8FAF6]' : 'border-transparent hover:bg-slate-50' }} block border-b border-slate-100 px-4 py-3 transition"
+                class="{{ $isActive ? 'border-s-[3px] border-s-[#00BFAE] bg-[#F0FBF8]' : 'border-s-[3px] border-s-transparent hover:bg-slate-50/80' }} block px-4 py-3.5 transition"
             >
                 <div class="flex items-start gap-3">
-                    <span class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-600">
-                        {{ $initial }}
-                    </span>
+                    <div class="relative shrink-0">
+                        <span class="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#E8FAF6] to-[#C9F0E8] text-sm font-bold text-[#067e6b] shadow-2xs">
+                            {{ $initial }}
+                        </span>
+                        <span class="absolute -bottom-0.5 -end-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white shadow-2xs ring-1 ring-white">
+                            <span class="h-2.5 w-2.5 rounded-full {{ $channelChip['dot'] ?? 'bg-slate-400' }}"></span>
+                        </span>
+                    </div>
                     <div class="min-w-0 flex-1">
                         <div class="flex items-start justify-between gap-2">
-                            <p class="truncate text-sm font-semibold text-slate-900">{{ $customerName }}</p>
-                            <span class="shrink-0 text-[11px] text-slate-400">
+                            <p class="truncate text-sm font-bold text-slate-900">{{ $customerName }}</p>
+                            <span class="shrink-0 text-[11px] font-medium text-slate-400">
                                 {{ $conversation->last_message_at?->format('h:i A') ?? '' }}
                             </span>
                         </div>
-                        <p class="mt-0.5 truncate text-xs text-slate-500">
+                        <p class="mt-0.5 truncate text-xs {{ $unreadCount > 0 ? 'font-semibold text-slate-800' : 'text-slate-500' }}">
                             {{ $preview?->content ?: 'لا توجد رسائل بعد' }}
                         </p>
-                        <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-                            <div class="flex flex-wrap gap-1">
-                            <span class="{{ $channelChip['badge'] }} rounded-full px-2 py-0.5 text-[10px] font-semibold">{{ $channelChip['label'] }}</span>
-                            @if($conversation->isAiReplying())
-                                <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">رد AI</span>
-                            @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
-                                <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">AI Employee</span>
-                            @endif
-                            @if($conversation->handoffStatusEnum()->blocksAi())
-                                <span class="inline-flex items-center gap-1 rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-950">
-                                    <span aria-hidden="true">مراجعة</span>
-                                    تحتاج مراجعة من الفريق
-                                </span>
-                            @endif
+                        <div class="mt-2 flex flex-wrap items-center justify-between gap-1.5">
+                            <div class="flex flex-wrap items-center gap-1">
+                                <span class="{{ $channelChip['badge'] }} rounded-full px-2 py-0.5 text-[10px] font-semibold">{{ $channelChip['label'] }}</span>
+                                @if($conversation->isAiReplying())
+                                    <span class="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
+                                        <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                        <span>رد AI</span>
+                                    </span>
+                                @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
+                                    <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">AI Employee</span>
+                                @endif
+                                @if($conversation->handoffStatusEnum()->blocksAi())
+                                    <span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+                                        <svg class="h-2.5 w-2.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                        <span>تحتاج مراجعة</span>
+                                    </span>
+                                @endif
                             </div>
                             @if($unreadCount > 0)
-                                <span class="rounded-full bg-[#06C2A4] px-1.5 py-0.5 text-[10px] font-bold text-white">{{ $unreadCount }}</span>
+                                <span class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#00BFAE] px-1.5 text-[10px] font-bold text-white shadow-2xs">{{ $unreadCount }}</span>
                             @endif
                         </div>
                     </div>
                 </div>
             </a>
         @empty
-            <div class="flex h-full items-center justify-center p-4">
-                <div class="w-full rounded-2xl border border-[#C9F0E8] bg-white px-4 py-8 text-center">
-                    <span class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#E8FAF6] text-[#06C2A4]">
+            <div class="flex h-full items-center justify-center p-6">
+                <div class="w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-10 text-center">
+                    <span class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E8FAF6] text-[#00BFAE] shadow-2xs">
                         <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M7.5 17.25H4.875A1.875 1.875 0 0 1 3 15.375V5.625A1.875 1.875 0 0 1 4.875 3.75h14.25A1.875 1.875 0 0 1 21 5.625v9.75a1.875 1.875 0 0 1-1.875 1.875H12l-4.5 3v-3Z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                         </svg>
                     </span>
-                    <p class="text-sm font-semibold text-slate-900">لا توجد محادثات</p>
-                    <p class="mt-2 text-xs leading-5 text-slate-500">{{ request()->filled('search') || request()->filled('channel') || request()->filled('status') || request()->boolean('unread') ? 'لا توجد نتائج مطابقة لعوامل التصفية الحالية.' : 'ابدأ بإنشاء محادثة جديدة للتواصل مع العملاء.' }}</p>
+                    <p class="text-sm font-bold text-slate-900">لا توجد محادثات</p>
+                    <p class="mt-1 text-xs leading-5 text-slate-500">{{ request()->filled('search') || request()->filled('channel') || request()->filled('status') || request()->boolean('unread') ? 'لا توجد نتائج مطابقة لعوامل التصفية الحالية.' : 'ابدأ بإنشاء محادثة جديدة للتواصل مع العملاء.' }}</p>
                     @if($inboxAllowsCompanyActions)
-                        <a href="{{ route('workspace.conversations.create') }}" class="hs-btn-primary mt-4 text-xs">+ محادثة جديدة</a>
+                        <a href="{{ route('workspace.conversations.create') }}" class="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#00BFAE] px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-[#06a89a]">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            <span>محادثة جديدة</span>
+                        </a>
                     @endif
                 </div>
             </div>
@@ -274,7 +279,7 @@
     </div>
 
     @if($conversations->hasPages())
-        <div class="border-t border-slate-100 px-3 py-2">
+        <div class="border-t border-slate-100 bg-white px-3 py-2.5">
             {{ $conversations->onEachSide(0)->links() }}
         </div>
     @endif

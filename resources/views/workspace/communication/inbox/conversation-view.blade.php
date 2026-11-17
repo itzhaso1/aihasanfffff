@@ -36,77 +36,89 @@
     $canTakeControlFromAi = $conversationIsOpen && $activeConversation->isAiReplying();
 @endphp
 
-<section class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-[#FCFFFE]">
-    <div class="flex flex-col gap-2 border-b border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-4">
+<section class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-[#F8FBFA]">
+    {{-- Chat Header --}}
+    <div class="flex flex-col gap-2.5 border-b border-slate-200/90 bg-white px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
         <div class="flex min-w-0 items-center gap-3">
-        <a
-            href="{{ route($inboxIndexRoute, array_merge($inboxRouteParameters, $backQuery)) }}"
-            class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 md:hidden"
-            aria-label="العودة إلى قائمة المحادثات"
-        >
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 19l-7-7 7-7" />
-            </svg>
-        </a>
-        <button
-            type="button"
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E8FAF6] text-sm font-bold text-[#067e6b]"
-            @click="detailsOpen = true"
-            aria-controls="inbox-customer-details"
-            :aria-expanded="detailsOpen.toString()"
-            aria-label="عرض تفاصيل {{ $customerName }}"
-        >
-            {{ $initial }}
-        </button>
-        <div class="min-w-0 flex-1">
+            <a
+                href="{{ route($inboxIndexRoute, array_merge($inboxRouteParameters, $backQuery)) }}"
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 md:hidden"
+                aria-label="العودة إلى قائمة المحادثات"
+            >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+            </a>
             <button
                 type="button"
-                class="block max-w-full truncate text-start text-sm font-bold text-slate-900 hover:text-[#067e6b]"
+                class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E8FAF6] to-[#C9F0E8] text-sm font-bold text-[#067e6b] shadow-2xs transition hover:opacity-90"
                 @click="detailsOpen = true"
                 aria-controls="inbox-customer-details"
                 :aria-expanded="detailsOpen.toString()"
+                aria-label="عرض تفاصيل {{ $customerName }}"
             >
-                {{ $customerName }}
+                {{ $initial }}
+                <span class="absolute -bottom-0.5 -end-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white shadow-2xs ring-1 ring-white">
+                    <span class="h-2.5 w-2.5 rounded-full {{ $activeChannelChip['dot'] ?? 'bg-slate-400' }}"></span>
+                </span>
             </button>
-            <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
-                @if($customer?->phone)
-                    <span>{{ $customer->phone }}</span>
-                @endif
-                @if($activeConversation->external_id)
-                    <span class="hidden sm:inline">External ID: #{{ $activeConversation->external_id }}</span>
-                @endif
-                <span class="{{ $activeChannelChip['badge'] }} rounded-full px-2 py-0.5 font-semibold">{{ $activeChannelChip['label'] }}</span>
-                @if($activeConversation->isAiReplying())
-                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">رد AI</span>
-                @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
-                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
-                        AI Employee{{ $activeConversation->aiEmployee?->name ? ': '.$activeConversation->aiEmployee->name : '' }}
-                    </span>
-                @endif
-                @if($handoffEnum->blocksAi())
-                    <span class="inline-flex items-center gap-1 rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 font-semibold text-amber-950">
-                        <span aria-hidden="true">مراجعة</span>
-                        تحتاج مراجعة من الفريق
-                    </span>
-                @endif
-                @if($handoffReason)
-                    <span class="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">{{ $handoffReason }}</span>
-                @endif
+            <div class="min-w-0 flex-1">
+                <button
+                    type="button"
+                    class="block max-w-full truncate text-start text-sm font-bold text-slate-900 transition hover:text-[#00BFAE]"
+                    @click="detailsOpen = true"
+                    aria-controls="inbox-customer-details"
+                    :aria-expanded="detailsOpen.toString()"
+                >
+                    {{ $customerName }}
+                </button>
+                <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
+                    @if($customer?->phone)
+                        <span class="font-medium text-slate-600">{{ $customer->phone }}</span>
+                    @endif
+                    @if($activeConversation->external_id)
+                        <span class="hidden text-slate-400 sm:inline">#{{ $activeConversation->external_id }}</span>
+                    @endif
+                    <span class="{{ $activeChannelChip['badge'] }} rounded-full px-2 py-0.5 text-[10px] font-semibold">{{ $activeChannelChip['label'] }}</span>
+                    @if($activeConversation->isAiReplying())
+                        <span class="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
+                            <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            <span>رد AI</span>
+                        </span>
+                    @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
+                        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
+                            AI Employee{{ $activeConversation->aiEmployee?->name ? ': '.$activeConversation->aiEmployee->name : '' }}
+                        </span>
+                    @endif
+                    @if($handoffEnum->blocksAi())
+                        <span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+                            <svg class="h-2.5 w-2.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                            <span>تحتاج مراجعة</span>
+                        </span>
+                    @endif
+                </div>
             </div>
         </div>
-        </div>
-        <div class="hidden max-w-full flex-wrap items-center justify-end gap-2 overflow-x-auto sm:flex">
+
+        {{-- Actions in Header --}}
+        <div class="flex max-w-full flex-wrap items-center justify-end gap-2 overflow-x-auto">
             @if($inboxAllowsCompanyActions && $conversationIsOpen)
                 @can('manageHandoff', $activeConversation)
                     @if($canEndActiveHandoff)
                         <form method="POST" action="{{ route('workspace.conversations.handoff.resolve', $activeConversation) }}">
                             @csrf
-                            <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">إنهاء المراجعة</button>
+                            <button type="submit" class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50">
+                                <svg class="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                <span>إنهاء المراجعة</span>
+                            </button>
                         </form>
                     @elseif($canTakeControlFromAi)
                         <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">
                             @csrf
-                            <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">تحويل إلى الفريق</button>
+                            <button type="submit" class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50">
+                                <svg class="h-3.5 w-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                                <span>تحويل إلى الفريق</span>
+                            </button>
                         </form>
                     @endif
                 @endcan
@@ -114,64 +126,123 @@
                     @if($canConvertToAi)
                         <form method="POST" action="{{ route('workspace.conversations.handoff.resume-ai', $activeConversation) }}">
                             @csrf
-                            <button type="submit" class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">تحويل إلى AI</button>
+                            <button type="submit" class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-2xs transition hover:bg-emerald-100">
+                                <svg class="h-3.5 w-3.5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                <span>تحويل إلى AI</span>
+                            </button>
                         </form>
                     @endif
                 @endcan
             @endif
+
             @if($inboxAllowsCompanyActions)
-                <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}" class="flex items-center gap-2">
+                {{-- Status Dropdown --}}
+                <div class="relative" x-data="{ statusOpen: false }" @click.outside="statusOpen = false">
+                    <button
+                        type="button"
+                        @click="statusOpen = !statusOpen"
+                        class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50"
+                        title="تغيير حالة المحادثة"
+                    >
+                        <span class="h-2 w-2 rounded-full {{ $activeConversation->status === 'open' ? 'bg-emerald-500' : ($activeConversation->status === 'archived' ? 'bg-amber-500' : 'bg-slate-400') }}"></span>
+                        <span>{{ ['open' => 'مفتوحة', 'closed' => 'مغلقة', 'archived' => 'مؤرشفة'][$activeConversation->status] ?? $activeConversation->status }}</span>
+                        <svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div
+                        x-show="statusOpen"
+                        x-cloak
+                        x-transition.origin.top
+                        class="absolute end-0 top-full z-30 mt-1 min-w-[8.5rem] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-lg"
+                    >
+                        @foreach(['open' => ['مفتوحة', 'bg-emerald-500'], 'closed' => ['مغلقة', 'bg-slate-400'], 'archived' => ['مؤرشفة', 'bg-amber-500']] as $sKey => [$sLabel, $sDot])
+                            <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}">
+                                @csrf
+                                @method('PUT')
+                                <input type="hidden" name="status" value="{{ $sKey }}">
+                                <input type="hidden" name="ai_enabled" value="{{ $activeConversation->ai_enabled ? '1' : '0' }}">
+                                <input type="hidden" name="metadata_json" value="{{ json_encode($activeConversation->metadata ?? [], JSON_UNESCAPED_UNICODE) }}">
+                                <button
+                                    type="submit"
+                                    class="flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-[#E8FAF6] hover:text-[#067e6b] {{ $activeConversation->status === $sKey ? 'bg-slate-50' : '' }}"
+                                >
+                                    <span class="h-2 w-2 rounded-full {{ $sDot }}"></span>
+                                    <span>{{ $sLabel }}</span>
+                                    @if($activeConversation->status === $sKey)
+                                        <svg class="ms-auto h-3 w-3 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                    @endif
+                                </button>
+                            </form>
+                        @endforeach
+                    </div>
+                </div>
+
+                {{-- AI Toggle Switch --}}
+                <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}" class="inline-flex">
                     @csrf
                     @method('PUT')
-                    <select name="status" class="rounded-lg border-slate-300 text-xs focus:border-[#06C2A4] focus:ring-[#06C2A4]">
-                        @foreach(['open' => 'مفتوحة', 'closed' => 'مغلقة', 'archived' => 'مؤرشفة'] as $statusKey => $statusLabel)
-                            <option value="{{ $statusKey }}" @selected($activeConversation->status === $statusKey)>{{ $statusLabel }}</option>
-                        @endforeach
-                    </select>
-                    <label class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs">
-                        <input type="hidden" name="ai_enabled" value="0">
-                        <input type="checkbox" name="ai_enabled" value="1" @checked($activeConversation->ai_enabled)>
-                        <span>AI</span>
-                    </label>
+                    <input type="hidden" name="status" value="{{ $activeConversation->status }}">
+                    <input type="hidden" name="ai_enabled" value="{{ $activeConversation->ai_enabled ? '0' : '1' }}">
                     <input type="hidden" name="metadata_json" value="{{ json_encode($activeConversation->metadata ?? [], JSON_UNESCAPED_UNICODE) }}">
-                    <button class="rounded-lg bg-[#06C2A4] px-3 py-2 text-xs font-semibold text-white">تحديث</button>
+                    <button
+                        type="submit"
+                        title="{{ $activeConversation->ai_enabled ? 'تعطيل AI لهذه المحادثة' : 'تفعيل AI لهذه المحادثة' }}"
+                        class="inline-flex items-center gap-1.5 rounded-xl border {{ $activeConversation->ai_enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200/90 bg-white text-slate-500' }} px-2.5 py-1.5 text-xs font-semibold shadow-2xs transition hover:opacity-90"
+                    >
+                        <svg class="h-3.5 w-3.5 {{ $activeConversation->ai_enabled ? 'text-emerald-700' : 'text-slate-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <span>{{ $activeConversation->ai_enabled ? 'AI نشط' : 'AI معطل' }}</span>
+                    </button>
                 </form>
             @endif
-            @if($inboxAllowsCompanyActions && $customer && \Illuminate\Support\Facades\Route::has('workspace.customers.edit'))
-                <a href="{{ route('workspace.customers.edit', $customer) }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50" aria-label="المزيد">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Zm0 6a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Zm0 6a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" />
-                    </svg>
-                </a>
-            @endif
+
+            {{-- Details Drawer Button --}}
+            <button
+                type="button"
+                @click="detailsOpen = !detailsOpen"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-600 shadow-2xs transition hover:bg-slate-50 hover:text-slate-900"
+                aria-label="عرض تفاصيل العميل"
+                title="معلومات العميل والملاحظات"
+            >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </button>
         </div>
     </div>
 
+    {{-- Context Banner (Handoff or Catalog) --}}
     @if($handoffStatus !== 'none' || is_array($catalogCtx))
-        <div class="border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-700">
-            @if($handoffBlocksAi)
-                <p class="font-semibold text-amber-950">تحتاج مراجعة من الفريق</p>
-            @elseif($handoffStatus !== 'none')
-                <p><span class="font-semibold">التحويل:</span> {{ $handoffStatus }}
-                    @if($activeConversation->handoff_requested_at)
-                        · {{ $activeConversation->handoff_requested_at->format('Y-m-d H:i') }}
+        <div class="border-b border-amber-200/60 bg-amber-50/70 px-4 py-2.5 text-xs text-amber-950">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <svg class="h-4 w-4 shrink-0 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    @if($handoffBlocksAi)
+                        <span class="font-bold">تحتاج مراجعة من الفريق</span>
+                        @if($activeConversation->handoff_requested_at)
+                            <span class="text-amber-700">· طلب التحويل {{ $activeConversation->handoff_requested_at->format('Y-m-d H:i') }}</span>
+                        @endif
+                    @elseif($handoffStatus !== 'none')
+                        <span><span class="font-semibold">حالة التحويل:</span> {{ $handoffStatus }}</span>
                     @endif
-                </p>
-            @endif
-            @if(is_array($catalogCtx) && data_get($catalogCtx, 'attached_product.name'))
-                <p class="mt-1"><span class="font-semibold">المنتج:</span> {{ data_get($catalogCtx, 'attached_product.name') }}
-                    @if(data_get($catalogCtx, 'attached_product.selected_variant.name'))
-                        ({{ data_get($catalogCtx, 'attached_product.selected_variant.name') }})
-                    @endif
-                </p>
-            @endif
+                </div>
+                @if(is_array($catalogCtx) && data_get($catalogCtx, 'attached_product.name'))
+                    <div class="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-2.5 py-1 text-slate-700 border border-amber-200/50 shadow-2xs">
+                        <svg class="h-3.5 w-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                        <span class="font-semibold">المنتج:</span>
+                        <span>{{ data_get($catalogCtx, 'attached_product.name') }}</span>
+                        @if(data_get($catalogCtx, 'attached_product.selected_variant.name'))
+                            <span class="text-slate-500">({{ data_get($catalogCtx, 'attached_product.selected_variant.name') }})</span>
+                        @endif
+                    </div>
+                @endif
+            </div>
             @if(is_array($handoffSummary) && !empty($handoffSummary['latest_customer_message']))
-                <p class="mt-1 truncate"><span class="font-semibold">آخر رسالة:</span> {{ $handoffSummary['latest_customer_message'] }}</p>
+                <p class="mt-1.5 truncate text-[11px] text-amber-800"><span class="font-semibold">آخر رسالة:</span> {{ $handoffSummary['latest_customer_message'] }}</p>
             @endif
         </div>
     @endif
 
-    <div id="inbox-message-list" class="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-5">
+    {{-- Messages Area --}}
+    <div id="inbox-message-list" class="min-h-0 flex-1 space-y-3 overflow-y-auto px-3.5 py-4 sm:px-6">
         @forelse($activeConversation->messages as $message)
             @php
                 $isInternalNote = $message->direction === 'internal_note'
@@ -181,16 +252,17 @@
                 $statusLabel = $isInternalNote
                     ? 'ملاحظة داخلية'
                     : ($outbound ? 'صادرة' : 'واردة');
+                $messageType = \App\Services\Workforce\WorkforceInboxAttribution::typeForMessage($message);
             @endphp
             <div @class([
                     'hs-inbox-message-row',
                     $isInternalNote ? 'justify-center' : ($outbound ? 'hs-inbox-message-row--sent' : 'hs-inbox-message-row--received'),
                 ]) data-message-id="{{ $message->id }}">
                 <div @class([
-                    'hs-inbox-message-bubble max-w-[78%] rounded-2xl px-3 py-1.5 shadow-sm',
-                    'rounded-es-md bg-[#DDF6F1] text-slate-900' => $outbound && ! $isInternalNote,
-                    'mx-auto border border-amber-200 bg-amber-50 text-slate-900' => $isInternalNote,
-                    'rounded-ee-md border border-slate-200 bg-white text-slate-800' => ! $outbound && ! $isInternalNote,
+                    'hs-inbox-message-bubble max-w-[80%] rounded-2xl px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
+                    'rounded-bl-xs bg-[#D8F6F0] text-slate-900 border border-[#BDEFE5]/70' => $outbound && ! $isInternalNote,
+                    'mx-auto border border-amber-300 bg-amber-50/90 text-amber-950 shadow-xs' => $isInternalNote,
+                    'rounded-br-xs border border-slate-200/80 bg-white text-slate-800' => ! $outbound && ! $isInternalNote,
                 ])>
                     @if($message->attachments && $message->attachments->isNotEmpty())
                         <div class="mb-2 space-y-2">
@@ -202,23 +274,26 @@
                                     <img
                                         src="{{ route('workspace.message-attachments.download', $attachment) }}"
                                         alt="{{ $attachment->original_name }}"
-                                        class="max-h-56 rounded-lg border border-slate-200 object-cover"
+                                        class="max-h-60 rounded-xl border border-slate-200/90 object-cover shadow-2xs"
                                         loading="lazy"
                                     />
                                 @elseif($attachmentReady && $attachment->kind === 'audio')
-                                    <audio controls preload="none" class="w-full max-w-xs">
-                                        <source src="{{ route('workspace.message-attachments.download', $attachment) }}" type="{{ $attachment->mime_type ?: 'audio/mpeg' }}">
-                                    </audio>
+                                    <div class="rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-2xs">
+                                        <audio controls preload="none" class="w-full max-w-xs">
+                                            <source src="{{ route('workspace.message-attachments.download', $attachment) }}" type="{{ $attachment->mime_type ?: 'audio/mpeg' }}">
+                                        </audio>
+                                    </div>
                                 @elseif($attachmentReady && $attachment->kind === 'video')
-                                    <video controls preload="metadata" class="max-h-56 w-full rounded-lg">
+                                    <video controls preload="metadata" class="max-h-60 w-full rounded-xl border border-slate-200 shadow-2xs">
                                         <source src="{{ route('workspace.message-attachments.download', $attachment) }}" type="{{ $attachment->mime_type ?: 'video/mp4' }}">
                                     </video>
                                 @elseif($attachmentReady)
                                     <a
                                         href="{{ route('workspace.message-attachments.download', $attachment) }}"
-                                        class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        class="inline-flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50"
                                     >
-                                        <span>{{ $attachment->original_name ?: 'ملف' }}</span>
+                                        <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                        <span>{{ $attachment->original_name ?: 'ملف مرفق' }}</span>
                                         @if($attachment->size_bytes)
                                             <span class="text-slate-400">({{ number_format($attachment->size_bytes / 1024, 1) }} KB)</span>
                                         @endif
@@ -229,35 +304,53 @@
                             @endforeach
                         </div>
                     @endif
+
                     @if($isInternalNote)
-                        <p class="mb-1 text-[11px] font-semibold text-amber-800">{{ $statusLabel }}</p>
+                        <div class="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-amber-800">
+                            <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            <span>{{ $statusLabel }}</span>
+                        </div>
                     @endif
-                    <p class="text-sm leading-snug">
+
+                    <div class="text-[13.5px] leading-relaxed whitespace-pre-wrap font-normal">
                         {{ $message->content ?: '—' }}
-                        <span class="hs-inbox-message-meta text-slate-500">
-                            <span>{{ $message->created_at?->format('h:i a') }}</span>
-                            @php
-                                $messageType = \App\Services\Workforce\WorkforceInboxAttribution::typeForMessage($message);
-                            @endphp
-                            @if($messageType === \App\Enums\WorkforceParticipantType::AiEmployee)
-                                <span>· AI Employee</span>
-                            @elseif($messageType === \App\Enums\WorkforceParticipantType::IndependentWorker)
-                                <span>· عامل مستقل{{ $message->workerEngagement?->workerProfile?->display_name ? ': '.$message->workerEngagement->workerProfile->display_name : '' }}</span>
-                            @elseif($messageType === \App\Enums\WorkforceParticipantType::CompanyStaff && $message->user)
-                                <span>· موظف الشركة: {{ $message->user->name }}</span>
-                            @endif
-                        </span>
-                    </p>
+                    </div>
+
+                    {{-- Message Metadata Footer --}}
+                    <div class="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-slate-400 select-none">
+                        <span>{{ $message->created_at?->format('h:i A') }}</span>
+                        @if($messageType === \App\Enums\WorkforceParticipantType::AiEmployee)
+                            <span class="inline-flex items-center gap-0.5 text-emerald-700 font-medium">
+                                <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                <span>AI</span>
+                            </span>
+                        @elseif($messageType === \App\Enums\WorkforceParticipantType::IndependentWorker)
+                            <span class="text-slate-600 font-medium">عامل مستقل{{ $message->workerEngagement?->workerProfile?->display_name ? ': '.$message->workerEngagement->workerProfile->display_name : '' }}</span>
+                        @elseif($messageType === \App\Enums\WorkforceParticipantType::CompanyStaff && $message->user)
+                            <span class="text-slate-600 font-medium">{{ $message->user->name }}</span>
+                        @endif
+
+                        @if($outbound && ! $isInternalNote)
+                            {{-- Double Checkmark Icon (WhatsApp Style) --}}
+                            <svg class="h-3.5 w-3.5 text-[#00BFAE]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5" />
+                            </svg>
+                        @endif
+                    </div>
                 </div>
             </div>
         @empty
-            <div class="rounded-xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
-                لا توجد رسائل في هذه المحادثة حتى الآن.
+            <div class="flex h-full items-center justify-center p-8">
+                <div class="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-2xs">
+                    <svg class="mx-auto mb-2 h-8 w-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                    لا توجد رسائل في هذه المحادثة حتى الآن.
+                </div>
             </div>
         @endforelse
     </div>
 
-    <div class="border-t border-slate-200 bg-white px-3 py-3 sm:px-4">
+    {{-- Message Input Bar --}}
+    <div class="border-t border-slate-200/90 bg-white px-3.5 py-3 sm:px-5">
         @if($inboxCanSend)
         <form id="inbox-compose-form" method="POST" action="{{ $inboxMessageAction }}" class="space-y-2">
             @csrf
@@ -266,18 +359,38 @@
             <input type="hidden" name="direction" value="outbound">
             <input type="hidden" name="message_type" value="text">
             <input type="hidden" name="metadata_json" value="{}">
-            <div class="flex items-end gap-2">
-                <textarea name="content" rows="1" class="hs-input resize-none" placeholder="اكتب رسالتك هنا..."></textarea>
-                <button class="hs-btn-primary h-11 w-11 shrink-0 rounded-xl p-0" aria-label="إرسال الرسالة">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 12 3 21l18-9L3 3l3 9Zm0 0h12" />
+            <div class="flex items-end gap-2.5">
+                <div class="relative min-w-0 flex-1 rounded-2xl border border-slate-200/90 bg-slate-50/60 transition focus-within:border-[#00BFAE] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#00BFAE]/15">
+                    <textarea
+                        name="content"
+                        rows="1"
+                        class="w-full resize-none border-0 bg-transparent px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-0 leading-normal"
+                        placeholder="اكتب رسالتك هنا... (اضغط Enter للإرسال)"
+                    ></textarea>
+                </div>
+                <button
+                    type="submit"
+                    class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#00BFAE] to-[#049a8c] text-white shadow-xs transition hover:brightness-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/40"
+                    aria-label="إرسال الرسالة"
+                    title="إرسال الرسالة"
+                >
+                    <svg class="h-5 w-5 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                     </svg>
                 </button>
             </div>
-            <p class="text-[11px] text-slate-400">المصدر الحالي: {{ $activeChannelChip['label'] }} · الإرسال من نفس المحادثة مباشرة.</p>
+            <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                <span class="inline-flex items-center gap-1.5">
+                    <span class="h-2 w-2 rounded-full {{ $activeChannelChip['dot'] ?? 'bg-slate-400' }}"></span>
+                    <span>المصدر: {{ $activeChannelChip['label'] }}</span>
+                </span>
+                <span class="hidden sm:inline">اضغط Enter للإرسال · Shift+Enter لسطر جديد</span>
+            </div>
         </form>
         @else
-            <p class="bg-amber-50 px-4 py-3 text-center text-sm text-amber-800">إرسال الرسائل غير مشمول في الصلاحيات الممنوحة لهذا الارتباط.</p>
+            <p class="rounded-xl bg-amber-50 px-4 py-3 text-center text-xs font-semibold text-amber-800 border border-amber-200/60">
+                إرسال الرسائل غير مشمول في الصلاحيات الممنوحة لهذا الارتباط.
+            </p>
         @endif
     </div>
 </section>
