@@ -56,6 +56,14 @@ class ConversationInboxService
                 'cus.last_read_message_id',
                 'cus.muted_at as user_muted_at',
                 'cus.archived_at as user_archived_at',
+                'unread_count' => Message::query()
+                    ->selectRaw('count(*)')
+                    ->whereColumn('messages.conversation_id', 'conversations.id')
+                    ->where('messages.direction', 'inbound')
+                    ->where(function (Builder $q): void {
+                        $q->whereNull('cus.last_read_message_id')
+                            ->orWhereColumn('messages.id', '>', 'cus.last_read_message_id');
+                    }),
             ]);
 
         $this->inboxActor->constrain($query, $user, $workspace);

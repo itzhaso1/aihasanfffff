@@ -47,7 +47,11 @@ class HasimProfileBubble extends StatelessWidget {
                   radius: radius,
                   backgroundColor: HasimTokens.mintLight,
                   backgroundImage: hasHttp
-                      ? CachedNetworkImageProvider(avatarPath!)
+                      ? CachedNetworkImageProvider(
+                          avatarPath!,
+                          maxHeight: 160,
+                          maxWidth: 160,
+                        )
                       : null,
                   child: hasHttp
                       ? null

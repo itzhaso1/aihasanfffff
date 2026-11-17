@@ -103,7 +103,11 @@ class _StoryAvatar extends StatelessWidget {
                     radius: 28,
                     backgroundColor: AppTheme.brand.withValues(alpha: 0.12),
                     backgroundImage: avatarPath != null && avatarPath!.startsWith('http')
-                        ? CachedNetworkImageProvider(avatarPath!)
+                        ? CachedNetworkImageProvider(
+                            avatarPath!,
+                            maxHeight: 160,
+                            maxWidth: 160,
+                          )
                         : null,
                     child: avatarPath == null || !avatarPath!.startsWith('http')
                         ? Text(

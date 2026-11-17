@@ -1298,6 +1298,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             imageUrl: url,
             httpHeaders: headers,
             fit: BoxFit.contain,
+            memCacheWidth: 1440,
           ),
         ),
       ),

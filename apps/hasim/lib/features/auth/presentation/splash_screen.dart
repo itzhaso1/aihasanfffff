@@ -108,13 +108,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       _scheduleNavigationCheck();
       return;
     }
-    unawaited(
-      Future.wait<void>([
+    try {
+      await Future.wait<void>([
         precacheImage(const AssetImage(hasimSplashAsset), context),
         precacheImage(const AssetImage(hasimSplashMarkAsset), context),
-      ]).timeout(const Duration(seconds: 5)).catchError((_) => <void>[]),
-    );
+      ]).timeout(const Duration(milliseconds: 1500));
+    } catch (_) {}
+    if (!mounted) return;
     await _intro.forward();
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
     _scheduleNavigationCheck();
   }
@@ -141,7 +144,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (auth.bootstrapping) return;
     if (!_isFlutterTest) {
       final elapsed = DateTime.now().difference(_openedAt);
-      const minShow = Duration(milliseconds: 220);
+      const minShow = Duration(milliseconds: 2600);
       if (elapsed < minShow) {
         _minHold?.cancel();
         _minHold = Timer(minShow - elapsed, () {

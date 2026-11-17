@@ -70,7 +70,7 @@ final class TrainingSource
     public function read(TrainingSourceFile $file): string
     {
         $this->assertInside($this->root(), $file->absolutePath, $file->relativePath);
-        if (! is_readable($file->absolutePath)) {
+        if (! is_readable($file->absolutePath) && ! file_exists($file->absolutePath)) {
             throw TrainingException::because(TrainingIssueCode::Unreadable, 'File cannot be read.', $file->relativePath);
         }
         $size = filesize($file->absolutePath);

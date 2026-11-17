@@ -340,7 +340,13 @@ class _Avatar extends StatelessWidget {
     return CircleAvatar(
       radius: radius,
       backgroundColor: AppTheme.brand.withValues(alpha: 0.12),
-      backgroundImage: hasHttp ? CachedNetworkImageProvider(avatarPath!) : null,
+      backgroundImage: hasHttp
+          ? CachedNetworkImageProvider(
+              avatarPath!,
+              maxHeight: 160,
+              maxWidth: 160,
+            )
+          : null,
       child: hasHttp
           ? null
           : Text(

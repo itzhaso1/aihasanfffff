@@ -55,6 +55,10 @@ final class InboxHumanHandoffService
      */
     public function repairAssistantHandoffClaim(Conversation $conversation): bool
     {
+        if ($conversation->handoffStatusEnum() !== ConversationHandoffStatus::None) {
+            return false;
+        }
+
         $fresh = $conversation->fresh() ?? $conversation;
         if ($fresh->handoffStatusEnum() !== ConversationHandoffStatus::None) {
             return false;

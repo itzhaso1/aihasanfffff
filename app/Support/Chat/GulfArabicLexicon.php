@@ -16,8 +16,14 @@ final class GulfArabicLexicon
         return [
             $this->intent('request', ['ابي', 'ابغى', 'ابغا', 'ابيك', 'ودي', 'ابيك تشوف', 'ابي اشوف', 'عطني', 'ورني', 'ابغى اشوف'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini', 'omani']),
             $this->intent('availability', ['عندكم', 'عندك', 'متوفر', 'موجود', 'فيه', 'في', 'عدكم'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini', 'omani']),
-            $this->intent('price', ['بكم', 'كم', 'كم سعره', 'كم سعرها', 'كم حقه', 'كم حقها', 'بكم حقه', 'شلون سعره', 'وش سعره', 'شنو سعره', 'شو سعره', 'سعره', 'سعرها', 'السعر', 'حقه', 'حقها'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini']),
-            $this->intent('followup', ['طيب', 'هذا', 'هذي', 'هذه', 'ذا', 'اي', 'ايه', 'ايوه', 'لا', 'تمام', 'اوكي'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini', 'omani']),
+            $this->intent('price', [
+                'بكم', 'كم', 'كم سعره', 'كم سعرها', 'كم حقه', 'كم حقها', 'بكم حقه', 'شلون سعره', 'وش سعره', 'شنو سعره', 'شو سعره', 'سعره', 'سعرها', 'السعر', 'حقه', 'حقها',
+                'اسعار', 'أسعار', 'اسعارها', 'أسعارها', 'اسعارهم', 'أسعارهم', 'الاسعار', 'الأسعار', 'تسعيرة', 'تسعير', 'سعرهن', 'اسعارهن', 'تكلفة', 'تكلفته', 'تكلف', 'قيمته', 'قيمة', 'كم سعر',
+            ], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini']),
+            $this->intent('followup', [
+                'طيب', 'هذا', 'هذي', 'هذه', 'ذا', 'اي', 'ايه', 'ايوه', 'لا', 'تمام', 'اوكي',
+                'شو عن', 'ماذا عن', 'وعن', 'وبالنسبة', 'طيب و', 'شو مع', 'وماذا عن',
+            ], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini', 'omani']),
             $this->intent('location', ['وين', 'وينكم', 'وين مكانكم', 'وينك'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini', 'omani']),
             $this->intent('manner', ['شلون', 'كيف', 'شلونك'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini']),
             $this->intent('time', ['متى', 'اي وقت', 'أي وقت'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini', 'omani']),

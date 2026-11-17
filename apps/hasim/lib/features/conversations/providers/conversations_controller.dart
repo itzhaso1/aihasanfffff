@@ -282,6 +282,17 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     state = state.copyWith(items: next);
   }
 
+  /// يغيّر حالة القراءة للمحادثة في القائمة.
+  void toggleUnreadInList(int conversationId) {
+    final items = state.items;
+    final index = items.indexWhere((c) => c.id == conversationId);
+    if (index < 0) return;
+    final current = items[index].unreadCount;
+    final next = [...items];
+    next[index] = next[index].copyWith(unreadCount: current > 0 ? 0 : 1);
+    state = state.copyWith(items: next);
+  }
+
   Future<void> setSearch(String search, {bool immediate = false}) async {
     state = state.copyWith(search: search);
     _searchDebounce?.cancel();

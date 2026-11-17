@@ -24,6 +24,9 @@ final class MobileInboxActor
     /** @var array<string, list<int>> */
     private array $readEngagementIds = [];
 
+    /** @var array<string, bool> */
+    private array $isMemberCache = [];
+
     public function __construct(
         private readonly WorkerInboxService $workerInbox,
         private readonly WorkerEngagementAuthorization $authorization,
@@ -32,7 +35,9 @@ final class MobileInboxActor
 
     public function isMember(User $user, Workspace $workspace): bool
     {
-        return $workspace->users()
+        $key = $user->id.':'.$workspace->id;
+
+        return $this->isMemberCache[$key] ??= $workspace->users()
             ->where('users.id', $user->id)
             ->wherePivot('status', 'active')
             ->exists();

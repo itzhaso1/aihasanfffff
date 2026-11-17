@@ -98,6 +98,8 @@ class _ImageAttachment extends StatelessWidget {
           httpHeaders: headers,
           height: 160,
           fit: BoxFit.cover,
+          memCacheWidth: 600,
+          memCacheHeight: 600,
           errorWidget: (_, _, _) => _MediaErrorPlaceholder(onRetry: onError),
         ),
       ),

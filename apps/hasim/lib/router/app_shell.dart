@@ -92,9 +92,20 @@ class AppRootShell extends ConsumerWidget {
     final showSpecialInboxSections = auth.canSeeSpecialInboxSections;
     final isInboxLocation =
         location == '/conversations' || location.startsWith('/conversations/');
-    final homeSnapshot = isIndependentWorker
-        ? null
-        : ref.watch(homeControllerProvider).snapshot;
+    final unreadConversationsBadge = isIndependentWorker
+        ? 0
+        : ref.watch(
+            homeControllerProvider.select(
+              (state) => state.snapshot?.unreadConversations ?? 0,
+            ),
+          );
+    final unreadEmailBadge = isIndependentWorker
+        ? 0
+        : ref.watch(
+            homeControllerProvider.select(
+              (state) => state.snapshot?.unreadEmail ?? 0,
+            ),
+          );
     // Worker access to Updates is checked by the screen against its engagement capability.
     final updatesBadge = isIndependentWorker
         ? 0
@@ -112,8 +123,8 @@ class AppRootShell extends ConsumerWidget {
     final items = hasimBottomNavItems(
       chatBadge: isIndependentWorker
           ? workerUnreadCount
-          : (homeSnapshot?.unreadConversations ?? 0),
-      emailBadge: homeSnapshot?.unreadEmail ?? 0,
+          : unreadConversationsBadge,
+      emailBadge: unreadEmailBadge,
       updatesBadge: updatesBadge,
     );
 

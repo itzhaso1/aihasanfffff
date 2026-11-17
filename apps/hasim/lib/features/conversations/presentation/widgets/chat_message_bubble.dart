@@ -94,9 +94,9 @@ class ChatMessageBubble extends ConsumerWidget {
 
     final l10n = AppLocalizations.of(context);
     final sharedBubble = ref.watch(chatBubbleColorControllerProvider);
-    final bubbleOverride = ref
-        .watch(conversationThemeProvider(message.conversationId))
-        .bubbleColorId;
+    final bubbleOverride = ref.watch(
+      conversationThemeProvider(message.conversationId).select((t) => t.bubbleColorId),
+    );
     final bubbleColorId = bubbleOverride ?? sharedBubble;
     final mine = message.isOutbound;
     final compact = HasimLayout.isCompact(context);
@@ -259,7 +259,7 @@ class _BubbleBody extends StatelessWidget {
   final VoidCallback? onOpenFailed;
 
   static const _textStyle = TextStyle(
-    height: 1.25,
+    height: 1.4,
     fontSize: 14.5,
     fontWeight: FontWeight.w500,
   );

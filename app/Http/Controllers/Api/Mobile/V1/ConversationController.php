@@ -55,7 +55,9 @@ class ConversationController extends MobileController
         ]);
 
         $items = collect($paginator->items())->map(function (Conversation $conversation) use ($user): Conversation {
-            $conversation->unread_count = $this->conversationInboxService->unreadCountForConversation($conversation, $user);
+            $conversation->unread_count = isset($conversation->unread_count)
+                ? (int) $conversation->unread_count
+                : $this->conversationInboxService->unreadCountForConversation($conversation, $user);
             $conversation->muted = $conversation->user_muted_at !== null;
             $conversation->archived = $conversation->user_archived_at !== null;
             $conversation->last_message = $conversation->messages->first();

@@ -345,6 +345,8 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
                       : CachedNetworkImage(
                           imageUrl: imageUrl,
                           fit: BoxFit.cover,
+                          memCacheWidth: 300,
+                          memCacheHeight: 300,
                           placeholder: (_, _) => const Center(
                             child: SizedBox(
                               width: 22,

@@ -326,7 +326,11 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
           children: [
             ColoredBox(color: bg),
             if (story.isImage && story.mediaUrl != null)
-              CachedNetworkImage(imageUrl: story.mediaUrl!, fit: BoxFit.contain)
+              CachedNetworkImage(
+                imageUrl: story.mediaUrl!,
+                fit: BoxFit.contain,
+                memCacheWidth: 1080,
+              )
             else if (story.isVideo && story.mediaUrl != null)
               video != null && video.value.isInitialized
                   ? FittedBox(
@@ -342,7 +346,13 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (story.thumbnailUrl != null)
-                            CachedNetworkImage(imageUrl: story.thumbnailUrl!, height: 220, fit: BoxFit.cover)
+                            CachedNetworkImage(
+                              imageUrl: story.thumbnailUrl!,
+                              height: 220,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 600,
+                              memCacheHeight: 400,
+                            )
                           else
                             const CircularProgressIndicator(color: Colors.white70),
                           const SizedBox(height: 12),

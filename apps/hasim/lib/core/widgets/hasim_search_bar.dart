@@ -87,6 +87,10 @@ class _HasimSearchBarState extends State<HasimSearchBar> {
         autofocus: widget.autofocus,
         textInputAction: TextInputAction.search,
         textAlign: TextAlign.start,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: HasimTokens.inkColor(context),
+          fontWeight: FontWeight.w600,
+        ),
         onChanged: widget.onChanged,
         onSubmitted: widget.onSubmitted,
         decoration: InputDecoration(

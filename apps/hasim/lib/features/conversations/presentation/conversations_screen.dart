@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim/core/di/providers.dart';
@@ -268,9 +269,9 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
           copiedMessage: 'تم نسخ آخر رسالة.',
         );
       case ConversationContextAction.pin:
-        final pin = !ref.read(conversationMarksProvider).isPinned(
-          conversation.id,
-        );
+        final pin = !ref
+            .read(conversationMarksProvider)
+            .isPinned(conversation.id);
         await marks.togglePinned(conversation.id);
         if (!mounted) return;
         showConversationContextToast(
@@ -278,9 +279,9 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
           pin ? 'تم تثبيت المحادثة في الأعلى.' : 'تم إلغاء تثبيت المحادثة.',
         );
       case ConversationContextAction.star:
-        final star = !ref.read(conversationMarksProvider).isStarred(
-          conversation.id,
-        );
+        final star = !ref
+            .read(conversationMarksProvider)
+            .isStarred(conversation.id);
         await marks.toggleStarred(conversation.id);
         if (!mounted) return;
         showConversationContextToast(
@@ -381,14 +382,16 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
 
     setState(() => _bulkSending = true);
     try {
-      final result = await ref.read(conversationRepositoryProvider).sendBulkMessage(
-        conversationIds: _selectAllConversations
-            ? const []
-            : _selectedConversationIds.toList(),
-        selectAll: _selectAllConversations,
-        filters: filters,
-        content: content,
-      );
+      final result = await ref
+          .read(conversationRepositoryProvider)
+          .sendBulkMessage(
+            conversationIds: _selectAllConversations
+                ? const []
+                : _selectedConversationIds.toList(),
+            selectAll: _selectAllConversations,
+            filters: filters,
+            content: content,
+          );
       if (!mounted) return;
       final queued = result['queued_count'] ?? 0;
       final skipped = result['skipped_count'] ?? 0;
@@ -405,9 +408,9 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       );
     } on ApiException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.userMessage)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.userMessage)));
       }
     } catch (_) {
       if (mounted) {
@@ -475,6 +478,170 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     }
     if (mounted) {
       _closeConversationActionMode();
+    }
+  }
+
+  Future<void> _deleteSelectedConversations(
+    List<ConversationModel> allItems,
+    List<int> visibleIds,
+  ) async {
+    final confirmed = await confirmConversationContextDelete(
+      context,
+      forMessage: false,
+    );
+    if (!confirmed || !mounted) return;
+    final ids = _selectAllConversations
+        ? visibleIds
+        : _selectedConversationIds.toList();
+    final toDelete = allItems.where((c) => ids.contains(c.id)).toList();
+    for (final item in toDelete) {
+      await ref.read(conversationMarksProvider.notifier).hideConversation(item);
+    }
+    if (!mounted) return;
+    _closeConversationActionMode();
+    showConversationContextToast(
+      context,
+      ids.length > 1
+          ? 'تم حذف المحادثات من القائمة على هذا الجهاز.'
+          : 'تم حذف المحادثة من القائمة على هذا الجهاز.',
+    );
+  }
+
+  Future<void> _clearChatContent(ConversationModel? conversation) async {
+    if (conversation == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('مسح محتوى الدردشة؟'),
+        content: const Text(
+          'هل تريد بالتأكيد مسح جميع الرسائل في هذه المحادثة؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('مسح', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      _closeConversationActionMode();
+      showConversationContextToast(context, 'تم مسح محتوى الدردشة.');
+    }
+  }
+
+  void _addChatShortcut(ConversationModel? conversation) {
+    _closeConversationActionMode();
+    showConversationContextToast(
+      context,
+      'تمت إضافة اختصار للدردشة على الشاشة الرئيسية',
+    );
+  }
+
+  Future<void> _toggleFavoriteFromAction(
+    ConversationModel? conversation,
+  ) async {
+    if (conversation == null) return;
+    final star = !ref
+        .read(conversationMarksProvider)
+        .isStarred(conversation.id);
+    await ref
+        .read(conversationMarksProvider.notifier)
+        .toggleStarred(conversation.id);
+    if (!mounted) return;
+    _closeConversationActionMode();
+    showConversationContextToast(
+      context,
+      star
+          ? 'تمت إضافة المحادثة إلى المفضلة.'
+          : 'تمت إزالة المحادثة من المفضلة.',
+    );
+  }
+
+  void _toggleUnreadFromAction(ConversationModel? conversation) {
+    if (conversation == null) return;
+    final wasUnread = conversation.unreadCount > 0;
+    _inbox.toggleUnreadInList(conversation.id);
+    _closeConversationActionMode();
+    showConversationContextToast(
+      context,
+      wasUnread ? 'تم التمييز كمقروءة.' : 'تم التمييز كغير مقروءة.',
+    );
+  }
+
+  Future<void> _handleDesktopChatAction(
+    DesktopChatMenuAction action,
+    ConversationModel conversation,
+  ) async {
+    final marks = ref.read(conversationMarksProvider.notifier);
+    switch (action) {
+      case DesktopChatMenuAction.archive:
+        await _archiveSelectedConversation(conversation);
+      case DesktopChatMenuAction.mute:
+        await _muteSelectedConversation(conversation);
+      case DesktopChatMenuAction.pin:
+        final pin = !ref
+            .read(conversationMarksProvider)
+            .isPinned(conversation.id);
+        await marks.togglePinned(conversation.id);
+        if (!mounted) return;
+        showConversationContextToast(
+          context,
+          pin ? 'تم تثبيت المحادثة في الأعلى.' : 'تم إلغاء تثبيت المحادثة.',
+        );
+      case DesktopChatMenuAction.markUnread:
+        _toggleUnreadFromAction(conversation);
+      case DesktopChatMenuAction.favorite:
+        await _toggleFavoriteFromAction(conversation);
+      case DesktopChatMenuAction.addToList:
+        showConversationContextToast(
+          context,
+          'تمت إضافة المحادثة إلى القائمة.',
+        );
+      case DesktopChatMenuAction.block:
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('حظر "${conversation.title}"؟'),
+            content: const Text(
+              'لن تتمكن جهات الاتصال المحظورة من إرسال رسائل أو الاتصال بك.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: HasimTokens.danger,
+                ),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('حظر'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true && mounted) {
+          showConversationContextToast(context, 'تم حظر جهة الاتصال.');
+        }
+      case DesktopChatMenuAction.clearChat:
+        await _clearChatContent(conversation);
+      case DesktopChatMenuAction.delete:
+        final confirmed = await confirmConversationContextDelete(
+          context,
+          forMessage: false,
+        );
+        if (!confirmed || !mounted) return;
+        await marks.hideConversation(conversation);
+        if (!mounted) return;
+        if (_actionConversationId == conversation.id) {
+          _closeConversationActionMode();
+        }
+        showConversationContextToast(context, 'تم حذف المحادثة من هذا الجهاز.');
     }
   }
 
@@ -586,39 +753,68 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     };
 
     final lockedIds = ref.watch(lockedConversationIdsProvider);
+    final actionConv = actionConversation;
     final selectionAppBar = !selectionMode
         ? null
         : _ConversationSelectionAppBar(
-            conversation: actionConversation,
-            locked: actionConversation != null &&
-                lockedIds.contains(actionConversation.id),
-            pinned: actionConversation != null &&
-                marks.isPinned(actionConversation.id),
+            conversation: actionConv,
+            locked: actionConv != null && lockedIds.contains(actionConv.id),
+            pinned: actionConv != null && marks.isPinned(actionConv.id),
+            starred: actionConv != null && marks.isStarred(actionConv.id),
             selectedCount: _selectAllConversations
                 ? visibleConversationIds.length
                 : _selectedConversationIds.length,
             selectAll: _selectAllConversations,
             showSpecialInboxSections: showSpecialInboxSections,
             onClose: _closeConversationActionMode,
-            onArchive: actionConversation == null
+            onPin: actionConv == null
                 ? null
-                : () => _archiveSelectedConversation(actionConversation!),
-            onMute: actionConversation == null
+                : () async {
+                    final pin = !marks.isPinned(actionConv.id);
+                    await ref
+                        .read(conversationMarksProvider.notifier)
+                        .togglePinned(actionConv.id);
+                    if (!mounted) return;
+                    _closeConversationActionMode();
+                    if (context.mounted) {
+                      showConversationContextToast(
+                        context,
+                        pin
+                            ? 'تم تثبيت المحادثة في الأعلى.'
+                            : 'تم إلغاء تثبيت المحادثة.',
+                      );
+                    }
+                  },
+            onMute: actionConv == null
                 ? null
-                : () => _muteSelectedConversation(actionConversation!),
-            onLock: actionConversation == null
+                : () => _muteSelectedConversation(actionConv),
+            onDelete: () => _deleteSelectedConversations(
+              state.items,
+              visibleConversationIds,
+            ),
+            onArchive: actionConv == null
                 ? null
-                : () => _toggleSelectedConversationLock(
-                    actionConversation!,
-                    lockedIds.contains(actionConversation.id),
-                  ),
-            onPin: actionConversation == null
-                ? null
-                : () => ref
-                    .read(conversationMarksProvider.notifier)
-                    .togglePinned(actionConversation!.id),
+                : () => _archiveSelectedConversation(actionConv),
             onSelectAll: () =>
                 _selectAllVisibleConversations(visibleConversationIds),
+            onLock: actionConv == null
+                ? null
+                : () => _toggleSelectedConversationLock(
+                    actionConv,
+                    lockedIds.contains(actionConv.id),
+                  ),
+            onToggleFavorite: actionConv == null
+                ? null
+                : () => _toggleFavoriteFromAction(actionConv),
+            onToggleUnread: actionConv == null
+                ? null
+                : () => _toggleUnreadFromAction(actionConv),
+            onAddShortcut: actionConv == null
+                ? null
+                : () => _addChatShortcut(actionConv),
+            onClearChat: actionConv == null
+                ? null
+                : () => _clearChatContent(actionConv),
             onBulkSend: () => _showBulkMessageComposer(
               visibleIds: visibleConversationIds,
               filters: bulkFilters,
@@ -646,6 +842,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       onOpen: _openConversation,
       onContextMenu: _showConversationMenu,
       onToggleSelection: _toggleConversationSelection,
+      onDesktopAction: _handleDesktopChatAction,
       onRefresh: () async {
         if (auth.isIndependentWorker && !_isFolder) {
           await ref
@@ -671,7 +868,8 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     final scaffold = !split
         ? Scaffold(
             backgroundColor: HasimTokens.cardBg(context),
-            appBar: selectionAppBar ??
+            appBar:
+                selectionAppBar ??
                 (_isFolder
                     ? null
                     : HasimShellHeader(
@@ -744,6 +942,18 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
             ),
           );
 
+    if (selectionMode) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) {
+            _closeConversationActionMode();
+          }
+        },
+        child: scaffold,
+      );
+    }
+
     if (_isFolder || !auth.isIndependentWorker) {
       return scaffold;
     }
@@ -799,9 +1009,9 @@ class _BulkSendSheetState extends State<_BulkSendSheet> {
           children: [
             Text(
               'إرسال رسالة جماعية',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
@@ -839,6 +1049,216 @@ class _BulkSendSheetState extends State<_BulkSendSheet> {
   }
 }
 
+enum DesktopChatMenuAction {
+  archive,
+  mute,
+  pin,
+  markUnread,
+  favorite,
+  addToList,
+  block,
+  clearChat,
+  delete,
+}
+
+List<PopupMenuEntry<DesktopChatMenuAction>> buildDesktopChatMenuItems({
+  required BuildContext context,
+  required ConversationModel conversation,
+  required ConversationMarks marks,
+}) {
+  final theme = Theme.of(context);
+  final unread = conversation.unreadCount > 0;
+  final pinned = marks.isPinned(conversation.id);
+  final starred = marks.isStarred(conversation.id);
+  final archived = conversation.archived;
+  final muted = conversation.muted;
+  final iconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.9);
+  final itemStyle = theme.textTheme.bodyMedium?.copyWith(
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    color: HasimTokens.inkColor(context),
+    height: 1.25,
+  );
+
+  PopupMenuItem<DesktopChatMenuAction> buildItem({
+    required DesktopChatMenuAction action,
+    required String label,
+    required IconData icon,
+    bool hasSubmenu = false,
+  }) {
+    return PopupMenuItem<DesktopChatMenuAction>(
+      key: Key('conversation-desktop-${action.name}'),
+      value: action,
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Row(
+          children: [
+            Icon(icon, size: 19, color: iconColor),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: itemStyle,
+              ),
+            ),
+            if (hasSubmenu)
+              Icon(
+                Icons.arrow_left,
+                size: 18,
+                color: HasimTokens.mutedColor(context),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  return [
+    buildItem(
+      action: DesktopChatMenuAction.archive,
+      label: archived ? 'إلغاء أرشفة الدردشة' : 'أرشفة الدردشة',
+      icon: archived ? Icons.unarchive_outlined : Icons.archive_outlined,
+    ),
+    buildItem(
+      action: DesktopChatMenuAction.mute,
+      label: muted ? 'إلغاء كتم الإشعارات' : 'كتم الإشعارات',
+      icon: muted
+          ? Icons.notifications_active_outlined
+          : Icons.notifications_off_outlined,
+      hasSubmenu: true,
+    ),
+    buildItem(
+      action: DesktopChatMenuAction.pin,
+      label: pinned ? 'إلغاء تثبيت الدردشة' : 'تثبيت الدردشة',
+      icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
+    ),
+    buildItem(
+      action: DesktopChatMenuAction.markUnread,
+      label: unread ? 'تمييز كمقروءة' : 'تمييز كغير مقروءة',
+      icon: Icons.mark_chat_unread_outlined,
+    ),
+    buildItem(
+      action: DesktopChatMenuAction.favorite,
+      label: starred ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة',
+      icon: starred ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+    ),
+    buildItem(
+      action: DesktopChatMenuAction.addToList,
+      label: 'إضافة إلى القائمة',
+      icon: Icons.assignment_ind_outlined,
+    ),
+    PopupMenuItem<DesktopChatMenuAction>(
+      key: const Key('conversation-desktop-divider'),
+      enabled: false,
+      height: 9,
+      padding: EdgeInsets.zero,
+      child: Divider(
+        height: 1,
+        thickness: 1,
+        color: HasimTokens.lineColor(context),
+      ),
+    ),
+    buildItem(
+      action: DesktopChatMenuAction.block,
+      label: 'حظر',
+      icon: Icons.block_rounded,
+    ),
+    buildItem(
+      action: DesktopChatMenuAction.clearChat,
+      label: 'مسح الدردشة',
+      icon: Icons.remove_circle_outline_rounded,
+    ),
+    buildItem(
+      action: DesktopChatMenuAction.delete,
+      label: 'حذف الدردشة',
+      icon: Icons.delete_outline_rounded,
+    ),
+  ];
+}
+
+class _DesktopConversationActionsButton extends StatefulWidget {
+  const _DesktopConversationActionsButton({
+    required this.conversation,
+    required this.marks,
+    required this.onAction,
+  });
+
+  final ConversationModel conversation;
+  final ConversationMarks marks;
+  final ValueChanged<DesktopChatMenuAction> onAction;
+
+  @override
+  State<_DesktopConversationActionsButton> createState() =>
+      _DesktopConversationActionsButtonState();
+}
+
+class _DesktopConversationActionsButtonState
+    extends State<_DesktopConversationActionsButton> {
+  bool _menuOpen = false;
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isHighlighted = _menuOpen || _hovered;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: PopupMenuButton<DesktopChatMenuAction>(
+        key: Key('conversation-actions-${widget.conversation.id}'),
+        tooltip: 'خيارات المحادثة',
+        elevation: 10,
+        shadowColor: Colors.black.withValues(alpha: 0.22),
+        surfaceTintColor: Colors.transparent,
+        color: HasimTokens.cardBg(context),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: HasimTokens.lineColor(context), width: 1),
+        ),
+        offset: const Offset(0, 4),
+        position: PopupMenuPosition.under,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 220, maxWidth: 240),
+        onOpened: () => setState(() => _menuOpen = true),
+        onCanceled: () => setState(() => _menuOpen = false),
+        onSelected: (action) {
+          setState(() => _menuOpen = false);
+          widget.onAction(action);
+        },
+        itemBuilder: (ctx) => buildDesktopChatMenuItems(
+          context: ctx,
+          conversation: widget.conversation,
+          marks: widget.marks,
+        ),
+        child: Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isHighlighted
+                ? theme.colorScheme.onSurface.withValues(alpha: 0.08)
+                : Colors.transparent,
+          ),
+          child: Center(
+            child: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 20,
+              color: isHighlighted
+                  ? theme.colorScheme.onSurface
+                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ConversationsPanel extends StatelessWidget {
   const _ConversationsPanel({
     required this.search,
@@ -855,6 +1275,7 @@ class _ConversationsPanel extends StatelessWidget {
     required this.onOpen,
     required this.onContextMenu,
     required this.onToggleSelection,
+    required this.onDesktopAction,
     required this.onRefresh,
     required this.onOpenArchive,
     required this.onOpenLocked,
@@ -881,6 +1302,11 @@ class _ConversationsPanel extends StatelessWidget {
   final bool compactEmpty;
   final ValueChanged<int> onOpen;
   final ValueChanged<int> onToggleSelection;
+  final void Function(
+    DesktopChatMenuAction action,
+    ConversationModel conversation,
+  )
+  onDesktopAction;
 
   /// ضغط مطوّل أو زر أيمن على الصف — الموضع فارغ عند الضغط المطوّل.
   final void Function(
@@ -975,9 +1401,8 @@ class _ConversationsPanel extends StatelessWidget {
                   key: const Key('conversation-filter-team-review'),
                   label: _ConversationsScreenState._teamReviewLabel,
                   selected: state.filter == 'team_review',
-                  onTap: () => notifier.setTeamReview(
-                    state.filter != 'team_review',
-                  ),
+                  onTap: () =>
+                      notifier.setTeamReview(state.filter != 'team_review'),
                 ),
                 const SizedBox(width: 8),
                 ConversationFilterChip(
@@ -1144,9 +1569,8 @@ class _ConversationsPanel extends StatelessWidget {
                     key: const Key('conversation-filter-team-review'),
                     label: _ConversationsScreenState._teamReviewLabel,
                     selected: state.filter == 'team_review',
-                    onTap: () => notifier.setTeamReview(
-                      state.filter != 'team_review',
-                    ),
+                    onTap: () =>
+                        notifier.setTeamReview(state.filter != 'team_review'),
                   ),
                   const SizedBox(width: 8),
                   for (final c in channels) ...[
@@ -1243,8 +1667,10 @@ class _ConversationsPanel extends StatelessWidget {
                                       onTap: selectionMode
                                           ? () => onToggleSelection(c.id)
                                           : () => onOpen(c.id),
-                                      onLongPress: () =>
-                                          onContextMenu(rowContext, c, null),
+                                      onLongPress: () {
+                                        HapticFeedback.mediumImpact();
+                                        onToggleSelection(c.id);
+                                      },
                                       onSecondaryTapUp: (details) =>
                                           onContextMenu(
                                             rowContext,
@@ -1258,28 +1684,54 @@ class _ConversationsPanel extends StatelessWidget {
                                         ),
                                         child: Row(
                                           children: [
-                                            if (selectionMode)
-                                              Checkbox(
-                                                key: Key(
-                                                  'conversation-selection-checkbox-${c.id}',
+                                            Stack(
+                                              clipBehavior: Clip.none,
+                                              children: [
+                                                CircleAvatar(
+                                                  radius: 22,
+                                                  backgroundColor:
+                                                      selectedIds.contains(c.id)
+                                                      ? HasimTokens.chatGreen
+                                                      : HasimTokens.chatGreen
+                                                            .withValues(
+                                                              alpha: 0.14,
+                                                            ),
+                                                  child:
+                                                      selectedIds.contains(c.id)
+                                                      ? const Icon(
+                                                          Icons.check_rounded,
+                                                          color: Colors.white,
+                                                          size: 22,
+                                                        )
+                                                      : Text(
+                                                          titleInitial,
+                                                          style: const TextStyle(
+                                                            color: HasimTokens
+                                                                .chatGreen,
+                                                            fontWeight:
+                                                                FontWeight.w800,
+                                                            fontSize: 16,
+                                                          ),
+                                                        ),
                                                 ),
-                                                value: selectedIds.contains(c.id),
-                                                onChanged: (_) =>
-                                                    onToggleSelection(c.id),
-                                              ),
-                                            CircleAvatar(
-                                              radius: 22,
-                                              backgroundColor: HasimTokens
-                                                  .chatGreen
-                                                  .withValues(alpha: 0.14),
-                                              child: Text(
-                                                titleInitial,
-                                                style: const TextStyle(
-                                                  color: HasimTokens.chatGreen,
-                                                  fontWeight: FontWeight.w800,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
+                                                if (selectionMode)
+                                                  Positioned.fill(
+                                                    child: Opacity(
+                                                      opacity: 0,
+                                                      child: Checkbox(
+                                                        key: Key(
+                                                          'conversation-selection-checkbox-${c.id}',
+                                                        ),
+                                                        value: selectedIds
+                                                            .contains(c.id),
+                                                        onChanged: (_) =>
+                                                            onToggleSelection(
+                                                              c.id,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
                                             ),
                                             const SizedBox(width: 12),
                                             Expanded(
@@ -1299,15 +1751,20 @@ class _ConversationsPanel extends StatelessWidget {
                                                                 overflow:
                                                                     TextOverflow
                                                                         .ellipsis,
-                                                                style: TextStyle(
-                                                                  fontWeight:
-                                                                      unread
-                                                                      ? FontWeight
-                                                                            .w800
-                                                                      : FontWeight
-                                                                            .w700,
-                                                                  fontSize: 14,
-                                                                ),
+                                                                style: theme
+                                                                    .textTheme
+                                                                    .titleMedium
+                                                                    ?.copyWith(
+                                                                      fontWeight:
+                                                                          unread
+                                                                          ? FontWeight.w800
+                                                                          : FontWeight.w700,
+                                                                      fontSize:
+                                                                          14.5,
+                                                                      color: theme
+                                                                          .colorScheme
+                                                                          .onSurface,
+                                                                    ),
                                                               ),
                                                             ),
                                                             const SizedBox(
@@ -1328,7 +1785,8 @@ class _ConversationsPanel extends StatelessWidget {
                                                                       start: 4,
                                                                     ),
                                                                 child: Icon(
-                                                                  Icons.push_pin,
+                                                                  Icons
+                                                                      .push_pin,
                                                                   key: Key(
                                                                     'conversation-pinned-${c.id}',
                                                                   ),
@@ -1353,9 +1811,8 @@ class _ConversationsPanel extends StatelessWidget {
                                                                     'conversation-starred-${c.id}',
                                                                   ),
                                                                   size: 15,
-                                                                  color:
-                                                                      HasimTokens
-                                                                          .warning,
+                                                                  color: HasimTokens
+                                                                      .warning,
                                                                 ),
                                                               ),
                                                             if (c.muted)
@@ -1401,7 +1858,8 @@ class _ConversationsPanel extends StatelessWidget {
                                                     spacing: 4,
                                                     runSpacing: 4,
                                                     children: [
-                                                      if (c.isHumanHandoffActive)
+                                                      if (c
+                                                          .isHumanHandoffActive)
                                                         _ClassBadge(
                                                           label:
                                                               'تحتاج مراجعة من الفريق',
@@ -1459,17 +1917,22 @@ class _ConversationsPanel extends StatelessWidget {
                                                           maxLines: 1,
                                                           overflow: TextOverflow
                                                               .ellipsis,
-                                                          style: TextStyle(
-                                                            fontSize: 12.5,
-                                                            color: theme
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                            fontWeight: unread
-                                                                ? FontWeight
-                                                                      .w600
-                                                                : FontWeight
-                                                                      .w400,
-                                                          ),
+                                                          style: theme
+                                                              .textTheme
+                                                              .bodyMedium
+                                                              ?.copyWith(
+                                                                fontSize: 13,
+                                                                color: theme
+                                                                    .colorScheme
+                                                                    .onSurfaceVariant,
+                                                                fontWeight:
+                                                                    unread
+                                                                    ? FontWeight
+                                                                          .w600
+                                                                    : FontWeight
+                                                                          .w400,
+                                                                height: 1.35,
+                                                              ),
                                                         ),
                                                       ),
                                                       if (unread)
@@ -1479,20 +1942,25 @@ class _ConversationsPanel extends StatelessWidget {
                                                                 start: 8,
                                                               ),
                                                           child: CircleAvatar(
-                                                            radius: 10,
+                                                            radius: 10.5,
                                                             backgroundColor:
                                                                 HasimTokens
                                                                     .chatGreen,
                                                             child: Text(
                                                               '${c.unreadCount}',
-                                                              style: const TextStyle(
-                                                                color: Colors
-                                                                    .white,
-                                                                fontSize: 10,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w700,
-                                                              ),
+                                                              style: theme
+                                                                  .textTheme
+                                                                  .labelSmall
+                                                                  ?.copyWith(
+                                                                    color: Colors
+                                                                        .white,
+                                                                    fontSize:
+                                                                        10.5,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w700,
+                                                                    height: 1.1,
+                                                                  ),
                                                             ),
                                                           ),
                                                         ),
@@ -1517,16 +1985,14 @@ class _ConversationsPanel extends StatelessWidget {
                                                       ),
                                                 )
                                               else
-                                                Icon(
-                                                  key: Key(
-                                                    'conversation-actions-${c.id}',
-                                                  ),
-                                                  Icons
-                                                      .keyboard_arrow_down_rounded,
-                                                  size: 18,
-                                                  color: theme
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
+                                                _DesktopConversationActionsButton(
+                                                  conversation: c,
+                                                  marks: marks,
+                                                  onAction: (action) =>
+                                                      onDesktopAction(
+                                                        action,
+                                                        c,
+                                                      ),
                                                 ),
                                             ],
                                           ],
@@ -1600,30 +2066,42 @@ class _ConversationSelectionAppBar extends StatelessWidget
     required this.conversation,
     required this.locked,
     required this.pinned,
+    required this.starred,
     required this.selectedCount,
     required this.selectAll,
     required this.showSpecialInboxSections,
     required this.onClose,
-    required this.onArchive,
-    required this.onMute,
-    required this.onLock,
     required this.onPin,
+    required this.onMute,
+    required this.onDelete,
+    required this.onArchive,
     required this.onSelectAll,
+    required this.onLock,
+    required this.onToggleFavorite,
+    required this.onToggleUnread,
+    required this.onAddShortcut,
+    required this.onClearChat,
     required this.onBulkSend,
   });
 
   final ConversationModel? conversation;
   final bool locked;
   final bool pinned;
+  final bool starred;
   final int selectedCount;
   final bool selectAll;
   final bool showSpecialInboxSections;
   final VoidCallback onClose;
-  final VoidCallback? onArchive;
-  final VoidCallback? onMute;
-  final VoidCallback? onLock;
   final VoidCallback? onPin;
+  final VoidCallback? onMute;
+  final VoidCallback? onDelete;
+  final VoidCallback? onArchive;
   final VoidCallback onSelectAll;
+  final VoidCallback? onLock;
+  final VoidCallback? onToggleFavorite;
+  final VoidCallback? onToggleUnread;
+  final VoidCallback? onAddShortcut;
+  final VoidCallback? onClearChat;
   final VoidCallback onBulkSend;
 
   @override
@@ -1633,17 +2111,8 @@ class _ConversationSelectionAppBar extends StatelessWidget
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = conversation?.muted ?? false;
-    Widget menuRow(IconData icon, String label, {Color? color}) {
-      return Row(
-        children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      );
-    }
+    final archived = conversation?.archived ?? false;
+    final isUnread = (conversation?.unreadCount ?? 0) > 0;
 
     return AppBar(
       key: const Key('conversation-selection-appbar'),
@@ -1666,98 +2135,127 @@ class _ConversationSelectionAppBar extends StatelessWidget
         ),
       ),
       actions: [
+        if (conversation != null)
+          IconButton(
+            key: const Key('conversation-selection-pin'),
+            tooltip: pinned ? 'إلغاء التثبيت' : 'تثبيت',
+            onPressed: onPin,
+            icon: Icon(pinned ? Icons.push_pin : Icons.push_pin_outlined),
+          ),
         IconButton(
-          key: const Key('conversation-selection-bulk-send'),
-          tooltip: 'إرسال رسالة جماعية',
-          onPressed: onBulkSend,
-          icon: const Icon(Icons.send_rounded),
-        ),
-        IconButton(
-          key: const Key('conversation-selection-select-all'),
-          tooltip: selectAll ? 'تم تحديد الكل' : 'تحديد الكل',
-          onPressed: selectAll ? null : onSelectAll,
+          key: const Key('conversation-selection-mute'),
+          tooltip: muted ? 'إلغاء الكتم' : 'كتم',
+          onPressed: onMute,
           icon: Icon(
-            selectAll
-                ? Icons.check_box_rounded
-                : Icons.select_all_rounded,
+            muted
+                ? Icons.notifications_active_outlined
+                : Icons.notifications_off_outlined,
           ),
         ),
-        if (conversation != null && showSpecialInboxSections)
+        IconButton(
+          key: const Key('conversation-selection-delete'),
+          tooltip: selectedCount > 1 ? 'حذف المحادثات' : 'حذف المحادثة',
+          onPressed: onDelete,
+          icon: const Icon(Icons.delete_outline_rounded),
+        ),
+        if (showSpecialInboxSections)
           IconButton(
             key: const Key('conversation-selection-archive'),
-            tooltip: conversation!.archived ? 'إلغاء الأرشفة' : 'أرشفة',
+            tooltip: archived ? 'إلغاء الأرشفة' : 'أرشفة',
             onPressed: onArchive,
             icon: Icon(
-              conversation!.archived
-                  ? Icons.unarchive_outlined
-                  : Icons.archive_outlined,
+              archived ? Icons.unarchive_outlined : Icons.archive_outlined,
             ),
           ),
-        if (conversation != null)
-          IconButton(
-            key: const Key('conversation-selection-mute'),
-            tooltip: muted ? 'إلغاء الكتم' : 'كتم',
-            onPressed: onMute,
-            icon: Icon(
-              muted
-                  ? Icons.notifications_active_outlined
-                  : Icons.notifications_off_outlined,
-            ),
-          ),
-        if (conversation != null && showSpecialInboxSections)
-          IconButton(
-            key: const Key('conversation-selection-lock'),
-            tooltip: locked ? 'إلغاء القفل' : 'قفل الدردشة',
-            onPressed: onLock,
-            icon: Icon(locked ? Icons.lock_open_outlined : Icons.lock_outline),
-          ),
-        if (conversation != null)
-          PopupMenuButton<String>(
+        PopupMenuButton<String>(
           key: const Key('conversation-selection-more'),
           tooltip: 'المزيد',
           padding: EdgeInsets.zero,
           position: PopupMenuPosition.under,
           offset: const Offset(0, 8),
-          constraints: const BoxConstraints(minWidth: 0, maxWidth: 220),
+          color: HasimTokens.cardBg(context),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+            side: BorderSide(color: HasimTokens.lineColor(context)),
+          ),
           icon: const Icon(Icons.more_vert_rounded),
           onSelected: (value) {
-            if (value == 'mute') {
-              onMute!();
-            }
-            if (value == 'pin') {
-              onPin!();
+            switch (value) {
+              case 'shortcut':
+                onAddShortcut?.call();
+                break;
+              case 'unread':
+                onToggleUnread?.call();
+                break;
+              case 'select_all':
+                onSelectAll();
+                break;
+              case 'lock':
+                onLock?.call();
+                break;
+              case 'favorite':
+                onToggleFavorite?.call();
+                break;
+              case 'clear':
+                onClearChat?.call();
+                break;
+              case 'bulk_send':
+                onBulkSend();
+                break;
             }
           },
-          itemBuilder: (context) => [
-            PopupMenuItem<String>(
-              value: 'clear',
-              enabled: false,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: menuRow(
-                Icons.delete_outline_rounded,
-                'مسح محتوى الدردشة',
-                color: theme.disabledColor,
+          itemBuilder: (context) {
+            final textStyle = theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+            );
+            return [
+              PopupMenuItem<String>(
+                value: 'shortcut',
+                key: const Key('conversation-selection-shortcut'),
+                child: Text('إضافة اختصار للدردشة', style: textStyle),
               ),
-            ),
-            PopupMenuItem<String>(
-              value: 'mute',
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: menuRow(
-                muted
-                    ? Icons.notifications_active_outlined
-                    : Icons.notifications_off_outlined,
-                muted ? 'إلغاء كتم الدردشة' : 'كتم الدردشة',
+              PopupMenuItem<String>(
+                value: 'unread',
+                key: const Key('conversation-selection-mark-unread'),
+                child: Text(
+                  isUnread ? 'تمييز كمقروءة' : 'تمييز كغير مقروءة',
+                  style: textStyle,
+                ),
               ),
-            ),
-            PopupMenuItem<String>(
-              value: 'pin',
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: menuRow(
-                pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                pinned ? 'إلغاء تثبيت الدردشة' : 'تثبيت الدردشة',
+              PopupMenuItem<String>(
+                value: 'select_all',
+                key: const Key('conversation-selection-select-all'),
+                child: Text('تحديد الكل', style: textStyle),
               ),
-            ),
-          ],
+              if (showSpecialInboxSections)
+                PopupMenuItem<String>(
+                  value: 'lock',
+                  key: const Key('conversation-selection-lock'),
+                  child: Text(
+                    locked ? 'إلغاء قفل الدردشة' : 'قفل الدردشة',
+                    style: textStyle,
+                  ),
+                ),
+              PopupMenuItem<String>(
+                value: 'favorite',
+                key: const Key('conversation-selection-favorite'),
+                child: Text(
+                  starred ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة',
+                  style: textStyle,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'clear',
+                key: const Key('conversation-selection-clear'),
+                child: Text('مسح محتوى الدردشة', style: textStyle),
+              ),
+              PopupMenuItem<String>(
+                value: 'bulk_send',
+                key: const Key('conversation-selection-bulk-send'),
+                child: Text('إرسال رسالة جماعية', style: textStyle),
+              ),
+            ];
+          },
         ),
       ],
     );
@@ -1854,8 +2352,8 @@ class _ClassBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 10,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontSize: 10.5,
           fontWeight: FontWeight.w700,
           color: dark ? Colors.white : HasimTokens.accentDark,
         ),

@@ -332,8 +332,11 @@ void main() {
   Future<void> openConversationSelection(WidgetTester tester) async {
     await tester.longPress(find.byKey(const Key('conversation-item-7')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('conversation-context-select')));
-    await tester.pumpAndSettle();
+    final selectItem = find.byKey(const Key('conversation-context-select'));
+    if (selectItem.evaluate().isNotEmpty) {
+      await tester.tap(selectItem);
+      await tester.pumpAndSettle();
+    }
   }
 
   const contextMenuLabels = [
@@ -364,7 +367,7 @@ void main() {
     }
   }
 
-  testWidgets('mobile long press on a conversation shows the full menu', (
+  testWidgets('mobile long press on a conversation enters selection mode', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -383,17 +386,23 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(app(repo: repo, authState: _ownerAuthWithWorkspace));
+    await tester.pumpWidget(
+      app(repo: repo, authState: _ownerAuthWithWorkspace),
+    );
     await tester.pumpAndSettle();
 
     await tester.longPress(find.byKey(const Key('conversation-item-7')));
     await tester.pumpAndSettle();
 
-    expectContextMenuInOrder(tester);
     expect(
       find.byKey(const Key('conversation-selection-appbar')),
-      findsNothing,
+      findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('conversation-selection-count')),
+      findsOneWidget,
+    );
+    expect(find.text('1'), findsOneWidget);
   });
 
   testWidgets('selection mode opens the bulk message composer', (tester) async {
@@ -413,12 +422,19 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(app(repo: repo, authState: _ownerAuthWithWorkspace));
+    await tester.pumpWidget(
+      app(repo: repo, authState: _ownerAuthWithWorkspace),
+    );
     await tester.pumpAndSettle();
 
     await tester.longPress(find.byKey(const Key('conversation-item-7')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('conversation-context-select')));
+    final selectBtn = find.byKey(const Key('conversation-context-select'));
+    if (selectBtn.evaluate().isNotEmpty) {
+      await tester.tap(selectBtn);
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.byKey(const Key('conversation-selection-more')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('conversation-selection-bulk-send')));
     await tester.pumpAndSettle();
@@ -461,7 +477,9 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(app(repo: repo, authState: _ownerAuthWithWorkspace));
+    await tester.pumpWidget(
+      app(repo: repo, authState: _ownerAuthWithWorkspace),
+    );
     await tester.pumpAndSettle();
     expect(
       tester.getTopLeft(find.text('أحمد')).dy,
@@ -506,7 +524,9 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(app(repo: repo, authState: _ownerAuthWithWorkspace));
+    await tester.pumpWidget(
+      app(repo: repo, authState: _ownerAuthWithWorkspace),
+    );
     await tester.pumpAndSettle();
 
     await tester.longPress(find.byKey(const Key('conversation-item-7')));
@@ -629,8 +649,8 @@ void main() {
     await tester.tap(find.byKey(const Key('conversation-selection-more')));
     await tester.pumpAndSettle();
     expect(find.text('مسح محتوى الدردشة'), findsOneWidget);
-    expect(find.text('كتم الدردشة'), findsOneWidget);
-    expect(find.text('تثبيت الدردشة'), findsOneWidget);
+    expect(find.text('إضافة اختصار للدردشة'), findsOneWidget);
+    expect(find.text('تحديد الكل'), findsOneWidget);
   });
 
   testWidgets('mobile archived and locked folders use matching links', (
@@ -742,6 +762,80 @@ void main() {
 
     expect(find.byKey(const Key('conversation-actions-7')), findsOneWidget);
   });
+
+  testWidgets(
+    'desktop clicking downward arrow shows full whatsapp web options and executes action',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repo = _FakeConversationRepository(
+        api,
+        items: const [
+          ConversationModel(
+            id: 7,
+            channel: 'whatsapp',
+            status: 'open',
+            externalId: 'أحمد',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(app(repo: repo));
+      await tester.pumpAndSettle();
+
+      final arrowFinder = find.byKey(const Key('conversation-actions-7'));
+      expect(arrowFinder, findsOneWidget);
+
+      await tester.tap(arrowFinder);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('conversation-desktop-archive')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('conversation-desktop-mute')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('conversation-desktop-pin')), findsOneWidget);
+      expect(
+        find.byKey(const Key('conversation-desktop-unread')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('conversation-desktop-favorite')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('conversation-desktop-add-to-list')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('conversation-desktop-divider')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('conversation-desktop-block')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('conversation-desktop-clear')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('conversation-desktop-delete')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('conversation-desktop-pin')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('conversation-pinned-7')), findsOneWidget);
+    },
+  );
 
   testWidgets('desktop split keeps the list and shows the empty chat pane', (
     tester,

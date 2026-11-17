@@ -65,6 +65,9 @@ class AppTheme {
       Color? override,
     }) {
       return GoogleFonts.cairo(
+        textStyle: const TextStyle(
+          fontFamilyFallback: ['Segoe UI', 'Arial', 'Tahoma', 'sans-serif'],
+        ),
         color: override ?? color,
         fontSize: size,
         fontWeight: weight,
@@ -108,10 +111,15 @@ class AppTheme {
       color: HasimTokens.text,
       muted: HasimTokens.muted,
     );
+    final cairoFamily = GoogleFonts.cairo().fontFamily;
+    const cairoFallback = ['Cairo', 'Segoe UI', 'Arial', 'Tahoma', 'sans-serif'];
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
       colorScheme: scheme,
+      fontFamily: cairoFamily,
+      fontFamilyFallback: cairoFallback,
       textTheme: textTheme,
       primaryTextTheme: textTheme,
       iconTheme: const IconThemeData(color: HasimTokens.muted, size: 22),
@@ -134,7 +142,10 @@ class AppTheme {
           systemNavigationBarColor: HasimTokens.card,
           systemNavigationBarIconBrightness: Brightness.dark,
         ),
-        titleTextStyle: textTheme.titleLarge?.copyWith(color: HasimTokens.text),
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          color: HasimTokens.text,
+          fontWeight: FontWeight.w700,
+        ),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -143,16 +154,42 @@ class AppTheme {
         shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(HasimTokens.radiusCard),
+          side: const BorderSide(color: HasimTokens.line, width: 1),
         ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: HasimTokens.card,
         surfaceTintColor: Colors.transparent,
         insetPadding: HasimLayout.dialogInset,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusCard),
+        ),
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          color: HasimTokens.text,
+          fontWeight: FontWeight.w700,
+        ),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: HasimTokens.text,
+        ),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: HasimTokens.card,
         surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+        ),
+        backgroundColor: HasimTokens.ink,
+        contentTextStyle: GoogleFonts.cairo(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+          fontSize: 13.5,
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -160,10 +197,12 @@ class AppTheme {
         labelStyle: GoogleFonts.cairo(
           fontWeight: FontWeight.w600,
           fontSize: 14,
+          color: HasimTokens.muted,
         ),
         hintStyle: GoogleFonts.cairo(
           color: HasimTokens.mutedSoft,
           fontSize: 14,
+          fontWeight: FontWeight.w500,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
@@ -177,6 +216,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
           borderSide: const BorderSide(color: HasimTokens.primary, width: 1.4),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+          borderSide: const BorderSide(color: HasimTokens.danger),
+        ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
@@ -188,6 +231,10 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size(64, 48),
           elevation: 0,
+          textStyle: GoogleFonts.cairo(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(HasimTokens.radiusButton),
           ),
@@ -198,6 +245,10 @@ class AppTheme {
           foregroundColor: HasimTokens.primary,
           backgroundColor: Colors.white,
           side: const BorderSide(color: HasimTokens.primary),
+          textStyle: GoogleFonts.cairo(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(HasimTokens.radiusButton),
           ),
@@ -207,7 +258,7 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: HasimTokens.primary,
-          textStyle: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 14),
         ),
       ),
       chipTheme: ChipThemeData(
@@ -215,6 +266,7 @@ class AppTheme {
         labelStyle: GoogleFonts.cairo(
           color: HasimTokens.text,
           fontWeight: FontWeight.w600,
+          fontSize: 13,
         ),
         side: const BorderSide(color: HasimTokens.line),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -226,6 +278,10 @@ class AppTheme {
           color: HasimTokens.text,
           fontSize: 14,
           fontWeight: FontWeight.w600,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+          side: const BorderSide(color: HasimTokens.line),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
@@ -264,10 +320,15 @@ class AppTheme {
       color: Colors.white,
       muted: const Color(0xFF9E9E9E),
     );
+    final cairoFamily = GoogleFonts.cairo().fontFamily;
+    const cairoFallback = ['Cairo', 'Segoe UI', 'Arial', 'Tahoma', 'sans-serif'];
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: scheme,
+      fontFamily: cairoFamily,
+      fontFamilyFallback: cairoFallback,
       textTheme: textTheme,
       primaryTextTheme: textTheme,
       scaffoldBackgroundColor: HasimTokens.darkPage,
@@ -289,7 +350,10 @@ class AppTheme {
           systemNavigationBarColor: HasimTokens.darkCard,
           systemNavigationBarIconBrightness: Brightness.light,
         ),
-        titleTextStyle: textTheme.titleLarge?.copyWith(color: Colors.white),
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -298,23 +362,74 @@ class AppTheme {
         shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(HasimTokens.radiusCard),
+          side: const BorderSide(color: HasimTokens.darkLine, width: 1),
         ),
       ),
-      dialogTheme: const DialogThemeData(
+      dialogTheme: DialogThemeData(
         backgroundColor: HasimTokens.darkCard,
         surfaceTintColor: Colors.transparent,
         insetPadding: HasimLayout.dialogInset,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusCard),
+        ),
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: Colors.white,
+        ),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: HasimTokens.darkCard,
         surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+        ),
+        backgroundColor: HasimTokens.darkCard,
+        contentTextStyle: GoogleFonts.cairo(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+          fontSize: 13.5,
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: HasimTokens.darkCard,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        labelStyle: GoogleFonts.cairo(
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+          color: const Color(0xFF9E9E9E),
+        ),
+        hintStyle: GoogleFonts.cairo(
+          color: const Color(0xFF6E6E6E),
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+          borderSide: const BorderSide(color: HasimTokens.darkLine),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+          borderSide: const BorderSide(color: HasimTokens.darkLine),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+          borderSide: const BorderSide(color: HasimTokens.primary, width: 1.4),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+          borderSide: const BorderSide(color: HasimTokens.danger),
+        ),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
+          horizontal: 16,
           vertical: 14,
         ),
       ),
@@ -323,15 +438,34 @@ class AppTheme {
           backgroundColor: HasimTokens.primary,
           foregroundColor: Colors.white,
           minimumSize: const Size(64, 48),
+          textStyle: GoogleFonts.cairo(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(HasimTokens.radiusButton),
           ),
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: HasimTokens.primary,
+          backgroundColor: Colors.transparent,
+          side: const BorderSide(color: HasimTokens.primary),
+          textStyle: GoogleFonts.cairo(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(HasimTokens.radiusButton),
+          ),
+          minimumSize: const Size(64, 48),
+        ),
+      ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: HasimTokens.chatGreen,
-          textStyle: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 14),
         ),
       ),
       iconTheme: const IconThemeData(color: Colors.white),
@@ -340,6 +474,7 @@ class AppTheme {
         labelStyle: GoogleFonts.cairo(
           color: Colors.white,
           fontWeight: FontWeight.w600,
+          fontSize: 13,
         ),
         side: const BorderSide(color: HasimTokens.darkLine),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -351,6 +486,10 @@ class AppTheme {
           color: Colors.white,
           fontSize: 14,
           fontWeight: FontWeight.w600,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
+          side: const BorderSide(color: HasimTokens.darkLine),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(

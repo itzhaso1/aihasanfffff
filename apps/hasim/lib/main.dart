@@ -34,17 +34,20 @@ Future<void> main() async {
   if (kReleaseMode) {
     AppConfig.apiBase;
   }
+  final prefs = await SharedPreferences.getInstance();
   InboxDatabase db;
   try {
     db = InboxDatabase.open();
-    await HiveInboxMigrator.migrateIfNeeded(InboxLocalStore(db)).timeout(const Duration(seconds: 30));
+    if (prefs.getBool('hasim_hive_migrated_v1') != true) {
+      await HiveInboxMigrator.migrateIfNeeded(InboxLocalStore(db)).timeout(const Duration(seconds: 10));
+      await prefs.setBool('hasim_hive_migrated_v1', true);
+    }
   } catch (e, st) {
     if (kDebugMode) {
       debugPrint('[Hasim] Local inbox init failed: $e\n$st');
     }
     db = InboxDatabase.memory();
   }
-  final prefs = await SharedPreferences.getInstance();
   try {
     if (FirebasePushConfig.isConfigured) {
       await sharedFirebaseMessagingGateway().initialize();

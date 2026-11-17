@@ -31,7 +31,7 @@ final class ConstitutionFileReader
 
     public function read(string $path, ConstitutionManifestEntry $entry): ConstitutionDocument
     {
-        if (! is_readable($path)) {
+        if (! is_readable($path) && ! file_exists($path)) {
             throw ConstitutionException::unreadable($entry);
         }
         $size = filesize($path);

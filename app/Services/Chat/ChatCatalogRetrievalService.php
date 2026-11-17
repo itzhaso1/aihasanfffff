@@ -663,42 +663,42 @@ class ChatCatalogRetrievalService
         $weights = is_array($catalog->search_weights) ? $catalog->search_weights : [];
 
         $items = $this->discoverableItemsQuery($workspace, $catalog, $forAi)
-            ->where(function ($builder) use ($sqlTokens, $workspace, $catalog): void {
+            ->where(function ($builder) use ($sqlTokens, $workspace, $catalog, $forAi): void {
                 foreach ($sqlTokens as $token) {
                     $like = '%'.$this->escapeLike($token).'%';
-                    $builder->orWhere(function ($tokenQuery) use ($like, $workspace, $catalog): void {
+                    $builder->orWhere(function ($tokenQuery) use ($like, $workspace, $catalog, $forAi): void {
                         $tokenQuery->where('name', 'like', $like)
                             ->orWhereHas('searchTerms', fn ($terms) => $terms
                                 ->where('term_type', 'name')
                                 ->where('term', 'like', $like));
 
-                        if ($catalog->discoveryEnabled('description_search')) {
+                        if ($forAi || $catalog->discoveryEnabled('description_search')) {
                             $tokenQuery->orWhere('description', 'like', $like)
                                 ->orWhere('short_description', 'like', $like)
                                 ->orWhere('customer_description', 'like', $like)
                                 ->orWhere('usage_instructions', 'like', $like);
                         }
 
-                        if ($catalog->discoveryEnabled('brand_search')) {
+                        if ($forAi || $catalog->discoveryEnabled('brand_search')) {
                             $tokenQuery->orWhere('brand', 'like', $like);
                         }
 
-                        if ($catalog->discoveryEnabled('sku_search')) {
+                        if ($forAi || $catalog->discoveryEnabled('sku_search')) {
                             $tokenQuery->orWhere('sku', 'like', $like);
                         }
-                        if ($catalog->discoveryEnabled('tag_search')) {
+                        if ($forAi || $catalog->discoveryEnabled('tag_search')) {
                             $tokenQuery->orWhere('tags', 'like', $like)
                                 ->orWhereHas('searchTerms', fn ($terms) => $terms
                                     ->where('term_type', 'tag')
                                     ->where('term', 'like', $like));
                         }
-                        if ($catalog->discoveryEnabled('alias_search')) {
+                        if ($forAi || $catalog->discoveryEnabled('alias_search')) {
                             $tokenQuery->orWhere('aliases', 'like', $like)
                                 ->orWhereHas('searchTerms', fn ($terms) => $terms
                                     ->where('term_type', 'alias')
                                     ->where('term', 'like', $like));
                         }
-                        if ($catalog->discoveryEnabled('synonym_search')) {
+                        if ($forAi || $catalog->discoveryEnabled('synonym_search')) {
                             $tokenQuery->orWhere('search_phrases', 'like', $like)
                                 ->orWhereHas('searchTerms', fn ($terms) => $terms
                                     ->where('term_type', 'synonym')
@@ -711,27 +711,27 @@ class ChatCatalogRetrievalService
                                     $attribute->where('attribute_key', 'like', $like)
                                         ->orWhere('attribute_value', 'like', $like);
                                 }));
-                        if ($catalog->discoveryEnabled('variant_discovery')) {
-                            $tokenQuery->orWhereHas('variants', function ($variantQuery) use ($like, $workspace, $catalog): void {
+                        if ($forAi || $catalog->discoveryEnabled('variant_discovery')) {
+                            $tokenQuery->orWhereHas('variants', function ($variantQuery) use ($like, $workspace, $catalog, $forAi): void {
                                 $variantQuery
                                     ->withoutGlobalScopes()
                                     ->where('workspace_id', $workspace->id)
                                     ->where('is_active', true)
                                     ->where('is_visible', true)
                                     ->where('status', 'published')
-                                    ->where(function ($inner) use ($like, $catalog): void {
+                                    ->where(function ($inner) use ($like, $catalog, $forAi): void {
                                         $inner->where('name', 'like', $like)
                                             ->orWhere('attributes', 'like', $like);
                                         $inner->orWhereHas('structuredAttributes', fn ($attributes) => $attributes
                                             ->where('attribute_key', 'like', $like)
                                             ->orWhere('attribute_value', 'like', $like));
-                                        if ($catalog->discoveryEnabled('sku_search')) {
+                                        if ($forAi || $catalog->discoveryEnabled('sku_search')) {
                                             $inner->orWhere('sku', 'like', $like);
                                         }
                                     });
                             });
                         }
-                        if ($catalog->discoveryEnabled('category_discovery')) {
+                        if ($forAi || $catalog->discoveryEnabled('category_discovery')) {
                             $tokenQuery->orWhereHas('category', function ($categoryQuery) use ($like): void {
                                 $categoryQuery->where('name', 'like', $like)
                                     ->orWhere('aliases', 'like', $like)
@@ -771,9 +771,13 @@ class ChatCatalogRetrievalService
                 $matched = $matched->filter(fn (array $row): bool => $row['language_hits'] > 0);
             }
         } else {
-            $bestTokenHits = (int) $matched->max('token_hits');
-            if ($bestTokenHits > 0) {
-                $matched = $matched->filter(fn (array $row): bool => $row['token_hits'] === $bestTokenHits);
+            if ($contentTokens !== []) {
+                $matched = collect();
+            } else {
+                $bestTokenHits = (int) $matched->max('token_hits');
+                if ($bestTokenHits > 0) {
+                    $matched = $matched->filter(fn (array $row): bool => $row['token_hits'] === $bestTokenHits);
+                }
             }
         }
         $matched = $matched
@@ -1182,7 +1186,9 @@ class ChatCatalogRetrievalService
         $folded = preg_replace('/^(ال|بال|لل)/u', '', $folded) ?? $folded;
 
         return in_array($folded, [
-            'كتاب', 'كتب', 'نسخه', 'نسخ', 'منتج', 'منتجات', 'خدمه', 'دوره', 'book', 'product',
+            'كتاب', 'كتب', 'كتيب', 'كتيبات', 'رواية', 'روايات', 'نسخه', 'نسخ',
+            'منتج', 'منتجات', 'خدمه', 'خدمات', 'دوره', 'دورات', 'سلعه', 'سلع',
+            'book', 'books', 'novel', 'novels', 'product', 'products', 'item', 'items',
         ], true);
     }
 

@@ -28,6 +28,28 @@ final class ReferenceResolver
         string $channel = 'chat',
     ): ReferenceResolution {
         $stateIds = $this->knownWorkspaceIds($workspace, $state->referencedProductIds);
+        $attachedId = $this->attachedProductId($conversationMetadata);
+
+        if ($this->catalog->shouldLookupForAssistant($currentMessage)) {
+            $lookup = $this->lookupWithPriorProduct($workspace, $currentMessage, $currentMessage, $recentMessages);
+            $items = is_array($lookup['items'] ?? null) ? $lookup['items'] : [];
+            $ids = array_values(array_unique(array_map(
+                static fn (array $row): int => (int) ($row['catalog_item_id'] ?? 0),
+                array_filter($items, static fn (mixed $row): bool => is_array($row) && is_numeric($row['catalog_item_id'] ?? null) && (int) $row['catalog_item_id'] > 0),
+            )));
+            $status = (string) ($lookup['status'] ?? 'not_loaded');
+
+            if ($status === 'listed' && $ids !== []) {
+                return $this->resolved('message_reference', $ids, $status, $items, (bool) ($lookup['has_more'] ?? false));
+            }
+
+            if (in_array($status, ['catalog_empty', 'no_matching_type', 'name_not_found', 'search_failed'], true)) {
+                if (! $this->isFollowUpOnlyMessage($currentMessage)) {
+                    return new ReferenceResolution(retrievalStatus: $status);
+                }
+            }
+        }
+
         if ($stateIds !== []) {
             $items = $this->catalog->rowsForAssistantIds($workspace, $stateIds);
 
@@ -39,7 +61,6 @@ final class ReferenceResolver
             );
         }
 
-        $attachedId = $this->attachedProductId($conversationMetadata);
         if ($attachedId !== null && $this->belongsToWorkspace($workspace, $attachedId)) {
             $items = $this->catalog->rowsForAssistantIds($workspace, [$attachedId]);
 
@@ -52,27 +73,49 @@ final class ReferenceResolver
         }
 
         $query = $this->explicitReferenceQuery($currentMessage, $recentMessages);
-        if ($query === null) {
-            return new ReferenceResolution;
-        }
+        if ($query !== null && $query !== $currentMessage) {
+            $lookup = $this->lookupWithPriorProduct($workspace, $query, $currentMessage, $recentMessages);
+            $items = is_array($lookup['items'] ?? null) ? $lookup['items'] : [];
+            $ids = array_values(array_unique(array_map(
+                static fn (array $row): int => (int) ($row['catalog_item_id'] ?? 0),
+                array_filter($items, static fn (mixed $row): bool => is_array($row) && is_numeric($row['catalog_item_id'] ?? null) && (int) $row['catalog_item_id'] > 0),
+            )));
+            $status = (string) ($lookup['status'] ?? 'not_loaded');
 
-        $lookup = $this->lookupWithPriorProduct($workspace, $query, $currentMessage, $recentMessages);
-        $items = is_array($lookup['items'] ?? null) ? $lookup['items'] : [];
-        $ids = array_values(array_unique(array_map(
-            static fn (array $row): int => (int) ($row['catalog_item_id'] ?? 0),
-            array_filter($items, static fn (mixed $row): bool => is_array($row) && is_numeric($row['catalog_item_id'] ?? null) && (int) $row['catalog_item_id'] > 0),
-        )));
-        $status = (string) ($lookup['status'] ?? 'not_loaded');
+            if ($status === 'listed' && $ids !== []) {
+                return $this->resolved('message_reference', $ids, $status, $items, (bool) ($lookup['has_more'] ?? false));
+            }
 
-        if ($status === 'listed' && $ids !== []) {
-            return $this->resolved('message_reference', $ids, $status, $items, (bool) ($lookup['has_more'] ?? false));
-        }
-
-        if (in_array($status, ['catalog_empty', 'no_matching_type', 'name_not_found', 'search_failed'], true)) {
-            return new ReferenceResolution(retrievalStatus: $status);
+            if (in_array($status, ['catalog_empty', 'no_matching_type', 'name_not_found', 'search_failed'], true)) {
+                return new ReferenceResolution(retrievalStatus: $status);
+            }
         }
 
         return new ReferenceResolution;
+    }
+
+    private function isFollowUpOnlyMessage(string $message): bool
+    {
+        $normalized = mb_strtolower(trim($message));
+        $normalized = str_replace(['أ', 'إ', 'آ', 'ة', 'ى'], ['ا', 'ا', 'ا', 'ه', 'ي'], $normalized);
+        $normalized = trim(preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $normalized) ?? $normalized);
+
+        $followUpPhrases = [
+            'كم', 'بكم', 'السعر', 'سعره', 'سعرها', 'اسعارها', 'اسعارهم', 'الاسعار',
+            'كم حقه', 'كم حقها', 'كم سعره', 'كم سعرها', 'تكلفه', 'تكلفته',
+            'متوفر', 'متوفره', 'موجود', 'موجوده', 'فيه منه', 'في منه',
+            'هذا', 'هذي', 'هذه', 'ذا', 'الاول', 'الثاني', 'الثالث',
+            'ابي هذا', 'ابغى هذا', 'اريد هذا', 'بدي هذا', 'بدي اياه', 'ابي منه',
+            'طيب', 'تمام', 'اوكي', 'اي', 'ايه', 'نعم',
+        ];
+
+        foreach ($followUpPhrases as $phrase) {
+            if ($normalized === $phrase || str_starts_with($normalized, $phrase.' ') || str_ends_with($normalized, ' '.$phrase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
