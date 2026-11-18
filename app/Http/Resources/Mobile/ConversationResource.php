@@ -74,6 +74,9 @@ class ConversationResource extends JsonResource
             'muted' => $this->when(isset($this->muted), fn () => (bool) $this->muted),
             'archived' => $this->when(isset($this->archived), fn () => (bool) $this->archived),
             'can_reply' => $this->when(isset($this->can_reply), fn () => (bool) $this->can_reply),
+            'responder' => $this->resource instanceof Conversation
+                ? $this->resource->currentResponder()
+                : null,
         ];
     }
 }

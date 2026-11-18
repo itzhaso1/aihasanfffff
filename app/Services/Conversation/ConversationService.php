@@ -39,6 +39,7 @@ class ConversationService
         $message = DB::transaction(function () use ($conversation, $data, $actor, $uploadedFiles): Message {
             $message = $conversation->messages()->create([
                 ...$data,
+                'workspace_id' => $data['workspace_id'] ?? $conversation->workspace_id,
                 'user_id' => $data['user_id'] ?? $actor?->id,
             ]);
 

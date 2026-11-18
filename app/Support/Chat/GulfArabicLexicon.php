@@ -14,7 +14,7 @@ final class GulfArabicLexicon
     public function groups(): array
     {
         return [
-            $this->intent('request', ['ابي', 'ابغى', 'ابغا', 'ابيك', 'ودي', 'ابيك تشوف', 'ابي اشوف', 'عطني', 'ورني', 'ابغى اشوف'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini', 'omani']),
+            $this->intent('request', ['ابي', 'ابغى', 'ابغا', 'ابيك', 'ودي', 'ابيك تشوف', 'ابي اشوف', 'عطني', 'ورني', 'ابغى اشوف', 'ابغاه', 'ابيه', 'باخذه', 'باخذها', 'احجزه', 'احجزلي', 'اريده', 'بشتريه'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini', 'omani']),
             $this->intent('availability', ['عندكم', 'عندك', 'متوفر', 'موجود', 'فيه', 'في', 'عدكم'], ['saudi', 'kuwaiti', 'emirati', 'qatari', 'bahraini', 'omani']),
             $this->intent('price', [
                 'بكم', 'كم', 'كم سعره', 'كم سعرها', 'كم حقه', 'كم حقها', 'بكم حقه', 'شلون سعره', 'وش سعره', 'شنو سعره', 'شو سعره', 'سعره', 'سعرها', 'السعر', 'حقه', 'حقها',

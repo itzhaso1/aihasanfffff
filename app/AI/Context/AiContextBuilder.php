@@ -14,6 +14,7 @@ use App\Models\Message;
 use App\Models\Workspace;
 use App\Services\AI\AiSafety;
 use App\Services\AI\Inbox\Context\InboxAgentMessageWindowBuilder;
+use App\Services\AI\Inbox\Memory\ConversationFactsMemory;
 use App\Services\Workspace\WorkspaceCompanyProfileService;
 
 final class AiContextBuilder
@@ -44,6 +45,9 @@ final class AiContextBuilder
             ? $this->recentMessages($conversation, $currentMessage)
             : [];
         $summary = $this->conversationSummary($metadata);
+        $facts = $conversation !== null
+            ? app(ConversationFactsMemory::class)->get($request->workspaceId, (int) $conversation->id)
+            : [];
         $references = $conversation !== null
             ? $this->referenceResolver->resolve(
                 workspace: $workspace,
@@ -71,6 +75,7 @@ final class AiContextBuilder
             conversationState: $state,
             workspacePolicyContext: $this->workspacePolicyContext($request, $references),
             companyProfile: $this->companyProfiles->contextPayload($request->workspaceId),
+            conversationFacts: $facts,
         );
     }
 

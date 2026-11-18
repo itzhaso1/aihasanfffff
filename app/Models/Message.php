@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Worker\WorkerEngagement;
+use App\Services\AI\Inbox\Memory\ConversationFactsMemory;
+use App\Services\AI\Inbox\Memory\ConversationRecentMessagesCache;
 use Database\Factories\MessageFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -34,6 +36,49 @@ class Message extends WorkspaceScopedModel
             'ai_generated' => 'boolean',
             'metadata' => 'array',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        parent::booted();
+
+        static::created(function (Message $message): void {
+            if ($message->workspace_id !== null && $message->conversation_id !== null) {
+                try {
+                    app(ConversationRecentMessagesCache::class)->push(
+                        (int) $message->workspace_id,
+                        (int) $message->conversation_id,
+                        $message,
+                    );
+                    app(ConversationFactsMemory::class)->observeMessage($message);
+                } catch (\Throwable) {
+                }
+            }
+        });
+
+        static::updated(function (Message $message): void {
+            if ($message->workspace_id !== null && $message->conversation_id !== null) {
+                try {
+                    app(ConversationRecentMessagesCache::class)->invalidate(
+                        (int) $message->workspace_id,
+                        (int) $message->conversation_id,
+                    );
+                } catch (\Throwable) {
+                }
+            }
+        });
+
+        static::deleted(function (Message $message): void {
+            if ($message->workspace_id !== null && $message->conversation_id !== null) {
+                try {
+                    app(ConversationRecentMessagesCache::class)->invalidate(
+                        (int) $message->workspace_id,
+                        (int) $message->conversation_id,
+                    );
+                } catch (\Throwable) {
+                }
+            }
+        });
     }
 
     public function conversation(): BelongsTo

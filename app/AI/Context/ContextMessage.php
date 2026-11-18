@@ -15,7 +15,7 @@ final readonly class ContextMessage
         public ?string $occurredAt = null,
         public ?string $channel = null,
     ) {
-        if (! in_array($role, ['customer', 'human', 'ai', 'worker', 'agent', 'current_customer'], true)) {
+        if (! in_array($role, ['customer', 'human', 'ai', 'worker', 'agent', 'current_customer', 'admin', 'ai_employee', 'human_employee'], true)) {
             throw new InvalidArgumentException('Unsupported context message role.');
         }
         if (trim($content) === '') {

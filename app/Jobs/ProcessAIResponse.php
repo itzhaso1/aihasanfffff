@@ -80,41 +80,20 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        app(WorkspaceContext::class)->runForId((int) $conversation->workspace_id, function () use (
-            $aiService,
-            $channelOutbound,
-            $eligibility,
-            $outputValidator,
-            $conversation,
-            $incomingMessage,
-            $started,
-        ): void {
-            $fresh = $conversation->fresh() ?? $conversation;
-            if (app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage($fresh, $incomingMessage, onlyIfJustCreated: false)) {
-                return;
-            }
-            $fresh = $fresh->fresh() ?? $fresh;
-            if (! $eligibility->mayGenerate($fresh, $incomingMessage)) {
-                Log::info('ai.reply.skipped_precheck', [
-                    'workspace_id' => $conversation->workspace_id,
-                    'conversation_id' => $conversation->id,
-                    'message_id' => $incomingMessage->id,
-                    'reason' => $eligibility->skipReason($fresh, $incomingMessage),
-                    'ai_enabled' => (bool) $fresh->ai_enabled,
-                    'handoff_status' => $fresh->handoffStatusEnum()->value,
-                ]);
+        $lockKey = "ai_reply_lock:{$conversation->workspace_id}:{$conversation->id}:{$incomingMessage->id}";
+        $lock = Cache::lock($lockKey, 60);
+        if (! $lock->get()) {
+            Log::info('ai.reply.skipped_concurrency_lock', [
+                'workspace_id' => $conversation->workspace_id,
+                'conversation_id' => $conversation->id,
+                'message_id' => $incomingMessage->id,
+            ]);
 
-                return;
-            }
+            return;
+        }
 
-            $existingReply = $this->existingReply($conversation, $incomingMessage);
-            if ($existingReply !== null) {
-                app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($fresh);
-
-                return;
-            }
-
-            $this->generateAndStoreReply(
+        try {
+            app(WorkspaceContext::class)->runForId((int) $conversation->workspace_id, function () use (
                 $aiService,
                 $channelOutbound,
                 $eligibility,
@@ -122,8 +101,45 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 $conversation,
                 $incomingMessage,
                 $started,
-            );
-        });
+            ): void {
+                $fresh = $conversation->fresh() ?? $conversation;
+                if (app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage($fresh, $incomingMessage, onlyIfJustCreated: false)) {
+                    return;
+                }
+                $fresh = $fresh->fresh() ?? $fresh;
+                if (! $eligibility->mayGenerate($fresh, $incomingMessage)) {
+                    Log::info('ai.reply.skipped_precheck', [
+                        'workspace_id' => $conversation->workspace_id,
+                        'conversation_id' => $conversation->id,
+                        'message_id' => $incomingMessage->id,
+                        'reason' => $eligibility->skipReason($fresh, $incomingMessage),
+                        'ai_enabled' => (bool) $fresh->ai_enabled,
+                        'handoff_status' => $fresh->handoffStatusEnum()->value,
+                    ]);
+
+                    return;
+                }
+
+                $existingReply = $this->existingReply($conversation, $incomingMessage);
+                if ($existingReply !== null) {
+                    app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($fresh);
+
+                    return;
+                }
+
+                $this->generateAndStoreReply(
+                    $aiService,
+                    $channelOutbound,
+                    $eligibility,
+                    $outputValidator,
+                    $conversation,
+                    $incomingMessage,
+                    $started,
+                );
+            });
+        } finally {
+            $lock->release();
+        }
     }
 
     public function failed(?Throwable $exception): void

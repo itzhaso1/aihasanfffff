@@ -110,8 +110,6 @@ class ConversationController extends MobileController
             return $this->fail('العنصر المطلوب غير موجود.', 404);
         }
 
-        app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation);
-
         $afterId = $request->integer('after_id', 0);
         if ($afterId > 0) {
             $messages = Message::query()
@@ -127,6 +125,8 @@ class ConversationController extends MobileController
                 ['count' => $messages->count(), 'polled' => true],
             );
         }
+
+        app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation);
 
         $perPage = max(1, min(50, (int) $request->input('per_page', 30)));
         $paginator = $this->conversationInboxService->messages($conversation, $perPage);

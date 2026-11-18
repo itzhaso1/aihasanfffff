@@ -29,6 +29,7 @@ final readonly class AiContext
      * @param  array<string, mixed>  $employeeContext
      * @param  array<string, mixed>  $workspacePolicyContext
      * @param  array<string, mixed>  $companyProfile
+     * @param  array<string, mixed>  $conversationFacts
      */
     public function __construct(
         public string $customerMessage,
@@ -41,6 +42,7 @@ final readonly class AiContext
         public ConversationState $conversationState,
         array $workspacePolicyContext,
         array $companyProfile = ['present' => false],
+        public array $conversationFacts = [],
     ) {
         $this->recentMessages = TypedList::of($recentMessages, ContextMessage::class, 'Context messages');
         $this->customerContext = $customerContext;
@@ -65,6 +67,7 @@ final readonly class AiContext
             'conversation_state' => $this->conversationState->toArray(),
             'workspace_policy_context' => $this->workspacePolicyContext,
             'company_profile' => $this->companyProfile,
+            'conversation_facts' => $this->conversationFacts,
         ];
     }
 }

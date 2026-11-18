@@ -1601,49 +1601,55 @@ class _ConversationsPanel extends StatelessWidget {
                       );
                     },
                   )
-                : SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final f in filters) ...[
-                          ConversationFilterChip(
-                            label: f.$2,
-                            selected: state.filter == f.$1,
-                            onTap: () => notifier.setFilter(f.$1),
-                            leading: f.$1 == 'unread'
-                                ? const _UnreadDot()
-                                : null,
-                          ),
-                          const SizedBox(width: 8),
+                : ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final f in filters) ...[
+                            ConversationFilterChip(
+                              label: f.$2,
+                              selected: state.filter == f.$1,
+                              onTap: () => notifier.setFilter(f.$1),
+                              leading: f.$1 == 'unread'
+                                  ? const _UnreadDot()
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
           ),
           if (!compactEmpty)
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-              child: Row(
-                children: [
-                  ConversationFilterChip(
-                    key: const Key('conversation-filter-team-review'),
-                    label: _ConversationsScreenState._teamReviewLabel,
-                    selected: state.filter == 'team_review',
-                    onTap: () =>
-                        notifier.setTeamReview(state.filter != 'team_review'),
-                  ),
-                  const SizedBox(width: 8),
-                  for (final c in channels) ...[
-                    ConversationChannelChip(
-                      label: c.$2,
-                      selected: state.channel == c.$1,
-                      onSelected: (sel) =>
-                          notifier.setChannel(sel ? c.$1 : null),
+            ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                child: Row(
+                  children: [
+                    ConversationFilterChip(
+                      key: const Key('conversation-filter-team-review'),
+                      label: _ConversationsScreenState._teamReviewLabel,
+                      selected: state.filter == 'team_review',
+                      onTap: () =>
+                          notifier.setTeamReview(state.filter != 'team_review'),
                     ),
                     const SizedBox(width: 8),
+                    for (final c in channels) ...[
+                      ConversationChannelChip(
+                        label: c.$2,
+                        selected: state.channel == c.$1,
+                        onSelected: (sel) =>
+                            notifier.setChannel(sel ? c.$1 : null),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
         ],
@@ -1919,22 +1925,12 @@ class _ConversationsPanel extends StatelessWidget {
                                                     spacing: 4,
                                                     runSpacing: 4,
                                                     children: [
-                                                      if (c
-                                                          .isHumanHandoffActive)
-                                                        _ClassBadge(
-                                                          label:
-                                                              'تحتاج مراجعة من الفريق',
-                                                          key: Key(
-                                                            'team-review-${c.id}',
-                                                          ),
-                                                        )
-                                                      else if (c.isAiReplying)
-                                                        _ClassBadge(
-                                                          label: 'رد AI',
-                                                          key: Key(
-                                                            'ai-reply-${c.id}',
-                                                          ),
+                                                      _ResponderBadge(
+                                                        responder: c.effectiveResponder,
+                                                        key: Key(
+                                                          'responder-badge-${c.id}',
                                                         ),
+                                                      ),
                                                       if (c.customerPriority ==
                                                           'important')
                                                         _ClassBadge(
@@ -2434,6 +2430,91 @@ class _UnreadDot extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
         shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class _ResponderBadge extends StatelessWidget {
+  const _ResponderBadge({super.key, required this.responder});
+
+  final ConversationResponder responder;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HasimTokens.isDark(context);
+
+    final Color bgColor;
+    final Color textColor;
+    final Color dotColor;
+
+    switch (responder.status) {
+      case 'ai_active':
+        bgColor = dark ? const Color(0xFF064E3B) : const Color(0xFFE8FAF6);
+        textColor = dark ? const Color(0xFF6EE7B7) : const Color(0xFF067E6B);
+        dotColor = const Color(0xFF10B981);
+      case 'human_active':
+        bgColor = dark ? const Color(0xFF1E3A8A) : const Color(0xFFEFF6FF);
+        textColor = dark ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8);
+        dotColor = const Color(0xFF3B82F6);
+      case 'human_needed':
+        bgColor = dark ? const Color(0xFF78350F) : const Color(0xFFFFFBEB);
+        textColor = dark ? const Color(0xFFFDE68A) : const Color(0xFFB45309);
+        dotColor = const Color(0xFFF59E0B);
+      default:
+        bgColor = dark ? const Color(0xFF334155) : const Color(0xFFF1F5F9);
+        textColor = dark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
+        dotColor = const Color(0xFF94A3B8);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: dotColor.withValues(alpha: 0.35),
+          width: 0.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: dotColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              responder.name.isNotEmpty && responder.name != '—'
+                  ? '${responder.label}: ${responder.name}'
+                  : responder.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: textColor,
+              ),
+            ),
+          ),
+          if (responder.status == 'ai_active' && responder.isAiGenerating) ...[
+            const SizedBox(width: 3),
+            Text(
+              '(يكتب...)',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

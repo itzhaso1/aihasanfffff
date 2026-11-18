@@ -12,6 +12,8 @@ use App\Models\AiSetting;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Workspace;
+use App\Services\AI\Inbox\Memory\ConversationFactsMemory;
+use App\Services\AI\Response\SmartResponseEngine;
 use App\Services\Feature\FeatureAccessService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Support\Facades\DB;
@@ -62,6 +64,13 @@ class AIService
         Message $message,
     ): string {
         $result = $this->hasimRuntime->reply($conversation, $message);
+        $reply = $result->reply;
+        if ($result->deliverable && trim($reply) !== '') {
+            $facts = app(ConversationFactsMemory::class)->get((int) $workspace->id, (int) $conversation->id);
+            $reply = app(SmartResponseEngine::class)->sanitizeReply($reply, $conversation, $message, $facts);
+            app(ConversationFactsMemory::class)->observeOutboundReply((int) $workspace->id, (int) $conversation->id, $reply);
+        }
+
         $userContent = $this->safety->truncateInput((string) ($message->content ?? ''));
         $usage = $result->response?->decision->modelUsage;
         $tokensUsed = $usage?->totalTokens() ?? 0;
@@ -97,7 +106,7 @@ class AIService
             $logMeta,
             $status,
             $tokensUsed,
-            $result->deliverable ? ['content' => $result->reply] : [],
+            $result->deliverable ? ['content' => $reply] : [],
             $failure?->code->value,
             $decision?->employeeId,
         );
@@ -106,7 +115,7 @@ class AIService
             $this->recordUsage($workspace, $conversation, $message, $userContent, $tokensUsed);
         }
 
-        return $result->reply;
+        return $reply;
     }
 
     private function recordUsage(

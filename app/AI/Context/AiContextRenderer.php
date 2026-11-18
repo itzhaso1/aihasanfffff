@@ -6,6 +6,7 @@ namespace App\AI\Context;
 
 use App\AI\Core\Prompt\PromptLayer;
 use App\AI\Core\Prompt\PromptSection;
+use App\Services\AI\Response\SmartResponseEngine;
 
 final class AiContextRenderer
 {
@@ -104,6 +105,21 @@ final class AiContextRenderer
             PromptLayer::Context,
             'context.workspace_policy',
             $this->json(['workspace_policy' => $context->workspacePolicyContext]),
+        );
+
+        if ($context->conversationFacts !== []) {
+            $sections[] = new PromptSection(
+                PromptLayer::Context,
+                'context.conversation_facts',
+                $this->json(['conversation_facts' => $context->conversationFacts]),
+            );
+        }
+
+        $hasRecent = count($context->recentMessages) > 0;
+        $sections[] = new PromptSection(
+            PromptLayer::Context,
+            'context.smart_rules',
+            $this->json(['smart_response_rules' => SmartResponseEngine::rulesPayload($context->conversationFacts, $hasRecent)]),
         );
 
         return $sections;

@@ -381,7 +381,9 @@ class ConversationsController extends StateNotifier<ConversationsState> {
       );
       if (!_canCommit(scope)) return;
       await _publishFetchedPage(scope, page.items);
-      _prefetchOpenThreads(state.items);
+      if (!silent) {
+        _prefetchOpenThreads(state.items);
+      }
     } on ApiException catch (e) {
       if (!_canCommit(scope)) return;
       state = state.copyWith(
@@ -682,6 +684,10 @@ class ChatController extends StateNotifier<ChatState> {
     await _messageSub?.cancel();
     _messageSub = null;
     _olderMessages = const [];
+    if (conversationId <= 0) {
+      state = state.copyWith(loading: false);
+      return;
+    }
     final workspaceId = _boundWorkspaceId;
     _realtime.watchConversation(conversationId);
     _sub = _realtime.messageCreated.listen((m) {
@@ -821,6 +827,10 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   Future<void> refresh({bool silent = false}) async {
+    if (conversationId <= 0) {
+      state = state.copyWith(loading: false, error: null);
+      return;
+    }
     final scope = captureInboxScope(_ref);
     if (!silent) {
       state = state.copyWith(loading: true, error: null);
@@ -1089,16 +1099,102 @@ class ChatController extends StateNotifier<ChatState> {
 
   /// Returns an error token for localization, or null on success.
   Future<String?> sendAttachment(File file, {String caption = ''}) async {
-    final validation = ChatAttachmentPolicy.validateFile(file);
-    if (validation != null) return validation;
+    return sendMultipleAttachments([file], caption: caption);
+  }
+
+  /// Sends multiple files attached to one outbound message with optional caption.
+  Future<String?> sendMultipleAttachments(
+    List<File> files, {
+    String caption = '',
+  }) async {
+    if (files.isEmpty) return 'missing';
+    for (final f in files) {
+      final validation = ChatAttachmentPolicy.validateFile(f);
+      if (validation != null) return validation;
+    }
     if (!await _hasNetwork()) return 'offline';
-    final sent = await sendThenAttach(
-      file,
-      caption: caption,
-      clientId: newIdempotencyKey(),
+
+    final text = caption.trim().isEmpty ? '📎' : caption.trim();
+    final key = newIdempotencyKey();
+    final firstPath = files.first.path;
+    final optimistic = MessageModel(
+      id: -DateTime.now().millisecondsSinceEpoch,
+      conversationId: conversationId,
+      direction: 'outbound',
+      messageType: 'text',
+      content: text,
+      createdAt: DateTime.now(),
+      localPending: true,
+      localUploading: false,
+      localAttachmentPath: firstPath,
+      clientId: key,
     );
-    if (sent == null) return 'uploadFailed';
-    return null;
+    final scope = captureInboxScope(_ref);
+    final existing = state.messages.any((m) => m.clientId == key);
+    state = state.copyWith(
+      messages: existing
+          ? state.messages
+                .map((m) => m.clientId == key ? optimistic : m)
+                .toList()
+          : [...state.messages, optimistic],
+      sending: true,
+      error: null,
+    );
+    try {
+      final repo = _ref.read(conversationRepositoryProvider);
+      final saved = await repo.sendMessageWithKey(conversationId, text, key);
+      if (!_canCommit(scope)) return null;
+      _replaceLocalMessage(
+        key,
+        saved.copyWith(
+          localPending: true,
+          localUploading: true,
+          localFailed: false,
+          localAttachmentPath: firstPath,
+          clientId: key,
+        ),
+      );
+
+      final uploaded = <MessageAttachmentModel>[];
+      for (final file in files) {
+        final attachment = await repo.uploadAttachment(saved.id, file);
+        uploaded.add(attachment);
+      }
+      if (!_canCommit(scope)) return null;
+      final withAttach = saved.copyWith(
+        localPending: false,
+        localUploading: false,
+        localFailed: false,
+        clearLocalAttachmentPath: true,
+        clientId: key,
+        attachments: [...saved.attachments, ...uploaded],
+      );
+      _replaceLocalMessage(key, withAttach);
+      state = state.copyWith(sending: false);
+      final workspaceId = scope.workspaceId;
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, state.messages);
+      }
+      _clearUnreadAfterSend();
+      unawaited(_persistReadAfterSend(workspaceId));
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[CHAT_MULTI_ATTACHMENT_UPLOAD] failed error=$e');
+      }
+      if (!_canCommit(scope)) return null;
+      final failed = state.messages.map((m) {
+        if (m.clientId != key) return m;
+        return m.copyWith(
+          localPending: false,
+          localUploading: false,
+          localFailed: true,
+          localAttachmentPath: firstPath,
+        );
+      }).toList();
+      state = state.copyWith(messages: failed, sending: false);
+      return 'uploadFailed';
+    }
   }
 
   Future<String?> sendVoiceNote({

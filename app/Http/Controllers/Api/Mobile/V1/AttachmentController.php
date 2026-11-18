@@ -22,7 +22,7 @@ class AttachmentController extends MobileController
         $this->authorize('reply', $message->conversation);
 
         $request->validate([
-            'file' => ['required', 'file', 'max:10240'],
+            'file' => ['required', 'file', 'max:20480'],
         ]);
 
         try {

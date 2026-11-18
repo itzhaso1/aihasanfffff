@@ -445,6 +445,79 @@ class MessageModel extends Equatable {
   List<Object?> get props => [id, clientId, content, localPending, localFailed];
 }
 
+class ConversationResponder extends Equatable {
+  const ConversationResponder({
+    required this.status,
+    required this.type,
+    required this.name,
+    required this.label,
+    this.badgeClass = '',
+    this.dotClass = '',
+    this.isAiGenerating = false,
+    this.userId,
+    this.userInitials,
+    this.assignedAtHuman,
+    this.reason,
+  });
+
+  final String status;
+  final String type;
+  final String name;
+  final String label;
+  final String badgeClass;
+  final String dotClass;
+  final bool isAiGenerating;
+  final int? userId;
+  final String? userInitials;
+  final String? assignedAtHuman;
+  final String? reason;
+
+  factory ConversationResponder.fromJson(Map<String, dynamic> json) {
+    return ConversationResponder(
+      status: json['status']?.toString() ?? 'waiting',
+      type: json['type']?.toString() ?? 'none',
+      name: json['name']?.toString() ?? '—',
+      label: json['label']?.toString() ?? 'بانتظار الرد',
+      badgeClass: json['badge_class']?.toString() ?? '',
+      dotClass: json['dot_class']?.toString() ?? '',
+      isAiGenerating: json['is_ai_generating'] == true,
+      userId: (json['user_id'] as num?)?.toInt(),
+      userInitials: json['user_initials']?.toString(),
+      assignedAtHuman: json['assigned_at_human']?.toString(),
+      reason: json['reason']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'status': status,
+    'type': type,
+    'name': name,
+    'label': label,
+    'badge_class': badgeClass,
+    'dot_class': dotClass,
+    'is_ai_generating': isAiGenerating,
+    if (userId != null) 'user_id': userId,
+    if (userInitials != null) 'user_initials': userInitials,
+    if (assignedAtHuman != null) 'assigned_at_human': assignedAtHuman,
+    if (reason != null) 'reason': reason,
+  };
+
+  @override
+  List<Object?> get props => [
+    status,
+    type,
+    name,
+    label,
+    badgeClass,
+    dotClass,
+    isAiGenerating,
+    userId,
+    userInitials,
+    assignedAtHuman,
+    reason,
+  ];
+}
+
 class ConversationModel extends Equatable {
   const ConversationModel({
     required this.id,
@@ -470,6 +543,7 @@ class ConversationModel extends Equatable {
     this.assignedWorkerEngagementId,
     this.assignedParticipantType,
     this.canReply = true,
+    this.responder,
   });
 
   final int id;
@@ -485,6 +559,7 @@ class ConversationModel extends Equatable {
   final int? assignedWorkerEngagementId;
   final String? assignedParticipantType;
   final bool canReply;
+  final ConversationResponder? responder;
   final DateTime? lastMessageAt;
   final CustomerModel? customer;
   final int unreadCount;
@@ -579,6 +654,60 @@ class ConversationModel extends Equatable {
           (json['assigned_worker_engagement_id'] as num?)?.toInt(),
       assignedParticipantType: json['assigned_participant_type']?.toString(),
       canReply: json['can_reply'] == null ? true : json['can_reply'] == true,
+      responder: json['responder'] is Map
+          ? ConversationResponder.fromJson(
+              json['responder'] is Map<String, dynamic>
+                  ? json['responder']
+                  : Map<String, dynamic>.from(json['responder']),
+            )
+          : null,
+    );
+  }
+
+  ConversationResponder get effectiveResponder {
+    if (responder != null) return responder!;
+    if (status == 'closed' || archived) {
+      return const ConversationResponder(
+        status: 'offline',
+        type: 'none',
+        name: '—',
+        label: 'غير متصل',
+      );
+    }
+    if (isHumanHandoffActive) {
+      if (assignedUserId != null || assignedUserName != null) {
+        return ConversationResponder(
+          status: 'human_active',
+          type: 'human',
+          name: assignedUserName ?? 'الموظف',
+          label: 'الموظف يرد الآن',
+          userId: assignedUserId,
+          userInitials:
+              (assignedUserName != null && assignedUserName!.isNotEmpty)
+                  ? assignedUserName!.trim().substring(0, 1)
+                  : 'م',
+        );
+      }
+      return const ConversationResponder(
+        status: 'human_needed',
+        type: 'none',
+        name: 'مشعل AI',
+        label: 'تحتاج إلى تدخل بشري',
+      );
+    }
+    if (isAiReplying) {
+      return const ConversationResponder(
+        status: 'ai_active',
+        type: 'ai',
+        name: 'مشعل AI',
+        label: 'AI يرد الآن',
+      );
+    }
+    return const ConversationResponder(
+      status: 'waiting',
+      type: 'none',
+      name: '—',
+      label: 'بانتظار الرد',
     );
   }
 
@@ -630,6 +759,7 @@ class ConversationModel extends Equatable {
         'email': customer!.email,
       },
     if (lastMessage != null) 'last_message': lastMessage!.toCacheJson(),
+    if (responder != null) 'responder': responder!.toJson(),
   };
 
   ConversationModel copyWith({
@@ -652,6 +782,7 @@ class ConversationModel extends Equatable {
     bool? aiReplying,
     bool? canReply,
     String? status,
+    ConversationResponder? responder,
   }) {
     return ConversationModel(
       id: id,
@@ -679,6 +810,7 @@ class ConversationModel extends Equatable {
       assignedParticipantType:
           assignedParticipantType ?? this.assignedParticipantType,
       canReply: canReply ?? this.canReply,
+      responder: responder ?? this.responder,
     );
   }
 
@@ -710,6 +842,7 @@ class ConversationModel extends Equatable {
       assignedParticipantType:
           remote.assignedParticipantType ?? assignedParticipantType,
       canReply: canReply,
+      responder: remote.responder ?? responder,
     );
   }
 

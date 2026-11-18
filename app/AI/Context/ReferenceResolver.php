@@ -28,6 +28,12 @@ final class ReferenceResolver
         string $channel = 'chat',
     ): ReferenceResolution {
         $stateIds = $this->knownWorkspaceIds($workspace, $state->referencedProductIds);
+        if ($stateIds === []) {
+            $factsId = data_get($conversationMetadata, 'conversation_facts.interested_product_id');
+            if (is_numeric($factsId) && (int) $factsId > 0 && $this->belongsToWorkspace($workspace, (int) $factsId)) {
+                $stateIds = [(int) $factsId];
+            }
+        }
         $attachedId = $this->attachedProductId($conversationMetadata);
 
         if ($this->catalog->shouldLookupForAssistant($currentMessage)) {
@@ -107,6 +113,9 @@ final class ReferenceResolver
             'هذا', 'هذي', 'هذه', 'ذا', 'الاول', 'الثاني', 'الثالث',
             'ابي هذا', 'ابغى هذا', 'اريد هذا', 'بدي هذا', 'بدي اياه', 'ابي منه',
             'طيب', 'تمام', 'اوكي', 'اي', 'ايه', 'نعم',
+            'ابغاه', 'أبغاه', 'ابيه', 'باخذه', 'باخذها', 'شريت', 'خلاص', 'نفسه', 'نفسها',
+            'احجزه', 'احجزلي', 'اعتمد', 'اريده', 'عطني', 'ابيها', 'باخذ', 'خلاص ابغاه',
+            'خلاص باخذه', 'ابغاه خلاص', 'باخذه خلاص',
         ];
 
         foreach ($followUpPhrases as $phrase) {

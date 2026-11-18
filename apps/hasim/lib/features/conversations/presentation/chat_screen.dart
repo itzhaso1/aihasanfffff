@@ -1,14 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_exception.dart';
-import 'package:hasim/core/network/media_auth_headers.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/utils/quoted_reply.dart';
@@ -24,6 +22,8 @@ import 'package:hasim/features/conversations/presentation/widgets/chat_attachmen
 import 'package:hasim/features/conversations/presentation/widgets/chat_attachment_menu.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_composer.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_emoji_picker.dart';
+import 'package:hasim/features/conversations/presentation/widgets/chat_media_preview_dialog.dart';
+import 'package:hasim/features/conversations/presentation/widgets/chat_media_viewer_dialog.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_message_bubble.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_wallpaper.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_channel_avatar.dart';
@@ -1055,24 +1055,47 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _pickAttachment(String action) async {
     final l10n = AppLocalizations.of(context);
-    File? file;
+    final files = <File>[];
     switch (action) {
       case 'photos_videos':
-        final media = await ImagePicker().pickMedia(imageQuality: 85);
-        if (media != null) file = File(media.path);
+        try {
+          final pickedList = await ImagePicker().pickMultiImage(imageQuality: 85);
+          if (pickedList.isNotEmpty) {
+            files.addAll(pickedList.map((x) => File(x.path)));
+          } else {
+            final media = await ImagePicker().pickMedia(imageQuality: 85);
+            if (media != null) files.add(File(media.path));
+          }
+        } catch (_) {
+          final media = await ImagePicker().pickMedia(imageQuality: 85);
+          if (media != null) files.add(File(media.path));
+        }
       case 'gallery':
-        final picked = await ImagePicker().pickImage(
-          source: ImageSource.gallery,
-          imageQuality: 85,
-        );
-        if (picked != null) file = File(picked.path);
+        try {
+          final pickedList = await ImagePicker().pickMultiImage(imageQuality: 85);
+          if (pickedList.isNotEmpty) {
+            files.addAll(pickedList.map((x) => File(x.path)));
+          } else {
+            final picked = await ImagePicker().pickImage(
+              source: ImageSource.gallery,
+              imageQuality: 85,
+            );
+            if (picked != null) files.add(File(picked.path));
+          }
+        } catch (_) {
+          final picked = await ImagePicker().pickImage(
+            source: ImageSource.gallery,
+            imageQuality: 85,
+          );
+          if (picked != null) files.add(File(picked.path));
+        }
       case 'camera':
         try {
           final picked = await ImagePicker().pickImage(
             source: ImageSource.camera,
             imageQuality: 85,
           );
-          if (picked != null) file = File(picked.path);
+          if (picked != null) files.add(File(picked.path));
         } catch (_) {
           if (!mounted) return;
           ScaffoldMessenger.of(
@@ -1084,30 +1107,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final result = await FilePicker.platform.pickFiles(
           type: FileType.custom,
           allowedExtensions: const ['mp4', 'webm'],
+          allowMultiple: true,
         );
-        final path = result?.files.single.path;
-        if (path != null) file = File(path);
+        if (result != null) {
+          files.addAll(result.paths.whereType<String>().map((p) => File(p)));
+        }
       case 'audio':
         final result = await FilePicker.platform.pickFiles(
           type: FileType.custom,
-          allowedExtensions: const ['mp3', 'mpeg', 'wav', 'webm'],
+          allowedExtensions: const ['mp3', 'mpeg', 'wav', 'webm', 'm4a', 'aac'],
+          allowMultiple: true,
         );
-        final path = result?.files.single.path;
-        if (path != null) file = File(path);
+        if (result != null) {
+          files.addAll(result.paths.whereType<String>().map((p) => File(p)));
+        }
       case 'file':
         final result = await FilePicker.platform.pickFiles(
           type: FileType.custom,
           allowedExtensions: ChatAttachmentPolicy.allowedExtensions.toList()
             ..sort(),
+          allowMultiple: true,
         );
-        final path = result?.files.single.path;
-        if (path != null) file = File(path);
+        if (result != null) {
+          files.addAll(result.paths.whereType<String>().map((p) => File(p)));
+        }
     }
-    if (file == null || !mounted) return;
+    if (files.isEmpty || !mounted) return;
+
+    // WhatsApp-style Media Preview before sending
+    final previewResult = await ChatMediaPreviewDialog.show(
+      context,
+      files: files,
+    );
+    if (previewResult == null || previewResult.files.isEmpty || !mounted) {
+      return;
+    }
+
     _stickToBottom = true;
     final err = await ref
         .read(chatControllerProvider(widget.conversationId).notifier)
-        .sendAttachment(file);
+        .sendMultipleAttachments(
+          previewResult.files,
+          caption: previewResult.caption,
+        );
     if (!mounted) return;
     if (err != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1287,21 +1329,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _openImage(String url) async {
-    final headers = await ref.read(mediaAuthHeadersProvider.future);
-    if (!mounted) return;
-    showDialog<void>(
-      context: context,
-      builder: (context) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: InteractiveViewer(
-          child: CachedNetworkImage(
-            imageUrl: url,
-            httpHeaders: headers,
-            fit: BoxFit.contain,
-            memCacheWidth: 1440,
-          ),
+    final state = ref.read(chatControllerProvider(widget.conversationId));
+    final allImages = <MessageAttachmentModel>[];
+    int targetIndex = 0;
+    for (final m in state.messages) {
+      for (final a in m.attachments) {
+        if (a.kind == 'image' && a.displayUrl != null) {
+          if (a.displayUrl == url || a.previewUrl == url || a.downloadUrl == url) {
+            targetIndex = allImages.length;
+          }
+          allImages.add(a);
+        }
+      }
+    }
+    if (allImages.isEmpty) {
+      allImages.add(
+        MessageAttachmentModel(
+          id: 0,
+          kind: 'image',
+          originalName: 'صورة',
+          downloadUrl: url,
+          previewUrl: url,
         ),
-      ),
+      );
+    }
+    await ChatMediaViewerDialog.show(
+      context,
+      attachments: allImages,
+      initialIndex: targetIndex,
+      senderName: state.conversation?.customer?.name ?? state.conversation?.title,
     );
   }
 
@@ -1598,6 +1654,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ),
                   ),
                 ),
+              if (conversation != null)
+                _LiveResponderHeaderBar(
+                  conversation: conversation,
+                  isWorker: ref.watch(authControllerProvider).isIndependentWorker,
+                  onTakeover: () async {
+                    final err = await ref
+                        .read(
+                          chatControllerProvider(
+                            widget.conversationId,
+                          ).notifier,
+                        )
+                        .takeoverHandoff();
+                    if (!mounted) return;
+                    if (err != null) {
+                      ScaffoldMessenger.of(
+                        this.context,
+                      ).showSnackBar(SnackBar(content: Text(err)));
+                    }
+                  },
+                  onResumeAi: () async {
+                    final err = await ref
+                        .read(
+                          chatControllerProvider(
+                            widget.conversationId,
+                          ).notifier,
+                        )
+                        .resumeAi();
+                    if (!mounted) return;
+                    if (err != null) {
+                      ScaffoldMessenger.of(
+                        this.context,
+                      ).showSnackBar(SnackBar(content: Text(err)));
+                    }
+                  },
+                ),
               if (pinnedMessage != null) _pinnedMessageBar(pinnedMessage),
               Expanded(
                 child: state.loading && state.messages.isEmpty
@@ -1884,4 +1975,208 @@ class _ChatRow {
 
   final MessageModel? message;
   final DateTime? date;
+}
+
+class _LiveResponderHeaderBar extends StatelessWidget {
+  const _LiveResponderHeaderBar({
+    required this.conversation,
+    this.isWorker = false,
+    required this.onTakeover,
+    required this.onResumeAi,
+  });
+
+  final ConversationModel conversation;
+  final bool isWorker;
+  final VoidCallback onTakeover;
+  final VoidCallback onResumeAi;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HasimTokens.isDark(context);
+    final responder = conversation.effectiveResponder;
+
+    final Color bgColor;
+    final Color borderColor;
+    final Color textColor;
+    final Color dotColor;
+    final IconData iconData;
+
+    switch (responder.status) {
+      case 'ai_active':
+        bgColor = dark ? const Color(0xFF064E3B) : const Color(0xFFE8FAF6);
+        borderColor = dark ? const Color(0xFF047857) : const Color(0xFFC9F0E8);
+        textColor = dark ? const Color(0xFF6EE7B7) : const Color(0xFF067E6B);
+        dotColor = const Color(0xFF10B981);
+        iconData = Icons.auto_awesome_rounded;
+      case 'human_active':
+        bgColor = dark ? const Color(0xFF1E3A8A) : const Color(0xFFEFF6FF);
+        borderColor = dark ? const Color(0xFF1D4ED8) : const Color(0xFFBFDBFE);
+        textColor = dark ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8);
+        dotColor = const Color(0xFF3B82F6);
+        iconData = Icons.person_rounded;
+      case 'human_needed':
+        bgColor = dark ? const Color(0xFF78350F) : const Color(0xFFFFFBEB);
+        borderColor = dark ? const Color(0xFFB45309) : const Color(0xFFFDE68A);
+        textColor = dark ? const Color(0xFFFDE68A) : const Color(0xFFB45309);
+        dotColor = const Color(0xFFF59E0B);
+        iconData = Icons.support_agent_rounded;
+      default:
+        bgColor = dark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
+        borderColor = dark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+        textColor = dark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
+        dotColor = const Color(0xFF94A3B8);
+        iconData = Icons.schedule_rounded;
+    }
+
+    final String titleText;
+    switch (responder.status) {
+      case 'ai_active':
+        titleText = '${responder.name} يتولى الرد على هذه المحادثة';
+      case 'human_active':
+        titleText = 'المسؤول الحالي: ${responder.name} – موظف خدمة العملاء';
+      case 'human_needed':
+        titleText = 'المحادثة بانتظار استلام من أحد موظفي الفريق';
+      case 'waiting':
+        titleText = 'المحادثة متوقفة مؤقتاً بانتظار الرد';
+      default:
+        titleText = 'المحادثة مغلقة أو غير متصلة';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: bgColor,
+        border: Border(
+          bottom: BorderSide(color: borderColor, width: 0.8),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: dotColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(iconData, size: 16, color: dotColor),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  titleText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11.5,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: dotColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        responder.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                          color: textColor.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ),
+                    if (responder.assignedAtHuman != null &&
+                        responder.assignedAtHuman!.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          '• ${responder.assignedAtHuman}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontSize: 9.5,
+                            color: textColor.withValues(alpha: 0.75),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (!isWorker &&
+              conversation.status == 'open' &&
+              !conversation.archived &&
+              conversation.isHumanHandoffActive) ...[
+            if (responder.status == 'human_needed' ||
+                responder.status == 'waiting')
+              TextButton(
+                onPressed: onTakeover,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  backgroundColor: const Color(0xFF2563EB),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                ),
+                child: const Text(
+                  'تولي المحادثة',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              )
+            else if (responder.status == 'human_active')
+              TextButton(
+                onPressed: onResumeAi,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  backgroundColor: const Color(0xFF067E6B),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                ),
+                child: const Text(
+                  'إعادة إلى AI',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
 }

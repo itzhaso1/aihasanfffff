@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,8 +6,11 @@ import 'package:go_router/go_router.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/core/network/media_auth_headers.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
-import 'package:intl/intl.dart';
+import 'package:hasim/features/conversations/presentation/widgets/chat_media_viewer_dialog.dart';
+import 'package:hasim/features/conversations/providers/conversations_controller.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:hasim/features/conversations/providers/desktop_conversation_selection.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -17,6 +21,7 @@ class CustomerInfoDrawer extends ConsumerStatefulWidget {
     required this.conversation,
     required this.onClose,
     this.asPage = false,
+    this.attachments,
   });
 
   final ConversationModel conversation;
@@ -24,6 +29,9 @@ class CustomerInfoDrawer extends ConsumerStatefulWidget {
 
   /// صفحة كاملة على الهاتف. نفس محتوى درج سطح المكتب بدون حدّ اللوحة الجانبية.
   final bool asPage;
+
+  /// قائمة المرفقات المعروضة مباشرة دون الحاجة لمراقبة المحادثة
+  final List<MessageAttachmentModel>? attachments;
 
   @override
   ConsumerState<CustomerInfoDrawer> createState() => _CustomerInfoDrawerState();
@@ -33,6 +41,7 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
   int _conversationCount = 1;
   bool _loadingExtras = true;
   DateTime? _joinedAt;
+  String _mediaFilter = 'all';
 
   CustomerModel? get _customer => widget.conversation.customer;
 
@@ -319,6 +328,20 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
         : (ref.watch(desktopCustomerTagsProvider)[id] ?? const <String>[]);
     final online = _recentlyActive;
 
+    final allAttachments = <MessageAttachmentModel>[];
+    if (widget.attachments != null) {
+      allAttachments.addAll(widget.attachments!);
+    } else if (widget.conversation.id > 0) {
+      final chatState = ref.watch(chatControllerProvider(widget.conversation.id));
+      for (final m in chatState.messages) {
+        allAttachments.addAll(m.attachments);
+      }
+    }
+    final imageAttachments =
+        allAttachments.where((a) => a.kind == 'image').toList();
+    final fileAttachments =
+        allAttachments.where((a) => a.kind != 'image').toList();
+
     return Material(
       color: HasimTokens.cardBg(context),
       elevation: 0,
@@ -480,7 +503,14 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
+                    _buildMediaGallerySection(
+                      context,
+                      allAttachments,
+                      imageAttachments,
+                      fileAttachments,
+                    ),
+                    const SizedBox(height: 12),
                     _SectionCard(
                       title: 'معلومات إضافية',
                       child: Column(
@@ -577,6 +607,222 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMediaGallerySection(
+    BuildContext context,
+    List<MessageAttachmentModel> all,
+    List<MessageAttachmentModel> images,
+    List<MessageAttachmentModel> files,
+  ) {
+    final activeList = switch (_mediaFilter) {
+      'images' => images,
+      'files' => files,
+      _ => all,
+    };
+    final headersAsync = ref.watch(mediaAuthHeadersProvider);
+    final headers = headersAsync.valueOrNull ?? const <String, String>{};
+
+    return _SectionCard(
+      title: 'الوسائط والمستندات',
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: HasimTokens.mintFill(context),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          '${all.length}',
+          style: TextStyle(
+            color: HasimTokens.chatGreen,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Filter Chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _filterChip('الكل', 'all', all.length),
+                const SizedBox(width: 6),
+                _filterChip('الصور', 'images', images.length),
+                const SizedBox(width: 6),
+                _filterChip('المستندات', 'files', files.length),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          if (activeList.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Center(
+                child: Text(
+                  'لا توجد وسائط أو مستندات حتى الآن.',
+                  style: TextStyle(
+                    color: HasimTokens.mutedColor(context),
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+            )
+          else ...[
+            // Thumbnail grid for images
+            if (_mediaFilter == 'images' || (_mediaFilter == 'all' && images.isNotEmpty)) ...[
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _mediaFilter == 'images'
+                    ? images.length
+                    : (images.length > 6 ? 6 : images.length),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 6,
+                  mainAxisSpacing: 6,
+                ),
+                itemBuilder: (context, idx) {
+                  final item = images[idx];
+                  final url = item.previewUrl ?? item.displayUrl;
+                  return GestureDetector(
+                    onTap: () {
+                      ChatMediaViewerDialog.show(
+                        context,
+                        attachments: images,
+                        initialIndex: idx,
+                        senderName: widget.conversation.customer?.name ??
+                            widget.conversation.title,
+                      );
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: url != null && url.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: url,
+                              httpHeaders: headers,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 240,
+                              memCacheHeight: 240,
+                              placeholder: (_, _) => Container(
+                                color: Colors.black12,
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 1.5),
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (_, _, _) => Container(
+                                color: Colors.black12,
+                                child: const Icon(Icons.broken_image_outlined, size: 24),
+                              ),
+                            )
+                          : Container(
+                              color: Colors.black12,
+                              child: const Icon(Icons.image_outlined, size: 24),
+                            ),
+                    ),
+                  );
+                },
+              ),
+              if (_mediaFilter == 'all' && files.isNotEmpty)
+                const SizedBox(height: 10),
+            ],
+
+            // Files list
+            if (_mediaFilter == 'files' || (_mediaFilter == 'all' && files.isNotEmpty)) ...[
+              for (final f in (_mediaFilter == 'files'
+                  ? files
+                  : (files.length > 4 ? files.take(4).toList() : files)))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () {
+                      final u = f.downloadUrl ?? f.displayUrl;
+                      if (u != null && u.isNotEmpty) {
+                        final uri = Uri.tryParse(u);
+                        if (uri != null) {
+                          launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: HasimTokens.mintFill(context),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.insert_drive_file_outlined,
+                            size: 20,
+                            color: HasimTokens.chatGreen,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              f.originalName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: HasimTokens.inkColor(context),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.open_in_new_rounded,
+                            size: 15,
+                            color: HasimTokens.mutedColor(context),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _filterChip(String label, String key, int count) {
+    final isSelected = _mediaFilter == key;
+    return GestureDetector(
+      onTap: () => setState(() => _mediaFilter = key),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? HasimTokens.chatGreen
+              : HasimTokens.cardBg(context),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? HasimTokens.chatGreen
+                : HasimTokens.lineColor(context),
+          ),
+        ),
+        child: Text(
+          '$label ($count)',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+            color: isSelected ? Colors.white : HasimTokens.inkColor(context),
           ),
         ),
       ),

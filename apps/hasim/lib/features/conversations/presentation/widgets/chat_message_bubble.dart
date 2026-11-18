@@ -10,6 +10,8 @@ import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/utils/quoted_reply.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_attachment_content.dart';
+import 'package:hasim/features/conversations/presentation/widgets/chat_image_grid.dart';
+import 'package:hasim/features/conversations/presentation/widgets/chat_media_viewer_dialog.dart';
 import 'package:hasim/l10n/app_localizations.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
@@ -372,15 +374,41 @@ class _BubbleBody extends StatelessWidget {
       );
     }
 
+    final imageAttachments =
+        message.attachments.where((a) => a.kind == 'image').toList();
+    final otherAttachments =
+        message.attachments.where((a) => a.kind != 'image').toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showCaption)
-          Text(message.content, style: _textStyle.copyWith(color: fg)),
-        for (final a in message.attachments)
+        if (imageAttachments.isNotEmpty)
           Padding(
-            padding: EdgeInsets.only(top: showCaption ? 6 : 0),
+            padding: const EdgeInsets.only(bottom: 4),
+            child: ChatImageGrid(
+              attachments: imageAttachments,
+              onImageTap: (idx) {
+                final a = imageAttachments[idx];
+                final url = a.displayUrl ?? '';
+                if (url.isNotEmpty) {
+                  onImageTap?.call(url);
+                }
+                ChatMediaViewerDialog.show(
+                  context,
+                  attachments: imageAttachments,
+                  initialIndex: idx,
+                  senderName: message.customerName ?? message.userName,
+                  timestamp: message.createdAt,
+                  caption: message.content,
+                );
+              },
+              onMediaUrlExpired: onMediaUrlExpired,
+            ),
+          ),
+        for (final a in otherAttachments)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
             child: ChatAttachmentContent(
               attachment: a,
               onImageTap: onImageTap,
@@ -402,6 +430,13 @@ class _BubbleBody extends StatelessWidget {
               ),
             ),
           ),
+        if (showCaption)
+          Padding(
+            padding: EdgeInsets.only(
+              top: (hasAttachments || pendingUpload) ? 6 : 0,
+            ),
+            child: Text(message.content, style: _textStyle.copyWith(color: fg)),
+          ),
         if (pendingUpload)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -418,7 +453,7 @@ class _BubbleBody extends StatelessWidget {
           ),
         Padding(
           padding: EdgeInsets.only(
-            top: (showCaption || hasAttachments || pendingUpload) ? 2 : 0,
+            top: (showCaption || hasAttachments || pendingUpload) ? 4 : 0,
           ),
           child: _metaRow(),
         ),
