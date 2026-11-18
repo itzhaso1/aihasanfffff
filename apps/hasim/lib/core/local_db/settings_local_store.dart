@@ -18,7 +18,12 @@ class SettingsLocalStore {
         payload_json = excluded.payload_json,
         cached_at = excluded.cached_at
       ''',
-      [workspaceId, resource, jsonEncode(payload), DateTime.now().millisecondsSinceEpoch],
+      [
+        workspaceId,
+        resource,
+        jsonEncode(payload),
+        DateTime.now().millisecondsSinceEpoch,
+      ],
     );
   }
 

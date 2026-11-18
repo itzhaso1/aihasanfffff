@@ -14,7 +14,9 @@ class ChatBubbleColorPicker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final shared = ref.watch(chatBubbleColorControllerProvider);
-    final override = conversationId == null ? null : ref.watch(conversationThemeProvider(conversationId!)).bubbleColorId;
+    final override = conversationId == null
+        ? null
+        : ref.watch(conversationThemeProvider(conversationId!)).bubbleColorId;
     final selected = override ?? shared;
     final ink = HasimTokens.inkColor(context);
 
@@ -30,9 +32,13 @@ class ChatBubbleColorPicker extends ConsumerWidget {
             onTap: () {
               final id = conversationId;
               if (id == null) {
-                ref.read(chatBubbleColorControllerProvider.notifier).select(option.id);
+                ref
+                    .read(chatBubbleColorControllerProvider.notifier)
+                    .select(option.id);
               } else {
-                ref.read(conversationThemeProvider(id).notifier).setBubble(option.id);
+                ref
+                    .read(conversationThemeProvider(id).notifier)
+                    .setBubble(option.id);
               }
             },
             ink: ink,
@@ -70,7 +76,9 @@ class _BubbleColorChip extends StatelessWidget {
             color: HasimTokens.cardBg(context),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: selected ? HasimTokens.chatGreen : HasimTokens.lineColor(context),
+              color: selected
+                  ? HasimTokens.chatGreen
+                  : HasimTokens.lineColor(context),
               width: selected ? 1.6 : 1,
             ),
           ),
@@ -99,7 +107,11 @@ class _BubbleColorChip extends StatelessWidget {
                 ),
                 if (selected) ...[
                   const SizedBox(width: 6),
-                  const Icon(Icons.check_rounded, size: 16, color: HasimTokens.chatGreen),
+                  const Icon(
+                    Icons.check_rounded,
+                    size: 16,
+                    color: HasimTokens.chatGreen,
+                  ),
                 ],
               ],
             ),

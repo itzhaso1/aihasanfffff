@@ -58,14 +58,14 @@ class SearchState {
 final searchControllerProvider =
     StateNotifierProvider<GlobalSearchController, SearchState>((ref) {
       final controller = GlobalSearchController(ref);
-      ref.listen<String>(
-        authControllerProvider.select((s) => s.isolationKey),
-        (previous, next) {
-          if (previous != next) {
-            controller.reset();
-          }
-        },
-      );
+      ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+        previous,
+        next,
+      ) {
+        if (previous != next) {
+          controller.reset();
+        }
+      });
       return controller;
     });
 
@@ -131,9 +131,7 @@ class GlobalSearchController extends StateNotifier<SearchState> {
     state = SearchState(query: q, loading: true);
 
     try {
-      final payload = await _ref
-          .read(searchRepositoryProvider)
-          .search(q);
+      final payload = await _ref.read(searchRepositoryProvider).search(q);
       if (!mounted || gen != _generation) {
         return;
       }

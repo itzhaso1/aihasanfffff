@@ -19,7 +19,9 @@ Future<void> showConversationClassificationSheet({
     context: context,
     isScrollControlled: true,
     backgroundColor: HasimTokens.cardBg(context),
-    shape: RoundedRectangleBorder(borderRadius: HasimLayout.modalSheetRadius(context)),
+    shape: RoundedRectangleBorder(
+      borderRadius: HasimLayout.modalSheetRadius(context),
+    ),
     builder: (context) => _ClassificationSheet(
       conversation: conversation,
       submitting: submitting,
@@ -58,19 +60,22 @@ class _ClassificationSheetState extends State<_ClassificationSheet> {
   @override
   void initState() {
     super.initState();
-    _priority = ConversationClassificationValues.isAllowedPriority(
-      widget.conversation.customerPriority,
-    )
+    _priority =
+        ConversationClassificationValues.isAllowedPriority(
+          widget.conversation.customerPriority,
+        )
         ? widget.conversation.customerPriority
         : ConversationClassificationValues.defaultPriority;
-    _payment = ConversationClassificationValues.isAllowedPayment(
-      widget.conversation.paymentStatus,
-    )
+    _payment =
+        ConversationClassificationValues.isAllowedPayment(
+          widget.conversation.paymentStatus,
+        )
         ? widget.conversation.paymentStatus
         : ConversationClassificationValues.defaultPayment;
-    _review = ConversationClassificationValues.isAllowedReview(
-      widget.conversation.reviewStatus,
-    )
+    _review =
+        ConversationClassificationValues.isAllowedReview(
+          widget.conversation.reviewStatus,
+        )
         ? widget.conversation.reviewStatus
         : ConversationClassificationValues.defaultReview;
   }
@@ -115,9 +120,9 @@ class _ClassificationSheetState extends State<_ClassificationSheet> {
             children: [
               Text(
                 'تصنيف المحادثة',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
               Text(

@@ -45,7 +45,10 @@ class AsyncBody extends StatelessWidget {
             children: [
               Text(error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              FilledButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
+              FilledButton(
+                onPressed: onRetry,
+                child: const Text('إعادة المحاولة'),
+              ),
             ],
           ),
         ),

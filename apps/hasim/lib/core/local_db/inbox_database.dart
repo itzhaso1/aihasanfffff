@@ -161,15 +161,23 @@ class InboxDatabase implements QueryExecutorUser {
   }
 
   Future<void> _upgradeV1ToV2(QueryExecutor e) async {
-    final rows = await e.runSelect('PRAGMA table_info(inbox_messages)', const []);
+    final rows = await e.runSelect(
+      'PRAGMA table_info(inbox_messages)',
+      const [],
+    );
     final hasUpdatedAt = rows.any((row) => row['name'] == 'updated_at');
     if (!hasUpdatedAt) {
-      await e.runCustom('ALTER TABLE inbox_messages ADD COLUMN updated_at INTEGER NULL');
+      await e.runCustom(
+        'ALTER TABLE inbox_messages ADD COLUMN updated_at INTEGER NULL',
+      );
     }
   }
 
   Future<void> _upgradeV2ToV3(QueryExecutor e) async {
-    final rows = await e.runSelect('PRAGMA table_info(inbox_conversations)', const []);
+    final rows = await e.runSelect(
+      'PRAGMA table_info(inbox_conversations)',
+      const [],
+    );
     final names = rows.map((row) => row['name']?.toString()).toSet();
     if (!names.contains('server_unread_count')) {
       await e.runCustom(
@@ -177,7 +185,9 @@ class InboxDatabase implements QueryExecutorUser {
       );
     }
     if (!names.contains('local_read_at')) {
-      await e.runCustom('ALTER TABLE inbox_conversations ADD COLUMN local_read_at INTEGER NULL');
+      await e.runCustom(
+        'ALTER TABLE inbox_conversations ADD COLUMN local_read_at INTEGER NULL',
+      );
     }
     if (!names.contains('local_read_last_message_at')) {
       await e.runCustom(
@@ -187,24 +197,114 @@ class InboxDatabase implements QueryExecutorUser {
   }
 
   Future<void> _upgradeV3ToV4(QueryExecutor e) async {
-    await _ensureColumn(e, 'inbox_conversations', 'customer_priority', "customer_priority TEXT NOT NULL DEFAULT 'normal'");
-    await _ensureColumn(e, 'inbox_conversations', 'payment_status', "payment_status TEXT NOT NULL DEFAULT 'unpaid'");
-    await _ensureColumn(e, 'inbox_conversations', 'review_status', "review_status TEXT NOT NULL DEFAULT 'no_review_needed'");
-    await _ensureColumn(e, 'inbox_conversations', 'classification_source', "classification_source TEXT NOT NULL DEFAULT 'system'");
-    await _ensureColumn(e, 'inbox_conversations', 'handoff_status', "handoff_status TEXT NOT NULL DEFAULT 'none'");
-    await _ensureColumn(e, 'inbox_conversations', 'handoff_reason', 'handoff_reason TEXT');
-    await _ensureColumn(e, 'inbox_conversations', 'assigned_user_id', 'assigned_user_id INTEGER');
-    await _ensureColumn(e, 'inbox_conversations', 'assigned_user_name', 'assigned_user_name TEXT');
-    await _ensureColumn(e, 'inbox_conversations', 'assigned_worker_engagement_id', 'assigned_worker_engagement_id INTEGER');
-    await _ensureColumn(e, 'inbox_conversations', 'assigned_participant_type', 'assigned_participant_type TEXT');
-    await _ensureColumn(e, 'inbox_conversations', 'can_reply', 'can_reply INTEGER NOT NULL DEFAULT 1');
-    await _ensureColumn(e, 'inbox_conversations', 'sync_state', "sync_state TEXT NOT NULL DEFAULT 'synced'");
-    await _ensureColumn(e, 'inbox_conversations', 'deleted_at', 'deleted_at INTEGER');
-    await _ensureColumn(e, 'inbox_messages', 'worker_engagement_id', 'worker_engagement_id INTEGER');
-    await _ensureColumn(e, 'inbox_messages', 'sender_user_id', 'sender_user_id INTEGER');
-    await _ensureColumn(e, 'inbox_messages', 'participant_type', 'participant_type TEXT');
-    await _ensureColumn(e, 'inbox_messages', 'sync_state', "sync_state TEXT NOT NULL DEFAULT 'synced'");
-    await _ensureColumn(e, 'inbox_messages', 'client_created_at', 'client_created_at INTEGER');
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'customer_priority',
+      "customer_priority TEXT NOT NULL DEFAULT 'normal'",
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'payment_status',
+      "payment_status TEXT NOT NULL DEFAULT 'unpaid'",
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'review_status',
+      "review_status TEXT NOT NULL DEFAULT 'no_review_needed'",
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'classification_source',
+      "classification_source TEXT NOT NULL DEFAULT 'system'",
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'handoff_status',
+      "handoff_status TEXT NOT NULL DEFAULT 'none'",
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'handoff_reason',
+      'handoff_reason TEXT',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'assigned_user_id',
+      'assigned_user_id INTEGER',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'assigned_user_name',
+      'assigned_user_name TEXT',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'assigned_worker_engagement_id',
+      'assigned_worker_engagement_id INTEGER',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'assigned_participant_type',
+      'assigned_participant_type TEXT',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'can_reply',
+      'can_reply INTEGER NOT NULL DEFAULT 1',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'sync_state',
+      "sync_state TEXT NOT NULL DEFAULT 'synced'",
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'deleted_at',
+      'deleted_at INTEGER',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'worker_engagement_id',
+      'worker_engagement_id INTEGER',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'sender_user_id',
+      'sender_user_id INTEGER',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'participant_type',
+      'participant_type TEXT',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'sync_state',
+      "sync_state TEXT NOT NULL DEFAULT 'synced'",
+    );
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'client_created_at',
+      'client_created_at INTEGER',
+    );
     await _createAccountTables(e);
   }
 

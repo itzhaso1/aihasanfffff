@@ -71,7 +71,10 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [customerRepositoryProvider.overrideWithValue(repository)],
+          overrides: [
+            sharedPrefsProvider.overrideWithValue(prefs),
+            customerRepositoryProvider.overrideWithValue(repository),
+          ],
           child: MaterialApp(
             home: const CustomerProfileScreen(
               customerId: 7,
@@ -85,6 +88,7 @@ void main() {
       expect(find.text(customer.name), findsOneWidget);
       expect(repository.showRequested, isTrue);
       expect(find.text('تعذر تحميل ملف العميل.'), findsNothing);
+      await tester.pump(const Duration(seconds: 10));
     },
   );
 }

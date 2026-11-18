@@ -171,6 +171,7 @@ class _FakeConversationRepository extends ConversationRepository {
   Future<({List<MessageModel> items, String? nextCursor})> messages(
     int conversationId, {
     String? cursor,
+    int? afterId,
     int? workspaceId,
   }) async {
     return (items: const <MessageModel>[], nextCursor: null);
@@ -531,7 +532,12 @@ void main() {
 
     await tester.longPress(find.byKey(const Key('conversation-item-7')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('conversation-context-delete')));
+    final deleteBtn = find.byKey(const Key('conversation-selection-delete'));
+    if (deleteBtn.evaluate().isNotEmpty) {
+      await tester.tap(deleteBtn);
+    } else {
+      await tester.tap(find.byKey(const Key('conversation-context-delete')));
+    }
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const Key('conversation-context-delete-confirm')),

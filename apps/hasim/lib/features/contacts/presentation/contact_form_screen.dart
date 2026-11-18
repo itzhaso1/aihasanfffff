@@ -85,10 +85,16 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
         context.pop(true);
       }
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر الحفظ')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تعذر الحفظ')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -98,7 +104,9 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_editing ? 'تعديل جهة اتصال' : 'جهة اتصال جديدة')),
+      appBar: AppBar(
+        title: Text(_editing ? 'تعديل جهة اتصال' : 'جهة اتصال جديدة'),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -107,7 +115,8 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
             TextFormField(
               controller: _name,
               decoration: const InputDecoration(labelText: 'الاسم'),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'الاسم مطلوب' : null,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'الاسم مطلوب' : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -132,9 +141,15 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
               textAlign: TextAlign.left,
             ),
             const SizedBox(height: 12),
-            TextFormField(controller: _company, decoration: const InputDecoration(labelText: 'الشركة')),
+            TextFormField(
+              controller: _company,
+              decoration: const InputDecoration(labelText: 'الشركة'),
+            ),
             const SizedBox(height: 12),
-            TextFormField(controller: _jobTitle, decoration: const InputDecoration(labelText: 'المسمى الوظيفي')),
+            TextFormField(
+              controller: _jobTitle,
+              decoration: const InputDecoration(labelText: 'المسمى الوظيفي'),
+            ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _notes,

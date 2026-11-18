@@ -1,4 +1,3 @@
-
 import 'package:hasim/core/local_db/feed_local_store.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_client.dart';
@@ -28,9 +27,13 @@ class NotificationRepository {
     final workspaceId = _workspace;
     try {
       final res = await _api.get('/notifications');
-      final items = asMapList(res.data).map(AppNotificationModel.fromJson).toList();
+      final items = asMapList(
+        res.data,
+      ).map(AppNotificationModel.fromJson).toList();
       lastReadFromCache = false;
-      if (workspaceId != null) await _local?.upsertNotifications(workspaceId, items);
+      if (workspaceId != null) {
+        await _local?.upsertNotifications(workspaceId, items);
+      }
       return items;
     } catch (_) {
       final saved = await cached();
@@ -60,7 +63,9 @@ class NotificationRepository {
   Future<void> markAllRead() async {
     await _api.post('/notifications/read-all');
     final workspaceId = _workspace;
-    if (workspaceId != null) await _local?.markAllNotificationsRead(workspaceId);
+    if (workspaceId != null) {
+      await _local?.markAllNotificationsRead(workspaceId);
+    }
   }
 
   Future<Map<String, dynamic>> preferences() async {
@@ -68,7 +73,9 @@ class NotificationRepository {
     try {
       final res = await _api.get('/notification-preferences');
       final prefs = asMap(res.data) ?? {};
-      if (workspaceId != null) await _local?.saveNotificationPreferences(workspaceId, prefs);
+      if (workspaceId != null) {
+        await _local?.saveNotificationPreferences(workspaceId, prefs);
+      }
       return prefs;
     } catch (_) {
       if (workspaceId != null) {
@@ -85,11 +92,15 @@ class NotificationRepository {
     return await _local.notificationPreferences(workspaceId) ?? {};
   }
 
-  Future<Map<String, dynamic>> updatePreferences(Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> updatePreferences(
+    Map<String, dynamic> body,
+  ) async {
     final res = await _api.put('/notification-preferences', body: body);
     final prefs = asMap(res.data) ?? body;
     final workspaceId = _workspace;
-    if (workspaceId != null) await _local?.saveNotificationPreferences(workspaceId, prefs);
+    if (workspaceId != null) {
+      await _local?.saveNotificationPreferences(workspaceId, prefs);
+    }
     return prefs;
   }
 }

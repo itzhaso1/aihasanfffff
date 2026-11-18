@@ -14,7 +14,8 @@ class AppLockHost extends ConsumerStatefulWidget {
   ConsumerState<AppLockHost> createState() => _AppLockHostState();
 }
 
-class _AppLockHostState extends ConsumerState<AppLockHost> with WidgetsBindingObserver {
+class _AppLockHostState extends ConsumerState<AppLockHost>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -29,8 +30,13 @@ class _AppLockHostState extends ConsumerState<AppLockHost> with WidgetsBindingOb
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
       ref.read(chatLockControllerProvider.notifier).lockSessions();
+    } else if (state == AppLifecycleState.resumed) {
+      ref
+          .read(chatLockControllerProvider.notifier)
+          .refreshBiometricAvailability();
     }
   }
 
@@ -45,7 +51,10 @@ class _AppLockHostState extends ConsumerState<AppLockHost> with WidgetsBindingOb
     final auth = ref.watch(authControllerProvider);
     final lock = ref.watch(chatLockControllerProvider);
     if (auth.isAuthenticated && !lock.loaded) {
-      return const ColoredBox(color: Color(0xFFFFFFFF), child: SizedBox.expand());
+      return const ColoredBox(
+        color: Color(0xFFFFFFFF),
+        child: SizedBox.expand(),
+      );
     }
     if (!auth.isAuthenticated || !lock.needsAppLock) return widget.child;
 
@@ -58,7 +67,9 @@ class _AppLockHostState extends ConsumerState<AppLockHost> with WidgetsBindingOb
       },
       onBiometric: lock.appBiometricEnabled && lock.biometricAvailable
           ? () async {
-              final ok = await notifier.authenticateBiometric('أكّد هويتك لفتح حاسم');
+              final ok = await notifier.authenticateBiometric(
+                'أكّد هويتك لفتح حاسم',
+              );
               if (ok) notifier.markAppUnlocked();
               return ok;
             }

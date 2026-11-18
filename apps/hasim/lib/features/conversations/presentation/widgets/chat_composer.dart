@@ -165,138 +165,142 @@ class _ChatComposerState extends State<ChatComposer> {
                 ),
               ),
             Row(
-          textDirection: TextDirection.ltr,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Material(
-              color: micBackground,
-              shape: const CircleBorder(),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                key: const Key('chat-send-button'),
-                onTap: canSend
-                    ? widget.onSend
-                    : (canRecord ? widget.onRecord : null),
-                child: SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: Icon(
-                    canSend ? Icons.send_rounded : Icons.mic_none_rounded,
-                    size: 22,
-                    color: canSend || canRecord ? micForeground : muted,
+              textDirection: TextDirection.ltr,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Material(
+                  color: micBackground,
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    key: const Key('chat-send-button'),
+                    onTap: canSend
+                        ? widget.onSend
+                        : (canRecord ? widget.onRecord : null),
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Icon(
+                        canSend ? Icons.send_rounded : Icons.mic_none_rounded,
+                        size: 22,
+                        color: canSend || canRecord ? micForeground : muted,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Material(
-                color: barColor,
-                borderRadius: BorderRadius.circular(25),
-                clipBehavior: Clip.antiAlias,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
-                  child: Row(
-                    textDirection: TextDirection.rtl,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _iconAction(
-                        key:
-                            widget.emojiButtonKey ??
-                            const Key('chat-emoji-button'),
-                        onPressed: widget.sendEnabled ? widget.onEmoji : null,
-                        icon: widget.emojiAsKeyboard
-                            ? Icons.keyboard_alt_outlined
-                            : Icons.emoji_emotions_outlined,
-                        color: muted,
-                      ),
-                      Expanded(
-                        child: Theme(
-                          data: Theme.of(context).copyWith(
-                            hoverColor: Colors.transparent,
-                            highlightColor: Colors.transparent,
-                            splashColor: Colors.transparent,
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Material(
+                    color: barColor,
+                    borderRadius: BorderRadius.circular(25),
+                    clipBehavior: Clip.antiAlias,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                      child: Row(
+                        textDirection: TextDirection.rtl,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          _iconAction(
+                            key:
+                                widget.emojiButtonKey ??
+                                const Key('chat-emoji-button'),
+                            onPressed: widget.sendEnabled
+                                ? widget.onEmoji
+                                : null,
+                            icon: widget.emojiAsKeyboard
+                                ? Icons.keyboard_alt_outlined
+                                : Icons.emoji_emotions_outlined,
+                            color: muted,
                           ),
-                          child: Directionality(
-                            textDirection: TextDirection.rtl,
-                            child: TextField(
-                              controller: widget.controller,
-                              focusNode: widget.focusNode,
-                              minLines: 1,
-                              maxLines: 4,
-                              textAlign: TextAlign.right,
-                              textInputAction: TextInputAction.send,
-                              onChanged: (value) {
-                                if (!value.contains('\n')) {
-                                  _committedText = value;
-                                  return;
-                                }
-                                final cleaned = _withoutNewlines(value);
-                                final enterOnExistingText =
-                                    cleaned == _committedText;
-                                widget.controller.value = TextEditingValue(
-                                  text: cleaned,
-                                  selection: TextSelection.collapsed(
-                                    offset: cleaned.length,
+                          Expanded(
+                            child: Theme(
+                              data: Theme.of(context).copyWith(
+                                hoverColor: Colors.transparent,
+                                highlightColor: Colors.transparent,
+                                splashColor: Colors.transparent,
+                              ),
+                              child: Directionality(
+                                textDirection: TextDirection.rtl,
+                                child: TextField(
+                                  controller: widget.controller,
+                                  focusNode: widget.focusNode,
+                                  minLines: 1,
+                                  maxLines: 4,
+                                  textAlign: TextAlign.right,
+                                  textInputAction: TextInputAction.send,
+                                  onChanged: (value) {
+                                    if (!value.contains('\n')) {
+                                      _committedText = value;
+                                      return;
+                                    }
+                                    final cleaned = _withoutNewlines(value);
+                                    final enterOnExistingText =
+                                        cleaned == _committedText;
+                                    widget.controller.value = TextEditingValue(
+                                      text: cleaned,
+                                      selection: TextSelection.collapsed(
+                                        offset: cleaned.length,
+                                      ),
+                                    );
+                                    _committedText = cleaned;
+                                    // Enter on the current draft sends. Pasting or
+                                    // inserting an AI suggestion must not.
+                                    if (widget.sendEnabled &&
+                                        cleaned.trim().isNotEmpty &&
+                                        enterOnExistingText) {
+                                      widget.onSend();
+                                    }
+                                  },
+                                  onSubmitted: (_) {
+                                    if (canSend) widget.onSend();
+                                  },
+                                  decoration: InputDecoration(
+                                    hintText: 'الرسالة',
+                                    hintStyle: TextStyle(
+                                      color: muted,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 14.5,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.transparent,
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 10,
+                                    ),
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    disabledBorder: InputBorder.none,
                                   ),
-                                );
-                                _committedText = cleaned;
-                                // Enter on the current draft sends. Pasting or
-                                // inserting an AI suggestion must not.
-                                if (widget.sendEnabled &&
-                                    cleaned.trim().isNotEmpty &&
-                                    enterOnExistingText) {
-                                  widget.onSend();
-                                }
-                              },
-                              onSubmitted: (_) {
-                                if (canSend) widget.onSend();
-                              },
-                              decoration: InputDecoration(
-                                hintText: 'الرسالة',
-                                hintStyle: TextStyle(
-                                  color: muted,
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 14.5,
                                 ),
-                                filled: true,
-                                fillColor: Colors.transparent,
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 10,
-                                ),
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                disabledBorder: InputBorder.none,
                               ),
                             ),
                           ),
-                        ),
+                          _iconAction(
+                            key:
+                                widget.attachButtonKey ??
+                                const Key('chat-attach-button'),
+                            onPressed: widget.sendEnabled
+                                ? widget.onAttach
+                                : null,
+                            icon: Icons.attach_file_rounded,
+                            color: muted,
+                          ),
+                          _iconAction(
+                            key: const Key('chat-camera-button'),
+                            onPressed: widget.sendEnabled
+                                ? (widget.onCamera ?? widget.onAttach)
+                                : null,
+                            icon: Icons.camera_alt_outlined,
+                            color: muted,
+                          ),
+                        ],
                       ),
-                      _iconAction(
-                        key:
-                            widget.attachButtonKey ??
-                            const Key('chat-attach-button'),
-                        onPressed: widget.sendEnabled ? widget.onAttach : null,
-                        icon: Icons.attach_file_rounded,
-                        color: muted,
-                      ),
-                      _iconAction(
-                        key: const Key('chat-camera-button'),
-                        onPressed: widget.sendEnabled
-                            ? (widget.onCamera ?? widget.onAttach)
-                            : null,
-                        icon: Icons.camera_alt_outlined,
-                        color: muted,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ],
+              ],
             ),
           ],
         ),

@@ -391,7 +391,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       vertical: 4,
                                     ),
                                     minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
                                   ),
                                   child: const Text(
                                     'إنشاء حساب',

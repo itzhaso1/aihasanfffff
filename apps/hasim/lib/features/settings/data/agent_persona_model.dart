@@ -14,14 +14,30 @@ class AgentPersonaCatalog {
       'helpful',
     ],
     this.languages = const ['auto', 'ar', 'en'],
-    this.dialects = const ['auto', 'neutral', 'jordanian', 'saudi', 'gulf', 'egyptian'],
-    this.formality = const ['casual', 'casual_professional', 'professional', 'formal'],
+    this.dialects = const [
+      'auto',
+      'neutral',
+      'jordanian',
+      'saudi',
+      'gulf',
+      'egyptian',
+    ],
+    this.formality = const [
+      'casual',
+      'casual_professional',
+      'professional',
+      'formal',
+    ],
     this.warmth = const ['low', 'medium', 'high'],
     this.verbosity = const ['concise', 'balanced', 'detailed'],
     this.emojiUsage = const ['none', 'minimal', 'moderate'],
     this.greetingStyles = const ['neutral', 'friendly', 'warm'],
     this.salesStyles = const ['neutral', 'helpful_not_pushy', 'consultative'],
-    this.supportStyles = const ['neutral', 'empathetic_and_direct', 'patient_and_detailed'],
+    this.supportStyles = const [
+      'neutral',
+      'empathetic_and_direct',
+      'patient_and_detailed',
+    ],
     this.maxTraits = 8,
     this.maxBehavioralRules = 12,
     this.maxRuleLength = 200,
@@ -70,7 +86,8 @@ class AgentPersonaCatalog {
       maxTraits: (json['max_traits'] as num?)?.toInt() ?? 8,
       maxBehavioralRules: (json['max_behavioral_rules'] as num?)?.toInt() ?? 12,
       maxRuleLength: (json['max_rule_length'] as num?)?.toInt() ?? 200,
-      maxIdentityNameLength: (json['max_identity_name_length'] as num?)?.toInt() ?? 64,
+      maxIdentityNameLength:
+          (json['max_identity_name_length'] as num?)?.toInt() ?? 64,
     );
   }
 }
@@ -117,7 +134,9 @@ class AgentPersonaModel extends Equatable {
       version: (json['version'] as num?)?.toInt() ?? 1,
       identityName: identity['name']?.toString() ?? '',
       identityRole: identity['role']?.toString() ?? '',
-      traits: json['traits'] is List ? (json['traits'] as List).map((e) => e.toString()).toList() : const [],
+      traits: json['traits'] is List
+          ? (json['traits'] as List).map((e) => e.toString()).toList()
+          : const [],
       language: tone['language']?.toString() ?? 'auto',
       dialect: tone['dialect']?.toString() ?? 'auto',
       formality: tone['formality']?.toString() ?? 'professional',
@@ -126,7 +145,8 @@ class AgentPersonaModel extends Equatable {
       emojiUsage: tone['emoji_usage']?.toString() ?? 'minimal',
       greetingStyle: style['greeting_style']?.toString() ?? 'friendly',
       salesStyle: style['sales_style']?.toString() ?? 'helpful_not_pushy',
-      supportStyle: style['support_style']?.toString() ?? 'empathetic_and_direct',
+      supportStyle:
+          style['support_style']?.toString() ?? 'empathetic_and_direct',
       behavioralRules: json['behavioral_rules'] is List
           ? (json['behavioral_rules'] as List).map((e) => e.toString()).toList()
           : const [],
@@ -167,30 +187,34 @@ class AgentPersonaModel extends Equatable {
   }
 
   Map<String, dynamic> toJson() => {
-        'version': version,
-        'identity': {
-          'name': identityName,
-          'role': identityRole,
-        },
-        'traits': traits,
-        'tone': {
-          'language': language,
-          'dialect': dialect,
-          'formality': formality,
-          'warmth': warmth,
-          'verbosity': verbosity,
-          'emoji_usage': emojiUsage,
-        },
-        'style': {
-          'greeting_style': greetingStyle,
-          'sales_style': salesStyle,
-          'support_style': supportStyle,
-        },
-        'behavioral_rules': behavioralRules,
-      };
+    'version': version,
+    'identity': {'name': identityName, 'role': identityRole},
+    'traits': traits,
+    'tone': {
+      'language': language,
+      'dialect': dialect,
+      'formality': formality,
+      'warmth': warmth,
+      'verbosity': verbosity,
+      'emoji_usage': emojiUsage,
+    },
+    'style': {
+      'greeting_style': greetingStyle,
+      'sales_style': salesStyle,
+      'support_style': supportStyle,
+    },
+    'behavioral_rules': behavioralRules,
+  };
 
   @override
-  List<Object?> get props => [identityName, identityRole, language, formality, traits, behavioralRules];
+  List<Object?> get props => [
+    identityName,
+    identityRole,
+    language,
+    formality,
+    traits,
+    behavioralRules,
+  ];
 }
 
 Map<String, dynamic> _asStringMap(dynamic raw) {

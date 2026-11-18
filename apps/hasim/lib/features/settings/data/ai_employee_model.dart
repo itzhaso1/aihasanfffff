@@ -14,12 +14,13 @@ class AiSkillDefinition {
   final String? description;
   final String? category;
 
-  factory AiSkillDefinition.fromJson(Map<String, dynamic> json) => AiSkillDefinition(
-    key: json['key']?.toString() ?? '',
-    name: json['name']?.toString() ?? '',
-    description: json['description']?.toString(),
-    category: json['category']?.toString(),
-  );
+  factory AiSkillDefinition.fromJson(Map<String, dynamic> json) =>
+      AiSkillDefinition(
+        key: json['key']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        description: json['description']?.toString(),
+        category: json['category']?.toString(),
+      );
 }
 
 /// AI employee as returned by `/ai/employees`. Identity is [id]; [name] is display data.
@@ -77,7 +78,9 @@ class AiEmployeeModel {
   static const maxNameLength = 64;
 
   factory AiEmployeeModel.fromJson(Map<String, dynamic> json) {
-    final model = json['model'] is Map ? Map<String, dynamic>.from(json['model'] as Map) : const <String, dynamic>{};
+    final model = json['model'] is Map
+        ? Map<String, dynamic>.from(json['model'] as Map)
+        : const <String, dynamic>{};
     return AiEmployeeModel(
       id: (json['id'] as num).toInt(),
       name: json['name']?.toString() ?? '',
@@ -91,7 +94,9 @@ class AiEmployeeModel {
       presetKey: _text(json['preset_key']),
       configVersion: (json['config_version'] as num?)?.toInt() ?? 1,
       persona: AiEmployeePersona.fromJson(
-        json['persona'] is Map ? Map<String, dynamic>.from(json['persona'] as Map) : null,
+        json['persona'] is Map
+            ? Map<String, dynamic>.from(json['persona'] as Map)
+            : null,
       ),
       skills: [
         if (json['skills'] is List)
@@ -100,7 +105,9 @@ class AiEmployeeModel {
       ],
       provider: _text(model['provider']),
       model: _text(model['model']),
-      modelSource: model['source']?.toString() ?? (model['is_override'] == true ? 'employee' : 'default'),
+      modelSource:
+          model['source']?.toString() ??
+          (model['is_override'] == true ? 'employee' : 'default'),
       modelIsOverride: model['is_override'] == true,
       responseLength: model['response_length']?.toString() ?? 'short',
       temperature: (model['temperature'] as num?)?.toDouble() ?? 0.4,
@@ -137,8 +144,11 @@ class AiEmployeePersona {
       formality: json['formality']?.toString() ?? 'casual_professional',
       tone: json['tone']?.toString() ?? 'friendly',
       emojiPolicy: json['emoji_policy']?.toString() ?? 'minimal',
-      greetingPolicy: json['greeting_policy']?.toString() ?? 'introduce_first_contact',
-      traits: json['traits'] is List ? (json['traits'] as List).map((e) => e.toString()).toList() : const [],
+      greetingPolicy:
+          json['greeting_policy']?.toString() ?? 'introduce_first_contact',
+      traits: json['traits'] is List
+          ? (json['traits'] as List).map((e) => e.toString()).toList()
+          : const [],
       styleNotes: _text(json['style_notes']),
     );
   }
@@ -194,24 +204,24 @@ class AiEmployeeDraft {
     List<String>? traits,
     String? responseLength,
     double? temperature,
-  }) =>
-      AiEmployeeDraft(
-        name: name ?? this.name,
-        role: role ?? this.role,
-        jobTitle: jobTitle ?? this.jobTitle,
-        instructions: instructions ?? this.instructions,
-        experienceNotes: experienceNotes ?? this.experienceNotes,
-        language: language ?? this.language,
-        dialect: dialect ?? this.dialect,
-        formality: formality ?? this.formality,
-        tone: tone ?? this.tone,
-        emojiPolicy: emojiPolicy ?? this.emojiPolicy,
-        traits: traits ?? this.traits,
-        responseLength: responseLength ?? this.responseLength,
-        temperature: temperature ?? this.temperature,
-      );
+  }) => AiEmployeeDraft(
+    name: name ?? this.name,
+    role: role ?? this.role,
+    jobTitle: jobTitle ?? this.jobTitle,
+    instructions: instructions ?? this.instructions,
+    experienceNotes: experienceNotes ?? this.experienceNotes,
+    language: language ?? this.language,
+    dialect: dialect ?? this.dialect,
+    formality: formality ?? this.formality,
+    tone: tone ?? this.tone,
+    emojiPolicy: emojiPolicy ?? this.emojiPolicy,
+    traits: traits ?? this.traits,
+    responseLength: responseLength ?? this.responseLength,
+    temperature: temperature ?? this.temperature,
+  );
 
-  factory AiEmployeeDraft.fromEmployee(AiEmployeeModel employee) => AiEmployeeDraft(
+  factory AiEmployeeDraft.fromEmployee(AiEmployeeModel employee) =>
+      AiEmployeeDraft(
         name: employee.name,
         role: employee.role,
         jobTitle: employee.jobTitle ?? '',
@@ -230,24 +240,21 @@ class AiEmployeeDraft {
       );
 
   Map<String, dynamic> toJson() => {
-        'name': name.trim(),
-        'role': role,
-        'job_title': jobTitle.trim(),
-        'instructions': instructions.trim(),
-        'experience_notes': experienceNotes.trim(),
-        'persona': {
-          'language': language,
-          'dialect': dialect,
-          'formality': formality,
-          'tone': tone,
-          'emoji_policy': emojiPolicy,
-          'traits': traits,
-        },
-        'model': {
-          'response_length': responseLength,
-          'temperature': temperature,
-        },
-      };
+    'name': name.trim(),
+    'role': role,
+    'job_title': jobTitle.trim(),
+    'instructions': instructions.trim(),
+    'experience_notes': experienceNotes.trim(),
+    'persona': {
+      'language': language,
+      'dialect': dialect,
+      'formality': formality,
+      'tone': tone,
+      'emoji_policy': emojiPolicy,
+      'traits': traits,
+    },
+    'model': {'response_length': responseLength, 'temperature': temperature},
+  };
 }
 
 /// Starter template from `/ai/employee-presets`. Never an employee itself.
@@ -271,7 +278,9 @@ class AiEmployeePresetModel {
   final String? dialect;
 
   factory AiEmployeePresetModel.fromJson(Map<String, dynamic> json) {
-    final persona = json['persona'] is Map ? Map<String, dynamic>.from(json['persona'] as Map) : const <String, dynamic>{};
+    final persona = json['persona'] is Map
+        ? Map<String, dynamic>.from(json['persona'] as Map)
+        : const <String, dynamic>{};
     return AiEmployeePresetModel(
       key: json['key']?.toString() ?? '',
       version: (json['version'] as num?)?.toInt() ?? 1,
@@ -289,10 +298,24 @@ class AiEmployeeOptions {
   const AiEmployeeOptions({
     this.languages = const ['auto', 'ar', 'en'],
     this.dialects = const ['auto', 'saudi', 'jordanian', 'neutral'],
-    this.formality = const ['casual', 'casual_professional', 'professional', 'formal'],
+    this.formality = const [
+      'casual',
+      'casual_professional',
+      'professional',
+      'formal',
+    ],
     this.tones = const ['warm', 'friendly', 'neutral', 'calm', 'energetic'],
     this.emojiPolicies = const ['none', 'minimal', 'moderate'],
-    this.traits = const ['friendly', 'professional', 'confident', 'empathetic', 'energetic', 'calm', 'concise', 'helpful'],
+    this.traits = const [
+      'friendly',
+      'professional',
+      'confident',
+      'empathetic',
+      'energetic',
+      'calm',
+      'concise',
+      'helpful',
+    ],
     this.responseLengths = const ['short', 'medium', 'long'],
     this.providers = const [],
     this.maxTraits = 8,
@@ -311,8 +334,9 @@ class AiEmployeeOptions {
   factory AiEmployeeOptions.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const AiEmployeeOptions();
     const fallback = AiEmployeeOptions();
-    List<String> list(String key, List<String> defaults) =>
-        json[key] is List ? (json[key] as List).map((e) => e.toString()).toList() : defaults;
+    List<String> list(String key, List<String> defaults) => json[key] is List
+        ? (json[key] as List).map((e) => e.toString()).toList()
+        : defaults;
     return AiEmployeeOptions(
       languages: list('languages', fallback.languages),
       dialects: list('dialects', fallback.dialects),
@@ -344,7 +368,10 @@ class AiEmployeeOptions {
 }
 
 class AiEmployeesPayload {
-  const AiEmployeesPayload({required this.employees, this.options = const AiEmployeeOptions()});
+  const AiEmployeesPayload({
+    required this.employees,
+    this.options = const AiEmployeeOptions(),
+  });
 
   final List<AiEmployeeModel> employees;
   final AiEmployeeOptions options;
@@ -392,8 +419,11 @@ class AiEmployeeTestResult {
     final rawChecks = json['checks'];
     return AiEmployeeTestResult(
       status: json['status']?.toString() ?? 'failed',
-      outcome: json['outcome']?.toString() ?? (json['status']?.toString() == 'replied' ? 'success' : 'failed'),
-      text: AiCustomerFacingText.parse(json['text'], field: 'text') ??
+      outcome:
+          json['outcome']?.toString() ??
+          (json['status']?.toString() == 'replied' ? 'success' : 'failed'),
+      text:
+          AiCustomerFacingText.parse(json['text'], field: 'text') ??
           AiCustomerFacingText.parse(json['reply'], field: 'reply') ??
           AiCustomerFacingText.parse(json, field: 'text'),
       provider: _text(json['provider']),
@@ -404,7 +434,10 @@ class AiEmployeeTestResult {
       tokens: (json['tokens'] as num?)?.toInt(),
       error: _text(json['error']),
       checks: rawChecks is List
-          ? rawChecks.whereType<Map>().map((e) => AiProbeCheck.fromJson(Map<String, dynamic>.from(e))).toList()
+          ? rawChecks
+                .whereType<Map>()
+                .map((e) => AiProbeCheck.fromJson(Map<String, dynamic>.from(e)))
+                .toList()
           : const [],
     );
   }

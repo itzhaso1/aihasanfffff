@@ -12,13 +12,15 @@ class HasimSettingsBody extends StatelessWidget {
 
   final List<Widget> children;
   final EdgeInsetsGeometry? padding;
+
   /// تخطيط موبايل فقط — عرض كامل ومسافات أوسع للمس.
   final bool mobileLayout;
 
   @override
   Widget build(BuildContext context) {
     final list = ListView(
-      padding: padding ??
+      padding:
+          padding ??
           (mobileLayout
               ? const EdgeInsets.fromLTRB(16, 12, 16, 28)
               : const EdgeInsets.fromLTRB(24, 12, 24, HasimTokens.spaceXl)),
@@ -32,7 +34,9 @@ class HasimSettingsBody extends StatelessWidget {
           : Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: HasimTokens.settingsContentMaxWidth),
+                constraints: const BoxConstraints(
+                  maxWidth: HasimTokens.settingsContentMaxWidth,
+                ),
                 child: list,
               ),
             ),

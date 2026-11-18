@@ -112,7 +112,13 @@ class AppTheme {
       muted: HasimTokens.muted,
     );
     final cairoFamily = GoogleFonts.cairo().fontFamily;
-    const cairoFallback = ['Cairo', 'Segoe UI', 'Arial', 'Tahoma', 'sans-serif'];
+    const cairoFallback = [
+      'Cairo',
+      'Segoe UI',
+      'Arial',
+      'Tahoma',
+      'sans-serif',
+    ];
 
     return ThemeData(
       useMaterial3: true,
@@ -258,7 +264,10 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: HasimTokens.primary,
-          textStyle: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 14),
+          textStyle: GoogleFonts.cairo(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+          ),
         ),
       ),
       chipTheme: ChipThemeData(
@@ -321,7 +330,13 @@ class AppTheme {
       muted: const Color(0xFF9E9E9E),
     );
     final cairoFamily = GoogleFonts.cairo().fontFamily;
-    const cairoFallback = ['Cairo', 'Segoe UI', 'Arial', 'Tahoma', 'sans-serif'];
+    const cairoFallback = [
+      'Cairo',
+      'Segoe UI',
+      'Arial',
+      'Tahoma',
+      'sans-serif',
+    ];
 
     return ThemeData(
       useMaterial3: true,
@@ -376,9 +391,7 @@ class AppTheme {
           color: Colors.white,
           fontWeight: FontWeight.w700,
         ),
-        contentTextStyle: textTheme.bodyMedium?.copyWith(
-          color: Colors.white,
-        ),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(color: Colors.white),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: HasimTokens.darkCard,
@@ -465,7 +478,10 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: HasimTokens.chatGreen,
-          textStyle: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 14),
+          textStyle: GoogleFonts.cairo(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+          ),
         ),
       ),
       iconTheme: const IconThemeData(color: Colors.white),

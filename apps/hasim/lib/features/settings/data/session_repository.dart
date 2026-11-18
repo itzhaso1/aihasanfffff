@@ -1,4 +1,3 @@
-
 import 'package:hasim/core/local_db/settings_local_store.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_client.dart';
@@ -38,7 +37,9 @@ class SessionRepository {
 
   Future<List<DeviceSessionModel>> list() async {
     final res = await _api.get('/sessions');
-    final items = [for (final item in asMapList(res.data)) sessionCachePayload(item)];
+    final items = [
+      for (final item in asMapList(res.data)) sessionCachePayload(item),
+    ];
     final workspaceId = _workspaceIdOf?.call();
     if (workspaceId != null) await _local?.put(workspaceId, 'sessions', items);
     return items.map(DeviceSessionModel.fromJson).toList();
@@ -58,12 +59,15 @@ class DeviceRepository {
     required String platform,
     String? deviceName,
   }) async {
-    final res = await _api.post('/devices', body: {
-      'token': token,
-      'provider': provider,
-      'platform': platform,
-      'device_name': ?deviceName,
-    });
+    final res = await _api.post(
+      '/devices',
+      body: {
+        'token': token,
+        'provider': provider,
+        'platform': platform,
+        'device_name': ?deviceName,
+      },
+    );
     if (!res.success) throw ApiException(res.message ?? 'تعذر تسجيل الجهاز.');
     return (asMap(res.data)?['id'] as num?)?.toInt();
   }

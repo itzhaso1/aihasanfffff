@@ -95,7 +95,9 @@ class ChatMessageBubble extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final sharedBubble = ref.watch(chatBubbleColorControllerProvider);
     final bubbleOverride = ref.watch(
-      conversationThemeProvider(message.conversationId).select((t) => t.bubbleColorId),
+      conversationThemeProvider(
+        message.conversationId,
+      ).select((t) => t.bubbleColorId),
     );
     final bubbleColorId = bubbleOverride ?? sharedBubble;
     final mine = message.isOutbound;
@@ -151,62 +153,62 @@ class ChatMessageBubble extends ConsumerWidget {
                 ? null
                 : (details) => openMenu(details.globalPosition),
             child: InkWell(
-            onTap: bubbleTap,
-            borderRadius: BorderRadius.circular(18),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth:
-                    maxWidth ??
-                    MediaQuery.sizeOf(context).width * bubbleMaxFraction,
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(12),
-                    topRight: const Radius.circular(12),
-                    bottomLeft: Radius.circular(onPhysicalLeft ? 4 : 12),
-                    bottomRight: Radius.circular(onPhysicalLeft ? 12 : 4),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 1,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
+              onTap: bubbleTap,
+              borderRadius: BorderRadius.circular(18),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth:
+                      maxWidth ??
+                      MediaQuery.sizeOf(context).width * bubbleMaxFraction,
                 ),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    compact ? 8 : 10,
-                    compact ? 5 : 6,
-                    compact ? 8 : 10,
-                    compact ? 4 : 5,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(12),
+                      topRight: const Radius.circular(12),
+                      bottomLeft: Radius.circular(onPhysicalLeft ? 4 : 12),
+                      bottomRight: Radius.circular(onPhysicalLeft ? 12 : 4),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 1,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
                   ),
-                  child: Directionality(
-                    textDirection: TextDirection.rtl,
-                    child: AbsorbPointer(
-                      absorbing: selectionMode,
-                      child: _BubbleBody(
-                        message: message,
-                        mine: mine,
-                        failed: failed,
-                        showCaption: showCaption,
-                        fg: fg,
-                        meta: meta,
-                        l10n: l10n,
-                        pinned: pinned,
-                        starred: starred,
-                        onImageTap: onImageTap,
-                        onMediaUrlExpired: onMediaUrlExpired,
-                        onOpenFailed: onOpenFailed,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      compact ? 8 : 10,
+                      compact ? 5 : 6,
+                      compact ? 8 : 10,
+                      compact ? 4 : 5,
+                    ),
+                    child: Directionality(
+                      textDirection: TextDirection.rtl,
+                      child: AbsorbPointer(
+                        absorbing: selectionMode,
+                        child: _BubbleBody(
+                          message: message,
+                          mine: mine,
+                          failed: failed,
+                          showCaption: showCaption,
+                          fg: fg,
+                          meta: meta,
+                          l10n: l10n,
+                          pinned: pinned,
+                          starred: starred,
+                          onImageTap: onImageTap,
+                          onMediaUrlExpired: onMediaUrlExpired,
+                          onOpenFailed: onOpenFailed,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
           ),
         ),
       ),

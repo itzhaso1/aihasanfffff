@@ -65,7 +65,10 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
     final repo = ref.read(chatCatalogRepositoryProvider);
     final kind = widget.mode == 'products' ? 'product' : null;
     if (reset) {
-      final cached = await repo.cachedItems(search: _search.text.trim(), itemKind: kind);
+      final cached = await repo.cachedItems(
+        search: _search.text.trim(),
+        itemKind: kind,
+      );
       if (!mounted) return;
       final visible = cached.where(_matchesMode).toList();
       setState(() {
@@ -384,9 +387,7 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: item.isActive
-                            ? AppTheme.brand
-                            : Colors.orange,
+                        color: item.isActive ? AppTheme.brand : Colors.orange,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

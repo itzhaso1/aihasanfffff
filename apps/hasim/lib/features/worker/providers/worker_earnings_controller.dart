@@ -58,7 +58,10 @@ class WorkerEarningsController extends StateNotifier<WorkerEarningsState> {
     if (cached.isNotEmpty) {
       state = state.copyWith(
         loading: false,
-        periods: [for (final period in cached) if (!period.isDraft) period],
+        periods: [
+          for (final period in cached)
+            if (!period.isDraft) period,
+        ],
         clearError: true,
       );
     } else {
@@ -76,9 +79,15 @@ class WorkerEarningsController extends StateNotifier<WorkerEarningsState> {
         clearActionError: true,
       );
     } on ApiException catch (error) {
-      state = state.copyWith(loading: false, error: state.periods.isEmpty ? _error(error) : null);
+      state = state.copyWith(
+        loading: false,
+        error: state.periods.isEmpty ? _error(error) : null,
+      );
     } catch (_) {
-      state = state.copyWith(loading: false, error: state.periods.isEmpty ? 'تعذر تحميل الأرباح.' : null);
+      state = state.copyWith(
+        loading: false,
+        error: state.periods.isEmpty ? 'تعذر تحميل الأرباح.' : null,
+      );
     }
   }
 

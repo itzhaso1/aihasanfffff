@@ -22,7 +22,8 @@ class ChatWallpaperOption {
 class ChatWallpaperCatalog {
   static const defaultId = 'pokemon';
 
-  static const defaultAsset = 'assets/chat_wallpapers/chat_wallpaper_pokemon.jpg';
+  static const defaultAsset =
+      'assets/chat_wallpapers/chat_wallpaper_pokemon.jpg';
 
   static const options = <ChatWallpaperOption>[
     ChatWallpaperOption(

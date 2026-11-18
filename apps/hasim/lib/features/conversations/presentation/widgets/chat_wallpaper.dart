@@ -50,7 +50,9 @@ class ChatDoodleWallpaper extends StatelessWidget {
       color: HasimTokens.chatCanvas(context),
       child: CustomPaint(
         painter: _DoodlePainter(
-          color: (dark ? Colors.white : const Color(0xFF8D8376)).withValues(alpha: dark ? 0.035 : 0.09),
+          color: (dark ? Colors.white : const Color(0xFF8D8376)).withValues(
+            alpha: dark ? 0.035 : 0.09,
+          ),
         ),
         child: const SizedBox.expand(),
       ),
@@ -105,5 +107,6 @@ class _DoodlePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DoodlePainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _DoodlePainter oldDelegate) =>
+      oldDelegate.color != color;
 }

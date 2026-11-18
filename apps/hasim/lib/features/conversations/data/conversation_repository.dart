@@ -203,6 +203,7 @@ class ConversationRepository {
   Future<({List<MessageModel> items, String? nextCursor})> messages(
     int conversationId, {
     String? cursor,
+    int? afterId,
     int? workspaceId,
   }) async {
     try {
@@ -211,6 +212,7 @@ class ConversationRepository {
         '/conversations/$conversationId/messages',
         query: {
           if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+          if (afterId != null && afterId > 0) 'after_id': afterId,
           'per_page': 30,
         },
       );
@@ -222,8 +224,10 @@ class ConversationRepository {
           // One malformed row must not discard the customer messages beside it.
         }
       }
-      if (workspaceId != null) {
-        final chronological = items.reversed.toList();
+      if (workspaceId != null && items.isNotEmpty) {
+        final chronological = (afterId != null && afterId > 0)
+            ? items
+            : items.reversed.toList();
         await _local?.upsertMessages(
           workspaceId,
           conversationId,
@@ -239,7 +243,9 @@ class ConversationRepository {
       }
       return (items: items, nextCursor: res.nextCursor);
     } catch (e) {
-      if (workspaceId != null && (cursor == null || cursor.isEmpty)) {
+      if (workspaceId != null &&
+          (cursor == null || cursor.isEmpty) &&
+          (afterId == null || afterId <= 0)) {
         final cached = await cachedMessages(workspaceId, conversationId);
         if (cached.isNotEmpty) {
           lastReadFromCache = true;
@@ -375,6 +381,55 @@ class ConversationRepository {
     return snapshot.copyWith(
       unreadConversations: math.max(0, snapshot.unreadConversations - cleared),
     );
+  }
+
+  Future<ConversationModel> createConversation({
+    int? customerId,
+    String? customerName,
+    String? customerPhone,
+    required String channel,
+    String? externalId,
+    String status = 'open',
+    bool aiEnabled = true,
+    Map<String, dynamic>? metadata,
+    String? initialMessage,
+    int? workspaceId,
+  }) async {
+    final res = await _api.post(
+      '/conversations',
+      body: {
+        'customer_id': ?customerId,
+        if (customerName != null && customerName.isNotEmpty)
+          'customer_name': customerName,
+        if (customerPhone != null && customerPhone.isNotEmpty)
+          'customer_phone': customerPhone,
+        'channel': channel,
+        if (externalId != null && externalId.isNotEmpty)
+          'external_id': externalId,
+        'status': status,
+        'ai_enabled': aiEnabled,
+        'metadata': ?metadata,
+        if (initialMessage != null && initialMessage.isNotEmpty)
+          'initial_message': initialMessage,
+      },
+    );
+    final map = asMap(res.data);
+    if (map == null) throw ApiException(res.message ?? 'تعذر إنشاء المحادثة.');
+    final created = ConversationModel.fromJson(map);
+    if (workspaceId != null) {
+      await _local?.upsertConversations(workspaceId, [created]);
+    }
+    return created;
+  }
+
+  Future<void> deleteConversation(
+    int conversationId, {
+    int? workspaceId,
+  }) async {
+    await _api.delete('/conversations/$conversationId');
+    if (workspaceId != null) {
+      await _local?.deleteConversation(workspaceId, conversationId);
+    }
   }
 
   Future<void> archive(

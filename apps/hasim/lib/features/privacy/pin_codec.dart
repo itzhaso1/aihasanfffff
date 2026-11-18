@@ -18,7 +18,11 @@ abstract final class PinCodec {
     return sha256.convert(utf8.encode('$salt:$pin')).toString();
   }
 
-  static bool matches({required String pin, required String salt, required String hash}) {
+  static bool matches({
+    required String pin,
+    required String salt,
+    required String hash,
+  }) {
     return hash == PinCodec.hash(pin, salt);
   }
 }

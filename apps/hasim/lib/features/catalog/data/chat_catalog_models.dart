@@ -40,7 +40,10 @@ const chatCatalogInventoryPolicies = [
   'service_capacity',
 ];
 
-String selectableInventoryPolicy(String? code, {String fallback = 'not_tracked'}) {
+String selectableInventoryPolicy(
+  String? code, {
+  String fallback = 'not_tracked',
+}) {
   if (code == 'backorder') {
     return 'finite_stock';
   }

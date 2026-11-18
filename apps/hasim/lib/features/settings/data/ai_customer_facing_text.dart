@@ -6,7 +6,13 @@ import 'dart:convert';
 /// `summary`). Maps, lists, reasoning/tool/debug keys, and malformed JSON must
 /// not be stringified into the composer or a message bubble.
 class AiCustomerFacingText {
-  static const _userKeys = ['suggestion', 'reply', 'summary', 'content', 'text'];
+  static const _userKeys = [
+    'suggestion',
+    'reply',
+    'summary',
+    'content',
+    'text',
+  ];
   static const _internalKeys = {
     'reasoning',
     'thought',
@@ -68,7 +74,10 @@ class AiCustomerFacingText {
     }
     final nested = map['data'];
     if (nested is Map) {
-      final fromData = _fromMap(Map<String, dynamic>.from(nested), field: field);
+      final fromData = _fromMap(
+        Map<String, dynamic>.from(nested),
+        field: field,
+      );
       if (fromData != null) {
         return fromData;
       }

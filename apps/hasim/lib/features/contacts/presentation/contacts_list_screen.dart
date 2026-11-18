@@ -48,10 +48,12 @@ class _ContactsListScreenState extends ConsumerState<ContactsListScreen> {
 
   Future<void> _load({required bool reset}) async {
     if (reset) {
-      final cached = await ref.read(contactRepositoryProvider).cached(
-        search: _search.text.trim(),
-        favorite: _favoritesOnly ? true : null,
-      );
+      final cached = await ref
+          .read(contactRepositoryProvider)
+          .cached(
+            search: _search.text.trim(),
+            favorite: _favoritesOnly ? true : null,
+          );
       if (!mounted) return;
       setState(() {
         _items = cached;
@@ -63,7 +65,9 @@ class _ContactsListScreenState extends ConsumerState<ContactsListScreen> {
       setState(() => _loadingMore = true);
     }
     try {
-      final result = await ref.read(contactRepositoryProvider).list(
+      final result = await ref
+          .read(contactRepositoryProvider)
+          .list(
             cursor: reset ? null : _nextCursor,
             search: _search.text.trim(),
             favorite: _favoritesOnly ? true : null,
@@ -100,8 +104,14 @@ class _ContactsListScreenState extends ConsumerState<ContactsListScreen> {
         title: const Text('حذف جهة الاتصال؟'),
         content: Text('سيتم حذف ${c.name} نهائياً.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حذف')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف'),
+          ),
         ],
       ),
     );
@@ -112,13 +122,20 @@ class _ContactsListScreenState extends ConsumerState<ContactsListScreen> {
         setState(() => _items = _items.where((e) => e.id != c.id).toList());
       }
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (previous, next) {
+    ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+      previous,
+      next,
+    ) {
       if (previous != null && previous != next) _load(reset: true);
     });
     return Scaffold(
@@ -170,108 +187,133 @@ class _ContactsListScreenState extends ConsumerState<ContactsListScreen> {
             child: _loading && _items.isEmpty
                 ? const SkeletonList()
                 : _error != null && _items.isEmpty
-                    ? EmptyState(
-                        title: 'تعذر التحميل',
-                        subtitle: _error,
-                        actionLabel: 'إعادة المحاولة',
-                        onAction: () => _load(reset: true),
-                      )
-                    : _items.isEmpty
-                        ? EmptyState(
-                            title: 'لا توجد جهات اتصال',
-                            subtitle: _favoritesOnly
-                                ? 'لا توجد مفضلات مطابقة.'
-                                : 'أضف جهة اتصال للبدء بإرسال الحملات.',
-                            icon: Icons.contacts_outlined,
-                            actionLabel: 'إضافة',
-                            onAction: () => context.push('/contacts/form'),
-                          )
-                        : RefreshIndicator(
-                            onRefresh: () => _load(reset: true),
-                            child: ListView.builder(
-                              controller: _scroll,
-                              itemCount: _items.length + (_loadingMore ? 1 : 0),
-                              itemBuilder: (context, index) {
-                                if (index >= _items.length) {
-                                  return const Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: Center(child: CircularProgressIndicator()),
-                                  );
-                                }
-                                final c = _items[index];
-                                return Dismissible(
-                                  key: ValueKey(c.id),
-                                  direction: DismissDirection.endToStart,
-                                  confirmDismiss: (_) async {
-                                    await _delete(c);
-                                    return false;
-                                  },
-                                  background: Container(
-                                    color: Colors.red.shade400,
-                                    alignment: Alignment.centerLeft,
-                                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                                    child: const Icon(Icons.delete, color: Colors.white),
-                                  ),
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      child: Text(c.name.isNotEmpty ? c.name[0] : '?'),
-                                    ),
-                                    title: Text(c.name),
-                                    subtitle: Text(c.email, textDirection: TextDirection.ltr),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (c.isFavorite)
-                                          Icon(Icons.star, size: 18, color: Colors.amber.shade700),
-                                        PopupMenuButton<String>(
-                                          onSelected: (v) async {
-                                            if (v == 'edit') {
-                                              final changed = await context.push<bool>(
-                                                '/contacts/form',
-                                                extra: c,
-                                              );
-                                              if (changed == true) _load(reset: true);
-                                            } else if (v == 'delete') {
-                                              await _delete(c);
-                                            } else if (v == 'favorite') {
-                                              try {
-                                                final updated = await ref
-                                                    .read(contactRepositoryProvider)
-                                                    .toggleFavorite(c.id);
-                                                setState(() {
-                                                  _items = [
-                                                    for (final e in _items)
-                                                      if (e.id == c.id) updated else e,
-                                                  ];
-                                                });
-                                              } on ApiException catch (e) {
-                                                if (context.mounted) {
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(SnackBar(content: Text(e.userMessage)));
-                                                }
-                                              }
-                                            }
-                                          },
-                                          itemBuilder: (_) => [
-                                            const PopupMenuItem(value: 'edit', child: Text('تعديل')),
-                                            PopupMenuItem(
-                                              value: 'favorite',
-                                              child: Text(c.isFavorite ? 'إزالة من المفضلة' : 'إضافة للمفضلة'),
-                                            ),
-                                            const PopupMenuItem(value: 'delete', child: Text('حذف')),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                    onTap: () async {
-                                      await context.push('/contacts/${c.id}');
-                                      _load(reset: true);
-                                    },
-                                  ),
-                                );
-                              },
+                ? EmptyState(
+                    title: 'تعذر التحميل',
+                    subtitle: _error,
+                    actionLabel: 'إعادة المحاولة',
+                    onAction: () => _load(reset: true),
+                  )
+                : _items.isEmpty
+                ? EmptyState(
+                    title: 'لا توجد جهات اتصال',
+                    subtitle: _favoritesOnly
+                        ? 'لا توجد مفضلات مطابقة.'
+                        : 'أضف جهة اتصال للبدء بإرسال الحملات.',
+                    icon: Icons.contacts_outlined,
+                    actionLabel: 'إضافة',
+                    onAction: () => context.push('/contacts/form'),
+                  )
+                : RefreshIndicator(
+                    onRefresh: () => _load(reset: true),
+                    child: ListView.builder(
+                      controller: _scroll,
+                      itemCount: _items.length + (_loadingMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index >= _items.length) {
+                          return const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final c = _items[index];
+                        return Dismissible(
+                          key: ValueKey(c.id),
+                          direction: DismissDirection.endToStart,
+                          confirmDismiss: (_) async {
+                            await _delete(c);
+                            return false;
+                          },
+                          background: Container(
+                            color: Colors.red.shade400,
+                            alignment: Alignment.centerLeft,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: const Icon(
+                              Icons.delete,
+                              color: Colors.white,
                             ),
                           ),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              child: Text(c.name.isNotEmpty ? c.name[0] : '?'),
+                            ),
+                            title: Text(c.name),
+                            subtitle: Text(
+                              c.email,
+                              textDirection: TextDirection.ltr,
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (c.isFavorite)
+                                  Icon(
+                                    Icons.star,
+                                    size: 18,
+                                    color: Colors.amber.shade700,
+                                  ),
+                                PopupMenuButton<String>(
+                                  onSelected: (v) async {
+                                    if (v == 'edit') {
+                                      final changed = await context.push<bool>(
+                                        '/contacts/form',
+                                        extra: c,
+                                      );
+                                      if (changed == true) _load(reset: true);
+                                    } else if (v == 'delete') {
+                                      await _delete(c);
+                                    } else if (v == 'favorite') {
+                                      try {
+                                        final updated = await ref
+                                            .read(contactRepositoryProvider)
+                                            .toggleFavorite(c.id);
+                                        setState(() {
+                                          _items = [
+                                            for (final e in _items)
+                                              if (e.id == c.id) updated else e,
+                                          ];
+                                        });
+                                      } on ApiException catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(e.userMessage),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    }
+                                  },
+                                  itemBuilder: (_) => [
+                                    const PopupMenuItem(
+                                      value: 'edit',
+                                      child: Text('تعديل'),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'favorite',
+                                      child: Text(
+                                        c.isFavorite
+                                            ? 'إزالة من المفضلة'
+                                            : 'إضافة للمفضلة',
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'delete',
+                                      child: Text('حذف'),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            onTap: () async {
+                              await context.push('/contacts/${c.id}');
+                              _load(reset: true);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
           ),
         ],
       ),

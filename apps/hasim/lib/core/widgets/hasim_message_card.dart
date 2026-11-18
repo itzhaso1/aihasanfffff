@@ -55,7 +55,9 @@ class HasimMessageCard extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    unread ? Icons.mark_email_unread_outlined : Icons.mail_outline_rounded,
+                    unread
+                        ? Icons.mark_email_unread_outlined
+                        : Icons.mail_outline_rounded,
                     color: AppTheme.brand,
                     size: 22,
                   ),
@@ -71,7 +73,9 @@ class HasimMessageCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.start,
                         style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: unread ? FontWeight.w800 : FontWeight.w700,
+                          fontWeight: unread
+                              ? FontWeight.w800
+                              : FontWeight.w700,
                           color: ink,
                           height: 1.3,
                         ),
@@ -111,10 +115,15 @@ class HasimMessageCard extends StatelessWidget {
                     IconButton(
                       tooltip: starred ? 'إزالة النجمة' : 'تمييز بنجمة',
                       visualDensity: VisualDensity.compact,
-                      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
                       onPressed: onStarTap,
                       icon: Icon(
-                        starred ? Icons.star_rounded : Icons.star_border_rounded,
+                        starred
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
                         color: starred ? const Color(0xFFE6B325) : muted,
                         size: 22,
                       ),

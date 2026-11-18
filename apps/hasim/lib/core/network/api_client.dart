@@ -21,13 +21,12 @@ class ApiClient {
     required PrefsStore prefsStore,
     Dio? dio,
     UnauthorizedCallback? onUnauthorized,
-  })  : _secureStore = secureStore,
-        _prefsStore = prefsStore,
-        _onUnauthorized = onUnauthorized {
-    final base = AppConfig.resolveApiBase(
-      override: prefsStore.apiBaseOverride,
-    );
-    _dio = dio ??
+  }) : _secureStore = secureStore,
+       _prefsStore = prefsStore,
+       _onUnauthorized = onUnauthorized {
+    final base = AppConfig.resolveApiBase(override: prefsStore.apiBaseOverride);
+    _dio =
+        dio ??
         Dio(
           BaseOptions(
             // Trailing slash required: Dio must keep /api/mobile/v1/ as path prefix.
@@ -138,7 +137,10 @@ class ApiClient {
   /// exactly `Map<String, dynamic>`, which breaks `as Map<String, dynamic>`
   /// and Dio's typed `Response<Map<String, dynamic>>` casts → DioException.unknown
   /// → «حدث خطأ غير متوقع».
-  Map<String, dynamic> _asStringKeyedMap(dynamic raw, {required String context}) {
+  Map<String, dynamic> _asStringKeyedMap(
+    dynamic raw, {
+    required String context,
+  }) {
     if (raw == null) return <String, dynamic>{};
     if (raw is Map<String, dynamic>) return raw;
     if (raw is Map) {
@@ -345,7 +347,10 @@ class ApiClient {
       final hint = (e.message ?? '').toLowerCase().contains('cors')
           ? ' (قد يكون السبب CORS من المتصفح)'
           : '';
-      return ApiException('تعذر الاتصال بالخادم. تحقق من الشبكة.$hint', statusCode: status);
+      return ApiException(
+        'تعذر الاتصال بالخادم. تحقق من الشبكة.$hint',
+        statusCode: status,
+      );
     }
 
     if (status == 401) {
@@ -359,7 +364,10 @@ class ApiClient {
       );
     }
     if (status == 403) {
-      return ApiException('لا تملك صلاحية تنفيذ هذا الإجراء.', statusCode: status);
+      return ApiException(
+        'لا تملك صلاحية تنفيذ هذا الإجراء.',
+        statusCode: status,
+      );
     }
     if (status == 404) {
       return ApiException('العنصر المطلوب غير موجود.', statusCode: status);
@@ -393,7 +401,9 @@ class ApiClient {
     final redactedHeaders = Map<String, dynamic>.from(request.headers);
     for (final key in redactedHeaders.keys.toList()) {
       final lower = key.toLowerCase();
-      if (lower == 'authorization' || lower.contains('token') || lower.contains('password')) {
+      if (lower == 'authorization' ||
+          lower.contains('token') ||
+          lower.contains('password')) {
         redactedHeaders[key] = '[REDACTED]';
       }
     }
@@ -403,7 +413,9 @@ class ApiClient {
       final copy = Map<String, dynamic>.from(body);
       for (final key in copy.keys.toList()) {
         final lower = key.toLowerCase();
-        if (lower.contains('password') || lower.contains('token') || lower == 'access_token') {
+        if (lower.contains('password') ||
+            lower.contains('token') ||
+            lower == 'access_token') {
           copy[key] = '[REDACTED]';
         }
       }
@@ -416,7 +428,9 @@ class ApiClient {
     debugPrint('  url: ${request.method} ${request.uri}');
     debugPrint('  status: $statusCode');
     if (dioType != null) debugPrint('  dioType: $dioType');
-    if (dioMessage != null && dioMessage.isNotEmpty) debugPrint('  dioMessage: $dioMessage');
+    if (dioMessage != null && dioMessage.isNotEmpty) {
+      debugPrint('  dioMessage: $dioMessage');
+    }
     debugPrint('  requestHeaders: $redactedHeaders');
     debugPrint('  requestBody: $body');
     debugPrint('  responseBody: $safeResponse');
@@ -429,14 +443,19 @@ class ApiClient {
         if (copy['data'] is Map) {
           final data = Map<String, dynamic>.from(copy['data'] as Map);
           if (data.containsKey('token')) data['token'] = '[REDACTED]';
-          if (data.containsKey('access_token')) data['access_token'] = '[REDACTED]';
+          if (data.containsKey('access_token')) {
+            data['access_token'] = '[REDACTED]';
+          }
           copy['data'] = data;
         }
         return copy;
       }
       if (raw is String) {
         final trimmed = raw.length > 800 ? '${raw.substring(0, 800)}…' : raw;
-        return trimmed.replaceAll(RegExp(r'"token"\s*:\s*"[^"]*"'), '"token":"[REDACTED]"');
+        return trimmed.replaceAll(
+          RegExp(r'"token"\s*:\s*"[^"]*"'),
+          '"token":"[REDACTED]"',
+        );
       }
       return raw;
     } catch (_) {

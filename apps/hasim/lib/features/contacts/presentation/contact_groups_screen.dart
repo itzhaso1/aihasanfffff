@@ -10,7 +10,8 @@ class ContactGroupsScreen extends ConsumerStatefulWidget {
   const ContactGroupsScreen({super.key});
 
   @override
-  ConsumerState<ContactGroupsScreen> createState() => _ContactGroupsScreenState();
+  ConsumerState<ContactGroupsScreen> createState() =>
+      _ContactGroupsScreenState();
 }
 
 class _ContactGroupsScreenState extends ConsumerState<ContactGroupsScreen> {
@@ -56,7 +57,9 @@ class _ContactGroupsScreenState extends ConsumerState<ContactGroupsScreen> {
       context: context,
       isScrollControlled: true,
       builder: (context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
         child: _GroupFormSheet(group: group),
       ),
     );
@@ -77,8 +80,14 @@ class _ContactGroupsScreenState extends ConsumerState<ContactGroupsScreen> {
         title: const Text('حذف المجموعة؟'),
         content: Text('سيتم حذف «${g.name}».'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حذف')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف'),
+          ),
         ],
       ),
     );
@@ -87,7 +96,11 @@ class _ContactGroupsScreenState extends ConsumerState<ContactGroupsScreen> {
       await ref.read(contactGroupRepositoryProvider).delete(g.id);
       _load();
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      }
     }
   }
 
@@ -102,54 +115,60 @@ class _ContactGroupsScreenState extends ConsumerState<ContactGroupsScreen> {
       body: _loading
           ? const SkeletonList()
           : _error != null
-              ? EmptyState(
-                  title: 'تعذر التحميل',
-                  subtitle: _error,
-                  actionLabel: 'إعادة المحاولة',
-                  onAction: _load,
-                )
-              : _groups.isEmpty
-                  ? EmptyState(
-                      title: 'لا توجد مجموعات',
-                      subtitle: 'أنشئ مجموعة لتنظيم جهات الاتصال وإرسال الحملات.',
-                      icon: Icons.groups_outlined,
-                      actionLabel: 'إنشاء مجموعة',
-                      onAction: () => _openForm(),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: _groups.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final g = _groups[index];
-                          return ListTile(
-                            leading: const CircleAvatar(child: Icon(Icons.group_outlined)),
-                            title: Text(g.name),
-                            subtitle: Text(
-                              [
-                                if (g.description != null && g.description!.isNotEmpty) g.description!,
-                                '${g.contactsCount} جهة اتصال',
-                              ].join(' · '),
-                            ),
-                            trailing: PopupMenuButton<String>(
-                              onSelected: (v) {
-                                if (v == 'edit') _openForm(group: g);
-                                if (v == 'members') _assignMembers(g);
-                                if (v == 'delete') _delete(g);
-                              },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(value: 'members', child: Text('تعيين الأعضاء')),
-                                PopupMenuItem(value: 'edit', child: Text('تعديل')),
-                                PopupMenuItem(value: 'delete', child: Text('حذف')),
-                              ],
-                            ),
-                            onTap: () => _assignMembers(g),
-                          );
-                        },
-                      ),
+          ? EmptyState(
+              title: 'تعذر التحميل',
+              subtitle: _error,
+              actionLabel: 'إعادة المحاولة',
+              onAction: _load,
+            )
+          : _groups.isEmpty
+          ? EmptyState(
+              title: 'لا توجد مجموعات',
+              subtitle: 'أنشئ مجموعة لتنظيم جهات الاتصال وإرسال الحملات.',
+              icon: Icons.groups_outlined,
+              actionLabel: 'إنشاء مجموعة',
+              onAction: () => _openForm(),
+            )
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: _groups.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final g = _groups[index];
+                  return ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.group_outlined),
                     ),
+                    title: Text(g.name),
+                    subtitle: Text(
+                      [
+                        if (g.description != null && g.description!.isNotEmpty)
+                          g.description!,
+                        '${g.contactsCount} جهة اتصال',
+                      ].join(' · '),
+                    ),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (v) {
+                        if (v == 'edit') _openForm(group: g);
+                        if (v == 'members') _assignMembers(g);
+                        if (v == 'delete') _delete(g);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'members',
+                          child: Text('تعيين الأعضاء'),
+                        ),
+                        PopupMenuItem(value: 'edit', child: Text('تعديل')),
+                        PopupMenuItem(value: 'delete', child: Text('حذف')),
+                      ],
+                    ),
+                    onTap: () => _assignMembers(g),
+                  );
+                },
+              ),
+            ),
     );
   }
 }
@@ -183,20 +202,33 @@ class _GroupFormSheetState extends ConsumerState<_GroupFormSheet> {
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اسم المجموعة مطلوب')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('اسم المجموعة مطلوب')));
       return;
     }
     setState(() => _saving = true);
     try {
       final repo = ref.read(contactGroupRepositoryProvider);
       if (widget.group == null) {
-        await repo.create(name: _name.text.trim(), description: _desc.text.trim());
+        await repo.create(
+          name: _name.text.trim(),
+          description: _desc.text.trim(),
+        );
       } else {
-        await repo.update(widget.group!.id, name: _name.text.trim(), description: _desc.text.trim());
+        await repo.update(
+          widget.group!.id,
+          name: _name.text.trim(),
+          description: _desc.text.trim(),
+        );
       }
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -213,14 +245,26 @@ class _GroupFormSheetState extends ConsumerState<_GroupFormSheet> {
           children: [
             Text(
               widget.group == null ? 'مجموعة جديدة' : 'تعديل المجموعة',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
-            TextField(controller: _name, decoration: const InputDecoration(labelText: 'الاسم')),
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'الاسم'),
+            ),
             const SizedBox(height: 12),
-            TextField(controller: _desc, decoration: const InputDecoration(labelText: 'الوصف'), maxLines: 2),
+            TextField(
+              controller: _desc,
+              decoration: const InputDecoration(labelText: 'الوصف'),
+              maxLines: 2,
+            ),
             const SizedBox(height: 16),
-            FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? '...' : 'حفظ')),
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? '...' : 'حفظ'),
+            ),
           ],
         ),
       ),
@@ -233,7 +277,8 @@ class _AssignMembersScreen extends ConsumerStatefulWidget {
   final ContactGroupModel group;
 
   @override
-  ConsumerState<_AssignMembersScreen> createState() => _AssignMembersScreenState();
+  ConsumerState<_AssignMembersScreen> createState() =>
+      _AssignMembersScreenState();
 }
 
 class _AssignMembersScreenState extends ConsumerState<_AssignMembersScreen> {
@@ -251,7 +296,9 @@ class _AssignMembersScreenState extends ConsumerState<_AssignMembersScreen> {
 
   Future<void> _bootstrap() async {
     try {
-      final detail = await ref.read(contactRepositoryProvider).list(perPage: 50);
+      final detail = await ref
+          .read(contactRepositoryProvider)
+          .list(perPage: 50);
       // Prefer contacts already on group if API returned them; otherwise load all.
       final existing = widget.group.contacts.map((c) => c.id).toSet();
       if (existing.isEmpty) {
@@ -267,7 +314,9 @@ class _AssignMembersScreenState extends ConsumerState<_AssignMembersScreen> {
       // Load more pages lightly
       var cursor = detail.nextCursor;
       while (cursor != null) {
-        final page = await ref.read(contactRepositoryProvider).list(cursor: cursor, perPage: 50);
+        final page = await ref
+            .read(contactRepositoryProvider)
+            .list(cursor: cursor, perPage: 50);
         cursor = page.nextCursor;
         if (!mounted) return;
         setState(() => _contacts = [..._contacts, ...page.items]);
@@ -284,13 +333,21 @@ class _AssignMembersScreenState extends ConsumerState<_AssignMembersScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await ref.read(contactGroupRepositoryProvider).syncMembers(widget.group.id, _selected.toList());
+      await ref
+          .read(contactGroupRepositoryProvider)
+          .syncMembers(widget.group.id, _selected.toList());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث الأعضاء')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تم تحديث الأعضاء')));
         Navigator.pop(context, true);
       }
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.userMessage)));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -302,51 +359,61 @@ class _AssignMembersScreenState extends ConsumerState<_AssignMembersScreen> {
       appBar: AppBar(
         title: Text('أعضاء ${widget.group.name}'),
         actions: [
-          TextButton(onPressed: _saving || _loading ? null : _save, child: Text(_saving ? '...' : 'حفظ')),
+          TextButton(
+            onPressed: _saving || _loading ? null : _save,
+            child: Text(_saving ? '...' : 'حفظ'),
+          ),
         ],
       ),
       body: _loading
           ? const SkeletonList()
           : _error != null
-              ? EmptyState(title: _error!, actionLabel: 'رجوع', onAction: () => Navigator.pop(context))
-              : Column(
-                  children: [
-                    if (widget.group.contactsCount > 0 && _selected.isEmpty)
-                      Material(
-                        color: Colors.amber.shade50,
-                        child: const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Text(
-                            'الحفظ يستبدل أعضاء المجموعة. لا توجد واجهة لجلب الأعضاء الحاليين بعد — أعد التحديد قبل الحفظ.',
-                            style: TextStyle(height: 1.35, fontSize: 13),
-                          ),
-                        ),
-                      ),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: _contacts.length,
-                        itemBuilder: (context, index) {
-                          final c = _contacts[index];
-                          final checked = _selected.contains(c.id);
-                          return CheckboxListTile(
-                            value: checked,
-                            onChanged: (v) {
-                              setState(() {
-                                if (v == true) {
-                                  _selected.add(c.id);
-                                } else {
-                                  _selected.remove(c.id);
-                                }
-                              });
-                            },
-                            title: Text(c.name),
-                            subtitle: Text(c.email, textDirection: TextDirection.ltr),
-                          );
-                        },
+          ? EmptyState(
+              title: _error!,
+              actionLabel: 'رجوع',
+              onAction: () => Navigator.pop(context),
+            )
+          : Column(
+              children: [
+                if (widget.group.contactsCount > 0 && _selected.isEmpty)
+                  Material(
+                    color: Colors.amber.shade50,
+                    child: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                        'الحفظ يستبدل أعضاء المجموعة. لا توجد واجهة لجلب الأعضاء الحاليين بعد — أعد التحديد قبل الحفظ.',
+                        style: TextStyle(height: 1.35, fontSize: 13),
                       ),
                     ),
-                  ],
+                  ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _contacts.length,
+                    itemBuilder: (context, index) {
+                      final c = _contacts[index];
+                      final checked = _selected.contains(c.id);
+                      return CheckboxListTile(
+                        value: checked,
+                        onChanged: (v) {
+                          setState(() {
+                            if (v == true) {
+                              _selected.add(c.id);
+                            } else {
+                              _selected.remove(c.id);
+                            }
+                          });
+                        },
+                        title: Text(c.name),
+                        subtitle: Text(
+                          c.email,
+                          textDirection: TextDirection.ltr,
+                        ),
+                      );
+                    },
+                  ),
                 ),
+              ],
+            ),
     );
   }
 }

@@ -48,17 +48,17 @@ class AiSettingsState {
 
 final aiSettingsControllerProvider =
     StateNotifierProvider<AiSettingsController, AiSettingsState>((ref) {
-  final controller = AiSettingsController(ref);
-  ref.listen<String>(
-    authControllerProvider.select((s) => s.isolationKey),
-    (previous, next) {
-      if (previous != next) {
-        controller.reload();
-      }
-    },
-  );
-  return controller;
-});
+      final controller = AiSettingsController(ref);
+      ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+        previous,
+        next,
+      ) {
+        if (previous != next) {
+          controller.reload();
+        }
+      });
+      return controller;
+    });
 
 class AiSettingsController extends StateNotifier<AiSettingsState> {
   AiSettingsController(this._ref) : super(const AiSettingsState()) {
@@ -86,14 +86,18 @@ class AiSettingsController extends StateNotifier<AiSettingsState> {
     } on ApiException catch (e) {
       state = AiSettingsState(error: e.userMessage);
     } catch (_) {
-      state = const AiSettingsState(error: 'تعذر تحميل إعدادات الذكاء الاصطناعي.');
+      state = const AiSettingsState(
+        error: 'تعذر تحميل إعدادات الذكاء الاصطناعي.',
+      );
     }
   }
 
   Future<bool> save(AiSettingModel draft) async {
     state = state.copyWith(saving: true, clearError: true);
     try {
-      final updated = await _ref.read(aiRepositoryProvider).updateSettings(draft.toUpdateJson());
+      final updated = await _ref
+          .read(aiRepositoryProvider)
+          .updateSettings(draft.toUpdateJson());
       state = AiSettingsState(
         settings: updated,
         catalog: state.catalog,

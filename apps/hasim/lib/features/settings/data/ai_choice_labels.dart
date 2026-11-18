@@ -2,11 +2,16 @@ import 'package:flutter/widgets.dart';
 
 /// Display labels for AI role / persona catalog keys. Stored API values stay English.
 String aiChoiceLabel(BuildContext context, String value) {
-  return aiChoiceLabelForLocale(value, Localizations.localeOf(context).languageCode);
+  return aiChoiceLabelForLocale(
+    value,
+    Localizations.localeOf(context).languageCode,
+  );
 }
 
 String aiChoiceLabelForLocale(String value, String languageCode) {
-  final mapped = languageCode == 'en' ? _aiChoiceLabelsEn[value] : _aiChoiceLabelsAr[value];
+  final mapped = languageCode == 'en'
+      ? _aiChoiceLabelsEn[value]
+      : _aiChoiceLabelsAr[value];
   if (mapped != null) return mapped;
   return value.replaceAll('_', ' ');
 }

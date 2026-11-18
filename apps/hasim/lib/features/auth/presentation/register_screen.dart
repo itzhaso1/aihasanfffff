@@ -127,7 +127,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final muted = HasimTokens.mutedColor(context);
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: muted, fontSize: 14, fontWeight: FontWeight.w500),
+      hintStyle: TextStyle(
+        color: muted,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
       prefixIcon: Icon(leading, color: muted, size: 22),
       suffixIcon: trailing,
       filled: true,
@@ -170,7 +174,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   children: [
                     Text(
                       'أنشئ حساب حاسم من التطبيق مباشرة.',
-                      style: TextStyle(color: muted, height: 1.45, fontSize: 14),
+                      style: TextStyle(
+                        color: muted,
+                        height: 1.45,
+                        fontSize: 14,
+                      ),
                     ),
                     const SizedBox(height: 20),
                     TextFormField(
@@ -285,7 +293,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       Text(
                         auth.error!,
                         key: const Key('register-error'),
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -301,7 +311,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     const SizedBox(height: 18),
                     Row(
                       children: [
-                        Expanded(child: Divider(color: HasimTokens.lineColor(context))),
+                        Expanded(
+                          child: Divider(color: HasimTokens.lineColor(context)),
+                        ),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           child: Text(
@@ -312,7 +324,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             ),
                           ),
                         ),
-                        Expanded(child: Divider(color: HasimTokens.lineColor(context))),
+                        Expanded(
+                          child: Divider(color: HasimTokens.lineColor(context)),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),

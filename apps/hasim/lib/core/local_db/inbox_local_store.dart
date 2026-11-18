@@ -101,9 +101,7 @@ class InboxLocalStore {
     int limit = conversationListLimit,
   }) async {
     final args = <Object?>[workspaceId];
-    final where = StringBuffer(
-      'workspace_id = ? AND deleted_at IS NULL',
-    );
+    final where = StringBuffer('workspace_id = ? AND deleted_at IS NULL');
     if (filter == 'unread') {
       where.write(' AND archived = 0 AND unread_count > 0');
     } else if (filter == 'archived') {
@@ -175,16 +173,41 @@ class InboxLocalStore {
     );
   }
 
-  Future<ConversationModel?> getConversation(int workspaceId, int serverId) async {
+  Future<ConversationModel?> getConversation(
+    int workspaceId,
+    int serverId,
+  ) async {
     final rows = await _db.select(
-      'SELECT * FROM inbox_conversations WHERE workspace_id = ? AND server_id = ? LIMIT 1',
+      'SELECT * FROM inbox_conversations WHERE workspace_id = ? AND server_id = ? AND deleted_at IS NULL LIMIT 1',
       [workspaceId, serverId],
     );
     if (rows.isEmpty) return null;
     return _conversationFromRow(rows.first);
   }
 
-  Future<void> upsertConversations(int workspaceId, List<ConversationModel> items) async {
+  Future<void> deleteConversation(int workspaceId, int serverId) async {
+    final now = _ms(DateTime.now());
+    await _db.transaction((tx) async {
+      await tx.runCustom(
+        'UPDATE inbox_conversations SET deleted_at = ?, updated_at = ? WHERE workspace_id = ? AND server_id = ?',
+        [now, now, workspaceId, serverId],
+      );
+      await tx.runCustom(
+        'DELETE FROM inbox_messages WHERE workspace_id = ? AND conversation_server_id = ?',
+        [workspaceId, serverId],
+      );
+      await tx.runCustom(
+        'DELETE FROM inbox_outbox WHERE workspace_id = ? AND conversation_server_id = ?',
+        [workspaceId, serverId],
+      );
+    });
+    _changed();
+  }
+
+  Future<void> upsertConversations(
+    int workspaceId,
+    List<ConversationModel> items,
+  ) async {
     final now = DateTime.now();
     for (final item in items) {
       await _upsertConversation(workspaceId, item, now);
@@ -192,7 +215,11 @@ class InboxLocalStore {
     _changed();
   }
 
-  Future<void> _upsertConversation(int workspaceId, ConversationModel item, DateTime now) async {
+  Future<void> _upsertConversation(
+    int workspaceId,
+    ConversationModel item,
+    DateTime now,
+  ) async {
     final existingRows = await _db.select(
       'SELECT * FROM inbox_conversations WHERE workspace_id = ? AND server_id = ? LIMIT 1',
       [workspaceId, item.id],
@@ -202,31 +229,29 @@ class InboxLocalStore {
     var displayUnread = item.unreadCount;
     Object? localReadAt = existing?['local_read_at'];
     Object? localReadLast = existing?['local_read_last_message_at'];
-    final existingLastId = (existing?['last_message_server_id'] as num?)?.toInt();
-    final incomingLastId =
-        (item.lastMessage?.id ?? 0) > 0 ? item.lastMessage!.id : null;
+    final existingLastId = (existing?['last_message_server_id'] as num?)
+        ?.toInt();
+    final incomingLastId = (item.lastMessage?.id ?? 0) > 0
+        ? item.lastMessage!.id
+        : null;
     final incomingOutbound = item.lastMessage?.isOutbound == true;
 
     if (item.unreadCount <= 0) {
       displayUnread = 0;
     } else if (existing != null && localReadAt != null) {
       final readUntil = (localReadLast as num?)?.toInt();
-      final hasNewerMessageId = incomingLastId != null &&
+      final hasNewerMessageId =
+          incomingLastId != null &&
           existingLastId != null &&
           incomingLastId > existingLastId;
-      final hasNewerTimestamp = incomingLast != null &&
-          readUntil != null &&
-          incomingLast > readUntil;
+      final hasNewerTimestamp =
+          incomingLast != null && readUntil != null && incomingLast > readUntil;
       // After a local send, last_message_server_id is already the outbound id,
       // so the same outbound row is not "newer". A later inbound — or an
       // outbound AI reply after that inbound — has a higher id and must restore.
       if (hasNewerMessageId ||
-          (!incomingOutbound &&
-              existingLastId == null &&
-              hasNewerTimestamp) ||
-          (!incomingOutbound &&
-              incomingLastId == null &&
-              hasNewerTimestamp)) {
+          (!incomingOutbound && existingLastId == null && hasNewerTimestamp) ||
+          (!incomingOutbound && incomingLastId == null && hasNewerTimestamp)) {
         localReadAt = null;
         localReadLast = null;
       } else {
@@ -234,7 +259,9 @@ class InboxLocalStore {
       }
     }
 
-    final preview = item.lastMessage?.content ?? existing?['last_message_preview']?.toString();
+    final preview =
+        item.lastMessage?.content ??
+        existing?['last_message_preview']?.toString();
     final lastServerId = (incomingLastId != null && incomingLastId > 0)
         ? incomingLastId
         : existing?['last_message_server_id'];
@@ -385,7 +412,10 @@ class InboxLocalStore {
     );
   }
 
-  Future<MessageModel?> getMessageByClientId(int workspaceId, String clientId) async {
+  Future<MessageModel?> getMessageByClientId(
+    int workspaceId,
+    String clientId,
+  ) async {
     final rows = await _db.select(
       'SELECT * FROM inbox_messages WHERE workspace_id = ? AND client_id = ? LIMIT 1',
       [workspaceId, clientId],
@@ -415,10 +445,12 @@ class InboxLocalStore {
   }) async {
     final run = tx == null
         ? _db.custom
-        : (String sql, [List<Object?> args = const []]) => tx.runCustom(sql, args);
+        : (String sql, [List<Object?> args = const []]) =>
+              tx.runCustom(sql, args);
     final select = tx == null
         ? _db.select
-        : (String sql, [List<Object?> args = const []]) => tx.runSelect(sql, args);
+        : (String sql, [List<Object?> args = const []]) =>
+              tx.runSelect(sql, args);
 
     Map<String, Object?>? existing;
     var clientId = item.clientId;
@@ -436,7 +468,10 @@ class InboxLocalStore {
       );
       if (rows.isNotEmpty) existing = rows.first;
     }
-    if (existing == null && clientId != null && clientId.isNotEmpty && item.id > 0) {
+    if (existing == null &&
+        clientId != null &&
+        clientId.isNotEmpty &&
+        item.id > 0) {
       final rows = await select(
         'SELECT * FROM inbox_messages WHERE workspace_id = ? AND client_id = ? LIMIT 1',
         [workspaceId, clientId],
@@ -458,8 +493,11 @@ class InboxLocalStore {
       incoming: item,
     );
     final participantType = _participantType(item);
-    final clientCreatedAt = existing?['client_created_at'] ??
-        (localState == MessageLocalState.pending ? _ms(item.createdAt ?? now) : null);
+    final clientCreatedAt =
+        existing?['client_created_at'] ??
+        (localState == MessageLocalState.pending
+            ? _ms(item.createdAt ?? now)
+            : null);
     final attachments = jsonEncode(
       item.attachments
           .map(
@@ -642,7 +680,10 @@ class InboxLocalStore {
     return rows.map(_outboxFromRow).toList();
   }
 
-  Future<OutboxRecord?> outboxByClientId(int workspaceId, String clientId) async {
+  Future<OutboxRecord?> outboxByClientId(
+    int workspaceId,
+    String clientId,
+  ) async {
     final rows = await _db.select(
       'SELECT * FROM inbox_outbox WHERE workspace_id = ? AND client_id = ? LIMIT 1',
       [workspaceId, clientId],
@@ -674,11 +715,20 @@ class InboxLocalStore {
           'AND (client_id IS NULL OR client_id != ?)',
           [workspaceId, server.id, clientId],
         );
+        await tx.runCustom(
+          'DELETE FROM inbox_messages WHERE workspace_id = ? AND client_id = ? '
+          'AND server_id > 0 AND server_id != ?',
+          [workspaceId, clientId, server.id],
+        );
       }
       await _upsertMessage(
         workspaceId,
         server.conversationId,
-        server.copyWith(localPending: false, localFailed: false, clientId: clientId),
+        server.copyWith(
+          localPending: false,
+          localFailed: false,
+          clientId: clientId,
+        ),
         now,
         tx: tx,
       );
@@ -827,7 +877,11 @@ class InboxLocalStore {
     _changed();
   }
 
-  Future<void> setSyncCursor(int workspaceId, String resource, String? cursor) async {
+  Future<void> setSyncCursor(
+    int workspaceId,
+    String resource,
+    String? cursor,
+  ) async {
     final now = _ms(DateTime.now());
     await _db.custom(
       '''
@@ -852,26 +906,81 @@ class InboxLocalStore {
 
   Future<void> clearWorkspace(int workspaceId) async {
     await _db.transaction((tx) async {
-      await tx.runCustom('DELETE FROM inbox_messages WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM inbox_conversations WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM inbox_outbox WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM inbox_sync_state WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_catalog_items WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_catalog_variants WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_catalog_categories WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_digital_pools WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_digital_units WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_contacts WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_contact_groups WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_contact_group_members WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_emails WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_email_drafts WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_email_campaigns WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_stories WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_story_viewers WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_notifications WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_notification_preferences WHERE workspace_id = ?', [workspaceId]);
-      await tx.runCustom('DELETE FROM local_company_cache WHERE workspace_id = ?', [workspaceId]);
+      await tx.runCustom('DELETE FROM inbox_messages WHERE workspace_id = ?', [
+        workspaceId,
+      ]);
+      await tx.runCustom(
+        'DELETE FROM inbox_conversations WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom('DELETE FROM inbox_outbox WHERE workspace_id = ?', [
+        workspaceId,
+      ]);
+      await tx.runCustom(
+        'DELETE FROM inbox_sync_state WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_catalog_items WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_catalog_variants WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_catalog_categories WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_digital_pools WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_digital_units WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom('DELETE FROM local_contacts WHERE workspace_id = ?', [
+        workspaceId,
+      ]);
+      await tx.runCustom(
+        'DELETE FROM local_contact_groups WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_contact_group_members WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom('DELETE FROM local_emails WHERE workspace_id = ?', [
+        workspaceId,
+      ]);
+      await tx.runCustom(
+        'DELETE FROM local_email_drafts WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_email_campaigns WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom('DELETE FROM local_stories WHERE workspace_id = ?', [
+        workspaceId,
+      ]);
+      await tx.runCustom(
+        'DELETE FROM local_story_viewers WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_notifications WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_notification_preferences WHERE workspace_id = ?',
+        [workspaceId],
+      );
+      await tx.runCustom(
+        'DELETE FROM local_company_cache WHERE workspace_id = ?',
+        [workspaceId],
+      );
     });
     _changed();
   }
@@ -970,12 +1079,14 @@ class InboxLocalStore {
       customerPriority: row['customer_priority']?.toString() ?? 'normal',
       paymentStatus: row['payment_status']?.toString() ?? 'unpaid',
       reviewStatus: row['review_status']?.toString() ?? 'no_review_needed',
-      classificationSource: row['classification_source']?.toString() ?? 'system',
+      classificationSource:
+          row['classification_source']?.toString() ?? 'system',
       handoffStatus: row['handoff_status']?.toString() ?? 'none',
       handoffReason: row['handoff_reason']?.toString(),
       assignedUserId: (row['assigned_user_id'] as num?)?.toInt(),
       assignedUserName: row['assigned_user_name']?.toString(),
-      assignedWorkerEngagementId: (row['assigned_worker_engagement_id'] as num?)?.toInt(),
+      assignedWorkerEngagementId: (row['assigned_worker_engagement_id'] as num?)
+          ?.toInt(),
       assignedParticipantType: row['assigned_participant_type']?.toString(),
       canReply: row['can_reply'] == null ? true : _asBool(row['can_reply']),
     );
@@ -993,7 +1104,11 @@ class InboxLocalStore {
         if (list is List) {
           for (final item in list) {
             if (item is Map) {
-              attachments.add(MessageAttachmentModel.fromJson(Map<String, dynamic>.from(item)));
+              attachments.add(
+                MessageAttachmentModel.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              );
             }
           }
         }
@@ -1012,7 +1127,9 @@ class InboxLocalStore {
       userName: row['user_name']?.toString(),
       customerName: row['customer_name']?.toString(),
       attachments: attachments,
-      localPending: state == MessageLocalState.pending || state == MessageLocalState.sending,
+      localPending:
+          state == MessageLocalState.pending ||
+          state == MessageLocalState.sending,
       localFailed: state == MessageLocalState.failed,
       clientId: row['client_id']?.toString(),
       workerEngagementId: (row['worker_engagement_id'] as num?)?.toInt(),
@@ -1090,7 +1207,9 @@ class InboxLocalStore {
   }
 
   Future<LocalAccountSnapshot?> loadAccountSnapshot() async {
-    final rows = await _db.select('SELECT * FROM local_account WHERE id = 1 LIMIT 1');
+    final rows = await _db.select(
+      'SELECT * FROM local_account WHERE id = 1 LIMIT 1',
+    );
     if (rows.isEmpty) return null;
     final row = rows.first;
     final workspaceRows = await _db.select(
@@ -1147,6 +1266,7 @@ class InboxLocalStore {
           if (alive && token == request) listener.addError(error, stack);
         }
       }
+
       void scheduleEmit() {
         pending?.cancel();
         pending = Timer(const Duration(milliseconds: 16), emit);
@@ -1194,7 +1314,9 @@ class InboxLocalStore {
       payload: row['payload']?.toString() ?? '{}',
       state: row['state']?.toString() ?? OutboxOpState.pending,
       attempts: (row['attempts'] as num?)?.toInt() ?? 0,
-      nextAttemptAt: _fromMs(row['next_attempt_at']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+      nextAttemptAt:
+          _fromMs(row['next_attempt_at']) ??
+          DateTime.fromMillisecondsSinceEpoch(0),
       lastError: row['last_error']?.toString(),
     );
   }

@@ -3,13 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-/// شعارات القنوات بشكل أيقونة التطبيق الأصلية: قرص/مربع ممتلئ مع الرسمة البيضاء.
+/// شعارات القنوات الرسمية بجودة فكتور مطابقة للهوية البصرية للعلامات التجارية.
 class HasimChannelMark extends StatelessWidget {
-  const HasimChannelMark({
-    super.key,
-    required this.channel,
-    this.size = 28,
-  });
+  const HasimChannelMark({super.key, required this.channel, this.size = 28});
 
   final String channel;
   final double size;
@@ -44,7 +40,7 @@ class HasimChannelMark extends StatelessWidget {
               borderRadius: BorderRadius.circular(radius),
               boxShadow: [
                 BoxShadow(
-                  color: colorFor(channel).withValues(alpha: 0.32),
+                  color: colorFor(channel).withValues(alpha: 0.28),
                   blurRadius: size * 0.16,
                   offset: Offset(0, size * 0.06),
                 ),
@@ -70,23 +66,26 @@ class _HasimChannelMarkPainter extends CustomPainter {
     final s = math.min(size.width, size.height);
     canvas.save();
     canvas.translate((size.width - s) / 2, (size.height - s) / 2);
+    // معايرة نظام الإحداثيات على شبكة قياسية 24x24 viewBox
+    canvas.scale(s / 24.0, s / 24.0);
+
     switch (channel) {
       case 'whatsapp':
-        _whatsapp(canvas, s);
+        _whatsapp(canvas);
       case 'facebook_messenger':
-        _messenger(canvas, s);
+        _messenger(canvas);
       case 'instagram':
-        _instagram(canvas, s);
+        _instagram(canvas);
       case 'telegram':
-        _telegram(canvas, s);
+        _telegram(canvas);
       case 'tiktok':
-        _tiktok(canvas, s);
+        _tiktok(canvas);
       case 'email':
-        _email(canvas, s);
+        _email(canvas);
       case 'web':
-        _web(canvas, s);
+        _web(canvas);
       default:
-        _fallback(canvas, s);
+        _fallback(canvas);
     }
     canvas.restore();
   }
@@ -104,130 +103,124 @@ class _HasimChannelMarkPainter extends CustomPainter {
     ..strokeWidth = width
     ..color = color;
 
-  void _disk(Canvas canvas, double s, Color color) {
-    final c = Offset(s / 2, s / 2);
-    canvas.drawCircle(c, s / 2, _fill(color));
+  void _disk(Canvas canvas, Color color) {
+    const c = Offset(12, 12);
+    canvas.drawCircle(c, 12, _fill(color));
     canvas.drawCircle(
       c,
-      s / 2,
+      12,
       Paint()
         ..isAntiAlias = true
         ..shader = ui.Gradient.linear(
-          Offset(s * 0.5, 0),
-          Offset(s * 0.5, s),
+          const Offset(12, 0),
+          const Offset(12, 24),
           [
-            const Color(0x2EFFFFFF),
+            const Color(0x28FFFFFF),
             const Color(0x00000000),
-            const Color(0x14000000),
+            const Color(0x18000000),
           ],
           const [0.0, 0.48, 1.0],
         ),
     );
   }
 
-  void _whatsapp(Canvas canvas, double s) {
-    _disk(canvas, s, const Color(0xFF25D366));
+  /// واتساب الرسمي: قرص أخضر مع فقاعة محادثة بيضاء وهاتف واتساب المائل بالأبعاد المعتمدة عالمياً.
+  void _whatsapp(Canvas canvas) {
+    _disk(canvas, const Color(0xFF25D366));
 
     final bubble = Path()
-      ..addOval(
-        Rect.fromCenter(
-          center: Offset(s * 0.54, s * 0.46),
-          width: s * 0.58,
-          height: s * 0.58,
-        ),
-      );
-    final tail = Path()
-      ..moveTo(s * 0.16, s * 0.84)
-      ..quadraticBezierTo(s * 0.20, s * 0.62, s * 0.36, s * 0.70)
-      ..lineTo(s * 0.27, s * 0.78)
-      ..quadraticBezierTo(s * 0.18, s * 0.84, s * 0.16, s * 0.84)
+      ..moveTo(12.0, 3.5)
+      ..cubicTo(7.3, 3.5, 3.5, 7.3, 3.5, 12.0)
+      ..cubicTo(3.5, 13.6, 3.95, 15.1, 4.75, 16.4)
+      ..lineTo(3.4, 20.6)
+      ..lineTo(7.7, 19.5)
+      ..cubicTo(9.0, 20.2, 10.45, 20.6, 12.0, 20.6)
+      ..cubicTo(16.7, 20.6, 20.5, 16.7, 20.5, 12.0)
+      ..cubicTo(20.5, 7.3, 16.7, 3.5, 12.0, 3.5)
       ..close();
-    canvas.drawPath(
-      Path.combine(PathOperation.union, bubble, tail),
-      _fill(Colors.white),
-    );
+    canvas.drawPath(bubble, _fill(Colors.white));
 
-    canvas.save();
-    canvas.translate(s * 0.54, s * 0.455);
-    canvas.rotate(-0.58);
-    final phone = _stroke(const Color(0xFF25D366), s * 0.11);
-    canvas.drawArc(
-      Rect.fromCenter(center: Offset.zero, width: s * 0.33, height: s * 0.40),
-      0.72,
-      1.70,
-      false,
-      phone,
-    );
-    canvas.drawLine(
-      Offset(s * 0.015, s * 0.155),
-      Offset(s * 0.11, s * 0.20),
-      phone,
-    );
-    canvas.drawLine(
-      Offset(s * 0.015, -s * 0.155),
-      Offset(s * 0.11, -s * 0.20),
-      phone,
-    );
-    canvas.restore();
+    final phone = Path()
+      ..moveTo(16.5, 14.1)
+      ..cubicTo(16.25, 13.98, 15.03, 13.38, 14.8, 13.3)
+      ..cubicTo(14.57, 13.21, 14.41, 13.17, 14.24, 13.42)
+      ..cubicTo(14.07, 13.67, 13.59, 14.24, 13.45, 14.4)
+      ..cubicTo(13.3, 14.57, 13.16, 14.59, 12.91, 14.46)
+      ..cubicTo(12.66, 14.34, 11.85, 14.07, 10.89, 13.22)
+      ..cubicTo(10.15, 12.55, 9.64, 11.73, 9.5, 11.48)
+      ..cubicTo(9.35, 11.23, 9.48, 11.09, 9.61, 10.97)
+      ..cubicTo(9.72, 10.86, 9.85, 10.68, 9.98, 10.54)
+      ..cubicTo(10.1, 10.39, 10.15, 10.29, 10.23, 10.13)
+      ..cubicTo(10.31, 9.96, 10.27, 9.81, 10.21, 9.69)
+      ..cubicTo(10.15, 9.56, 9.65, 8.33, 9.44, 7.83)
+      ..cubicTo(9.24, 7.34, 9.03, 7.41, 8.88, 7.4)
+      ..cubicTo(8.73, 7.39, 8.57, 7.39, 8.4, 7.39)
+      ..cubicTo(8.23, 7.39, 7.96, 7.45, 7.73, 7.71)
+      ..cubicTo(7.5, 7.96, 6.85, 8.57, 6.85, 9.8)
+      ..cubicTo(6.85, 11.04, 7.75, 12.23, 7.87, 12.4)
+      ..cubicTo(8.0, 12.56, 9.64, 15.1, 12.15, 16.19)
+      ..cubicTo(12.75, 16.45, 13.21, 16.6, 13.58, 16.72)
+      ..cubicTo(14.18, 16.91, 14.73, 16.88, 15.16, 16.82)
+      ..cubicTo(15.64, 16.75, 16.64, 16.22, 16.85, 15.64)
+      ..cubicTo(17.06, 15.06, 17.06, 14.55, 17.0, 14.45)
+      ..cubicTo(16.94, 14.34, 16.77, 14.28, 16.5, 14.1)
+      ..close();
+    canvas.drawPath(phone, _fill(const Color(0xFF25D366)));
   }
 
-  void _messenger(Canvas canvas, double s) {
-    final rect = Rect.fromLTWH(0, 0, s, s);
+  /// ماسنجر الرسمي: تدرج Meta التدرجي مع فقاعة المحادثة وصاعقة البرق الرسمية.
+  void _messenger(Canvas canvas) {
+    const rect = Rect.fromLTWH(0, 0, 24, 24);
+    final shader = const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Color(0xFF00C6FF),
+        Color(0xFF0078FF),
+        Color(0xFFA033FF),
+        Color(0xFFFF5E3A),
+      ],
+      stops: [0.0, 0.35, 0.70, 1.0],
+    ).createShader(rect);
+
     canvas.drawCircle(
-      Offset(s / 2, s / 2),
-      s / 2,
+      const Offset(12, 12),
+      12,
       Paint()
         ..isAntiAlias = true
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF00C6FF),
-            Color(0xFF0078FF),
-            Color(0xFFA033FF),
-            Color(0xFFFF45A8),
-          ],
-          stops: [0.0, 0.38, 0.68, 1.0],
-        ).createShader(rect),
+        ..shader = shader,
     );
 
     final bubble = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: Offset(s * 0.50, s * 0.46),
-            width: s * 0.62,
-            height: s * 0.54,
-          ),
-          Radius.circular(s * 0.27),
-        ),
-      );
-    final tail = Path()
-      ..moveTo(s * 0.20, s * 0.84)
-      ..quadraticBezierTo(s * 0.26, s * 0.64, s * 0.40, s * 0.70)
-      ..lineTo(s * 0.30, s * 0.78)
+      ..moveTo(12.0, 3.6)
+      ..cubicTo(7.1, 3.6, 3.2, 7.3, 3.2, 11.9)
+      ..cubicTo(3.2, 14.5, 4.5, 16.9, 6.6, 18.3)
+      ..lineTo(6.6, 20.6)
+      ..lineTo(8.8, 19.4)
+      ..cubicTo(9.8, 19.8, 10.9, 20.0, 12.0, 20.0)
+      ..cubicTo(16.9, 20.0, 20.8, 16.3, 20.8, 11.9)
+      ..cubicTo(20.8, 7.3, 16.9, 3.6, 12.0, 3.6)
       ..close();
-    final white = Path.combine(PathOperation.union, bubble, tail);
 
     final bolt = Path()
-      ..moveTo(s * 0.57, s * 0.26)
-      ..lineTo(s * 0.34, s * 0.51)
-      ..lineTo(s * 0.48, s * 0.51)
-      ..lineTo(s * 0.41, s * 0.72)
-      ..lineTo(s * 0.68, s * 0.44)
-      ..lineTo(s * 0.53, s * 0.44)
+      ..moveTo(12.7, 14.4)
+      ..lineTo(10.5, 12.0)
+      ..lineTo(6.5, 14.4)
+      ..lineTo(11.3, 9.2)
+      ..lineTo(13.5, 11.6)
+      ..lineTo(17.5, 9.2)
       ..close();
 
     canvas.drawPath(
-      Path.combine(PathOperation.difference, white, bolt),
+      Path.combine(PathOperation.difference, bubble, bolt),
       _fill(Colors.white),
     );
   }
 
-  void _instagram(Canvas canvas, double s) {
-    final pad = s * 0.02;
-    final rect = Rect.fromLTWH(pad, pad, s - pad * 2, s - pad * 2);
-    final squircle = RRect.fromRectAndRadius(rect, Radius.circular(s * 0.28));
+  /// إنستغرام الرسمي: تدرج 5 ألوان الأيقونة الأصلية مع كاميرا إنستغرام الدائرية.
+  void _instagram(Canvas canvas) {
+    const rect = Rect.fromLTWH(0.5, 0.5, 23, 23);
+    final squircle = RRect.fromRectAndRadius(rect, const Radius.circular(6.8));
     canvas.drawRRect(
       squircle,
       Paint()
@@ -246,138 +239,150 @@ class _HasimChannelMarkPainter extends CustomPainter {
         ).createShader(rect),
     );
 
-    final white = _stroke(Colors.white, s * 0.068);
+    final white = _stroke(Colors.white, 1.7);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: Offset(s / 2, s / 2),
-          width: s * 0.50,
-          height: s * 0.50,
-        ),
-        Radius.circular(s * 0.14),
+        const Rect.fromLTWH(5.4, 5.4, 13.2, 13.2),
+        const Radius.circular(3.8),
       ),
       white,
     );
-    canvas.drawCircle(Offset(s / 2, s / 2), s * 0.135, white);
-    canvas.drawCircle(Offset(s * 0.66, s * 0.355), s * 0.038, _fill(Colors.white));
+    canvas.drawCircle(const Offset(12, 12), 3.4, white);
+    canvas.drawCircle(const Offset(15.9, 8.1), 0.95, _fill(Colors.white));
   }
 
-  void _telegram(Canvas canvas, double s) {
-    _disk(canvas, s, const Color(0xFF2AABEE));
+  /// تلغرام الرسمي: قرص أزرق سماوي وطائرة الورق البيضاء.
+  void _telegram(Canvas canvas) {
+    _disk(canvas, const Color(0xFF2AABEE));
     final plane = Path()
-      ..moveTo(s * 0.18, s * 0.49)
-      ..lineTo(s * 0.82, s * 0.22)
-      ..lineTo(s * 0.40, s * 0.55)
-      ..close()
-      ..moveTo(s * 0.40, s * 0.55)
-      ..lineTo(s * 0.82, s * 0.22)
-      ..lineTo(s * 0.54, s * 0.78)
-      ..lineTo(s * 0.46, s * 0.58)
+      ..moveTo(4.6, 11.6)
+      ..lineTo(18.8, 6.2)
+      ..cubicTo(19.4, 6.0, 20.0, 6.4, 19.8, 7.0)
+      ..lineTo(16.5, 18.2)
+      ..cubicTo(16.3, 18.8, 15.6, 19.0, 15.1, 18.6)
+      ..lineTo(11.6, 15.8)
+      ..lineTo(9.6, 17.7)
+      ..cubicTo(9.3, 18.0, 8.8, 17.8, 8.8, 17.3)
+      ..lineTo(9.1, 14.2)
+      ..lineTo(16.2, 8.4)
+      ..cubicTo(16.5, 8.1, 16.2, 7.8, 15.8, 8.0)
+      ..lineTo(7.6, 13.2)
+      ..lineTo(4.6, 11.6)
       ..close();
     canvas.drawPath(plane, _fill(Colors.white));
-    canvas.drawLine(
-      Offset(s * 0.40, s * 0.55),
-      Offset(s * 0.58, s * 0.47),
-      _stroke(const Color(0xFF2AABEE), s * 0.045),
-    );
   }
 
-  void _tiktok(Canvas canvas, double s) {
-    _disk(canvas, s, const Color(0xFF111111));
+  /// تيك توك الرسمي: قرص داكن مع النوتة الموسيقية وأطياف السيان والأحمر.
+  void _tiktok(Canvas canvas) {
+    _disk(canvas, const Color(0xFF111111));
     canvas.save();
-    canvas.clipPath(
-      Path()..addOval(Rect.fromCircle(center: Offset(s / 2, s / 2), radius: s / 2)),
-    );
+    canvas.clipPath(Path()..addOval(const Rect.fromLTWH(0, 0, 24, 24)));
 
-    void note(Offset shift, Color color, {double width = 0.085}) {
+    void note(Offset shift, Color color) {
       canvas.save();
       canvas.translate(shift.dx, shift.dy);
-      final p = _stroke(color, s * width);
-      canvas.drawLine(Offset(s * 0.56, s * 0.30), Offset(s * 0.56, s * 0.64), p);
+      final p = _stroke(color, 2.0);
+      canvas.drawLine(const Offset(13.5, 7.2), const Offset(13.5, 15.4), p);
       canvas.drawArc(
-        Rect.fromCenter(
-          center: Offset(s * 0.62, s * 0.34),
-          width: s * 0.20,
-          height: s * 0.16,
-        ),
-        math.pi,
+        const Rect.fromLTWH(13.5, 5.2, 4.8, 4.4),
         math.pi * 0.9,
+        math.pi * 0.8,
         false,
         p,
       );
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(s * 0.44, s * 0.68),
-          width: s * 0.20,
-          height: s * 0.15,
-        ),
-        _fill(color),
-      );
+      canvas.drawOval(const Rect.fromLTWH(8.8, 13.8, 4.8, 3.8), _fill(color));
       canvas.restore();
     }
 
-    note(Offset(-s * 0.05, s * 0.02), const Color(0xFF25F4EE));
-    note(Offset(s * 0.05, -s * 0.02), const Color(0xFFFE2C55));
-    note(Offset.zero, Colors.white, width: 0.08);
+    note(const Offset(-1.0, 0.5), const Color(0xFF25F4EE));
+    note(const Offset(1.0, -0.5), const Color(0xFFFE2C55));
+    note(Offset.zero, Colors.white);
     canvas.restore();
   }
 
-  void _email(Canvas canvas, double s) {
-    final pad = s * 0.03;
-    final rect = Rect.fromLTWH(pad, pad, s - pad * 2, s - pad * 2);
-    final card = RRect.fromRectAndRadius(rect, Radius.circular(s * 0.22));
+  /// بريد (Google Gmail الرسمي): بطاقة بيضاء ناصعة مع شعار M بألوان Google Workspace الأربعة.
+  void _email(Canvas canvas) {
+    final card = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(0.6, 0.6, 22.8, 22.8),
+      const Radius.circular(6.4),
+    );
     canvas.drawRRect(card, _fill(Colors.white));
-    canvas.drawRRect(
-      card,
-      _stroke(const Color(0x14000000), s * 0.02),
-    );
+    canvas.drawRRect(card, _stroke(const Color(0x18000000), 0.5));
 
-    final l = Offset(s * 0.22, s * 0.30);
-    final lb = Offset(s * 0.22, s * 0.72);
-    final c = Offset(s * 0.50, s * 0.54);
-    final r = Offset(s * 0.78, s * 0.30);
-    final rb = Offset(s * 0.78, s * 0.72);
-    final w = s * 0.095;
+    // القائم الأيسر (أحمر)
+    final leftLeg = Path()
+      ..moveTo(4.2, 8.4)
+      ..lineTo(7.4, 8.4)
+      ..lineTo(7.4, 18.0)
+      ..lineTo(5.6, 18.0)
+      ..cubicTo(4.8, 18.0, 4.2, 17.4, 4.2, 16.6)
+      ..close();
+    canvas.drawPath(leftLeg, _fill(const Color(0xFFEA4335)));
 
-    canvas.drawLine(r, rb, _stroke(const Color(0xFFFBBC05), w));
-    canvas.drawLine(r, c, _stroke(const Color(0xFFFBBC05), w));
-    canvas.drawLine(l, lb, _stroke(const Color(0xFFEA4335), w));
-    canvas.drawLine(l, c, _stroke(const Color(0xFFEA4335), w));
+    // القائم الأيمن (أخضر)
+    final rightLeg = Path()
+      ..moveTo(16.6, 8.4)
+      ..lineTo(19.8, 8.4)
+      ..lineTo(19.8, 16.6)
+      ..cubicTo(19.8, 17.4, 19.2, 18.0, 18.4, 18.0)
+      ..lineTo(16.6, 18.0)
+      ..close();
+    canvas.drawPath(rightLeg, _fill(const Color(0xFF34A853)));
 
-    final inner = s * 0.055;
-    canvas.drawLine(
-      Offset(s * 0.30, s * 0.36),
-      c,
-      _stroke(const Color(0xFF4285F4), inner),
-    );
-    canvas.drawLine(
-      Offset(s * 0.70, s * 0.36),
-      c,
-      _stroke(const Color(0xFF34A853), inner),
-    );
+    // الكتف الأيسر (أزرق)
+    final leftFold = Path()
+      ..moveTo(4.2, 8.4)
+      ..cubicTo(4.2, 7.3, 4.8, 6.4, 5.8, 6.0)
+      ..lineTo(12.0, 10.6)
+      ..lineTo(9.6, 12.4)
+      ..lineTo(4.2, 8.4)
+      ..close();
+    canvas.drawPath(leftFold, _fill(const Color(0xFF4285F4)));
+
+    // الكتف الأيمن (أصفر)
+    final rightFold = Path()
+      ..moveTo(19.8, 8.4)
+      ..cubicTo(19.8, 7.3, 19.2, 6.4, 18.2, 6.0)
+      ..lineTo(12.0, 10.6)
+      ..lineTo(14.4, 12.4)
+      ..lineTo(19.8, 8.4)
+      ..close();
+    canvas.drawPath(rightFold, _fill(const Color(0xFFFBBC05)));
+
+    // الجزء الأوسط (أحمر)
+    final centerV = Path()
+      ..moveTo(7.4, 8.4)
+      ..lineTo(12.0, 11.9)
+      ..lineTo(16.6, 8.4)
+      ..lineTo(12.0, 13.8)
+      ..close();
+    canvas.drawPath(centerV, _fill(const Color(0xFFEA4335)));
   }
 
-  void _web(Canvas canvas, double s) {
-    _disk(canvas, s, const Color(0xFF0F9F8F));
-    final c = Offset(s / 2, s / 2);
-    final ring = _stroke(Colors.white, s * 0.058);
-    canvas.drawCircle(c, s * 0.30, ring);
-    canvas.drawOval(
-      Rect.fromCenter(center: c, width: s * 0.26, height: s * 0.60),
-      ring,
-    );
-    canvas.drawLine(Offset(s * 0.22, s * 0.50), Offset(s * 0.78, s * 0.50), ring);
-    canvas.drawLine(Offset(s * 0.26, s * 0.36), Offset(s * 0.74, s * 0.36), ring);
-    canvas.drawLine(Offset(s * 0.26, s * 0.64), Offset(s * 0.74, s * 0.64), ring);
+  /// ويب الرسمي: قرص تيل أنيق مع مجسّم الكرة الأرضية وخطوط الطول والعرض.
+  void _web(Canvas canvas) {
+    _disk(canvas, const Color(0xFF0F9F8F));
+    const c = Offset(12, 12);
+    final ring = _stroke(Colors.white, 1.4);
+    canvas.drawCircle(c, 7.4, ring);
+    canvas.drawOval(Rect.fromCenter(center: c, width: 7.2, height: 14.8), ring);
+    canvas.drawLine(const Offset(4.6, 12), const Offset(19.4, 12), ring);
+
+    // خطوط العرض المنحنية
+    final upperLat = Path()
+      ..moveTo(6.8, 8.5)
+      ..quadraticBezierTo(12.0, 9.8, 17.2, 8.5);
+    canvas.drawPath(upperLat, ring);
+
+    final lowerLat = Path()
+      ..moveTo(6.8, 15.5)
+      ..quadraticBezierTo(12.0, 14.2, 17.2, 15.5);
+    canvas.drawPath(lowerLat, ring);
   }
 
-  void _fallback(Canvas canvas, double s) {
-    _disk(canvas, s, const Color(0xFF64748B));
-    canvas.drawCircle(
-      Offset(s / 2, s / 2),
-      s * 0.16,
-      _stroke(Colors.white, s * 0.07),
-    );
+  void _fallback(Canvas canvas) {
+    _disk(canvas, const Color(0xFF64748B));
+    canvas.drawCircle(const Offset(12, 12), 3.8, _stroke(Colors.white, 1.6));
   }
 
   @override

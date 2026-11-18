@@ -28,7 +28,14 @@ class _WavePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final back = Path()
       ..moveTo(0, size.height * 0.42)
-      ..cubicTo(size.width * 0.22, size.height * 0.08, size.width * 0.48, size.height * 0.72, size.width, size.height * 0.28)
+      ..cubicTo(
+        size.width * 0.22,
+        size.height * 0.08,
+        size.width * 0.48,
+        size.height * 0.72,
+        size.width,
+        size.height * 0.28,
+      )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
@@ -36,7 +43,14 @@ class _WavePainter extends CustomPainter {
 
     final front = Path()
       ..moveTo(0, size.height * 0.58)
-      ..cubicTo(size.width * 0.28, size.height * 0.22, size.width * 0.62, size.height * 0.92, size.width, size.height * 0.46)
+      ..cubicTo(
+        size.width * 0.28,
+        size.height * 0.22,
+        size.width * 0.62,
+        size.height * 0.92,
+        size.width,
+        size.height * 0.46,
+      )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
@@ -44,5 +58,6 @@ class _WavePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _WavePainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _WavePainter oldDelegate) =>
+      oldDelegate.color != color;
 }

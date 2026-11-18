@@ -26,7 +26,9 @@ class HasimPrimaryButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: AppTheme.brand,
           disabledBackgroundColor: AppTheme.brand.withValues(alpha: 0.45),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           elevation: 0,
         ),
         child: Text(label),
@@ -59,7 +61,9 @@ class HasimSecondaryButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           foregroundColor: AppTheme.brand,
           side: BorderSide(color: AppTheme.brand.withValues(alpha: 0.55)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         child: Text(label),
       ),
@@ -87,7 +91,10 @@ class HasimTextLinkButton extends StatelessWidget {
     return TextButton.icon(
       onPressed: onPressed,
       icon: Icon(icon ?? Icons.logout_rounded, size: 18, color: c),
-      label: Text(label, style: TextStyle(color: c, fontWeight: FontWeight.w600)),
+      label: Text(
+        label,
+        style: TextStyle(color: c, fontWeight: FontWeight.w600),
+      ),
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       ),

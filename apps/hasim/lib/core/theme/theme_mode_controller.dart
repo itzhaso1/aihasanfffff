@@ -49,5 +49,5 @@ class ThemeModeController extends StateNotifier<ThemeMode> {
 
 final themeModeControllerProvider =
     StateNotifierProvider<ThemeModeController, ThemeMode>((ref) {
-  return ThemeModeController(ref.watch(prefsStoreProvider));
-});
+      return ThemeModeController(ref.watch(prefsStoreProvider));
+    });

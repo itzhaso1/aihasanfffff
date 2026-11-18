@@ -56,7 +56,9 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = _current == null && _catalog == null ? 'تعذر تحميل الباقات.' : null;
+        _error = _current == null && _catalog == null
+            ? 'تعذر تحميل الباقات.'
+            : null;
         _loading = false;
       });
     }
@@ -64,71 +66,99 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (previous, next) {
+    ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+      previous,
+      next,
+    ) {
       if (previous != null && previous != next) _load();
     });
     final compact = HasimLayout.isCompact(context);
     final content = _loading
-          ? const SkeletonList()
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_error!),
-                      TextButton(onPressed: _load, child: const Text('إعادة المحاولة')),
-                    ],
+        ? const SkeletonList()
+        : _error != null
+        ? Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_error!),
+                TextButton(
+                  onPressed: _load,
+                  child: const Text('إعادة المحاولة'),
+                ),
+              ],
+            ),
+          )
+        : RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text(
+                  'الباقة الحالية',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      Text('الباقة الحالية', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 8),
-                      Text('الميزات: ${_chatFeatures(_current!.features).isEmpty ? '—' : _chatFeatures(_current!.features).join(' · ')}'),
-                      const SizedBox(height: 16),
-                      Text('الاستخدام', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 8),
-                      if (_current!.meters.isEmpty)
-                        const Text('لا توجد عدّادات استخدام.')
-                      else
-                        ..._current!.meters.entries.map((e) {
-                          final value = e.value;
-                          String subtitle = value.toString();
-                          if (value is Map) {
-                            final used = value['used'] ?? value['current'] ?? value['count'];
-                            final limit = value['limit'] ?? value['max'];
-                            subtitle = '${used ?? '—'} / ${limit ?? '∞'}';
-                          }
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(e.key),
-                            subtitle: Text(subtitle),
-                          );
-                        }),
-                      const Divider(height: 32),
-                      Text('مقارنة الباقات', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 8),
-                      ...?_catalog?.plans.map(
-                        (p) => Card(
-                          child: ListTile(
-                            title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: Text(
-                              [
-                                if (p.description != null) p.description!,
-                                if (p.price != null) '${p.price} ${p.currency ?? ''}',
-                                if (_chatFeatures(p.features).isNotEmpty) _chatFeatures(p.features).take(4).join(' · '),
-                              ].join('\n'),
-                            ),
-                            isThreeLine: true,
-                          ),
-                        ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'الميزات: ${_chatFeatures(_current!.features).isEmpty ? '—' : _chatFeatures(_current!.features).join(' · ')}',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'الاستخدام',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (_current!.meters.isEmpty)
+                  const Text('لا توجد عدّادات استخدام.')
+                else
+                  ..._current!.meters.entries.map((e) {
+                    final value = e.value;
+                    String subtitle = value.toString();
+                    if (value is Map) {
+                      final used =
+                          value['used'] ?? value['current'] ?? value['count'];
+                      final limit = value['limit'] ?? value['max'];
+                      subtitle = '${used ?? '—'} / ${limit ?? '∞'}';
+                    }
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(e.key),
+                      subtitle: Text(subtitle),
+                    );
+                  }),
+                const Divider(height: 32),
+                Text(
+                  'مقارنة الباقات',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...?_catalog?.plans.map(
+                  (p) => Card(
+                    child: ListTile(
+                      title: Text(
+                        p.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                    ],
+                      subtitle: Text(
+                        [
+                          if (p.description != null) p.description!,
+                          if (p.price != null) '${p.price} ${p.currency ?? ''}',
+                          if (_chatFeatures(p.features).isNotEmpty)
+                            _chatFeatures(p.features).take(4).join(' · '),
+                        ].join('\n'),
+                      ),
+                      isThreeLine: true,
+                    ),
                   ),
-                );
+                ),
+              ],
+            ),
+          );
 
     if (compact) {
       return HasimMobileScaffold(title: 'الباقات والاستخدام', body: content);
@@ -143,6 +173,8 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
   List<String> _chatFeatures(List<String> features) {
     const businessLegacyKeys = {'finance', 'pos', 'inventory'};
 
-    return features.where((feature) => !businessLegacyKeys.contains(feature)).toList();
+    return features
+        .where((feature) => !businessLegacyKeys.contains(feature))
+        .toList();
   }
 }

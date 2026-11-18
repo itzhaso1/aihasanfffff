@@ -30,6 +30,7 @@ class _ScriptedMessages extends ConversationRepository {
   Future<({List<MessageModel> items, String? nextCursor})> messages(
     int conversationId, {
     String? cursor,
+    int? afterId,
     int? workspaceId,
   }) async {
     final page = pages[calls < pages.length ? calls : pages.length - 1];

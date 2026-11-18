@@ -46,11 +46,12 @@ class FirebaseMessagingGateway implements NativeMessagingGateway {
       await Firebase.initializeApp(options: options);
     }
     if (defaultTargetPlatform == TargetPlatform.iOS) {
-      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      await FirebaseMessaging.instance
+          .setForegroundNotificationPresentationOptions(
+            alert: true,
+            badge: true,
+            sound: true,
+          );
     }
     _openedSub ??= FirebaseMessaging.onMessageOpenedApp.listen((message) {
       final data = firebaseMessageData(message);

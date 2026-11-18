@@ -453,10 +453,7 @@ class CompanyWorkerDiscoveryRepository {
   }) async {
     final response = await _api.get<CompanyWorkerContractPrice>(
       '/company/worker-discovery/$workerProfileId/contract-price',
-      query: {
-        'duration_value': durationValue,
-        'duration_unit': durationUnit,
-      },
+      query: {'duration_value': durationValue, 'duration_unit': durationUnit},
       mapData: (raw) {
         final map = asMap(raw);
         if (map == null) {

@@ -26,23 +26,28 @@ class HomeState {
     HomeSnapshot? snapshot,
     List<ConversationModel>? recentConversations,
     String? error,
-  }) =>
-      HomeState(
-        loading: loading ?? this.loading,
-        snapshot: snapshot ?? this.snapshot,
-        recentConversations: recentConversations ?? this.recentConversations,
-        error: error,
-      );
+  }) => HomeState(
+    loading: loading ?? this.loading,
+    snapshot: snapshot ?? this.snapshot,
+    recentConversations: recentConversations ?? this.recentConversations,
+    error: error,
+  );
 }
 
 class HomeController extends StateNotifier<HomeState> {
   HomeController(this._ref) : super(const HomeState()) {
-    _workspaceSub = _ref.listen<int?>(activeWorkspaceIdProvider, (previous, next) {
+    _workspaceSub = _ref.listen<int?>(activeWorkspaceIdProvider, (
+      previous,
+      next,
+    ) {
       if (previous == next) return;
       state = const HomeState();
       unawaited(refresh());
     });
-    _revisionSub = _ref.listen<int>(inboxLocalRevisionProvider, (previous, next) {
+    _revisionSub = _ref.listen<int>(inboxLocalRevisionProvider, (
+      previous,
+      next,
+    ) {
       if (previous == next) return;
       unawaited(_applyLocalUnread());
     });
@@ -65,8 +70,12 @@ class HomeController extends StateNotifier<HomeState> {
     final scope = captureInboxScope(_ref);
     final workspaceId = scope.workspaceId;
     if (workspaceId != null) {
-      final cached = await _ref.read(conversationRepositoryProvider).cachedConversations(workspaceId);
-      final unread = await _ref.read(inboxLocalStoreProvider).unreadConversationCount(workspaceId);
+      final cached = await _ref
+          .read(conversationRepositoryProvider)
+          .cachedConversations(workspaceId);
+      final unread = await _ref
+          .read(inboxLocalStoreProvider)
+          .unreadConversationCount(workspaceId);
       if (!_canCommit(scope)) return;
       if (cached.isNotEmpty || state.snapshot != null) {
         state = state.copyWith(
@@ -89,7 +98,9 @@ class HomeController extends StateNotifier<HomeState> {
       if (!_canCommit(scope)) return;
       List<ConversationModel> recent = const [];
       try {
-        final page = await _ref.read(conversationRepositoryProvider).list(workspaceId: scope.workspaceId);
+        final page = await _ref
+            .read(conversationRepositoryProvider)
+            .list(workspaceId: scope.workspaceId);
         if (!_canCommit(scope)) return;
         recent = page.items.take(5).toList();
       } catch (_) {
@@ -97,14 +108,18 @@ class HomeController extends StateNotifier<HomeState> {
         final workspaceId = scope.workspaceId;
         recent = workspaceId == null
             ? const []
-            : (await _ref.read(conversationRepositoryProvider).cachedConversations(workspaceId))
-                .take(5)
-                .toList();
+            : (await _ref
+                      .read(conversationRepositoryProvider)
+                      .cachedConversations(workspaceId))
+                  .take(5)
+                  .toList();
       }
       if (!_canCommit(scope)) return;
       final overlaid = scope.workspaceId == null
           ? snap
-          : await _ref.read(conversationRepositoryProvider).overlayHomeUnread(scope.workspaceId!, snap);
+          : await _ref
+                .read(conversationRepositoryProvider)
+                .overlayHomeUnread(scope.workspaceId!, snap);
       if (!_canCommit(scope)) return;
       state = HomeState(
         loading: false,
@@ -135,11 +150,15 @@ class HomeController extends StateNotifier<HomeState> {
     final snap = state.snapshot;
     final workspaceId = scope.workspaceId;
     if (snap == null || workspaceId == null) return;
-    final overlaid = await _ref.read(conversationRepositoryProvider).overlayHomeUnread(workspaceId, snap);
+    final overlaid = await _ref
+        .read(conversationRepositoryProvider)
+        .overlayHomeUnread(workspaceId, snap);
     if (!_canCommit(scope)) return;
     List<ConversationModel> recent = state.recentConversations;
     try {
-      recent = await _ref.read(conversationRepositoryProvider).cachedConversations(workspaceId);
+      recent = await _ref
+          .read(conversationRepositoryProvider)
+          .cachedConversations(workspaceId);
       recent = recent.take(5).toList();
     } catch (_) {
       // Keep prior recent list if local cache read fails.
@@ -154,4 +173,6 @@ class HomeController extends StateNotifier<HomeState> {
   }
 }
 
-final homeControllerProvider = StateNotifierProvider<HomeController, HomeState>((ref) => HomeController(ref));
+final homeControllerProvider = StateNotifierProvider<HomeController, HomeState>(
+  (ref) => HomeController(ref),
+);

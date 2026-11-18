@@ -43,6 +43,8 @@
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>حاسم يحتاج الميكروفون لتسجيل الرسائل الصوتية في المحادثة.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>يستخدم حاسم البصمة أو Face ID لتأمين التطبيق وحماية الدردشات المقفلة.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIBackgroundModes</key>

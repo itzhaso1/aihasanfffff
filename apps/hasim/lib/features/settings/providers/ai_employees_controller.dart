@@ -56,17 +56,17 @@ class AiEmployeesState {
 
 final aiEmployeesControllerProvider =
     StateNotifierProvider<AiEmployeesController, AiEmployeesState>((ref) {
-  final controller = AiEmployeesController(ref);
-  ref.listen<String>(
-    authControllerProvider.select((s) => s.isolationKey),
-    (previous, next) {
-      if (previous != next) {
-        controller.reload();
-      }
-    },
-  );
-  return controller;
-});
+      final controller = AiEmployeesController(ref);
+      ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+        previous,
+        next,
+      ) {
+        if (previous != next) {
+          controller.reload();
+        }
+      });
+      return controller;
+    });
 
 class AiEmployeesController extends StateNotifier<AiEmployeesState> {
   AiEmployeesController(this._ref) : super(const AiEmployeesState()) {
@@ -105,39 +105,58 @@ class AiEmployeesController extends StateNotifier<AiEmployeesState> {
     }
   }
 
-  Future<bool> createFromPreset(String presetKey, {String? name}) =>
-      _mutate(() => _ref.read(aiRepositoryProvider).createEmployee(
-            presetKey: presetKey,
-            fields: name == null || name.trim().isEmpty ? null : {'name': name.trim()},
-          ));
+  Future<bool> createFromPreset(String presetKey, {String? name}) => _mutate(
+    () => _ref
+        .read(aiRepositoryProvider)
+        .createEmployee(
+          presetKey: presetKey,
+          fields: name == null || name.trim().isEmpty
+              ? null
+              : {'name': name.trim()},
+        ),
+  );
 
-  Future<bool> create(AiEmployeeDraft draft) =>
-      _mutate(() => _ref.read(aiRepositoryProvider).createEmployee(fields: draft.toJson()));
+  Future<bool> create(AiEmployeeDraft draft) => _mutate(
+    () =>
+        _ref.read(aiRepositoryProvider).createEmployee(fields: draft.toJson()),
+  );
 
-  Future<bool> update(int id, AiEmployeeDraft draft) =>
-      _mutate(() => _ref.read(aiRepositoryProvider).updateEmployee(id, draft.toJson()));
+  Future<bool> update(int id, AiEmployeeDraft draft) => _mutate(
+    () => _ref.read(aiRepositoryProvider).updateEmployee(id, draft.toJson()),
+  );
 
-  Future<bool> rename(int id, String name) =>
-      _mutate(() => _ref.read(aiRepositoryProvider).updateEmployee(id, {'name': name.trim()}));
+  Future<bool> rename(int id, String name) => _mutate(
+    () => _ref.read(aiRepositoryProvider).updateEmployee(id, {
+      'name': name.trim(),
+    }),
+  );
 
-  Future<bool> setDefault(int id) => _mutate(() => _ref.read(aiRepositoryProvider).setDefaultEmployee(id));
+  Future<bool> setDefault(int id) =>
+      _mutate(() => _ref.read(aiRepositoryProvider).setDefaultEmployee(id));
 
-  Future<bool> setActive(int id, {required bool active}) =>
-      _mutate(() => _ref.read(aiRepositoryProvider).setEmployeeActive(id, active: active));
+  Future<bool> setActive(int id, {required bool active}) => _mutate(
+    () => _ref.read(aiRepositoryProvider).setEmployeeActive(id, active: active),
+  );
 
-  Future<bool> setSkills(int id, List<String> keys) =>
-      _mutate(() => _ref.read(aiRepositoryProvider).setEmployeeSkills(id, keys));
+  Future<bool> setSkills(int id, List<String> keys) => _mutate(
+    () => _ref.read(aiRepositoryProvider).setEmployeeSkills(id, keys),
+  );
 
   Future<bool> delete(int id) async {
     state = state.copyWith(saving: true, clearError: true);
     try {
       await _ref.read(aiRepositoryProvider).deleteEmployee(id);
-      final remaining = state.employees.where((employee) => employee.id != id).toList();
+      final remaining = state.employees
+          .where((employee) => employee.id != id)
+          .toList();
       state = AiEmployeesState(
         employees: remaining,
         presets: state.presets,
         options: state.options,
-        selectedId: _keepSelection(remaining, state.selectedId == id ? null : state.selectedId),
+        selectedId: _keepSelection(
+          remaining,
+          state.selectedId == id ? null : state.selectedId,
+        ),
       );
       return true;
     } on ApiException catch (e) {
@@ -165,7 +184,8 @@ class AiEmployeesController extends StateNotifier<AiEmployeesState> {
       final saved = await operation();
       List<AiEmployeeModel> employees = state.employees;
       try {
-        employees = (await _ref.read(aiRepositoryProvider).fetchEmployees()).employees;
+        employees =
+            (await _ref.read(aiRepositoryProvider).fetchEmployees()).employees;
       } catch (_) {}
       state = AiEmployeesState(
         employees: _withSaved(employees, saved),
@@ -183,7 +203,10 @@ class AiEmployeesController extends StateNotifier<AiEmployeesState> {
     }
   }
 
-  static List<AiEmployeeModel> _withSaved(List<AiEmployeeModel> employees, AiEmployeeModel saved) {
+  static List<AiEmployeeModel> _withSaved(
+    List<AiEmployeeModel> employees,
+    AiEmployeeModel saved,
+  ) {
     var replaced = false;
     final next = <AiEmployeeModel>[];
     for (final employee in employees) {
@@ -199,7 +222,10 @@ class AiEmployeesController extends StateNotifier<AiEmployeesState> {
   }
 
   static int? _keepSelection(List<AiEmployeeModel> employees, int? current) {
-    if (current != null && employees.any((employee) => employee.id == current)) return current;
+    if (current != null &&
+        employees.any((employee) => employee.id == current)) {
+      return current;
+    }
     for (final employee in employees) {
       if (employee.isDefault) return employee.id;
     }

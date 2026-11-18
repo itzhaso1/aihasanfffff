@@ -1,4 +1,3 @@
-
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_client.dart';
 import 'package:hasim/core/network/api_exception.dart';
@@ -25,7 +24,9 @@ class WorkspaceRepository {
       body: {'workspace_id': workspaceId},
     );
     final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'تعذر تبديل مساحة العمل.');
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر تبديل مساحة العمل.');
+    }
     return WorkspaceModel.fromJson(map);
   }
 }

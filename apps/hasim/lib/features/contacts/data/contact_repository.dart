@@ -18,7 +18,10 @@ class ContactRepository {
 
   int? get _workspace => _workspaceIdOf?.call();
 
-  Future<List<EmailContactModel>> cached({String? search, bool? favorite}) async {
+  Future<List<EmailContactModel>> cached({
+    String? search,
+    bool? favorite,
+  }) async {
     final workspaceId = _workspace;
     if (workspaceId == null || _local == null) return const [];
     return _local.contacts(workspaceId, search: search, favorite: favorite);
@@ -27,7 +30,11 @@ class ContactRepository {
   Stream<List<EmailContactModel>> watch({String? search, bool? favorite}) {
     final workspaceId = _workspace;
     if (workspaceId == null || _local == null) return const Stream.empty();
-    return _local.watchContacts(workspaceId, search: search, favorite: favorite);
+    return _local.watchContacts(
+      workspaceId,
+      search: search,
+      favorite: favorite,
+    );
   }
 
   Future<void> _remember(List<EmailContactModel> items) async {
@@ -44,16 +51,21 @@ class ContactRepository {
   }) async {
     final workspaceId = _workspace;
     try {
-    final res = await _api.get('/contacts', query: {
-      'cursor': ?cursor,
-      if (search != null && search.isNotEmpty) 'q': search,
-      if (favorite != null) 'favorite': favorite ? 1 : 0,
-      'per_page': perPage,
-    });
-    final items = asMapList(res.data).map(EmailContactModel.fromJson).toList();
-    lastReadFromCache = false;
-    await _remember(items);
-    return (items: items, nextCursor: res.nextCursor);
+      final res = await _api.get(
+        '/contacts',
+        query: {
+          'cursor': ?cursor,
+          if (search != null && search.isNotEmpty) 'q': search,
+          if (favorite != null) 'favorite': favorite ? 1 : 0,
+          'per_page': perPage,
+        },
+      );
+      final items = asMapList(
+        res.data,
+      ).map(EmailContactModel.fromJson).toList();
+      lastReadFromCache = false;
+      await _remember(items);
+      return (items: items, nextCursor: res.nextCursor);
     } catch (_) {
       if (workspaceId != null && (cursor == null || cursor.isEmpty)) {
         final saved = await cached(search: search, favorite: favorite);
@@ -69,7 +81,9 @@ class ContactRepository {
   Future<EmailContactModel> show(int id) async {
     final res = await _api.get('/contacts/$id');
     final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'جهة الاتصال غير موجودة.');
+    if (map == null) {
+      throw ApiException(res.message ?? 'جهة الاتصال غير موجودة.');
+    }
     final contact = EmailContactModel.fromJson(map);
     await _remember([contact]);
     return contact;
@@ -98,7 +112,9 @@ class ContactRepository {
       },
     );
     final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'تعذر إضافة جهة الاتصال.');
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر إضافة جهة الاتصال.');
+    }
     final contact = EmailContactModel.fromJson(map);
     await _remember([contact]);
     return contact;
@@ -114,17 +130,22 @@ class ContactRepository {
     String? notes,
     bool? isFavorite,
   }) async {
-    final res = await _api.patch('/contacts/$id', body: {
-      'name': ?name,
-      'email': ?email,
-      'phone': ?phone,
-      'company': ?company,
-      'job_title': ?jobTitle,
-      'notes': ?notes,
-      'is_favorite': ?isFavorite,
-    });
+    final res = await _api.patch(
+      '/contacts/$id',
+      body: {
+        'name': ?name,
+        'email': ?email,
+        'phone': ?phone,
+        'company': ?company,
+        'job_title': ?jobTitle,
+        'notes': ?notes,
+        'is_favorite': ?isFavorite,
+      },
+    );
     final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'تعذر تحديث جهة الاتصال.');
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر تحديث جهة الاتصال.');
+    }
     final contact = EmailContactModel.fromJson(map);
     await _remember([contact]);
     return contact;
@@ -144,7 +165,10 @@ class ContactRepository {
   }
 
   Future<List<RecentRecipientModel>> recentRecipients({int limit = 20}) async {
-    final res = await _api.get('/contacts/recent-recipients', query: {'limit': limit});
+    final res = await _api.get(
+      '/contacts/recent-recipients',
+      query: {'limit': limit},
+    );
     return asMapList(res.data).map(RecentRecipientModel.fromJson).toList();
   }
 
@@ -153,9 +177,11 @@ class ContactRepository {
     final result = await list(search: email.trim(), perPage: 10);
     final needle = email.trim().toLowerCase();
     return result.items
-        .where((c) =>
-            c.email.toLowerCase() == needle ||
-            (c.normalizedEmail?.toLowerCase() == needle))
+        .where(
+          (c) =>
+              c.email.toLowerCase() == needle ||
+              (c.normalizedEmail?.toLowerCase() == needle),
+        )
         .toList();
   }
 }

@@ -5,7 +5,7 @@ import 'package:hasim/features/conversations/data/chat_bubble_color_catalog.dart
 
 class ChatBubbleColorController extends StateNotifier<String> {
   ChatBubbleColorController(this._prefs)
-      : super(ChatBubbleColorCatalog.normalize(_prefs.chatOutgoingBubbleColor));
+    : super(ChatBubbleColorCatalog.normalize(_prefs.chatOutgoingBubbleColor));
 
   final PrefsStore _prefs;
 
@@ -18,5 +18,5 @@ class ChatBubbleColorController extends StateNotifier<String> {
 
 final chatBubbleColorControllerProvider =
     StateNotifierProvider<ChatBubbleColorController, String>((ref) {
-  return ChatBubbleColorController(ref.watch(prefsStoreProvider));
-});
+      return ChatBubbleColorController(ref.watch(prefsStoreProvider));
+    });

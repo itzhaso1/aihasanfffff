@@ -41,21 +41,26 @@ class NotificationPreferencesState {
 }
 
 final notificationPreferencesControllerProvider =
-    StateNotifierProvider<NotificationPreferencesController, NotificationPreferencesState>((ref) {
-  final controller = NotificationPreferencesController(ref);
-  ref.listen<String>(
-    authControllerProvider.select((s) => s.isolationKey),
-    (previous, next) {
-      if (previous != next) {
-        controller.reload();
-      }
-    },
-  );
-  return controller;
-});
+    StateNotifierProvider<
+      NotificationPreferencesController,
+      NotificationPreferencesState
+    >((ref) {
+      final controller = NotificationPreferencesController(ref);
+      ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+        previous,
+        next,
+      ) {
+        if (previous != next) {
+          controller.reload();
+        }
+      });
+      return controller;
+    });
 
-class NotificationPreferencesController extends StateNotifier<NotificationPreferencesState> {
-  NotificationPreferencesController(this._ref) : super(const NotificationPreferencesState()) {
+class NotificationPreferencesController
+    extends StateNotifier<NotificationPreferencesState> {
+  NotificationPreferencesController(this._ref)
+    : super(const NotificationPreferencesState()) {
     reload();
   }
 
@@ -68,7 +73,9 @@ class NotificationPreferencesController extends StateNotifier<NotificationPrefer
       return;
     }
 
-    final cached = await _ref.read(notificationRepositoryProvider).cachedPreferences();
+    final cached = await _ref
+        .read(notificationRepositoryProvider)
+        .cachedPreferences();
     if (cached.isNotEmpty) {
       state = NotificationPreferencesState(
         messages: cached['messages'] != false,
@@ -79,7 +86,9 @@ class NotificationPreferencesController extends StateNotifier<NotificationPrefer
       state = state.copyWith(loading: true, clearError: true);
     }
     try {
-      final prefs = await _ref.read(notificationRepositoryProvider).preferences();
+      final prefs = await _ref
+          .read(notificationRepositoryProvider)
+          .preferences();
       state = NotificationPreferencesState(
         messages: prefs['messages'] != false,
         email: prefs['email'] != false,

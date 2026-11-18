@@ -24,6 +24,7 @@ import 'package:hasim/features/conversations/presentation/widgets/conversation_c
 import 'package:hasim/features/conversations/presentation/widgets/conversation_filter_chip.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_panel_resize_handle.dart';
 import 'package:hasim/features/conversations/presentation/widgets/customer_info_drawer.dart';
+import 'package:hasim/features/conversations/presentation/widgets/new_conversation_dialog.dart';
 import 'package:hasim/features/conversations/presentation/widgets/inbox_empty_illustration.dart';
 import 'package:hasim/features/conversations/providers/conversation_marks_controller.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
@@ -420,6 +421,15 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       }
     } finally {
       if (mounted) setState(() => _bulkSending = false);
+    }
+  }
+
+  Future<void> _startNewConversation() async {
+    final created = await NewConversationDialog.show(context);
+    if (created != null && mounted) {
+      await ref.read(conversationsControllerProvider.notifier).refresh();
+      if (!mounted) return;
+      _openConversation(created.id);
     }
   }
 
@@ -863,6 +873,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
         openLockedPage(context);
       },
       showSpecialInboxSections: showSpecialInboxSections,
+      onNewConversation: _startNewConversation,
     );
 
     final scaffold = !split
@@ -875,6 +886,16 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
                     : HasimShellHeader(
                         backgroundColor: HasimTokens.cardBg(context),
                       )),
+            floatingActionButton: selectionMode || !canStartConversation
+                ? null
+                : FloatingActionButton(
+                    key: const Key('start-new-conversation-fab'),
+                    onPressed: _startNewConversation,
+                    backgroundColor: HasimTokens.chatGreen,
+                    foregroundColor: Colors.white,
+                    tooltip: 'محادثة جديدة',
+                    child: const Icon(Icons.chat_rounded),
+                  ),
             body: _isFolder
                 ? SafeArea(top: !selectionMode, bottom: false, child: panel)
                 : panel,
@@ -920,7 +941,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
                           ? ConversationsScreen.emptySubtitle
                           : null,
                       onRetry: retry,
-                      onEmptyAction: () => context.push('/contacts'),
+                      onEmptyAction: _startNewConversation,
                     ),
                   ),
                 ),
@@ -1086,8 +1107,14 @@ List<PopupMenuEntry<DesktopChatMenuAction>> buildDesktopChatMenuItems({
     required IconData icon,
     bool hasSubmenu = false,
   }) {
+    final keySuffix = switch (action) {
+      DesktopChatMenuAction.markUnread => 'unread',
+      DesktopChatMenuAction.addToList => 'add-to-list',
+      DesktopChatMenuAction.clearChat => 'clear',
+      _ => action.name,
+    };
     return PopupMenuItem<DesktopChatMenuAction>(
-      key: Key('conversation-desktop-${action.name}'),
+      key: Key('conversation-desktop-$keySuffix'),
       value: action,
       height: 38,
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -1286,6 +1313,7 @@ class _ConversationsPanel extends StatelessWidget {
     required this.canStartConversation,
     required this.emptySubtitle,
     required this.onRetry,
+    this.onNewConversation,
     this.folder,
   });
 
@@ -1325,6 +1353,7 @@ class _ConversationsPanel extends StatelessWidget {
   final bool canStartConversation;
   final String emptySubtitle;
   final VoidCallback onRetry;
+  final VoidCallback? onNewConversation;
   final String? folder;
 
   @override
@@ -1372,17 +1401,45 @@ class _ConversationsPanel extends StatelessWidget {
         if (!gated)
           Padding(
             padding: EdgeInsets.fromLTRB(16, isMobile ? 8 : 4, 16, 0),
-            child: HasimSearchBar(
-              controller: search,
-              hintText: switch (folder) {
-                'archived' => 'ابحث في المؤرشفة',
-                'locked' => 'ابحث في الدردشات المقفلة',
-                _ => 'ابحث في المحادثات',
-              },
-              flat: true,
-              onSubmitted: (v) => notifier.setSearch(v, immediate: true),
-              onChanged: notifier.setSearch,
-              onClear: () => notifier.setSearch('', immediate: true),
+            child: Row(
+              children: [
+                Expanded(
+                  child: HasimSearchBar(
+                    controller: search,
+                    hintText: switch (folder) {
+                      'archived' => 'ابحث في المؤرشفة',
+                      'locked' => 'ابحث في الدردشات المقفلة',
+                      _ => 'ابحث في المحادثات',
+                    },
+                    flat: true,
+                    onSubmitted: (v) => notifier.setSearch(v, immediate: true),
+                    onChanged: notifier.setSearch,
+                    onClear: () => notifier.setSearch('', immediate: true),
+                  ),
+                ),
+                if (!isMobile &&
+                    canStartConversation &&
+                    onNewConversation != null) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    key: const Key('start-new-conversation-desktop-btn'),
+                    tooltip: 'محادثة جديدة',
+                    onPressed: onNewConversation,
+                    icon: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: HasimTokens.mintFill(context),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.add_comment_outlined,
+                        size: 20,
+                        color: HasimTokens.chatGreen,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         if (folder == null && isMobile)

@@ -49,7 +49,10 @@ class SkeletonList extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SkeletonBox(height: 14, width: MediaQuery.sizeOf(context).width * 0.45),
+                  SkeletonBox(
+                    height: 14,
+                    width: MediaQuery.sizeOf(context).width * 0.45,
+                  ),
                   const SizedBox(height: 8),
                   const SkeletonBox(height: 12, width: double.infinity),
                 ],

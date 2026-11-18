@@ -15,14 +15,26 @@ class StoriesStrip extends ConsumerWidget {
     if (state.loading && state.buckets.isEmpty) {
       return const SizedBox(
         height: 98,
-        child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
       );
     }
 
     if (state.error != null && state.buckets.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text(state.error!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 13)),
+        child: Text(
+          state.error!,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.error,
+            fontSize: 13,
+          ),
+        ),
       );
     }
 
@@ -47,13 +59,18 @@ class StoriesStrip extends ConsumerWidget {
                 return;
               }
               if (!hasStories) return;
-              context.push('/stories/view', extra: {
-                'buckets': state.buckets.where((b) => b.stories.isNotEmpty).toList(),
-                'bucketIndex': state.buckets
-                    .where((b) => b.stories.isNotEmpty)
-                    .toList()
-                    .indexWhere((b) => b.authorKey == bucket.authorKey),
-              });
+              context.push(
+                '/stories/view',
+                extra: {
+                  'buckets': state.buckets
+                      .where((b) => b.stories.isNotEmpty)
+                      .toList(),
+                  'bucketIndex': state.buckets
+                      .where((b) => b.stories.isNotEmpty)
+                      .toList()
+                      .indexWhere((b) => b.authorKey == bucket.authorKey),
+                },
+              );
             },
             onAdd: bucket.isMine ? () => context.push('/stories/create') : null,
           );
@@ -102,7 +119,8 @@ class _StoryAvatar extends StatelessWidget {
                   child: CircleAvatar(
                     radius: 28,
                     backgroundColor: AppTheme.brand.withValues(alpha: 0.12),
-                    backgroundImage: avatarPath != null && avatarPath!.startsWith('http')
+                    backgroundImage:
+                        avatarPath != null && avatarPath!.startsWith('http')
                         ? CachedNetworkImageProvider(
                             avatarPath!,
                             maxHeight: 160,
@@ -112,7 +130,10 @@ class _StoryAvatar extends StatelessWidget {
                     child: avatarPath == null || !avatarPath!.startsWith('http')
                         ? Text(
                             label.isNotEmpty ? label[0] : '?',
-                            style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.brandDark),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.brandDark,
+                            ),
                           )
                         : null,
                   ),

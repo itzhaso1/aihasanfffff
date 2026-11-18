@@ -4,7 +4,8 @@ import 'package:hasim/core/storage/prefs_store.dart';
 import 'package:hasim/features/conversations/data/chat_wallpaper_catalog.dart';
 
 class ChatWallpaperController extends StateNotifier<String> {
-  ChatWallpaperController(this._prefs) : super(ChatWallpaperCatalog.normalize(_prefs.chatWallpaper));
+  ChatWallpaperController(this._prefs)
+    : super(ChatWallpaperCatalog.normalize(_prefs.chatWallpaper));
 
   final PrefsStore _prefs;
 
@@ -15,6 +16,7 @@ class ChatWallpaperController extends StateNotifier<String> {
   }
 }
 
-final chatWallpaperControllerProvider = StateNotifierProvider<ChatWallpaperController, String>((ref) {
-  return ChatWallpaperController(ref.watch(prefsStoreProvider));
-});
+final chatWallpaperControllerProvider =
+    StateNotifierProvider<ChatWallpaperController, String>((ref) {
+      return ChatWallpaperController(ref.watch(prefsStoreProvider));
+    });

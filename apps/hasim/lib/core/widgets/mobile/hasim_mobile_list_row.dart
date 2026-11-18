@@ -28,8 +28,12 @@ class HasimMobileListRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ink = danger ? HasimTokens.danger : HasimTokens.inkColor(context);
-    final muted = danger ? HasimTokens.danger.withValues(alpha: 0.85) : HasimTokens.mutedColor(context);
-    final iconBg = danger ? HasimTokens.dangerSoftColor(context) : HasimTokens.mintFill(context);
+    final muted = danger
+        ? HasimTokens.danger.withValues(alpha: 0.85)
+        : HasimTokens.mutedColor(context);
+    final iconBg = danger
+        ? HasimTokens.dangerSoftColor(context)
+        : HasimTokens.mintFill(context);
     final iconColor = danger ? HasimTokens.danger : HasimTokens.primary;
 
     return Material(
@@ -92,7 +96,9 @@ class HasimMobileListRow extends StatelessWidget {
                 const SizedBox(width: 4),
                 Icon(
                   Icons.chevron_left_rounded,
-                  color: danger ? HasimTokens.danger : HasimTokens.mutedColor(context),
+                  color: danger
+                      ? HasimTokens.danger
+                      : HasimTokens.mutedColor(context),
                   size: 22,
                 ),
               ],

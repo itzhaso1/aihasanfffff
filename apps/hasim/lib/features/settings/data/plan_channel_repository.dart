@@ -11,10 +11,18 @@ import 'package:hasim/features/settings/data/company_profile_model.dart';
 
 Map<String, dynamic> channelCachePayload(Map<String, dynamic> json) {
   final copy = Map<String, dynamic>.from(json);
-  const banned = ['client_secret', 'app_secret', 'access_token', 'refresh_token', 'bot_token'];
+  const banned = [
+    'client_secret',
+    'app_secret',
+    'access_token',
+    'refresh_token',
+    'bot_token',
+  ];
   copy.removeWhere((key, _) => banned.contains(key.toLowerCase()));
   final url = copy['manage_url']?.toString().toLowerCase() ?? '';
-  if (url.contains('token') || url.contains('secret') || url.contains('code=')) {
+  if (url.contains('token') ||
+      url.contains('secret') ||
+      url.contains('code=')) {
     copy.remove('manage_url');
   }
   return copy;
@@ -53,7 +61,9 @@ class PlanRepository {
   Future<PlanSnapshot> current() async {
     final res = await _api.get('/plan');
     final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'تعذر جلب الباقة الحالية.');
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر جلب الباقة الحالية.');
+    }
     final workspaceId = _workspace;
     if (workspaceId != null) await _local?.put(workspaceId, 'plan', map);
     return PlanSnapshot.fromJson(map);
@@ -112,7 +122,10 @@ class ChannelRepository {
     }
   }
 
-  Future<ChannelConnectStart> startConnect(String channel, {String? botToken}) async {
+  Future<ChannelConnectStart> startConnect(
+    String channel, {
+    String? botToken,
+  }) async {
     final res = await _api.post(
       '/channels/$channel/connect',
       body: {
@@ -144,7 +157,10 @@ class ChannelRepository {
     ];
   }
 
-  Future<ChannelConnectStart> selectFacebookPage(String attempt, String pageId) async {
+  Future<ChannelConnectStart> selectFacebookPage(
+    String attempt,
+    String pageId,
+  ) async {
     final res = await _api.post(
       '/channels/facebook_messenger/pages',
       body: {'attempt': attempt, 'page_id': pageId},
@@ -193,6 +209,22 @@ class CustomerRepository {
   CustomerRepository(this._api);
   final ApiClient _api;
 
+  Future<List<CustomerModel>> list({
+    String? search,
+    String? cursor,
+    int perPage = 20,
+  }) async {
+    final query = <String, dynamic>{'per_page': perPage};
+    if (search != null && search.trim().isNotEmpty) {
+      query['search'] = search.trim();
+    }
+    if (cursor != null && cursor.isNotEmpty) {
+      query['cursor'] = cursor;
+    }
+    final res = await _api.get('/customers', query: query);
+    return asMapList(res.data).map(CustomerModel.fromJson).toList();
+  }
+
   Future<CustomerModel> show(int id) async {
     final res = await _api.get('/customers/$id');
     final map = asMap(res.data);
@@ -200,8 +232,61 @@ class CustomerRepository {
     return CustomerModel.fromJson(map);
   }
 
+  Future<CustomerModel> create({
+    required String name,
+    String? phone,
+    String? email,
+    String? whatsapp,
+    String? city,
+    String? notes,
+  }) async {
+    final body = <String, dynamic>{
+      'name': name.trim(),
+      if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+      if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      if (whatsapp != null && whatsapp.trim().isNotEmpty)
+        'whatsapp': whatsapp.trim(),
+      if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+    };
+    final res = await _api.post('/customers', body: body);
+    final map = asMap(res.data);
+    if (map == null) throw ApiException(res.message ?? 'تعذر إنشاء العميل.');
+    return CustomerModel.fromJson(map);
+  }
+
+  Future<CustomerModel> update(
+    int id, {
+    String? name,
+    String? phone,
+    String? email,
+    String? whatsapp,
+    String? city,
+  }) async {
+    final body = <String, dynamic>{
+      if (name != null) 'name': name.trim(),
+      if (phone != null) 'phone': phone.trim(),
+      if (email != null) 'email': email.trim(),
+      if (whatsapp != null) 'whatsapp': whatsapp.trim(),
+      if (city != null) 'city': city.trim(),
+    };
+    final res = await _api.patch('/customers/$id', body: body);
+    final map = asMap(res.data);
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر تحديث بيانات العميل.');
+    }
+    return CustomerModel.fromJson(map);
+  }
+
+  Future<void> addNote(int id, String note) async {
+    await _api.post('/customers/$id/notes', body: {'body': note.trim()});
+  }
+
   Future<List<ConversationModel>> conversations(int id) async {
-    final res = await _api.get('/customers/$id/conversations', query: {'per_page': 20});
+    final res = await _api.get(
+      '/customers/$id/conversations',
+      query: {'per_page': 20},
+    );
     return asMapList(res.data).map(ConversationModel.fromJson).toList();
   }
 }
@@ -213,12 +298,16 @@ class AiRepository {
   Future<AiSettingsPayload> fetchSettings() async {
     final res = await _api.get('/ai/settings');
     final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'تعذر تحميل إعدادات الذكاء الاصطناعي.');
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر تحميل إعدادات الذكاء الاصطناعي.');
+    }
     final meta = res.meta ?? {};
     return AiSettingsPayload(
       settings: AiSettingModel.fromJson(map),
       catalog: AgentPersonaCatalog.fromJson(
-        meta['persona_catalog'] is Map ? Map<String, dynamic>.from(meta['persona_catalog'] as Map) : null,
+        meta['persona_catalog'] is Map
+            ? Map<String, dynamic>.from(meta['persona_catalog'] as Map)
+            : null,
       ),
       aiRoles: meta['ai_roles'] is List
           ? (meta['ai_roles'] as List).map((e) => e.toString()).toList()
@@ -237,18 +326,24 @@ class AiRepository {
   Future<AiSettingModel> updateSettings(Map<String, dynamic> body) async {
     final res = await _api.put('/ai/settings', body: body);
     final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'تعذر حفظ إعدادات الذكاء الاصطناعي.');
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر حفظ إعدادات الذكاء الاصطناعي.');
+    }
     return AiSettingModel.fromJson(map);
   }
 
   Future<CompanyProfileModel> fetchCompanyProfile() async {
     final res = await _api.get('/ai/company-profile');
     final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'تعذر تحميل نبذة الشركة.');
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر تحميل نبذة الشركة.');
+    }
     return CompanyProfileModel.fromJson(map);
   }
 
-  Future<CompanyProfileModel> updateCompanyProfile(Map<String, dynamic> body) async {
+  Future<CompanyProfileModel> updateCompanyProfile(
+    Map<String, dynamic> body,
+  ) async {
     final res = await _api.put('/ai/company-profile', body: body);
     final map = asMap(res.data);
     if (map == null) throw ApiException(res.message ?? 'تعذر حفظ نبذة الشركة.');
@@ -258,17 +353,25 @@ class AiRepository {
   Future<AiProbeResult> probe({String message = 'مرحبا، عرفني بنفسك'}) async {
     final res = await _api.post('/ai/probe', body: {'message': message});
     final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'تعذر اختبار الذكاء الاصطناعي.');
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر اختبار الذكاء الاصطناعي.');
+    }
     return AiProbeResult.fromJson(map);
   }
 
   Future<String> suggestReply(int conversationId, {String? content}) async {
-    final res = await _api.post('/ai/suggest-reply', body: {
-      'conversation_id': conversationId,
-      if (content != null && content.isNotEmpty) 'content': content,
-      'persist': false,
-    });
-    final suggestion = AiCustomerFacingText.parse(res.data, field: 'suggestion');
+    final res = await _api.post(
+      '/ai/suggest-reply',
+      body: {
+        'conversation_id': conversationId,
+        if (content != null && content.isNotEmpty) 'content': content,
+        'persist': false,
+      },
+    );
+    final suggestion = AiCustomerFacingText.parse(
+      res.data,
+      field: 'suggestion',
+    );
     if (suggestion == null || suggestion.isEmpty) {
       throw ApiException(res.message ?? 'تعذر توليد اقتراح الرد.');
     }
@@ -278,7 +381,9 @@ class AiRepository {
   Future<AiEmployeesPayload> fetchEmployees() async {
     final res = await _api.get('/ai/employees');
     final meta = res.meta ?? {};
-    final persona = meta['persona_options'] is Map ? Map<String, dynamic>.from(meta['persona_options'] as Map) : null;
+    final persona = meta['persona_options'] is Map
+        ? Map<String, dynamic>.from(meta['persona_options'] as Map)
+        : null;
     return AiEmployeesPayload(
       employees: _employeeList(res.data),
       options: AiEmployeeOptions.fromJson({
@@ -312,15 +417,21 @@ class AiRepository {
     });
   }
 
-  Future<AiEmployeeModel> createEmployee({String? presetKey, Map<String, dynamic>? fields}) async {
-    final res = await _api.post('/ai/employees', body: {
-      'preset_key': ?presetKey,
-      ...?fields,
-    });
+  Future<AiEmployeeModel> createEmployee({
+    String? presetKey,
+    Map<String, dynamic>? fields,
+  }) async {
+    final res = await _api.post(
+      '/ai/employees',
+      body: {'preset_key': ?presetKey, ...?fields},
+    );
     return _employee(res.data, res.message);
   }
 
-  Future<AiEmployeeModel> updateEmployee(int id, Map<String, dynamic> changes) async {
+  Future<AiEmployeeModel> updateEmployee(
+    int id,
+    Map<String, dynamic> changes,
+  ) async {
     final res = await _api.patch('/ai/employees/$id', body: changes);
     return _employee(res.data, res.message);
   }
@@ -330,8 +441,13 @@ class AiRepository {
     return _employee(res.data, res.message);
   }
 
-  Future<AiEmployeeModel> setEmployeeActive(int id, {required bool active}) async {
-    final res = await _api.post('/ai/employees/$id/${active ? 'activate' : 'deactivate'}');
+  Future<AiEmployeeModel> setEmployeeActive(
+    int id, {
+    required bool active,
+  }) async {
+    final res = await _api.post(
+      '/ai/employees/$id/${active ? 'activate' : 'deactivate'}',
+    );
     return _employee(res.data, res.message);
   }
 
@@ -340,7 +456,10 @@ class AiRepository {
   }
 
   Future<AiEmployeeTestResult> testEmployee(int id, String message) async {
-    final res = await _api.post('/ai/employees/$id/test', body: {'message': message});
+    final res = await _api.post(
+      '/ai/employees/$id/test',
+      body: {'message': message},
+    );
     final map = asMap(res.data);
     if (map == null) throw ApiException(res.message ?? 'تعذر اختبار الموظف.');
     return AiEmployeeTestResult.fromJson(map);
@@ -353,15 +472,16 @@ class AiRepository {
   }
 
   List<AiEmployeeModel> _employeeList(dynamic data) => [
-        if (data is List)
-          for (final item in data)
-            if (asMap(item) != null) AiEmployeeModel.fromJson(asMap(item)!),
-      ];
+    if (data is List)
+      for (final item in data)
+        if (asMap(item) != null) AiEmployeeModel.fromJson(asMap(item)!),
+  ];
 
   Future<String> summarize(int conversationId) async {
-    final res = await _api.post('/ai/summarize-conversation', body: {
-      'conversation_id': conversationId,
-    });
+    final res = await _api.post(
+      '/ai/summarize-conversation',
+      body: {'conversation_id': conversationId},
+    );
     final summary = AiCustomerFacingText.parse(res.data, field: 'summary');
     if (summary == null || summary.isEmpty) {
       throw ApiException(res.message ?? 'تعذر تلخيص المحادثة.');

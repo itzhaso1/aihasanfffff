@@ -45,7 +45,8 @@ class ChatLockState {
       pinSet: pinSet ?? this.pinSet,
       appLockEnabled: appLockEnabled ?? this.appLockEnabled,
       appBiometricEnabled: appBiometricEnabled ?? this.appBiometricEnabled,
-      lockedChatsBiometricEnabled: lockedChatsBiometricEnabled ?? this.lockedChatsBiometricEnabled,
+      lockedChatsBiometricEnabled:
+          lockedChatsBiometricEnabled ?? this.lockedChatsBiometricEnabled,
       biometricAvailable: biometricAvailable ?? this.biometricAvailable,
       appUnlocked: appUnlocked ?? this.appUnlocked,
       chatsUnlocked: chatsUnlocked ?? this.chatsUnlocked,
@@ -54,19 +55,29 @@ class ChatLockState {
   }
 }
 
-final chatLockStoreProvider = Provider<ChatLockStore>((ref) => SecureChatLockStore());
+final chatLockStoreProvider = Provider<ChatLockStore>(
+  (ref) => SecureChatLockStore(),
+);
 
-final biometricAuthenticatorProvider = Provider<BiometricAuthenticator>((ref) => LocalBiometricAuthenticator());
+final biometricAuthenticatorProvider = Provider<BiometricAuthenticator>(
+  (ref) => LocalBiometricAuthenticator(),
+);
 
-final lockedConversationIdsProvider = StateProvider<Set<int>>((ref) => const {});
+final lockedConversationIdsProvider = StateProvider<Set<int>>(
+  (ref) => const {},
+);
 
-final chatLockControllerProvider = StateNotifierProvider<ChatLockController, ChatLockState>((ref) {
-  return ChatLockController(ref);
-});
+final chatLockControllerProvider =
+    StateNotifierProvider<ChatLockController, ChatLockState>((ref) {
+      return ChatLockController(ref);
+    });
 
 class ChatLockController extends StateNotifier<ChatLockState> {
   ChatLockController(this._ref) : super(const ChatLockState()) {
-    _workspaceSub = _ref.listen<int?>(activeWorkspaceIdProvider, (previous, next) {
+    _workspaceSub = _ref.listen<int?>(activeWorkspaceIdProvider, (
+      previous,
+      next,
+    ) {
       if (previous == next) return;
       _publishIds();
     });
@@ -124,6 +135,17 @@ class ChatLockController extends StateNotifier<ChatLockState> {
     _emit(biometricAvailable: available);
   }
 
+  Future<void> refreshBiometricAvailability() async {
+    try {
+      final available = await _ref
+          .read(biometricAuthenticatorProvider)
+          .isAvailable;
+      if (mounted && available != state.biometricAvailable) {
+        state = state.copyWith(biometricAvailable: available);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _save() async {
     _epoch++;
     await _ref.read(chatLockStoreProvider).write(_record);
@@ -133,7 +155,11 @@ class ChatLockController extends StateNotifier<ChatLockState> {
 
   bool verifyPin(String pin) {
     if (!_record.pinSet) return false;
-    return PinCodec.matches(pin: pin, salt: _record.pinSalt!, hash: _record.pinHash!);
+    return PinCodec.matches(
+      pin: pin,
+      salt: _record.pinSalt!,
+      hash: _record.pinHash!,
+    );
   }
 
   Future<String?> createPin(String pin) async {
@@ -141,18 +167,27 @@ class ChatLockController extends StateNotifier<ChatLockState> {
     if (!PinCodec.isValid(pin)) return 'استخدم 4 أرقام.';
     if (_record.pinSet) return 'رمز PIN موجود مسبقًا.';
     final salt = PinCodec.salt();
-    _record = _record.copyWith(pinSalt: salt, pinHash: PinCodec.hash(pin, salt));
+    _record = _record.copyWith(
+      pinSalt: salt,
+      pinHash: PinCodec.hash(pin, salt),
+    );
     await _save();
     return null;
   }
 
-  Future<String?> changePin({required String current, required String next}) async {
+  Future<String?> changePin({
+    required String current,
+    required String next,
+  }) async {
     await load();
     if (!verifyPin(current)) return 'الرمز الحالي غير صحيح.';
     if (!PinCodec.isValid(next)) return 'استخدم 4 أرقام.';
     if (current == next) return 'اختر رمزًا مختلفًا.';
     final salt = PinCodec.salt();
-    _record = _record.copyWith(pinSalt: salt, pinHash: PinCodec.hash(next, salt));
+    _record = _record.copyWith(
+      pinSalt: salt,
+      pinHash: PinCodec.hash(next, salt),
+    );
     await _save();
     return null;
   }
@@ -171,9 +206,14 @@ class ChatLockController extends StateNotifier<ChatLockState> {
   Future<String?> setAppBiometric(bool enabled) async {
     await load();
     if (enabled) {
-      if (!state.biometricAvailable) return 'البصمة أو Face ID غير متاحة على هذا الجهاز.';
+      await refreshBiometricAvailability();
+      if (!state.biometricAvailable) {
+        return 'البصمة أو Face ID غير متاحة على هذا الجهاز.';
+      }
       if (!_record.appLockEnabled) return 'فعّل قفل التطبيق أولًا.';
-      final ok = await _ref.read(biometricAuthenticatorProvider).authenticate('أكّد هويتك لتفعيل فتح التطبيق بالبصمة');
+      final ok = await _ref
+          .read(biometricAuthenticatorProvider)
+          .authenticate('أكّد هويتك لتفعيل فتح التطبيق بالبصمة');
       if (!ok) return 'لم يتم تأكيد البصمة.';
     }
     _record = _record.copyWith(appBiometricEnabled: enabled);
@@ -185,8 +225,13 @@ class ChatLockController extends StateNotifier<ChatLockState> {
     await load();
     if (enabled) {
       if (!_record.pinSet) return 'أنشئ رمز PIN أولًا.';
-      if (!state.biometricAvailable) return 'البصمة أو Face ID غير متاحة على هذا الجهاز.';
-      final ok = await _ref.read(biometricAuthenticatorProvider).authenticate('أكّد هويتك لحماية الدردشات المقفلة بالبصمة');
+      await refreshBiometricAvailability();
+      if (!state.biometricAvailable) {
+        return 'البصمة أو Face ID غير متاحة على هذا الجهاز.';
+      }
+      final ok = await _ref
+          .read(biometricAuthenticatorProvider)
+          .authenticate('أكّد هويتك لحماية الدردشات المقفلة بالبصمة');
       if (!ok) return 'لم يتم تأكيد البصمة.';
     }
     _record = _record.copyWith(lockedChatsBiometricEnabled: enabled);
@@ -199,7 +244,8 @@ class ChatLockController extends StateNotifier<ChatLockState> {
     final workspaceId = _ref.read(activeWorkspaceIdProvider);
     if (workspaceId == null) return;
     final map = {
-      for (final entry in _record.lockedIdsByWorkspace.entries) entry.key: {...entry.value},
+      for (final entry in _record.lockedIdsByWorkspace.entries)
+        entry.key: {...entry.value},
     };
     final ids = map[workspaceId] ?? <int>{};
     if (locked) {
@@ -215,7 +261,9 @@ class ChatLockController extends StateNotifier<ChatLockState> {
   Future<bool> authenticateBiometric(String reason) async {
     _authenticating = true;
     try {
-      return await _ref.read(biometricAuthenticatorProvider).authenticate(reason);
+      return await _ref
+          .read(biometricAuthenticatorProvider)
+          .authenticate(reason);
     } finally {
       _authenticating = false;
     }

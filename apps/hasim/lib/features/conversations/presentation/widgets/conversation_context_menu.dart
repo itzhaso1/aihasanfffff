@@ -216,12 +216,18 @@ Future<ConversationContextAction?> _showDesktopMenu(
   if (left < margin) {
     left = origin.dx;
   }
-  left = left.clamp(margin, (screen.width - menuWidth - margin).clamp(margin, double.infinity));
+  left = left.clamp(
+    margin,
+    (screen.width - menuWidth - margin).clamp(margin, double.infinity),
+  );
   var top = origin.dy;
   if (top + estimatedHeight > screen.height - margin) {
     top = origin.dy - estimatedHeight;
   }
-  top = top.clamp(margin, (screen.height - estimatedHeight - margin).clamp(margin, double.infinity));
+  top = top.clamp(
+    margin,
+    (screen.height - estimatedHeight - margin).clamp(margin, double.infinity),
+  );
   final maxHeight = math.max(160.0, screen.height - top - margin);
 
   return showGeneralDialog<ConversationContextAction>(
@@ -360,7 +366,12 @@ class _ConversationContextMenuRow extends StatelessWidget {
       highlightColor: AppTheme.brand.withValues(alpha: 0.06),
       hoverColor: AppTheme.brand.withValues(alpha: 0.06),
       child: Padding(
-        padding: EdgeInsetsDirectional.fromSTEB(14, dense ? 10 : 13, 16, dense ? 10 : 13),
+        padding: EdgeInsetsDirectional.fromSTEB(
+          14,
+          dense ? 10 : 13,
+          16,
+          dense ? 10 : 13,
+        ),
         child: Row(
           children: [
             Icon(
@@ -536,7 +547,10 @@ Future<void> addConversationTextToNote({
     }
   } catch (_) {
     if (context.mounted) {
-      showConversationContextToast(context, 'تعذر مزامنة الملاحظة مع جهة الاتصال.');
+      showConversationContextToast(
+        context,
+        'تعذر مزامنة الملاحظة مع جهة الاتصال.',
+      );
     }
   }
 }

@@ -3,130 +3,116 @@
         [
             'title' => 'الرئيسية',
             'links' => [
-                ['label' => 'لوحة التحكم', 'route' => 'workspace.dashboard', 'active' => 'workspace.dashboard', 'icon' => 'home'],
-                ['label' => 'التحليلات', 'route' => 'workspace.analytics.index', 'active' => 'workspace.analytics.*', 'icon' => 'chart'],
+                ['label' => 'لوحة التحكم', 'route' => 'workspace.dashboard', 'active' => ['workspace.dashboard'], 'icon' => 'home'],
+                ['label' => 'التحليلات والتقارير', 'route' => 'workspace.analytics.index', 'active' => ['workspace.analytics.*'], 'icon' => 'chart'],
             ],
         ],
         [
-            'title' => 'الشات',
+            'title' => 'التواصل والمبيعات',
             'links' => [
-                ['label' => 'المحادثات', 'route' => 'workspace.conversations.index', 'active' => 'workspace.conversations.*', 'icon' => 'chat'],
-                ['label' => 'العملاء', 'route' => 'workspace.customers.index', 'active' => 'workspace.customers.*', 'icon' => 'users'],
-                ['label' => 'القنوات', 'route' => 'workspace.channels.index', 'active' => 'workspace.channels.*', 'icon' => 'channels'],
-                ['label' => 'واتساب', 'route' => 'workspace.whatsapp-accounts.index', 'active' => 'workspace.whatsapp-accounts.*', 'icon' => 'whatsapp'],
+                ['label' => 'المحادثات', 'route' => 'workspace.conversations.index', 'active' => ['workspace.conversations.*'], 'icon' => 'chat'],
+                ['label' => 'العملاء (CRM)', 'route' => 'workspace.customers.index', 'active' => ['workspace.customers.*'], 'icon' => 'users'],
+                ['label' => 'الطلبات', 'route' => 'workspace.commerce.orders.index', 'active' => ['workspace.commerce.orders.*'], 'icon' => 'order'],
+                ['label' => 'سلات الشراء', 'route' => 'workspace.commerce.carts.index', 'active' => ['workspace.commerce.carts.*'], 'icon' => 'cart'],
             ],
         ],
         [
-            'title' => 'المنتجات',
+            'title' => 'الكتالوج والتجارة',
             'links' => [
-                ['label' => 'المنتجات والمخزون', 'route' => 'workspace.chat-catalog.index', 'active' => 'workspace.chat-catalog.*', 'icon' => 'cube'],
-                ['label' => 'السلات', 'route' => 'workspace.commerce.carts.index', 'active' => 'workspace.commerce.carts.*', 'icon' => 'box'],
-                ['label' => 'الطلبات', 'route' => 'workspace.commerce.orders.index', 'active' => 'workspace.commerce.orders.*', 'icon' => 'tag'],
+                ['label' => 'المنتجات والمخزون', 'route' => 'workspace.chat-catalog.index', 'active' => ['workspace.chat-catalog.*'], 'icon' => 'cube'],
             ],
         ],
         [
-            'title' => 'الفريق',
+            'title' => 'موظفو الذكاء الاصطناعي',
             'links' => [
-                ['label' => 'اكتشاف العمال', 'route' => 'workspace.worker-discovery.index', 'active' => 'workspace.worker-discovery.*', 'icon' => 'users'],
-                ['label' => 'الارتباطات', 'route' => 'workspace.worker-engagements.index', 'active' => 'workspace.worker-engagements.*', 'icon' => 'link'],
-                ['label' => 'النزاعات', 'route' => 'workspace.worker-disputes.index', 'active' => 'workspace.worker-disputes.*', 'icon' => 'alert'],
+                ['label' => 'الموظف الذكي (مشعل)', 'route' => 'workspace.ai-settings.edit', 'active' => ['workspace.ai-settings.*'], 'icon' => 'spark'],
             ],
         ],
         [
-            'title' => 'النظام',
+            'title' => 'القنوات والربط',
             'links' => [
-                ['label' => 'الذكاء الاصطناعي', 'route' => 'workspace.ai-settings.edit', 'active' => 'workspace.ai-settings.*', 'icon' => 'spark'],
-                ['label' => 'الموارد البشرية', 'route' => 'workspace.employees.index', 'active' => 'workspace.employees.*', 'icon' => 'id-card'],
-                ['label' => 'مفاتيح API', 'route' => 'workspace.api-keys.index', 'active' => 'workspace.api-keys.*', 'icon' => 'key'],
+                ['label' => 'القنوات المتصلة', 'route' => 'workspace.channels.index', 'active' => ['workspace.channels.*'], 'icon' => 'channels'],
+                ['label' => 'حسابات واتساب', 'route' => 'workspace.whatsapp-accounts.index', 'active' => ['workspace.whatsapp-accounts.*'], 'icon' => 'whatsapp'],
             ],
         ],
         [
-            'title' => 'الفوترة',
+            'title' => 'الإدارة والنظام',
             'links' => [
-                ['label' => 'سجل المدفوعات', 'route' => 'workspace.payments.index', 'active' => 'workspace.payments.*', 'icon' => 'wallet'],
-                ['label' => 'الاشتراكات', 'route' => 'workspace.subscriptions.index', 'active' => 'workspace.subscriptions.*', 'icon' => 'spark'],
-            ],
-        ],
-        [
-            'title' => 'الحساب',
-            'links' => [
-                ['label' => 'مساحة العمل', 'route' => 'workspace.choose', 'active' => 'workspace.choose', 'icon' => 'home'],
-                ['label' => 'الملف الشخصي', 'route' => 'profile.edit', 'active' => 'profile.*', 'icon' => 'users'],
+                ['label' => 'فريق العمل', 'route' => 'workspace.employees.index', 'active' => ['workspace.employees.*'], 'icon' => 'team'],
+                ['label' => 'الاشتراكات والفوترة', 'route' => 'workspace.subscriptions.index', 'active' => ['workspace.subscriptions.*', 'workspace.payments.*'], 'icon' => 'wallet'],
+                ['label' => 'مفاتيح API', 'route' => 'workspace.api-keys.index', 'active' => ['workspace.api-keys.*'], 'icon' => 'key'],
             ],
         ],
     ];
 
-    foreach ($sections as &$section) {
-        $section['links'] = collect($section['links'])
-            ->filter(fn (array $link): bool => \Illuminate\Support\Facades\Route::has($link['route']))
-            ->values()
-            ->all();
-        $section['is_active'] = collect($section['links'])->contains(function (array $link): bool {
-            $patterns = (array) ($link['active'] ?? $link['route']);
-
-            return request()->routeIs(...$patterns);
-        });
-    }
-    unset($section);
-
     $icons = [
-        'home' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 10.75 12 3l9 7.75V21a1 1 0 0 1-1 1h-5.5v-7h-5v7H4a1 1 0 0 1-1-1V10.75Z" />',
-        'chart' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 19.5h18M6.75 16.5V10.5m5.25 6V6.75m5.25 9.75V8.25" />',
-        'chat' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M7.5 17.25H4.875A1.875 1.875 0 0 1 3 15.375V5.625A1.875 1.875 0 0 1 4.875 3.75h14.25A1.875 1.875 0 0 1 21 5.625v9.75a1.875 1.875 0 0 1-1.875 1.875H12l-4.5 3v-3Z" />',
-        'users' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M16 19.5v-1.125A3.375 3.375 0 0 0 12.625 15h-4.25A3.375 3.375 0 0 0 5 18.375V19.5m11-9.375a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Zm-8.75 0a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />',
-        'channels' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z" />',
-        'whatsapp' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M8.25 9.75c.75 2.25 2.75 4.25 5 5l1.5-1.5a1.5 1.5 0 0 1 1.5-.37l3.12.94A1.5 1.5 0 0 1 20.5 15.3v2.45A1.75 1.75 0 0 1 18.6 19.5 16.1 16.1 0 0 1 4.5 5.4 1.75 1.75 0 0 1 6.25 3.5H8.7a1.5 1.5 0 0 1 1.43 1.13l.94 3.12a1.5 1.5 0 0 1-.37 1.5L8.25 9.75Z" />',
-        'cube' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M21 7.5 12 3 3 7.5m18 0-9 4.5m9-4.5v9L12 21m0-9.5L3 7.5m9 4v9.5m0 0L3 16.5v-9" />',
-        'box' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="m3.75 7.5 8.25-4.5 8.25 4.5m-16.5 0 8.25 4.5m8.25-4.5v9L12 21.75m0-9.75v9.75" />',
-        'tag' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M6 6h.008v.008H6V6Z" />',
-        'mail' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 6.75A1.75 1.75 0 0 1 4.75 5h14.5A1.75 1.75 0 0 1 21 6.75v10.5A1.75 1.75 0 0 1 19.25 19H4.75A1.75 1.75 0 0 1 3 17.25V6.75Zm1.75.35L12 12l7.25-4.9" />',
-        'template' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M7.5 3.75h9A2.25 2.25 0 0 1 18.75 6v12A2.25 2.25 0 0 1 16.5 20.25h-9A2.25 2.25 0 0 1 5.25 18V6A2.25 2.25 0 0 1 7.5 3.75ZM8.25 8.25h7.5M8.25 12h7.5M8.25 15.75h4.5" />',
-        'id-card' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h12A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6Zm4.5 3.75a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0Zm-.75 6h6m1.5-6h2.25m-2.25 3h2.25m-2.25 3h2.25" />',
-        'link' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />',
-        'alert' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />',
-        'spark' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M12 3.75 13.9 8.1 18.25 10l-4.35 1.9L12 16.25l-1.9-4.35L5.75 10l4.35-1.9L12 3.75Z" />',
-        'key' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15.75 5.25a3.75 3.75 0 1 1-7.13 2.287L3 13.157V17.25h4.093l1.06-1.06v-2.28h2.28L15.75 8.593A3.74 3.74 0 0 1 15.75 5.25Z" />',
-        'wallet' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M2.25 7.5A2.25 2.25 0 0 1 4.5 5.25h15A2.25 2.25 0 0 1 21.75 7.5v9A2.25 2.25 0 0 1 19.5 18.75h-15A2.25 2.25 0 0 1 2.25 16.5v-9Zm15.75 4.5h3.75v3H18a1.5 1.5 0 0 1 0-3Z" />',
-        'bank' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 9.75 12 4.5l9 5.25M4.5 10.5V18m5.25-7.5V18m5.25-7.5V18m5.25-7.5V18M3 21h18" />',
+        'home' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />',
+        'chart' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />',
+        'chat' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.502 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.27Z" />',
+        'users' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />',
+        'order' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" />',
+        'cart' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />',
+        'cube' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />',
+        'spark' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />',
+        'channels' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />',
+        'whatsapp' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8.25 9.75c.75 2.25 2.75 4.25 5 5l1.5-1.5a1.5 1.5 0 0 1 1.5-.37l3.12.94A1.5 1.5 0 0 1 20.5 15.3v2.45A1.75 1.75 0 0 1 18.6 19.5 16.1 16.1 0 0 1 4.5 5.4 1.75 1.75 0 0 1 6.25 3.5H8.7a1.5 1.5 0 0 1 1.43 1.13l.94 3.12a1.5 1.5 0 0 1-.37 1.5L8.25 9.75Z" />',
+        'team' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.999-3.199a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />',
+        'wallet' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />',
+        'key' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z" />',
     ];
 @endphp
 
-<nav class="flex flex-col gap-6" aria-label="أقسام المنصة">
+<nav class="flex flex-col gap-5" aria-label="أقسام المنصة">
     @foreach($sections as $section)
-        @continue(empty($section['links']))
-        <section class="flex flex-col gap-1">
-            <h3 @class([
-                'px-3 text-[11px] font-extrabold tracking-wide',
-                'text-[#067e6b]' => $section['is_active'],
-                'text-slate-400' => ! $section['is_active'],
-            ])>{{ $section['title'] }}</h3>
+        @php
+            $visibleLinks = collect($section['links'])->filter(fn($l) => \Illuminate\Support\Facades\Route::has($l['route']))->values();
+        @endphp
+        @continue($visibleLinks->isEmpty())
+        
+        <div class="flex flex-col gap-1">
+            <h3 
+                x-show="!sidebarCollapsed"
+                class="px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 select-none"
+            >
+                {{ $section['title'] }}
+            </h3>
             <div class="flex flex-col gap-0.5">
-                @foreach($section['links'] as $link)
+                @foreach($visibleLinks as $link)
                     @php
-                        $isActive = request()->routeIs(...(array) ($link['active'] ?? $link['route']));
+                        $isActive = request()->routeIs(...$link['active']);
                     @endphp
                     <a
                         href="{{ route($link['route']) }}"
+                        :title="sidebarCollapsed ? '{{ $link['label'] }}' : ''"
                         @class([
-                            'group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-semibold transition',
-                            'bg-[#E8F8F4] text-[#067e6b] shadow-[0_1px_0_rgba(6,194,164,0.12)]' => $isActive,
-                            'text-slate-600 hover:bg-slate-50 hover:text-slate-900' => ! $isActive,
+                            'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-all duration-150',
+                            'bg-[#E8FAF6] text-[#067E6B] shadow-sm' => $isActive,
+                            'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900' => ! $isActive,
                         ])
                     >
-                        <span @class([
-                            'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                            'bg-white text-[#06C2A4] shadow-sm' => $isActive,
-                            'bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-slate-700' => ! $isActive,
-                        ])>
-                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">{!! $icons[$link['icon']] ?? '' !!}</svg>
-                        </span>
-                        <span class="min-w-0 flex-1 truncate">{{ $link['label'] }}</span>
                         @if($isActive)
-                            <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[#06C2A4]"></span>
+                            <span class="absolute inset-y-1.5 start-0 w-1 rounded-full bg-[#06C2A4]"></span>
                         @endif
+
+                        <span @class([
+                            'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors',
+                            'text-[#06C2A4]' => $isActive,
+                            'text-slate-400 group-hover:text-slate-600' => ! $isActive,
+                        ])>
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                {!! $icons[$link['icon']] ?? '' !!}
+                            </svg>
+                        </span>
+
+                        <span 
+                            x-show="!sidebarCollapsed" 
+                            class="truncate transition-opacity"
+                        >
+                            {{ $link['label'] }}
+                        </span>
                     </a>
                 @endforeach
             </div>
-        </section>
+        </div>
     @endforeach
 </nav>

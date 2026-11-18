@@ -48,21 +48,34 @@ class EmptyState extends StatelessWidget {
                       fontSize: 22,
                       color: theme.colorScheme.onSurface,
                     )
-                  : theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  : theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
             ),
             if (subtitle != null) ...[
               SizedBox(height: emphasized ? 8 : 6),
               Text(
                 subtitle!,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: muted, height: 1.55, fontSize: emphasized ? 14 : null),
+                style: TextStyle(
+                  color: muted,
+                  height: 1.55,
+                  fontSize: emphasized ? 14 : null,
+                ),
               ),
             ],
             if (actionLabel != null && onAction != null) ...[
               SizedBox(height: emphasized ? 22 : 16),
               pillAction
-                  ? HasimPrimaryButton(label: actionLabel!, onPressed: onAction!, icon: actionIcon)
-                  : FilledButton(onPressed: onAction, child: Text(actionLabel!)),
+                  ? HasimPrimaryButton(
+                      label: actionLabel!,
+                      onPressed: onAction!,
+                      icon: actionIcon,
+                    )
+                  : FilledButton(
+                      onPressed: onAction,
+                      child: Text(actionLabel!),
+                    ),
             ],
           ],
         ),

@@ -9,6 +9,7 @@ use App\Http\Resources\Mobile\MessageResource;
 use App\Models\Conversation;
 use App\Models\ConversationUserState;
 use App\Services\Conversation\ConversationClassificationService;
+use App\Services\Conversation\ConversationService;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Mobile\ConversationInboxService;
@@ -110,6 +111,22 @@ class ConversationController extends MobileController
         }
 
         app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation);
+
+        $afterId = $request->integer('after_id', 0);
+        if ($afterId > 0) {
+            $messages = Message::query()
+                ->where('conversation_id', $conversation->id)
+                ->where('id', '>', $afterId)
+                ->with(['user:id,name', 'customer:id,name', 'attachments'])
+                ->orderBy('id', 'asc')
+                ->limit(50)
+                ->get();
+
+            return $this->ok(
+                MessageResource::collection($messages),
+                ['count' => $messages->count(), 'polled' => true],
+            );
+        }
 
         $perPage = max(1, min(50, (int) $request->input('per_page', 30)));
         $paginator = $this->conversationInboxService->messages($conversation, $perPage);
@@ -275,22 +292,52 @@ class ConversationController extends MobileController
 
         $validated = $request->validate([
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'customer_name' => ['nullable', 'string', 'max:255'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
             'channel' => ['required', 'string', 'in:whatsapp,instagram,facebook_messenger,email,web,manual,telegram,tiktok'],
             'external_id' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'string', 'in:open,closed,archived'],
             'ai_enabled' => ['nullable', 'boolean'],
             'metadata' => ['nullable', 'array'],
+            'initial_message' => ['nullable', 'string'],
         ]);
 
         $workspace = $this->requireWorkspace($this->workspaceContext);
-        $validated['workspace_id'] = $workspace->id;
-        $validated['status'] = $validated['status'] ?? 'open';
-        $validated['ai_enabled'] = $request->boolean('ai_enabled', true);
+        $customerId = $validated['customer_id'] ?? null;
 
-        $conversation = app(\App\Services\Conversation\ConversationService::class)->create($validated);
+        if (! $customerId && ! empty($validated['customer_name'])) {
+            $customer = Customer::create([
+                'workspace_id' => $workspace->id,
+                'name' => $validated['customer_name'],
+                'phone' => $validated['customer_phone'] ?? null,
+                'whatsapp' => $validated['channel'] === 'whatsapp' ? ($validated['customer_phone'] ?? null) : null,
+            ]);
+            $customerId = $customer->id;
+        }
+
+        $convData = [
+            'workspace_id' => $workspace->id,
+            'customer_id' => $customerId,
+            'channel' => $validated['channel'],
+            'external_id' => $validated['external_id'] ?? ($validated['customer_phone'] ?? null),
+            'status' => $validated['status'] ?? 'open',
+            'ai_enabled' => $request->boolean('ai_enabled', true),
+            'metadata' => $validated['metadata'] ?? null,
+        ];
+
+        $conversationService = app(ConversationService::class);
+        $conversation = $conversationService->create($convData);
+
+        if (! empty($validated['initial_message'])) {
+            $conversationService->addMessage($conversation, [
+                'workspace_id' => $workspace->id,
+                'direction' => 'outbound',
+                'body' => $validated['initial_message'],
+            ], $request->user());
+        }
 
         return $this->ok(
-            new ConversationResource($conversation->load(['customer'])),
+            new ConversationResource($conversation->fresh(['customer', 'messages'])),
             message: 'تم إنشاء المحادثة بنجاح.',
             status: 201,
         );

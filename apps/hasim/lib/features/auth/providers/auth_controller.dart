@@ -62,7 +62,9 @@ class AuthState {
       token: clearSession ? null : (token ?? this.token),
       user: clearSession ? null : (user ?? this.user),
       workspaces: clearSession ? const [] : (workspaces ?? this.workspaces),
-      workspace: clearSession || clearWorkspace ? null : (workspace ?? this.workspace),
+      workspace: clearSession || clearWorkspace
+          ? null
+          : (workspace ?? this.workspace),
       participant: clearSession
           ? const MobileParticipant(type: 'company_staff')
           : (participant ?? this.participant),
@@ -132,7 +134,9 @@ class AuthController extends StateNotifier<AuthState> {
       return;
     }
     final prefs = _ref.read(prefsStoreProvider);
-    final snapshot = await _ref.read(inboxLocalStoreProvider).loadAccountSnapshot();
+    final snapshot = await _ref
+        .read(inboxLocalStoreProvider)
+        .loadAccountSnapshot();
     if (snapshot != null) {
       await _restoreSnapshot(token, snapshot);
       _startInboxServices();
@@ -151,7 +155,10 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> _restoreSnapshot(String token, LocalAccountSnapshot snapshot) async {
+  Future<void> _restoreSnapshot(
+    String token,
+    LocalAccountSnapshot snapshot,
+  ) async {
     final prefs = _ref.read(prefsStoreProvider);
     WorkspaceModel? workspace;
     if (!snapshot.participant.isIndependentWorker) {
@@ -162,7 +169,9 @@ class AuthController extends StateNotifier<AuthState> {
           break;
         }
       }
-      workspace ??= snapshot.workspaces.isNotEmpty ? snapshot.workspaces.first : null;
+      workspace ??= snapshot.workspaces.isNotEmpty
+          ? snapshot.workspaces.first
+          : null;
       if (workspace != null) {
         _ref.read(inboxSessionProvider).beginWorkspace(workspace.id);
         await prefs.setWorkspaceId(workspace.id);
@@ -179,7 +188,9 @@ class AuthController extends StateNotifier<AuthState> {
       bootstrapping: false,
       token: token,
       user: snapshot.user,
-      workspaces: snapshot.participant.isIndependentWorker ? const [] : snapshot.workspaces,
+      workspaces: snapshot.participant.isIndependentWorker
+          ? const []
+          : snapshot.workspaces,
       workspace: workspace,
       participant: snapshot.participant,
     );
@@ -189,7 +200,10 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> _refreshAccount({required bool allowWorkspaceReset}) async {
     final token = await _ref.read(secureStoreProvider).readToken();
     if (token == null || token.isEmpty) return;
-    final me = await _ref.read(authRepositoryProvider).me().timeout(const Duration(seconds: 25));
+    final me = await _ref
+        .read(authRepositoryProvider)
+        .me()
+        .timeout(const Duration(seconds: 25));
     final prefs = _ref.read(prefsStoreProvider);
     WorkspaceModel? workspace;
     if (!me.participant.isIndependentWorker) {
@@ -215,21 +229,29 @@ class AuthController extends StateNotifier<AuthState> {
     } else {
       await prefs.setCompanyPushAllowed(false);
     }
-    await _ref.read(inboxLocalStoreProvider).saveAccountSnapshot(
-      LocalAccountSnapshot(
-        user: me.user,
-        participant: me.participant,
-        workspaces: me.participant.isIndependentWorker ? const [] : me.workspaces,
-        currentWorkspaceId: me.participant.isIndependentWorker ? null : workspace?.id,
-      ),
-    );
+    await _ref
+        .read(inboxLocalStoreProvider)
+        .saveAccountSnapshot(
+          LocalAccountSnapshot(
+            user: me.user,
+            participant: me.participant,
+            workspaces: me.participant.isIndependentWorker
+                ? const []
+                : me.workspaces,
+            currentWorkspaceId: me.participant.isIndependentWorker
+                ? null
+                : workspace?.id,
+          ),
+        );
     _ref.read(apiClientProvider).resetUnauthorizedGate();
     state = AuthState(
       bootstrapping: false,
       token: token,
       user: me.user,
       workspaces: me.workspaces,
-      workspace: me.participant.isIndependentWorker ? state.workspace : workspace,
+      workspace: me.participant.isIndependentWorker
+          ? state.workspace
+          : workspace,
       participant: me.participant,
     );
     _syncWorkerProfileId();
@@ -259,19 +281,23 @@ class AuthController extends StateNotifier<AuthState> {
     } else {
       _ref.read(inboxSessionProvider).clear();
       await _ref.read(prefsStoreProvider).setWorkspaceId(null);
-      await _ref.read(prefsStoreProvider).setCompanyPushAllowed(
-        !result.participant.isIndependentWorker,
-      );
+      await _ref
+          .read(prefsStoreProvider)
+          .setCompanyPushAllowed(!result.participant.isIndependentWorker);
     }
     _ref.read(apiClientProvider).resetUnauthorizedGate();
-    await _ref.read(inboxLocalStoreProvider).saveAccountSnapshot(
-      LocalAccountSnapshot(
-        user: result.user,
-        participant: result.participant,
-        workspaces: result.participant.isIndependentWorker ? const [] : result.workspaces,
-        currentWorkspaceId: workspace?.id,
-      ),
-    );
+    await _ref
+        .read(inboxLocalStoreProvider)
+        .saveAccountSnapshot(
+          LocalAccountSnapshot(
+            user: result.user,
+            participant: result.participant,
+            workspaces: result.participant.isIndependentWorker
+                ? const []
+                : result.workspaces,
+            currentWorkspaceId: workspace?.id,
+          ),
+        );
     state = AuthState(
       bootstrapping: false,
       loading: false,
@@ -435,14 +461,18 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> _persistCurrentAccount() async {
     final user = state.user;
     if (user == null || !state.isAuthenticated) return;
-    await _ref.read(inboxLocalStoreProvider).saveAccountSnapshot(
-      LocalAccountSnapshot(
-        user: user,
-        participant: state.participant,
-        workspaces: state.isIndependentWorker ? const [] : state.workspaces,
-        currentWorkspaceId: state.isIndependentWorker ? null : state.workspace?.id,
-      ),
-    );
+    await _ref
+        .read(inboxLocalStoreProvider)
+        .saveAccountSnapshot(
+          LocalAccountSnapshot(
+            user: user,
+            participant: state.participant,
+            workspaces: state.isIndependentWorker ? const [] : state.workspaces,
+            currentWorkspaceId: state.isIndependentWorker
+                ? null
+                : state.workspace?.id,
+          ),
+        );
   }
 
   Future<bool> switchWorkspace(WorkspaceModel workspace) async {
@@ -525,7 +555,9 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   void _syncWorkerProfileId() {
-    final id = state.isIndependentWorker ? state.participant.workerProfileId : null;
+    final id = state.isIndependentWorker
+        ? state.participant.workerProfileId
+        : null;
     _ref.read(activeWorkerProfileIdProvider.notifier).state = id;
   }
 }

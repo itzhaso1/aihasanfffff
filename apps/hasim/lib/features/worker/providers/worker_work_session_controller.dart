@@ -63,7 +63,11 @@ class WorkerWorkSessionController
     final repository = _ref.read(workerRepositoryProvider);
     final cached = await repository.cachedSessions(engagementId);
     if (cached.isNotEmpty) {
-      state = state.copyWith(loading: false, sessions: cached, clearError: true);
+      state = state.copyWith(
+        loading: false,
+        sessions: cached,
+        clearError: true,
+      );
     } else {
       state = state.copyWith(loading: true, clearError: true);
     }

@@ -17,7 +17,8 @@ class CompanyProfileScreen extends ConsumerStatefulWidget {
   final bool embedded;
 
   @override
-  ConsumerState<CompanyProfileScreen> createState() => _CompanyProfileScreenState();
+  ConsumerState<CompanyProfileScreen> createState() =>
+      _CompanyProfileScreenState();
 }
 
 class _CompanyProfileScreenState extends ConsumerState<CompanyProfileScreen> {
@@ -88,11 +89,23 @@ class _CompanyProfileScreenState extends ConsumerState<CompanyProfileScreen> {
 
   bool _validate(CompanyProfileModel draft) {
     setState(() {
-      _nameError = draft.fieldError(draft.companyName, CompanyProfileModel.nameMax);
+      _nameError = draft.fieldError(
+        draft.companyName,
+        CompanyProfileModel.nameMax,
+      );
       _aboutError = draft.fieldError(draft.about, CompanyProfileModel.aboutMax);
-      _offeringsError = draft.fieldError(draft.offerings, CompanyProfileModel.offeringsMax);
-      _servicesError = draft.fieldError(draft.services, CompanyProfileModel.servicesMax);
-      _audienceError = draft.fieldError(draft.audience, CompanyProfileModel.audienceMax);
+      _offeringsError = draft.fieldError(
+        draft.offerings,
+        CompanyProfileModel.offeringsMax,
+      );
+      _servicesError = draft.fieldError(
+        draft.services,
+        CompanyProfileModel.servicesMax,
+      );
+      _audienceError = draft.fieldError(
+        draft.audience,
+        CompanyProfileModel.audienceMax,
+      );
       _guidelinesError = draft.fieldError(
         draft.replyGuidelines,
         CompanyProfileModel.replyGuidelinesMax,
@@ -113,20 +126,24 @@ class _CompanyProfileScreenState extends ConsumerState<CompanyProfileScreen> {
     if (!_validate(draft)) {
       return;
     }
-    final ok = await ref.read(companyProfileControllerProvider.notifier).save(draft);
+    final ok = await ref
+        .read(companyProfileControllerProvider.notifier)
+        .save(draft);
     if (!mounted) {
       return;
     }
     if (ok) {
       _boundHash = null;
       _bind(ref.read(companyProfileControllerProvider).profile);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ نبذة الشركة.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('تم حفظ نبذة الشركة.')));
     } else {
       final err = ref.read(companyProfileControllerProvider).error;
       if (err != null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(err)));
       }
     }
   }
@@ -180,7 +197,8 @@ class _CompanyProfileScreenState extends ConsumerState<CompanyProfileScreen> {
           children: [
             Text(state.error!),
             TextButton(
-              onPressed: () => ref.read(companyProfileControllerProvider.notifier).reload(),
+              onPressed: () =>
+                  ref.read(companyProfileControllerProvider.notifier).reload(),
               child: Text(l10n.retry),
             ),
           ],
@@ -266,10 +284,7 @@ class _CompanyProfileScreenState extends ConsumerState<CompanyProfileScreen> {
     }
 
     if (!widget.embedded && HasimLayout.isCompact(context)) {
-      return HasimMobileScaffold(
-        title: 'نبذة عن الشركة',
-        body: body,
-      );
+      return HasimMobileScaffold(title: 'نبذة عن الشركة', body: body);
     }
 
     if (widget.embedded) {

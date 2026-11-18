@@ -138,286 +138,287 @@ class _CompanyWorkerProfileScreenState
                   color: HasimTokens.pageBg(context),
                   borderRadius: HasimLayout.modalSheetRadius(context),
                   clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10, bottom: 4),
-                      child: Center(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: HasimTokens.lineColor(context),
-                            borderRadius: BorderRadius.circular(999),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10, bottom: 4),
+                        child: Center(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: HasimTokens.lineColor(context),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const SizedBox(width: 42, height: 4),
                           ),
-                          child: const SizedBox(width: 42, height: 4),
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        HasimTokens.spaceMd,
-                        4,
-                        8,
-                        HasimTokens.spaceSm,
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'إرسال عرض إلى ${worker.displayName}',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: _title(context),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'إغلاق',
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Divider(height: 1, color: HasimTokens.lineColor(context)),
-                    Expanded(
-                      child: Form(
-                        key: formKey,
-                        child: ListView(
-                          padding: EdgeInsets.fromLTRB(
-                            HasimTokens.spaceMd,
-                            HasimTokens.spaceMd,
-                            HasimTokens.spaceMd,
-                            HasimTokens.spaceLg +
-                                MediaQuery.viewInsetsOf(context).bottom,
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          HasimTokens.spaceMd,
+                          4,
+                          8,
+                          HasimTokens.spaceSm,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            TextFormField(
-                              controller: jobTitle,
-                              decoration: const InputDecoration(
-                                labelText: 'الدور أو المسمى',
+                            Expanded(
+                              child: Text(
+                                'إرسال عرض إلى ${worker.displayName}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: _title(context),
                               ),
-                              validator: (value) =>
-                                  (value == null || value.trim().isEmpty)
-                                  ? 'أدخل المسمى الوظيفي'
-                                  : null,
                             ),
-                            const SizedBox(height: HasimTokens.spaceMd),
-                            TextFormField(
-                              key: const ValueKey(
-                                'worker-profile-offer-starts-at',
-                              ),
-                              controller: startsAt,
-                              decoration: const InputDecoration(
-                                labelText: 'تاريخ البداية',
-                              ),
-                              keyboardType: TextInputType.datetime,
-                              onChanged: (_) => setSheetState(() {}),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'أدخل تاريخ البداية';
-                                }
-                                if (calculateWorkerOfferEndDate(
-                                      startsAt: value.trim(),
-                                      value: selectedDurationValue ?? 0,
-                                      unit: selectedDurationUnit,
-                                    ) ==
-                                    null) {
-                                  return 'أدخل تاريخ بداية صالحاً';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: HasimTokens.spaceMd),
-                            DropdownButtonFormField<String>(
-                              key: const ValueKey(
-                                'worker-profile-offer-duration-preset',
-                              ),
-                              initialValue: durationPreset,
-                              decoration: const InputDecoration(
-                                labelText: 'مدة التعاقد',
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'day',
-                                  child: Text('يوم واحد'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'week',
-                                  child: Text('أسبوع واحد'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'month',
-                                  child: Text('شهر واحد'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'custom',
-                                  child: Text('مدة مخصصة'),
-                                ),
-                              ],
-                              onChanged: selectDurationPreset,
-                            ),
-                            if (durationPreset == 'custom') ...[
-                              const SizedBox(height: HasimTokens.spaceMd),
-                              TextFormField(
-                                key: const ValueKey(
-                                  'worker-profile-offer-duration-value',
-                                ),
-                                controller: durationValue,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: 'قيمة المدة',
-                                ),
-                                validator: (value) {
-                                  final parsed = int.tryParse(
-                                    value?.trim() ?? '',
-                                  );
-                                  return parsed == null || parsed < 1
-                                      ? 'أدخل رقماً صحيحاً أكبر من صفر'
-                                      : null;
-                                },
-                                onChanged: (_) => setSheetState(() {}),
-                              ),
-                              const SizedBox(height: HasimTokens.spaceMd),
-                              DropdownButtonFormField<String>(
-                                key: const ValueKey(
-                                  'worker-profile-offer-duration-unit',
-                                ),
-                                initialValue: durationUnit,
-                                decoration: const InputDecoration(
-                                  labelText: 'وحدة المدة',
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: 'day',
-                                    child: Text('يوم'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'week',
-                                    child: Text('أسبوع'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'month',
-                                    child: Text('شهر'),
-                                  ),
-                                ],
-                                onChanged: (value) {
-                                  if (value == null) return;
-                                  setSheetState(() => durationUnit = value);
-                                },
-                              ),
-                            ],
-                            const SizedBox(height: HasimTokens.spaceSm),
-                            AnimatedBuilder(
-                              animation: Listenable.merge([
-                                startsAt,
-                                durationValue,
-                              ]),
-                              builder: (context, _) {
-                                final currentValue =
-                                    presetDuration?.value ??
-                                    int.tryParse(durationValue.text.trim());
-                                final calculatedEnd = currentValue == null
-                                    ? null
-                                    : calculateWorkerOfferEndDate(
-                                        startsAt: startsAt.text.trim(),
-                                        value: currentValue,
-                                        unit: selectedDurationUnit,
-                                      );
-
-                                return Text(
-                                  calculatedEnd == null
-                                      ? 'ستظهر النهاية المحسوبة بعد إدخال تاريخ البداية والمدة.'
-                                      : 'النهاية المحسوبة: ${formatWorkerOfferDate(calculatedEnd)}',
-                                  key: const ValueKey(
-                                    'worker-profile-offer-calculated-end',
-                                  ),
-                                  style: _muted(context),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'يحسِب الخادم تاريخ النهاية النهائي ويحفظه في التعاقد.',
-                              style: _muted(context),
+                            IconButton(
+                              tooltip: 'إغلاق',
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close_rounded),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: HasimTokens.cardBg(context),
-                        border: Border(
-                          top: BorderSide(
-                            color: HasimTokens.lineColor(context),
+                      Divider(height: 1, color: HasimTokens.lineColor(context)),
+                      Expanded(
+                        child: Form(
+                          key: formKey,
+                          child: ListView(
+                            padding: EdgeInsets.fromLTRB(
+                              HasimTokens.spaceMd,
+                              HasimTokens.spaceMd,
+                              HasimTokens.spaceMd,
+                              HasimTokens.spaceLg +
+                                  MediaQuery.viewInsetsOf(context).bottom,
+                            ),
+                            children: [
+                              TextFormField(
+                                controller: jobTitle,
+                                decoration: const InputDecoration(
+                                  labelText: 'الدور أو المسمى',
+                                ),
+                                validator: (value) =>
+                                    (value == null || value.trim().isEmpty)
+                                    ? 'أدخل المسمى الوظيفي'
+                                    : null,
+                              ),
+                              const SizedBox(height: HasimTokens.spaceMd),
+                              TextFormField(
+                                key: const ValueKey(
+                                  'worker-profile-offer-starts-at',
+                                ),
+                                controller: startsAt,
+                                decoration: const InputDecoration(
+                                  labelText: 'تاريخ البداية',
+                                ),
+                                keyboardType: TextInputType.datetime,
+                                onChanged: (_) => setSheetState(() {}),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'أدخل تاريخ البداية';
+                                  }
+                                  if (calculateWorkerOfferEndDate(
+                                        startsAt: value.trim(),
+                                        value: selectedDurationValue ?? 0,
+                                        unit: selectedDurationUnit,
+                                      ) ==
+                                      null) {
+                                    return 'أدخل تاريخ بداية صالحاً';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: HasimTokens.spaceMd),
+                              DropdownButtonFormField<String>(
+                                key: const ValueKey(
+                                  'worker-profile-offer-duration-preset',
+                                ),
+                                initialValue: durationPreset,
+                                decoration: const InputDecoration(
+                                  labelText: 'مدة التعاقد',
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'day',
+                                    child: Text('يوم واحد'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'week',
+                                    child: Text('أسبوع واحد'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'month',
+                                    child: Text('شهر واحد'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'custom',
+                                    child: Text('مدة مخصصة'),
+                                  ),
+                                ],
+                                onChanged: selectDurationPreset,
+                              ),
+                              if (durationPreset == 'custom') ...[
+                                const SizedBox(height: HasimTokens.spaceMd),
+                                TextFormField(
+                                  key: const ValueKey(
+                                    'worker-profile-offer-duration-value',
+                                  ),
+                                  controller: durationValue,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'قيمة المدة',
+                                  ),
+                                  validator: (value) {
+                                    final parsed = int.tryParse(
+                                      value?.trim() ?? '',
+                                    );
+                                    return parsed == null || parsed < 1
+                                        ? 'أدخل رقماً صحيحاً أكبر من صفر'
+                                        : null;
+                                  },
+                                  onChanged: (_) => setSheetState(() {}),
+                                ),
+                                const SizedBox(height: HasimTokens.spaceMd),
+                                DropdownButtonFormField<String>(
+                                  key: const ValueKey(
+                                    'worker-profile-offer-duration-unit',
+                                  ),
+                                  initialValue: durationUnit,
+                                  decoration: const InputDecoration(
+                                    labelText: 'وحدة المدة',
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 'day',
+                                      child: Text('يوم'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'week',
+                                      child: Text('أسبوع'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'month',
+                                      child: Text('شهر'),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    if (value == null) return;
+                                    setSheetState(() => durationUnit = value);
+                                  },
+                                ),
+                              ],
+                              const SizedBox(height: HasimTokens.spaceSm),
+                              AnimatedBuilder(
+                                animation: Listenable.merge([
+                                  startsAt,
+                                  durationValue,
+                                ]),
+                                builder: (context, _) {
+                                  final currentValue =
+                                      presetDuration?.value ??
+                                      int.tryParse(durationValue.text.trim());
+                                  final calculatedEnd = currentValue == null
+                                      ? null
+                                      : calculateWorkerOfferEndDate(
+                                          startsAt: startsAt.text.trim(),
+                                          value: currentValue,
+                                          unit: selectedDurationUnit,
+                                        );
+
+                                  return Text(
+                                    calculatedEnd == null
+                                        ? 'ستظهر النهاية المحسوبة بعد إدخال تاريخ البداية والمدة.'
+                                        : 'النهاية المحسوبة: ${formatWorkerOfferDate(calculatedEnd)}',
+                                    key: const ValueKey(
+                                      'worker-profile-offer-calculated-end',
+                                    ),
+                                    style: _muted(context),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'يحسِب الخادم تاريخ النهاية النهائي ويحفظه في التعاقد.',
+                                style: _muted(context),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      child: SafeArea(
-                        top: false,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            HasimTokens.spaceMd,
-                            HasimTokens.spaceSm,
-                            HasimTokens.spaceMd,
-                            HasimTokens.spaceMd,
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: HasimTokens.cardBg(context),
+                          border: Border(
+                            top: BorderSide(
+                              color: HasimTokens.lineColor(context),
+                            ),
                           ),
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: FilledButton(
-                              onPressed: saving
-                                  ? null
-                                  : () async {
-                                      if (!(formKey.currentState?.validate() ??
-                                          false)) {
-                                        return;
-                                      }
-                                      setSheetState(() => saving = true);
-                                      final ok = await controller.sendOffer(
-                                        worker,
-                                        jobTitle: jobTitle.text,
-                                        startsAt: startsAt.text,
-                                        durationValue: selectedDurationValue!,
-                                        durationUnit: selectedDurationUnit,
-                                      );
-                                      if (!context.mounted) return;
-                                      if (ok) {
-                                        await _refreshWorker();
-                                        if (!context.mounted) return;
-                                        Navigator.of(context).pop();
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('تم إرسال العرض'),
-                                          ),
+                        ),
+                        child: SafeArea(
+                          top: false,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              HasimTokens.spaceMd,
+                              HasimTokens.spaceSm,
+                              HasimTokens.spaceMd,
+                              HasimTokens.spaceMd,
+                            ),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: FilledButton(
+                                onPressed: saving
+                                    ? null
+                                    : () async {
+                                        if (!(formKey.currentState
+                                                ?.validate() ??
+                                            false)) {
+                                          return;
+                                        }
+                                        setSheetState(() => saving = true);
+                                        final ok = await controller.sendOffer(
+                                          worker,
+                                          jobTitle: jobTitle.text,
+                                          startsAt: startsAt.text,
+                                          durationValue: selectedDurationValue!,
+                                          durationUnit: selectedDurationUnit,
                                         );
-                                      } else {
-                                        final error = ref
-                                            .read(
-                                              companyWorkerDiscoveryControllerProvider,
-                                            )
-                                            .error;
-                                        setSheetState(() => saving = false);
-                                        if (error != null) {
+                                        if (!context.mounted) return;
+                                        if (ok) {
+                                          await _refreshWorker();
+                                          if (!context.mounted) return;
+                                          Navigator.of(context).pop();
                                           ScaffoldMessenger.of(
                                             context,
                                           ).showSnackBar(
-                                            SnackBar(content: Text(error)),
+                                            const SnackBar(
+                                              content: Text('تم إرسال العرض'),
+                                            ),
                                           );
+                                        } else {
+                                          final error = ref
+                                              .read(
+                                                companyWorkerDiscoveryControllerProvider,
+                                              )
+                                              .error;
+                                          setSheetState(() => saving = false);
+                                          if (error != null) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(content: Text(error)),
+                                            );
+                                          }
                                         }
-                                      }
-                                    },
-                              child: Text(
-                                saving ? 'جارٍ الإرسال' : 'إرسال العرض',
+                                      },
+                                child: Text(
+                                  saving ? 'جارٍ الإرسال' : 'إرسال العرض',
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -587,9 +588,7 @@ class _CompanyWorkerProfileScreenState
           width: double.infinity,
           child: FilledButton(
             onPressed: worker.hasOpenEngagement ? null : _openOfferSheet,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 48),
-            ),
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
             child: Text(
               worker.hasOpenEngagement
                   ? worker.existingEngagement!.statusLabel
@@ -735,16 +734,8 @@ class _ProfileMetaRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 72,
-            child: Text(label, style: _muted(context)),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: _sectionTitle(context),
-            ),
-          ),
+          SizedBox(width: 72, child: Text(label, style: _muted(context))),
+          Expanded(child: Text(value, style: _sectionTitle(context))),
         ],
       ),
     );
@@ -842,11 +833,9 @@ class _Pill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Text(
           label,
-          style: _muted(context).copyWith(
-            color: fg,
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
-          ),
+          style: _muted(
+            context,
+          ).copyWith(color: fg, fontWeight: FontWeight.w600, fontSize: 12),
         ),
       ),
     );

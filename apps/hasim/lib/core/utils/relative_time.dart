@@ -5,7 +5,8 @@ String inboxListTimeAr(DateTime? value, {DateTime? now}) {
   if (value == null) return '';
   final n = now ?? DateTime.now();
   final local = value.toLocal();
-  final sameDay = local.year == n.year && local.month == n.month && local.day == n.day;
+  final sameDay =
+      local.year == n.year && local.month == n.month && local.day == n.day;
   if (sameDay) {
     return DateFormat('HH:mm').format(local);
   }

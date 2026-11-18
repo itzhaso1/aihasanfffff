@@ -5,14 +5,20 @@ import 'package:flutter/foundation.dart';
 class FirebasePushConfig {
   FirebasePushConfig._();
 
-  static const androidApiKey = String.fromEnvironment('FIREBASE_ANDROID_API_KEY');
+  static const androidApiKey = String.fromEnvironment(
+    'FIREBASE_ANDROID_API_KEY',
+  );
   static const androidAppId = String.fromEnvironment('FIREBASE_ANDROID_APP_ID');
-  static const androidSenderId = String.fromEnvironment('FIREBASE_MESSAGING_SENDER_ID');
+  static const androidSenderId = String.fromEnvironment(
+    'FIREBASE_MESSAGING_SENDER_ID',
+  );
   static const androidProjectId = String.fromEnvironment('FIREBASE_PROJECT_ID');
 
   static const iosApiKey = String.fromEnvironment('FIREBASE_IOS_API_KEY');
   static const iosAppId = String.fromEnvironment('FIREBASE_IOS_APP_ID');
-  static const iosSenderId = String.fromEnvironment('FIREBASE_IOS_MESSAGING_SENDER_ID');
+  static const iosSenderId = String.fromEnvironment(
+    'FIREBASE_IOS_MESSAGING_SENDER_ID',
+  );
   static const iosProjectId = String.fromEnvironment('FIREBASE_IOS_PROJECT_ID');
   static const iosBundleId = String.fromEnvironment(
     'FIREBASE_IOS_BUNDLE_ID',
@@ -48,7 +54,10 @@ class FirebasePushConfig {
   static FirebaseOptions? get _ios {
     final sender = iosSenderId.isNotEmpty ? iosSenderId : androidSenderId;
     final project = iosProjectId.isNotEmpty ? iosProjectId : androidProjectId;
-    if (iosApiKey.isEmpty || iosAppId.isEmpty || sender.isEmpty || project.isEmpty) {
+    if (iosApiKey.isEmpty ||
+        iosAppId.isEmpty ||
+        sender.isEmpty ||
+        project.isEmpty) {
       return null;
     }
     return FirebaseOptions(

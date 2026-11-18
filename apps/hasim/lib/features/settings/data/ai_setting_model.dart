@@ -46,12 +46,16 @@ class AiSettingModel extends Equatable {
       instructions: json['instructions']?.toString(),
       tone: json['tone']?.toString(),
       replyStyle: json['reply_style']?.toString(),
-      rules: json['rules'] is Map ? Map<String, dynamic>.from(json['rules'] as Map) : const {},
+      rules: json['rules'] is Map
+          ? Map<String, dynamic>.from(json['rules'] as Map)
+          : const {},
       businessInformation: json['business_information'] is Map
           ? Map<String, dynamic>.from(json['business_information'] as Map)
           : const {},
       agentPersona: AgentPersonaModel.fromJson(
-        json['agent_persona'] is Map ? Map<String, dynamic>.from(json['agent_persona'] as Map) : null,
+        json['agent_persona'] is Map
+            ? Map<String, dynamic>.from(json['agent_persona'] as Map)
+            : null,
       ),
       provider: json['provider']?.toString() ?? '',
       model: json['model']?.toString() ?? '',
@@ -63,7 +67,8 @@ class AiSettingModel extends Equatable {
 
   String get assistantName => name;
 
-  static bool isValidAssistantName(String raw) => assistantNameError(raw) == null;
+  static bool isValidAssistantName(String raw) =>
+      assistantNameError(raw) == null;
 
   static String? assistantNameError(String raw) {
     final value = raw.trim();
@@ -71,27 +76,31 @@ class AiSettingModel extends Equatable {
     if (value.length > maxAssistantNameLength) return 'length';
     if (value.contains(RegExp(r'[<>]'))) return 'markup';
     if (RegExp(r'[\x00-\x1F\x7F]').hasMatch(value)) return 'control';
-    if (!RegExp(r"^[\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N} .'\-]{0,63}$", unicode: true).hasMatch(value)) {
+    if (!RegExp(
+      r"^[\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N} .'\-]{0,63}$",
+      unicode: true,
+    ).hasMatch(value)) {
       return 'charset';
     }
     return null;
   }
 
   Map<String, dynamic> toUpdateJson() => {
-        'name': name,
-        'assistant_name': name,
-        if (aiRole != null) 'ai_role': aiRole,
-        if (instructions != null) 'instructions': instructions,
-        if (tone != null) 'tone': tone,
-        if (replyStyle != null) 'reply_style': replyStyle,
-        'rules': rules,
-        'business_information': businessInformation,
-        if (agentPersona.identityName.trim().isNotEmpty && agentPersona.identityRole.trim().isNotEmpty)
-          'agent_persona': agentPersona.toJson(),
-        'max_tokens': maxTokens,
-        'temperature': temperature,
-        'is_active': isActive,
-      };
+    'name': name,
+    'assistant_name': name,
+    if (aiRole != null) 'ai_role': aiRole,
+    if (instructions != null) 'instructions': instructions,
+    if (tone != null) 'tone': tone,
+    if (replyStyle != null) 'reply_style': replyStyle,
+    'rules': rules,
+    'business_information': businessInformation,
+    if (agentPersona.identityName.trim().isNotEmpty &&
+        agentPersona.identityRole.trim().isNotEmpty)
+      'agent_persona': agentPersona.toJson(),
+    'max_tokens': maxTokens,
+    'temperature': temperature,
+    'is_active': isActive,
+  };
 
   String get experience => businessInformation['experience']?.toString() ?? '';
 
@@ -217,7 +226,8 @@ class AiProbeResult {
     final rawChecks = json['checks'];
     return AiProbeResult(
       connected: json['connected'] == true,
-      reply: AiCustomerFacingText.parse(json['reply'], field: 'reply') ??
+      reply:
+          AiCustomerFacingText.parse(json['reply'], field: 'reply') ??
           AiCustomerFacingText.parse(json, field: 'reply') ??
           '',
       model: json['model']?.toString() ?? '',
@@ -225,7 +235,10 @@ class AiProbeResult {
       tokens: (json['tokens'] as num?)?.toInt(),
       error: json['error']?.toString(),
       checks: rawChecks is List
-          ? rawChecks.whereType<Map>().map((e) => AiProbeCheck.fromJson(Map<String, dynamic>.from(e))).toList()
+          ? rawChecks
+                .whereType<Map>()
+                .map((e) => AiProbeCheck.fromJson(Map<String, dynamic>.from(e)))
+                .toList()
           : const [],
     );
   }
@@ -248,11 +261,7 @@ class AiProviderOption {
       label: 'Google AI Studio (Gemini)',
       models: ['gemini-2.5-flash', 'gemini-2.0-flash'],
     ),
-    AiProviderOption(
-      id: 'openai',
-      label: 'OpenAI',
-      models: ['gpt-4o-mini'],
-    ),
+    AiProviderOption(id: 'openai', label: 'OpenAI', models: ['gpt-4o-mini']),
   ];
 
   static List<AiProviderOption> parse(dynamic raw) {
@@ -264,13 +273,18 @@ class AiProviderOption {
       final id = map['id']?.toString() ?? '';
       if (id.isEmpty) continue;
       final models = map['models'] is List
-          ? (map['models'] as List).map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+          ? (map['models'] as List)
+                .map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList()
           : const <String>[];
-      parsed.add(AiProviderOption(
-        id: id,
-        label: map['label']?.toString() ?? id,
-        models: models,
-      ));
+      parsed.add(
+        AiProviderOption(
+          id: id,
+          label: map['label']?.toString() ?? id,
+          models: models,
+        ),
+      );
     }
     return parsed.isEmpty ? defaults : parsed;
   }

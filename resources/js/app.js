@@ -1,6 +1,7 @@
 
 import Alpine from 'alpinejs';
 import './page-nav';
+import './inbox-ui';
 
 window.Alpine = Alpine;
 

@@ -18,7 +18,8 @@ abstract class ChannelCallbackLinkSource {
 }
 
 class AppLinksChannelCallbackSource implements ChannelCallbackLinkSource {
-  AppLinksChannelCallbackSource([AppLinks? appLinks]) : _appLinks = appLinks ?? AppLinks();
+  AppLinksChannelCallbackSource([AppLinks? appLinks])
+    : _appLinks = appLinks ?? AppLinks();
 
   final AppLinks _appLinks;
 
@@ -31,7 +32,7 @@ class AppLinksChannelCallbackSource implements ChannelCallbackLinkSource {
 
 class MemoryChannelCallbackLinkSource implements ChannelCallbackLinkSource {
   MemoryChannelCallbackLinkSource({Stream<Uri>? incoming})
-      : incoming = incoming ?? const Stream.empty();
+    : incoming = incoming ?? const Stream.empty();
 
   @override
   final Stream<Uri> incoming;

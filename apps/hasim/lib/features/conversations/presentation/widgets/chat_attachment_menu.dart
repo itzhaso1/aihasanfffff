@@ -18,20 +18,60 @@ class ChatAttachmentMenuPanel extends StatelessWidget {
   final double arrowOffset;
   final double? maxHeight;
 
-  static const _document = _WaItem('document', 'مستند', Icons.description_outlined, Color(0xFF7F66FF));
+  static const _document = _WaItem(
+    'document',
+    'مستند',
+    Icons.description_outlined,
+    Color(0xFF7F66FF),
+  );
   static const _photos = _WaItem(
     'photos_videos',
     'الصور ومقاطع الفيديو',
     Icons.photo_size_select_actual_outlined,
     Color(0xFF007BFC),
   );
-  static const _camera = _WaItem('camera', 'الكاميرا', Icons.photo_camera_outlined, Color(0xFFFF2E74));
-  static const _audio = _WaItem('audio', 'مقطع صوتي', Icons.headset_outlined, Color(0xFFFF9500));
-  static const _contact = _WaItem('contact', 'جهة اتصال', Icons.person_outline, Color(0xFF009DE2));
-  static const _poll = _WaItem('poll', 'استطلاع رأي', Icons.poll_outlined, Color(0xFFFFB020));
-  static const _event = _WaItem('event', 'مناسبة', Icons.event_outlined, Color(0xFFF1524B));
-  static const _sticker = _WaItem('sticker', 'ملصق جديد', Icons.add_circle_outline, Color(0xFF00A884));
-  static const _quickReplies = _WaItem('quick_replies', 'الردود السريعة', Icons.bolt_outlined, Color(0xFFFFBE0A));
+  static const _camera = _WaItem(
+    'camera',
+    'الكاميرا',
+    Icons.photo_camera_outlined,
+    Color(0xFFFF2E74),
+  );
+  static const _audio = _WaItem(
+    'audio',
+    'مقطع صوتي',
+    Icons.headset_outlined,
+    Color(0xFFFF9500),
+  );
+  static const _contact = _WaItem(
+    'contact',
+    'جهة اتصال',
+    Icons.person_outline,
+    Color(0xFF009DE2),
+  );
+  static const _poll = _WaItem(
+    'poll',
+    'استطلاع رأي',
+    Icons.poll_outlined,
+    Color(0xFFFFB020),
+  );
+  static const _event = _WaItem(
+    'event',
+    'مناسبة',
+    Icons.event_outlined,
+    Color(0xFFF1524B),
+  );
+  static const _sticker = _WaItem(
+    'sticker',
+    'ملصق جديد',
+    Icons.add_circle_outline,
+    Color(0xFF00A884),
+  );
+  static const _quickReplies = _WaItem(
+    'quick_replies',
+    'الردود السريعة',
+    Icons.bolt_outlined,
+    Color(0xFFFFBE0A),
+  );
 
   static const _primaryGroup = [
     _document,
@@ -52,9 +92,11 @@ class ChatAttachmentMenuPanel extends StatelessWidget {
     final rows = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        for (final item in _primaryGroup) _WaRow(item: item, onTap: () => onSelected(item.action)),
+        for (final item in _primaryGroup)
+          _WaRow(item: item, onTap: () => onSelected(item.action)),
         Divider(height: 1, thickness: 1, color: HasimTokens.lineColor(context)),
-        for (final item in _secondaryGroup) _WaRow(item: item, onTap: () => onSelected(item.action)),
+        for (final item in _secondaryGroup)
+          _WaRow(item: item, onTap: () => onSelected(item.action)),
       ],
     );
     final cap = maxHeight;
@@ -62,7 +104,9 @@ class ChatAttachmentMenuPanel extends StatelessWidget {
     final list = listHeight == null || listHeight >= 520
         ? rows
         : ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: listHeight < 80 ? 80 : listHeight),
+            constraints: BoxConstraints(
+              maxHeight: listHeight < 80 ? 80 : listHeight,
+            ),
             child: SingleChildScrollView(child: rows),
           );
 
@@ -154,7 +198,8 @@ class _MenuArrowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _MenuArrowPainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _MenuArrowPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _WaItem {
@@ -179,8 +224,12 @@ class _WaRow extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        hoverColor: dark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF5F6F6),
-        splashColor: dark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE9EDEF),
+        hoverColor: dark
+            ? Colors.white.withValues(alpha: 0.06)
+            : const Color(0xFFF5F6F6),
+        splashColor: dark
+            ? Colors.white.withValues(alpha: 0.08)
+            : const Color(0xFFE9EDEF),
         child: SizedBox(
           height: 42,
           child: Padding(

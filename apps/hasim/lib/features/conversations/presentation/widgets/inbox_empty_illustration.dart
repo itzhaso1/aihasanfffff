@@ -35,23 +35,58 @@ class _InboxEmptyPainter extends CustomPainter {
 
     // خلفية سحابية ناعمة
     final blob = Paint()..color = mintSoft;
-    canvas.drawOval(Rect.fromCenter(center: Offset(size.width * 0.50, size.height * 0.58), width: size.width * 0.86, height: size.height * 0.28), blob);
-    canvas.drawOval(Rect.fromCenter(center: Offset(size.width * 0.28, size.height * 0.46), width: size.width * 0.42, height: size.height * 0.22), blob);
-    canvas.drawOval(Rect.fromCenter(center: Offset(size.width * 0.72, size.height * 0.42), width: size.width * 0.38, height: size.height * 0.20), blob);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(size.width * 0.50, size.height * 0.58),
+        width: size.width * 0.86,
+        height: size.height * 0.28,
+      ),
+      blob,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(size.width * 0.28, size.height * 0.46),
+        width: size.width * 0.42,
+        height: size.height * 0.22,
+      ),
+      blob,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(size.width * 0.72, size.height * 0.42),
+        width: size.width * 0.38,
+        height: size.height * 0.20,
+      ),
+      blob,
+    );
 
     canvas.drawOval(
-      Rect.fromCenter(center: Offset(size.width * 0.50, size.height * 0.82), width: size.width * 0.52, height: size.height * 0.06),
+      Rect.fromCenter(
+        center: Offset(size.width * 0.50, size.height * 0.82),
+        width: size.width * 0.52,
+        height: size.height * 0.06,
+      ),
       Paint()..color = color.withValues(alpha: 0.10),
     );
 
     final box = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * 0.29, size.height * 0.58, size.width * 0.42, size.height * 0.22),
+      Rect.fromLTWH(
+        size.width * 0.29,
+        size.height * 0.58,
+        size.width * 0.42,
+        size.height * 0.22,
+      ),
       Radius.circular(size.width * 0.04),
     );
     canvas.drawRRect(box, Paint()..color = tray);
 
     final inner = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * 0.325, size.height * 0.605, size.width * 0.35, size.height * 0.10),
+      Rect.fromLTWH(
+        size.width * 0.325,
+        size.height * 0.605,
+        size.width * 0.35,
+        size.height * 0.10,
+      ),
       Radius.circular(size.width * 0.025),
     );
     canvas.drawRRect(inner, Paint()..color = trayDeep);
@@ -60,23 +95,64 @@ class _InboxEmptyPainter extends CustomPainter {
       ..moveTo(size.width * 0.29, size.height * 0.68)
       ..lineTo(size.width * 0.71, size.height * 0.68)
       ..lineTo(size.width * 0.71, size.height * 0.78)
-      ..arcToPoint(Offset(size.width * 0.67, size.height * 0.80), radius: Radius.circular(size.width * 0.04))
+      ..arcToPoint(
+        Offset(size.width * 0.67, size.height * 0.80),
+        radius: Radius.circular(size.width * 0.04),
+      )
       ..lineTo(size.width * 0.33, size.height * 0.80)
-      ..arcToPoint(Offset(size.width * 0.29, size.height * 0.78), radius: Radius.circular(size.width * 0.04))
+      ..arcToPoint(
+        Offset(size.width * 0.29, size.height * 0.78),
+        radius: Radius.circular(size.width * 0.04),
+      )
       ..close();
-    canvas.drawPath(front, Paint()..color = Color.lerp(tray, Colors.white, 0.08)!);
+    canvas.drawPath(
+      front,
+      Paint()..color = Color.lerp(tray, Colors.white, 0.08)!,
+    );
 
-    _drawLeaf(canvas, Offset(size.width * 0.22, size.height * 0.62), size.width * 0.13, -0.7, leaf, leafDark);
-    _drawLeaf(canvas, Offset(size.width * 0.16, size.height * 0.70), size.width * 0.11, -0.15, leafDark, leaf);
-    _drawLeaf(canvas, Offset(size.width * 0.78, size.height * 0.64), size.width * 0.12, 0.85, leaf, leafDark);
-    _drawLeaf(canvas, Offset(size.width * 0.84, size.height * 0.72), size.width * 0.10, 0.25, leafDark, leaf);
+    _drawLeaf(
+      canvas,
+      Offset(size.width * 0.22, size.height * 0.62),
+      size.width * 0.13,
+      -0.7,
+      leaf,
+      leafDark,
+    );
+    _drawLeaf(
+      canvas,
+      Offset(size.width * 0.16, size.height * 0.70),
+      size.width * 0.11,
+      -0.15,
+      leafDark,
+      leaf,
+    );
+    _drawLeaf(
+      canvas,
+      Offset(size.width * 0.78, size.height * 0.64),
+      size.width * 0.12,
+      0.85,
+      leaf,
+      leafDark,
+    );
+    _drawLeaf(
+      canvas,
+      Offset(size.width * 0.84, size.height * 0.72),
+      size.width * 0.10,
+      0.25,
+      leafDark,
+      leaf,
+    );
 
     // ورقة مائلة داخل الصندوق
     canvas.save();
     canvas.translate(size.width * 0.52, size.height * 0.48);
     canvas.rotate(-0.28);
     final paper = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: Offset.zero, width: size.width * 0.22, height: size.height * 0.30),
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: size.width * 0.22,
+        height: size.height * 0.30,
+      ),
       Radius.circular(size.width * 0.025),
     );
     canvas.drawRRect(
@@ -98,7 +174,11 @@ class _InboxEmptyPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     for (var i = 0; i < 3; i++) {
       final y = -size.height * 0.06 + i * size.height * 0.045;
-      canvas.drawLine(Offset(-size.width * 0.06, y), Offset(size.width * 0.06, y), linePaint);
+      canvas.drawLine(
+        Offset(-size.width * 0.06, y),
+        Offset(size.width * 0.06, y),
+        linePaint,
+      );
     }
     canvas.restore();
 
@@ -107,10 +187,26 @@ class _InboxEmptyPainter extends CustomPainter {
       ..color = color
       ..strokeWidth = 2.2
       ..strokeCap = StrokeCap.round;
-    canvas.drawLine(Offset(size.width * 0.34, size.height * 0.30), Offset(size.width * 0.34, size.height * 0.36), spark);
-    canvas.drawLine(Offset(size.width * 0.31, size.height * 0.33), Offset(size.width * 0.37, size.height * 0.33), spark);
-    canvas.drawLine(Offset(size.width * 0.38, size.height * 0.24), Offset(size.width * 0.38, size.height * 0.29), spark);
-    canvas.drawLine(Offset(size.width * 0.36, size.height * 0.265), Offset(size.width * 0.40, size.height * 0.265), spark);
+    canvas.drawLine(
+      Offset(size.width * 0.34, size.height * 0.30),
+      Offset(size.width * 0.34, size.height * 0.36),
+      spark,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.31, size.height * 0.33),
+      Offset(size.width * 0.37, size.height * 0.33),
+      spark,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.38, size.height * 0.24),
+      Offset(size.width * 0.38, size.height * 0.29),
+      spark,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.36, size.height * 0.265),
+      Offset(size.width * 0.40, size.height * 0.265),
+      spark,
+    );
 
     // مسار متقطع نحو الطائرة
     final curve = Path()
@@ -123,16 +219,32 @@ class _InboxEmptyPainter extends CustomPainter {
         size.width * 0.86,
         size.height * 0.16,
       );
-    _drawDashedPath(canvas, curve, Paint()
-      ..color = Color.lerp(color, Colors.white, 0.25)!
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round);
+    _drawDashedPath(
+      canvas,
+      curve,
+      Paint()
+        ..color = Color.lerp(color, Colors.white, 0.25)!
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round,
+    );
 
-    _drawPlane(canvas, Offset(size.width * 0.90, size.height * 0.12), size.width * 0.11, color);
+    _drawPlane(
+      canvas,
+      Offset(size.width * 0.90, size.height * 0.12),
+      size.width * 0.11,
+      color,
+    );
   }
 
-  void _drawLeaf(Canvas canvas, Offset origin, double length, double angle, Color fill, Color vein) {
+  void _drawLeaf(
+    Canvas canvas,
+    Offset origin,
+    double length,
+    double angle,
+    Color fill,
+    Color vein,
+  ) {
     canvas.save();
     canvas.translate(origin.dx, origin.dy);
     canvas.rotate(angle);
@@ -168,7 +280,10 @@ class _InboxEmptyPainter extends CustomPainter {
       ..lineTo(-scale * 0.55, scale * 0.38)
       ..lineTo(-scale * 0.08, scale * 0.12)
       ..close();
-    canvas.drawPath(fold, Paint()..color = Color.lerp(fill, Colors.white, 0.28)!);
+    canvas.drawPath(
+      fold,
+      Paint()..color = Color.lerp(fill, Colors.white, 0.28)!,
+    );
     canvas.restore();
   }
 
@@ -186,5 +301,6 @@ class _InboxEmptyPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _InboxEmptyPainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _InboxEmptyPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

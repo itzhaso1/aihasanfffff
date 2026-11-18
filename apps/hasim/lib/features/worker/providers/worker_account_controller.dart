@@ -306,7 +306,11 @@ class WorkerAccountController extends StateNotifier<WorkerAccountState> {
     final repository = _ref.read(workerRepositoryProvider);
     final cached = await repository.cachedProfile();
     if (cached != null) {
-      state = state.copyWith(profileLoading: false, profile: cached, profileError: null);
+      state = state.copyWith(
+        profileLoading: false,
+        profile: cached,
+        profileError: null,
+      );
     } else {
       state = state.copyWith(profileLoading: true, profileError: null);
     }
@@ -456,7 +460,11 @@ class WorkerAccountController extends StateNotifier<WorkerAccountState> {
     final repository = _ref.read(workerRepositoryProvider);
     final cached = await repository.cachedDocuments();
     if (cached.isNotEmpty) {
-      state = state.copyWith(documentsLoading: false, documents: cached, documentsError: null);
+      state = state.copyWith(
+        documentsLoading: false,
+        documents: cached,
+        documentsError: null,
+      );
     } else {
       state = state.copyWith(documentsLoading: true, documentsError: null);
     }
@@ -477,7 +485,9 @@ class WorkerAccountController extends StateNotifier<WorkerAccountState> {
     } catch (_) {
       state = state.copyWith(
         documentsLoading: false,
-        documentsError: state.documents.isEmpty ? 'تعذر تحميل المستندات.' : null,
+        documentsError: state.documents.isEmpty
+            ? 'تعذر تحميل المستندات.'
+            : null,
       );
       _documentsLoaded = state.documents.isNotEmpty;
     }

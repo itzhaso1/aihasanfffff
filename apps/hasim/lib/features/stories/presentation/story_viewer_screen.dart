@@ -47,7 +47,9 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
   Duration get _duration {
     if (_story.isVideo) {
       final v = _video;
-      if (v != null && v.value.isInitialized && v.value.duration.inMilliseconds > 0) {
+      if (v != null &&
+          v.value.isInitialized &&
+          v.value.duration.inMilliseconds > 0) {
         return v.value.duration;
       }
       return const Duration(seconds: 15);
@@ -83,7 +85,9 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
     _video = null;
     final story = _story;
     if (!story.isVideo || story.mediaUrl == null) return;
-    final controller = VideoPlayerController.networkUrl(Uri.parse(story.mediaUrl!));
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(story.mediaUrl!),
+    );
     try {
       await controller.initialize();
       await controller.setLooping(false);
@@ -145,7 +149,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
     _scheduleTicks(reset: false);
   }
 
-  Future<void> _goTo({required int bucketIndex, required int storyIndex}) async {
+  Future<void> _goTo({
+    required int bucketIndex,
+    required int storyIndex,
+  }) async {
     setState(() {
       _bucketIndex = bucketIndex;
       _storyIndex = storyIndex;
@@ -177,7 +184,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
     }
     if (_bucketIndex > 0) {
       final prevBucket = _buckets[_bucketIndex - 1];
-      _goTo(bucketIndex: _bucketIndex - 1, storyIndex: prevBucket.stories.length - 1);
+      _goTo(
+        bucketIndex: _bucketIndex - 1,
+        storyIndex: prevBucket.stories.length - 1,
+      );
     } else {
       _startTimer();
     }
@@ -243,7 +253,9 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
   Future<void> _deleteCurrent() async {
     if (!_story.isMine) return;
     final id = _story.id;
-    final error = await ref.read(storiesControllerProvider.notifier).deleteStory(id);
+    final error = await ref
+        .read(storiesControllerProvider.notifier)
+        .deleteStory(id);
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.clearSnackBars();
@@ -253,9 +265,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
       _resumeFromOverlay();
       return;
     }
-    messenger.showSnackBar(
-      const SnackBar(content: Text('تم حذف التحديث')),
-    );
+    messenger.showSnackBar(const SnackBar(content: Text('تم حذف التحديث')));
     _removeDeletedAndAdvance(id);
   }
 
@@ -271,10 +281,14 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
       _closeViewer();
       return;
     }
-    final sameAuthor = nextBuckets.indexWhere((bucket) => bucket.authorKey == currentKey);
+    final sameAuthor = nextBuckets.indexWhere(
+      (bucket) => bucket.authorKey == currentKey,
+    );
     final bucketIndex = sameAuthor >= 0
         ? sameAuthor
-        : (_bucketIndex < nextBuckets.length ? _bucketIndex : nextBuckets.length - 1);
+        : (_bucketIndex < nextBuckets.length
+              ? _bucketIndex
+              : nextBuckets.length - 1);
     var storyIndex = sameAuthor >= 0 ? _storyIndex : 0;
     if (storyIndex >= nextBuckets[bucketIndex].stories.length) {
       storyIndex = nextBuckets[bucketIndex].stories.length - 1;
@@ -354,9 +368,14 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                               memCacheHeight: 400,
                             )
                           else
-                            const CircularProgressIndicator(color: Colors.white70),
+                            const CircularProgressIndicator(
+                              color: Colors.white70,
+                            ),
                           const SizedBox(height: 12),
-                          Text(story.caption ?? 'جاري تحميل الفيديو…', style: const TextStyle(color: Colors.white70)),
+                          Text(
+                            story.caption ?? 'جاري تحميل الفيديو…',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
                         ],
                       ),
                     )
@@ -367,11 +386,18 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                   child: Text(
                     story.bodyText ?? story.caption ?? '',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, height: 1.35),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      height: 1.35,
+                    ),
                   ),
                 ),
               ),
-            if (story.caption != null && story.caption!.isNotEmpty && !story.isText)
+            if (story.caption != null &&
+                story.caption!.isNotEmpty &&
+                !story.isText)
               Positioned(
                 left: 16,
                 right: 16,
@@ -379,7 +405,11 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                 child: Text(
                   story.caption!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             SafeArea(
@@ -400,8 +430,8 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                                   value: i < _storyIndex
                                       ? 1
                                       : i == _storyIndex
-                                          ? _progress.clamp(0, 1)
-                                          : 0,
+                                      ? _progress.clamp(0, 1)
+                                      : 0,
                                   minHeight: 3,
                                   backgroundColor: Colors.white24,
                                   color: Colors.white,
@@ -420,15 +450,23 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                             radius: 16,
                             backgroundColor: Colors.white24,
                             child: Text(
-                              _bucket.authorName.isNotEmpty ? _bucket.authorName[0] : '?',
-                              style: const TextStyle(color: Colors.white, fontSize: 13),
+                              _bucket.authorName.isNotEmpty
+                                  ? _bucket.authorName[0]
+                                  : '?',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _bucket.authorName,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                           if (story.isMine)
@@ -437,7 +475,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                               onPressed: _busy ? null : _openViewers,
                               child: Text(
                                 '${story.viewsCount} مشاهدة',
-                                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
                           if (story.isMine)
@@ -445,7 +486,10 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen> {
                               key: const Key('story-delete'),
                               tooltip: 'حذف التحديث',
                               onPressed: _busy ? null : _confirmDelete,
-                              icon: const Icon(Icons.delete_outline, color: Colors.white),
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.white,
+                              ),
                             ),
                           IconButton(
                             onPressed: _busy ? null : _closeViewer,

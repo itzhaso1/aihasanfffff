@@ -17,7 +17,9 @@ class ConversationReconciler {
     return sortServerOrder(map.values.toList());
   }
 
-  static List<ConversationModel> sortServerOrder(List<ConversationModel> items) {
+  static List<ConversationModel> sortServerOrder(
+    List<ConversationModel> items,
+  ) {
     final copy = [...items];
     copy.sort((a, b) {
       final at = a.lastMessageAt;
@@ -41,5 +43,6 @@ class ConversationReconciler {
     return 'conversations:$filter:${channel ?? ''}:${handoff ?? ''}:${search ?? ''}';
   }
 
-  static String messagesResource(int conversationId) => 'messages/$conversationId';
+  static String messagesResource(int conversationId) =>
+      'messages/$conversationId';
 }

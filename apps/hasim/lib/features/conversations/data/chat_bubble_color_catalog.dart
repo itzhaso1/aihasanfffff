@@ -99,6 +99,7 @@ class ChatBubbleColorCatalog {
   }
 
   static Color outgoingBubble(BuildContext context, String? presetId) {
-    return find(presetId)?.resolve(context) ?? HasimTokens.outgoingBubble(context);
+    return find(presetId)?.resolve(context) ??
+        HasimTokens.outgoingBubble(context);
   }
 }

@@ -157,6 +157,7 @@ class _PagedRepo extends ConversationRepository {
   Future<({List<MessageModel> items, String? nextCursor})> messages(
     int conversationId, {
     String? cursor,
+    int? afterId,
     int? workspaceId,
   }) async {
     if (remoteMessages.isNotEmpty) {
@@ -165,6 +166,7 @@ class _PagedRepo extends ConversationRepository {
     return super.messages(
       conversationId,
       cursor: cursor,
+      afterId: afterId,
       workspaceId: workspaceId,
     );
   }

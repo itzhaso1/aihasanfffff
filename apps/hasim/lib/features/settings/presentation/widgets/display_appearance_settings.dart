@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_bubble_color_picker.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_wallpaper_picker.dart';
+
 /// المظهر (فاتح/داكن) + سمات خلفية المحادثة — في شاشة واحدة.
 class DisplayAppearanceSettings extends ConsumerWidget {
   const DisplayAppearanceSettings({
@@ -29,18 +30,18 @@ class DisplayAppearanceSettings extends ConsumerWidget {
           Text(
             pageTitle!,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: HasimTokens.inkColor(context),
-                ),
+              fontWeight: FontWeight.w700,
+              color: HasimTokens.inkColor(context),
+            ),
           ),
           const SizedBox(height: 16),
         ],
         Text(
           'المظهر',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: HasimTokens.inkColor(context),
-              ),
+            fontWeight: FontWeight.w700,
+            color: HasimTokens.inkColor(context),
+          ),
         ),
         const SizedBox(height: 10),
         _AppearanceModeBar(themeMode: themeMode, onChanged: onThemeChanged),
@@ -48,9 +49,9 @@ class DisplayAppearanceSettings extends ConsumerWidget {
         Text(
           'السمات',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: HasimTokens.inkColor(context),
-              ),
+            fontWeight: FontWeight.w700,
+            color: HasimTokens.inkColor(context),
+          ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -63,9 +64,9 @@ class DisplayAppearanceSettings extends ConsumerWidget {
         Text(
           'لون فقاعاتك',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: HasimTokens.inkColor(context),
-              ),
+            fontWeight: FontWeight.w700,
+            color: HasimTokens.inkColor(context),
+          ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -138,7 +139,9 @@ class _ModePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? HasimTokens.chatGreen : HasimTokens.mutedColor(context);
+    final color = selected
+        ? HasimTokens.chatGreen
+        : HasimTokens.mutedColor(context);
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -146,7 +149,10 @@ class _ModePill extends StatelessWidget {
           color: selected ? HasimTokens.mintFill(context) : Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: selected ? HasimTokens.chatGreen : Colors.transparent, width: 1.4),
+            side: BorderSide(
+              color: selected ? HasimTokens.chatGreen : Colors.transparent,
+              width: 1.4,
+            ),
           ),
           child: InkWell(
             onTap: onTap,
@@ -156,14 +162,22 @@ class _ModePill extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(selected ? Icons.check_rounded : icon, size: 16, color: color),
+                  Icon(
+                    selected ? Icons.check_rounded : icon,
+                    size: 16,
+                    color: color,
+                  ),
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
                       label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13),
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ],

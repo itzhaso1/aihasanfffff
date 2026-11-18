@@ -68,23 +68,24 @@ class HasimPageHeader extends StatelessWidget {
             ),
           )
         : icon == null
-            ? null
-            : Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: HasimTokens.mutedColor(context).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  icon,
-                  color: HasimTokens.mutedColor(context),
-                  size: 22,
-                ),
-              );
+        ? null
+        : Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: HasimTokens.mutedColor(context).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: HasimTokens.mutedColor(context), size: 22),
+          );
 
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(4, 4, 4, subtitle == null ? 4 : 12),
+      padding: EdgeInsetsDirectional.fromSTEB(
+        4,
+        4,
+        4,
+        subtitle == null ? 4 : 12,
+      ),
       child: leading == null
           ? titleBlock
           : Row(

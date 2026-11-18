@@ -139,22 +139,39 @@
         </form>
     </div>
 
-    <div class="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50/50 px-3 py-2 overflow-x-auto">
-        <span data-hs-filter-group class="inline-flex items-center gap-1.5">
+    <div class="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50/70 px-3 py-2 overflow-x-auto hs-scrollbar">
+        @php
+            $currentStatus = request('status');
+            $statusTabs = [
+                '' => 'الكل',
+                'new' => 'جديدة',
+                'open' => 'نشطة',
+                'needs_review' => 'مراجعة',
+                'closed' => 'مكتملة',
+                'archived' => 'مؤرشفة',
+            ];
+        @endphp
+        <span data-hs-filter-group class="inline-flex items-center gap-1">
+            @foreach($statusTabs as $tabKey => $tabLabel)
+                @php $isTabActive = (string) $currentStatus === (string) $tabKey; @endphp
+                <a
+                    href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['status' => $tabKey ?: null]) }}"
+                    class="{{ $isTabActive ? 'bg-[#06C2A4] text-white shadow-sm font-bold' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 font-semibold' }} shrink-0 rounded-full px-2.5 py-1 text-[11px] transition"
+                >
+                    {{ $tabLabel }}
+                </a>
+            @endforeach
+        </span>
+        <div class="ms-auto flex items-center gap-1 shrink-0">
             <a
-                href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['unread' => null]) }}"
-                class="{{ ! request()->boolean('unread') ? 'bg-[#00BFAE] text-white shadow-2xs font-bold' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 font-semibold' }} rounded-full px-3 py-1 text-[11px] transition"
+                href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['unread' => request()->boolean('unread') ? null : 1]) }}"
+                class="{{ request()->boolean('unread') ? 'bg-amber-500 text-white font-bold' : 'bg-white text-slate-500 border border-slate-200/80 hover:bg-slate-50' }} inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition"
+                title="غير مقروءة فقط"
             >
-                الكل ({{ $conversations->total() }})
-            </a>
-            <a
-                href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['unread' => 1]) }}"
-                class="{{ request()->boolean('unread') ? 'bg-[#00BFAE] text-white shadow-2xs font-bold' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 font-semibold' }} inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] transition"
-            >
-                <span class="h-1.5 w-1.5 rounded-full {{ request()->boolean('unread') ? 'bg-white' : 'bg-teal-500' }}"></span>
+                <span class="h-1.5 w-1.5 rounded-full {{ request()->boolean('unread') ? 'bg-white' : 'bg-amber-500' }}"></span>
                 <span>غير مقروءة</span>
             </a>
-        </span>
+        </div>
         <div class="relative ms-auto" data-hs-menu x-data="{ open: false }" @keydown.escape.window="open = false">
             <button
                 type="button"

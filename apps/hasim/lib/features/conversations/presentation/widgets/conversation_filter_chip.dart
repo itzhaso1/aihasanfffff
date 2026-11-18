@@ -157,17 +157,30 @@ class ConversationChannelDropdown extends StatelessWidget {
 class _TeamReviewMark extends StatelessWidget {
   const _TeamReviewMark();
 
+  static const double size = 28;
+
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 28,
-      height: 28,
+    return SizedBox(
+      width: size,
+      height: size,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Color(0xFFF59E0B),
+          color: const Color(0xFFF59E0B),
           shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.28),
+              blurRadius: size * 0.16,
+              offset: const Offset(0, size * 0.06),
+            ),
+          ],
         ),
-        child: Icon(Icons.groups_rounded, color: Colors.white, size: 16),
+        child: const Icon(
+          Icons.groups_rounded,
+          color: Colors.white,
+          size: size * 0.58,
+        ),
       ),
     );
   }

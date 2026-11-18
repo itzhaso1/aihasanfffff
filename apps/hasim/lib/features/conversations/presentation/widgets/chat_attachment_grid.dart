@@ -14,11 +14,36 @@ class ChatAttachmentGridPanel extends StatelessWidget {
   final ValueChanged<String> onSelected;
 
   static const _items = [
-    _GridItem('document', 'مستند', Icons.description_outlined, Color(0xFF7F66FF)),
-    _GridItem('photos_videos', 'المعرض', Icons.photo_outlined, Color(0xFF0A7EA4)),
-    _GridItem('quick_replies', 'رد سريع', Icons.bolt_rounded, Color(0xFFF5B400)),
-    _GridItem('location', 'الموقع', Icons.location_on_outlined, Color(0xFF1FA855)),
-    _GridItem('contact', 'جهة اتصال', Icons.person_outline_rounded, Color(0xFF1A8AD6)),
+    _GridItem(
+      'document',
+      'مستند',
+      Icons.description_outlined,
+      Color(0xFF7F66FF),
+    ),
+    _GridItem(
+      'photos_videos',
+      'المعرض',
+      Icons.photo_outlined,
+      Color(0xFF0A7EA4),
+    ),
+    _GridItem(
+      'quick_replies',
+      'رد سريع',
+      Icons.bolt_rounded,
+      Color(0xFFF5B400),
+    ),
+    _GridItem(
+      'location',
+      'الموقع',
+      Icons.location_on_outlined,
+      Color(0xFF1FA855),
+    ),
+    _GridItem(
+      'contact',
+      'جهة اتصال',
+      Icons.person_outline_rounded,
+      Color(0xFF1A8AD6),
+    ),
     _GridItem('poll', 'استطلاع رأي', Icons.poll_outlined, Color(0xFFFF8A00)),
     _GridItem('event', 'مناسبة', Icons.event_outlined, Color(0xFFE85D8C)),
   ];

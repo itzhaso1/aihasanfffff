@@ -35,10 +35,7 @@ class SearchRepository {
     final boundedLimit = limit.clamp(1, 30);
     final res = await _api.get(
       '/search',
-      query: {
-        'q': clipped,
-        'limit': boundedLimit,
-      },
+      query: {'q': clipped, 'limit': boundedLimit},
     );
     final map = asMap(res.data);
     if (map == null) {

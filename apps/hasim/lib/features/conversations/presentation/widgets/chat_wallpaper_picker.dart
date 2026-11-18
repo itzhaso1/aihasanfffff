@@ -7,7 +7,11 @@ import 'package:hasim/features/conversations/providers/conversation_theme_contro
 
 /// اختيار خلفية شاشة المحادثة.
 class ChatWallpaperPicker extends ConsumerWidget {
-  const ChatWallpaperPicker({super.key, this.compact = false, this.conversationId});
+  const ChatWallpaperPicker({
+    super.key,
+    this.compact = false,
+    this.conversationId,
+  });
 
   final bool compact;
   final int? conversationId;
@@ -15,7 +19,9 @@ class ChatWallpaperPicker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final shared = ref.watch(chatWallpaperControllerProvider);
-    final override = conversationId == null ? null : ref.watch(conversationThemeProvider(conversationId!)).wallpaperId;
+    final override = conversationId == null
+        ? null
+        : ref.watch(conversationThemeProvider(conversationId!)).wallpaperId;
     final selected = override ?? shared;
     const displayOrder = [
       'color_doodle',
@@ -36,7 +42,8 @@ class ChatWallpaperPicker extends ConsumerWidget {
       'memphis',
       'game_doodle',
     ];
-    final options = [...ChatWallpaperCatalog.options]..sort((a, b) {
+    final options = [...ChatWallpaperCatalog.options]
+      ..sort((a, b) {
         final ai = displayOrder.indexOf(a.id);
         final bi = displayOrder.indexOf(b.id);
         return (ai < 0 ? 99 : ai).compareTo(bi < 0 ? 99 : bi);
@@ -60,9 +67,13 @@ class ChatWallpaperPicker extends ConsumerWidget {
           onTap: () {
             final id = conversationId;
             if (id == null) {
-              ref.read(chatWallpaperControllerProvider.notifier).select(option.id);
+              ref
+                  .read(chatWallpaperControllerProvider.notifier)
+                  .select(option.id);
             } else {
-              ref.read(conversationThemeProvider(id).notifier).setWallpaper(option.id);
+              ref
+                  .read(conversationThemeProvider(id).notifier)
+                  .setWallpaper(option.id);
             }
           },
         );
@@ -147,10 +158,17 @@ class ChatWallpaperPreviewCard extends StatelessWidget {
                       child: Padding(
                         padding: EdgeInsets.all(8),
                         child: DecoratedBox(
-                          decoration: BoxDecoration(color: HasimTokens.chatGreen, shape: BoxShape.circle),
+                          decoration: BoxDecoration(
+                            color: HasimTokens.chatGreen,
+                            shape: BoxShape.circle,
+                          ),
                           child: Padding(
                             padding: EdgeInsets.all(4),
-                            child: Icon(Icons.check_rounded, color: Colors.white, size: 16),
+                            child: Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                           ),
                         ),
                       ),

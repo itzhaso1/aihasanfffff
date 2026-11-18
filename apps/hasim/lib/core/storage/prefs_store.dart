@@ -95,7 +95,8 @@ class PrefsStore {
   }
 
   /// معرّف خلفية شاشة المحادثة (يُطبَّع عند القراءة في [ChatWallpaperController]).
-  String get chatWallpaper => _prefs.getString(_chatWallpaperKey) ?? ChatWallpaperCatalog.defaultId;
+  String get chatWallpaper =>
+      _prefs.getString(_chatWallpaperKey) ?? ChatWallpaperCatalog.defaultId;
 
   Future<void> setChatWallpaper(String id) async {
     await _prefs.setString(_chatWallpaperKey, id);
@@ -103,7 +104,8 @@ class PrefsStore {
 
   /// معرّف لون فقاعات الرسائل المرسلة ([ChatBubbleColorCatalog]).
   String get chatOutgoingBubbleColor =>
-      _prefs.getString(_chatOutgoingBubbleColorKey) ?? ChatBubbleColorCatalog.defaultId;
+      _prefs.getString(_chatOutgoingBubbleColorKey) ??
+      ChatBubbleColorCatalog.defaultId;
 
   Future<void> setChatOutgoingBubbleColor(String id) async {
     await _prefs.setString(_chatOutgoingBubbleColorKey, id);
@@ -194,10 +196,7 @@ class PrefsStore {
     return notes;
   }
 
-  Future<void> setCustomerNotes(
-    int workspaceId,
-    Map<int, String> notes,
-  ) async {
+  Future<void> setCustomerNotes(int workspaceId, Map<int, String> notes) async {
     final all = _readJsonMap(_customerNotesKey);
     final entry = <String, String>{
       for (final item in notes.entries)

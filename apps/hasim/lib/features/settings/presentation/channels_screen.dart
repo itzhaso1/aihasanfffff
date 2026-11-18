@@ -21,7 +21,8 @@ class ChannelsScreen extends ConsumerStatefulWidget {
   ConsumerState<ChannelsScreen> createState() => _ChannelsScreenState();
 }
 
-class _ChannelsScreenState extends ConsumerState<ChannelsScreen> with WidgetsBindingObserver {
+class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -59,7 +60,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> with WidgetsBin
       if (token == null || token.isEmpty || !mounted) {
         return;
       }
-      await ref.read(channelsControllerProvider.notifier).connect(channel.key, botToken: token);
+      await ref
+          .read(channelsControllerProvider.notifier)
+          .connect(channel.key, botToken: token);
       return;
     }
     await ref.read(channelsControllerProvider.notifier).connect(channel.key);
@@ -79,7 +82,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> with WidgetsBin
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('ربط Telegram', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  const Text(
+                    'ربط Telegram',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  ),
                   const SizedBox(height: 8),
                   const Text(
                     'أدخل رمز البوت من BotFather. لا يُحفظ الرمز على الجهاز بعد الإرسال.',
@@ -97,7 +103,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> with WidgetsBin
                   ),
                   const SizedBox(height: 12),
                   FilledButton(
-                    onPressed: () => Navigator.pop(context, controller.text.trim()),
+                    onPressed: () =>
+                        Navigator.pop(context, controller.text.trim()),
                     child: const Text('ربط'),
                   ),
                 ],
@@ -115,7 +122,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> with WidgetsBin
     final l10n = AppLocalizations.of(context);
     final url = channel.manageUrl;
     if (url == null || url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.channelNoManageUrl)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.channelNoManageUrl)));
       return;
     }
     final uri = Uri.tryParse(url);
@@ -124,7 +133,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> with WidgetsBin
     }
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.channelOpenFailed)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.channelOpenFailed)));
     }
   }
 
@@ -134,7 +145,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> with WidgetsBin
     final state = ref.watch(channelsControllerProvider);
     final compact = HasimLayout.isCompact(context);
 
-    ref.listen<String?>(channelsControllerProvider.select((s) => s.notice), (previous, next) {
+    ref.listen<String?>(channelsControllerProvider.select((s) => s.notice), (
+      previous,
+      next,
+    ) {
       if (next == null || next.isEmpty) {
         return;
       }
@@ -155,14 +169,19 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> with WidgetsBin
               shrinkWrap: true,
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
-                const Text('اختر صفحة Facebook', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                const Text(
+                  'اختر صفحة Facebook',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
                 const SizedBox(height: 8),
                 for (final page in next)
                   ListTile(
                     title: Text(page.name),
                     onTap: () {
                       Navigator.pop(context);
-                      ref.read(channelsControllerProvider.notifier).selectFacebookPage(page.id);
+                      ref
+                          .read(channelsControllerProvider.notifier)
+                          .selectFacebookPage(page.id);
                     },
                   ),
               ],
@@ -175,50 +194,56 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> with WidgetsBin
     final listBody = state.loading
         ? const SkeletonList()
         : state.error != null
-            ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(state.error!),
-                    TextButton(
-                      onPressed: () => ref.read(channelsControllerProvider.notifier).reload(),
-                      child: Text(l10n.retry),
+        ? Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(state.error!),
+                TextButton(
+                  onPressed: () =>
+                      ref.read(channelsControllerProvider.notifier).reload(),
+                  child: Text(l10n.retry),
+                ),
+              ],
+            ),
+          )
+        : RefreshIndicator(
+            onRefresh: () =>
+                ref.read(channelsControllerProvider.notifier).reload(),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              children: [
+                if (!widget.embedded)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 14),
+                    child: Text(
+                      'اربط قنوات التواصل لإدارة رسائلك من مكان واحد',
+                      style: TextStyle(
+                        color: HasimTokens.muted,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
+                      ),
                     ),
-                  ],
-                ),
-              )
-            : RefreshIndicator(
-                onRefresh: () => ref.read(channelsControllerProvider.notifier).reload(),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  children: [
-                    if (!widget.embedded)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 14),
-                        child: Text(
-                          'اربط قنوات التواصل لإدارة رسائلك من مكان واحد',
-                          style: TextStyle(
-                            color: HasimTokens.muted,
-                            fontWeight: FontWeight.w600,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    for (final channel in state.items) ...[
-                      _ChannelCard(
-                        channel: channel,
-                        busy: state.busyChannel == channel.key || state.pendingChannel == channel.key,
-                        onOpenInbox: () => _openInbox(channel),
-                        onConnect: () => _connect(channel),
-                        onDisconnect: () => ref.read(channelsControllerProvider.notifier).disconnect(channel.key),
-                        onWebFallback: () => _openManageFallback(channel),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    const _WhyConnectCard(),
-                  ],
-                ),
-              );
+                  ),
+                for (final channel in state.items) ...[
+                  _ChannelCard(
+                    channel: channel,
+                    busy:
+                        state.busyChannel == channel.key ||
+                        state.pendingChannel == channel.key,
+                    onOpenInbox: () => _openInbox(channel),
+                    onConnect: () => _connect(channel),
+                    onDisconnect: () => ref
+                        .read(channelsControllerProvider.notifier)
+                        .disconnect(channel.key),
+                    onWebFallback: () => _openManageFallback(channel),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                const _WhyConnectCard(),
+              ],
+            ),
+          );
 
     if (widget.embedded) {
       return listBody;
@@ -262,10 +287,14 @@ class _ChannelCard extends StatelessWidget {
   String get _description {
     if (_connected) {
       final name = channel.displayName?.trim();
-      final via = (name != null && name.isNotEmpty) ? 'متصل عبر $name' : (channel.hint ?? 'متصل');
+      final via = (name != null && name.isNotEmpty)
+          ? 'متصل عبر $name'
+          : (channel.hint ?? 'متصل');
       return '$via\nيمكنك الآن استقبال الرسائل وإدارتها.';
     }
-    return channel.hint?.trim().isNotEmpty == true ? channel.hint!.trim() : 'القناة غير مربوطة بعد.';
+    return channel.hint?.trim().isNotEmpty == true
+        ? channel.hint!.trim()
+        : 'القناة غير مربوطة بعد.';
   }
 
   @override
@@ -283,7 +312,9 @@ class _ChannelCard extends StatelessWidget {
         child: Column(
           children: [
             InkWell(
-              onTap: _connected ? onOpenInbox : (channel.canConnectInApp ? onConnect : null),
+              onTap: _connected
+                  ? onOpenInbox
+                  : (channel.canConnectInApp ? onConnect : null),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -315,9 +346,16 @@ class _ChannelCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   if (busy)
-                    const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                    const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   else
-                    _StatusPill(connected: _connected, label: _connected ? 'متصل' : 'غير متصل'),
+                    _StatusPill(
+                      connected: _connected,
+                      label: _connected ? 'متصل' : 'غير متصل',
+                    ),
                 ],
               ),
             ),
@@ -387,7 +425,11 @@ class _StatusPill extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
-            style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12),
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
@@ -426,7 +468,10 @@ class _WhyConnectCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     'استقبل الرسائل وأدر محادثات عملائك من لوحة واحدة.',
-                    style: TextStyle(color: HasimTokens.mutedColor(context), height: 1.4),
+                    style: TextStyle(
+                      color: HasimTokens.mutedColor(context),
+                      height: 1.4,
+                    ),
                   ),
                 ],
               ),

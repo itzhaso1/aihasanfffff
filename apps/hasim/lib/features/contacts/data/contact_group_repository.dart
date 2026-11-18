@@ -32,7 +32,9 @@ class ContactGroupRepository {
   Future<List<ContactGroupModel>> list() async {
     try {
       final res = await _api.get('/contact-groups');
-      final items = asMapList(res.data).map(ContactGroupModel.fromJson).toList();
+      final items = asMapList(
+        res.data,
+      ).map(ContactGroupModel.fromJson).toList();
       await _remember(items);
       return items;
     } catch (_) {
@@ -42,13 +44,17 @@ class ContactGroupRepository {
     }
   }
 
-  Future<ContactGroupModel> create({required String name, String? description}) async {
+  Future<ContactGroupModel> create({
+    required String name,
+    String? description,
+  }) async {
     final res = await _api.post(
       '/contact-groups',
       idempotent: true,
       body: {
         'name': name,
-        if (description != null && description.isNotEmpty) 'description': description,
+        if (description != null && description.isNotEmpty)
+          'description': description,
       },
     );
     final map = asMap(res.data);
@@ -58,11 +64,15 @@ class ContactGroupRepository {
     return group;
   }
 
-  Future<ContactGroupModel> update(int id, {String? name, String? description}) async {
-    final res = await _api.patch('/contact-groups/$id', body: {
-      'name': ?name,
-      'description': ?description,
-    });
+  Future<ContactGroupModel> update(
+    int id, {
+    String? name,
+    String? description,
+  }) async {
+    final res = await _api.patch(
+      '/contact-groups/$id',
+      body: {'name': ?name, 'description': ?description},
+    );
     final map = asMap(res.data);
     if (map == null) throw ApiException(res.message ?? 'تعذر تحديث المجموعة.');
     final group = ContactGroupModel.fromJson(map);

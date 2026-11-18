@@ -31,11 +31,15 @@ class ChatAttachmentContent extends ConsumerWidget {
 
     if (attachment.kind != 'image' && attachment.kind != 'video') {
       return switch (attachment.kind) {
-        'audio' => _AudioAttachment(attachment: attachment, url: url, onOpenFailed: onOpenFailed),
+        'audio' => _AudioAttachment(
+          attachment: attachment,
+          url: url,
+          onOpenFailed: onOpenFailed,
+        ),
         _ => _FileRow(
-            attachment: attachment,
-            onOpen: () => _launch(context, url, onOpenFailed),
-          ),
+          attachment: attachment,
+          onOpen: () => _launch(context, url, onOpenFailed),
+        ),
       };
     }
 
@@ -55,12 +59,20 @@ class ChatAttachmentContent extends ConsumerWidget {
           onTap: () => onImageTap?.call(url),
           onError: onMediaUrlExpired,
         ),
-        _ => _VideoAttachment(url: url, headers: headers, onError: onMediaUrlExpired),
+        _ => _VideoAttachment(
+          url: url,
+          headers: headers,
+          onError: onMediaUrlExpired,
+        ),
       },
     );
   }
 
-  static Future<void> _launch(BuildContext context, String url, VoidCallback? onOpenFailed) async {
+  static Future<void> _launch(
+    BuildContext context,
+    String url,
+    VoidCallback? onOpenFailed,
+  ) async {
     final uri = Uri.tryParse(url);
     if (uri == null) {
       onOpenFailed?.call();
@@ -108,7 +120,11 @@ class _ImageAttachment extends StatelessWidget {
 }
 
 class _VideoAttachment extends StatefulWidget {
-  const _VideoAttachment({required this.url, required this.headers, this.onError});
+  const _VideoAttachment({
+    required this.url,
+    required this.headers,
+    this.onError,
+  });
 
   final String url;
   final Map<String, String> headers;
@@ -169,8 +185,15 @@ class _VideoAttachmentState extends State<_VideoAttachment> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: _started
-              ? const CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-              : const Icon(Icons.play_circle_fill, size: 48, color: Colors.white),
+              ? const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                )
+              : const Icon(
+                  Icons.play_circle_fill,
+                  size: 48,
+                  color: Colors.white,
+                ),
         ),
       );
     }
@@ -184,7 +207,9 @@ class _VideoAttachmentState extends State<_VideoAttachment> {
             VideoPlayer(c),
             IconButton(
               icon: Icon(
-                c.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                c.value.isPlaying
+                    ? Icons.pause_circle_filled
+                    : Icons.play_circle_fill,
                 size: 48,
                 color: Colors.white.withValues(alpha: 0.92),
               ),
@@ -239,15 +264,28 @@ class _AudioAttachment extends StatelessWidget {
                       attachment.originalName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontWeight: FontWeight.w600, color: HasimTokens.inkColor(context)),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: HasimTokens.inkColor(context),
+                      ),
                     ),
                     if (duration != null)
-                      Text(duration, style: TextStyle(fontSize: 12, color: meta)),
+                      Text(
+                        duration,
+                        style: TextStyle(fontSize: 12, color: meta),
+                      ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Text(l10n.chatAttachmentOpen, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: meta)),
+              Text(
+                l10n.chatAttachmentOpen,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: meta,
+                ),
+              ),
             ],
           ),
         ),
@@ -305,7 +343,14 @@ class _FileRow extends StatelessWidget {
           ),
           if (onOpen != null) ...[
             const SizedBox(width: 6),
-            Text(l10n.chatAttachmentOpen, style: TextStyle(fontSize: 11, color: meta, fontWeight: FontWeight.w600)),
+            Text(
+              l10n.chatAttachmentOpen,
+              style: TextStyle(
+                fontSize: 11,
+                color: meta,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ],
       ),

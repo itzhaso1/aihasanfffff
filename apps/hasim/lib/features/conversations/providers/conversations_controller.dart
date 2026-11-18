@@ -1047,6 +1047,7 @@ class ChatController extends StateNotifier<ChatState> {
         messages: after,
         error: failed ? 'تعذر إرسال الرسالة.' : null,
       );
+      _realtime.triggerPoll();
     } catch (_) {
       // The outbox remains responsible for retrying transient send failures.
     }
@@ -1668,26 +1669,33 @@ class ChatController extends StateNotifier<ChatState> {
     final scope = captureInboxScope(_ref);
     if (!inboxScopeIsCurrent(_ref, scope)) return;
     final workspaceId = scope.workspaceId;
-    final repo = _ref.read(conversationRepositoryProvider);
-    if (workspaceId != null) {
-      await repo.persistMessages(workspaceId, conversationId, [incoming]);
-      if (!_canCommit(scope)) return;
-      final local = await repo.cachedMessages(workspaceId, conversationId);
-      if (!_canCommit(scope)) return;
-      state = state.copyWith(messages: _mergeMessages(state.messages, local));
-      if (!incoming.isOutbound) {
-        _clearUnreadAfterSend();
+
+    // Fast check: if message already exists with real server id, don't duplicate
+    final alreadyExists = state.messages.any(
+      (x) =>
+          x.id == incoming.id ||
+          (incoming.clientId != null &&
+              x.clientId == incoming.clientId &&
+              !x.localPending),
+    );
+    if (alreadyExists) return;
+
+    // Immediately update state so UI renders instantly!
+    state = state.copyWith(
+      messages: _mergeMessages(state.messages, [incoming]),
+    );
+
+    if (!incoming.isOutbound) {
+      _clearUnreadAfterSend();
+      if (workspaceId != null) {
         unawaited(_persistReadAfterSend(workspaceId));
       }
-      return;
     }
-    if (state.messages.any((x) {
-      if (x.id == incoming.id) return true;
-      return incoming.clientId != null && x.clientId == incoming.clientId;
-    })) {
-      return;
+
+    if (workspaceId != null) {
+      final repo = _ref.read(conversationRepositoryProvider);
+      unawaited(repo.persistMessages(workspaceId, conversationId, [incoming]));
     }
-    state = state.copyWith(messages: [...state.messages, incoming]);
   }
 
   bool _canCommit(InboxScope scope) {

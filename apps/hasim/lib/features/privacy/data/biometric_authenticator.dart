@@ -6,7 +6,8 @@ abstract class BiometricAuthenticator {
 }
 
 class LocalBiometricAuthenticator implements BiometricAuthenticator {
-  LocalBiometricAuthenticator({LocalAuthentication? auth}) : _auth = auth ?? LocalAuthentication();
+  LocalBiometricAuthenticator({LocalAuthentication? auth})
+    : _auth = auth ?? LocalAuthentication();
 
   final LocalAuthentication _auth;
 

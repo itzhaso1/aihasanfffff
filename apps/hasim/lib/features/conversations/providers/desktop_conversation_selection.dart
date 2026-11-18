@@ -6,7 +6,9 @@ import 'package:hasim/core/storage/inbox_scope.dart';
 import 'package:hasim/core/storage/prefs_store.dart';
 
 /// المحادثة المعروضة في مساحة سطح المكتب — لا يغيّر منطق الموبايل (التنقل بالمسار).
-final desktopSelectedConversationIdProvider = StateProvider<int?>((ref) => null);
+final desktopSelectedConversationIdProvider = StateProvider<int?>(
+  (ref) => null,
+);
 
 /// لوحة معلومات العميل على سطح المكتب فقط. تُغلق عند إغلاق الـ Drawer وليس عند تبديل المحادثة.
 final desktopCustomerDrawerOpenProvider = StateProvider<bool>((ref) => false);
@@ -38,4 +40,6 @@ final desktopCustomerNotesProvider =
       );
     });
 
-final desktopCustomerTagsProvider = StateProvider<Map<int, List<String>>>((ref) => {});
+final desktopCustomerTagsProvider = StateProvider<Map<int, List<String>>>(
+  (ref) => {},
+);

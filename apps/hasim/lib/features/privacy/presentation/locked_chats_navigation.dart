@@ -24,10 +24,7 @@ void openLockedPage(BuildContext context) {
   context.go('/locked');
 }
 
-Future<void> openLockedChats(
-  BuildContext context,
-  WidgetRef ref,
-) async {
+Future<void> openLockedChats(BuildContext context, WidgetRef ref) async {
   final notifier = ref.read(chatLockControllerProvider.notifier);
   await notifier.load();
   if (!context.mounted) return;
@@ -38,7 +35,9 @@ Future<void> openLockedChats(
     final error = await notifier.createPin(pin);
     if (!context.mounted) return;
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
     state = ref.read(chatLockControllerProvider);
@@ -48,7 +47,8 @@ Future<void> openLockedChats(
       context,
       title: 'الدردشات المقفلة',
       subtitle: 'أدخل رمز PIN لعرض الدردشات المحمية',
-      allowBiometric: state.lockedChatsBiometricEnabled && state.biometricAvailable,
+      allowBiometric:
+          state.lockedChatsBiometricEnabled && state.biometricAvailable,
       verify: notifier.verifyPin,
       biometric: notifier.authenticateBiometric,
     );
@@ -57,7 +57,11 @@ Future<void> openLockedChats(
   }
 }
 
-Future<void> lockConversation(BuildContext context, WidgetRef ref, int id) async {
+Future<void> lockConversation(
+  BuildContext context,
+  WidgetRef ref,
+  int id,
+) async {
   final notifier = ref.read(chatLockControllerProvider.notifier);
   await notifier.load();
   if (!context.mounted) return;
@@ -67,11 +71,15 @@ Future<void> lockConversation(BuildContext context, WidgetRef ref, int id) async
     final error = await notifier.createPin(pin);
     if (!context.mounted) return;
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
   }
   await notifier.setConversationLocked(id, locked: true);
   if (!context.mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نُقلت الدردشة إلى الدردشات المقفلة')));
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('نُقلت الدردشة إلى الدردشات المقفلة')),
+  );
 }

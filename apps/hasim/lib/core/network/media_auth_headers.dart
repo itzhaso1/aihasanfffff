@@ -5,7 +5,9 @@ import 'package:hasim/core/di/providers.dart';
 ///
 /// Upload uses [ApiClient] (Bearer + workspace). [CachedNetworkImage] does not
 /// go through Dio, so image/video widgets must send the same headers.
-final mediaAuthHeadersProvider = FutureProvider<Map<String, String>>((ref) async {
+final mediaAuthHeadersProvider = FutureProvider<Map<String, String>>((
+  ref,
+) async {
   final token = await ref.watch(secureStoreProvider).readToken();
   final workspaceId = ref.watch(prefsStoreProvider).workspaceId;
   final headers = <String, String>{

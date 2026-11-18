@@ -83,7 +83,9 @@ class _CreatePinDialogState extends State<_CreatePinDialog> {
   Widget build(BuildContext context) {
     return _PinScaffold(
       title: 'رمز PIN',
-      subtitle: _first.isEmpty ? 'اختر 4 أرقام لقفل الدردشات والتطبيق' : 'أدخل الرمز مرة أخرى للتأكيد',
+      subtitle: _first.isEmpty
+          ? 'اختر 4 أرقام لقفل الدردشات والتطبيق'
+          : 'أدخل الرمز مرة أخرى للتأكيد',
       pin: _pin,
       error: _error,
       onChanged: (value) => setState(() {
@@ -356,9 +358,18 @@ class PinEntryBody extends StatelessWidget {
       children: [
         Icon(Icons.pin_outlined, color: HasimTokens.chatGreen, size: 32),
         const SizedBox(height: 10),
-        Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: 6),
-        Text(subtitle, textAlign: TextAlign.center, style: TextStyle(color: muted, height: 1.4)),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: muted, height: 1.4),
+        ),
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -370,7 +381,9 @@ class PinEntryBody extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 6),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: i < pin.length ? HasimTokens.chatGreen : Colors.transparent,
+                  color: i < pin.length
+                      ? HasimTokens.chatGreen
+                      : Colors.transparent,
                   border: Border.all(color: HasimTokens.chatGreen),
                 ),
               ),
@@ -378,7 +391,10 @@ class PinEntryBody extends StatelessWidget {
         ),
         if (error != null) ...[
           const SizedBox(height: 10),
-          Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          Text(
+            error!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
         ],
         const SizedBox(height: 12),
         for (final row in const [
@@ -390,7 +406,10 @@ class PinEntryBody extends StatelessWidget {
             children: [
               for (final digit in row)
                 Expanded(
-                  child: _PinKey(label: digit, onTap: busy ? null : () => _push(digit)),
+                  child: _PinKey(
+                    label: digit,
+                    onTap: busy ? null : () => _push(digit),
+                  ),
                 ),
             ],
           ),
@@ -399,13 +418,26 @@ class PinEntryBody extends StatelessWidget {
             Expanded(
               child: onBiometric == null
                   ? const SizedBox(height: 56)
-                  : _PinKey(icon: Icons.fingerprint_rounded, onTap: busy ? null : onBiometric),
+                  : _PinKey(
+                      icon: Icons.fingerprint_rounded,
+                      onTap: busy ? null : onBiometric,
+                    ),
             ),
-            Expanded(child: _PinKey(label: '0', onTap: busy ? null : () => _push('0'))),
-            Expanded(child: _PinKey(icon: Icons.backspace_outlined, onTap: busy ? null : _pop)),
+            Expanded(
+              child: _PinKey(label: '0', onTap: busy ? null : () => _push('0')),
+            ),
+            Expanded(
+              child: _PinKey(
+                icon: Icons.backspace_outlined,
+                onTap: busy ? null : _pop,
+              ),
+            ),
           ],
         ),
-        TextButton(onPressed: busy ? null : onCancel, child: const Text('إلغاء')),
+        TextButton(
+          onPressed: busy ? null : onCancel,
+          child: const Text('إلغاء'),
+        ),
       ],
     );
   }
@@ -433,7 +465,13 @@ class _PinKey extends StatelessWidget {
             child: Center(
               child: icon != null
                   ? Icon(icon, color: HasimTokens.chatGreen)
-                  : Text(label ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                  : Text(
+                      label ?? '',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
             ),
           ),
         ),
@@ -462,14 +500,26 @@ class LockedContentGate extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.pin_outlined, size: 42, color: HasimTokens.chatGreen),
+            const Icon(
+              Icons.pin_outlined,
+              size: 42,
+              color: HasimTokens.chatGreen,
+            ),
             const SizedBox(height: 12),
-            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: 6),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(color: HasimTokens.mutedColor(context), height: 1.4),
+              style: TextStyle(
+                color: HasimTokens.mutedColor(context),
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
@@ -498,7 +548,10 @@ class AppLockScreen extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 360),
-            child: _AppLockEntry(onVerified: onVerified, onBiometric: onBiometric),
+            child: _AppLockEntry(
+              onVerified: onVerified,
+              onBiometric: onBiometric,
+            ),
           ),
         ),
       ),

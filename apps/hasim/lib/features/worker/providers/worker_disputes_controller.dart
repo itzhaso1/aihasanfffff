@@ -70,16 +70,32 @@ class WorkerDisputesController extends StateNotifier<WorkerDisputesState> {
     final nextFilters = (filters ?? state.filters).copyWith(page: 1);
     final epoch = ++_loadEpoch;
     final repository = _ref.read(workerRepositoryProvider);
-    if (nextFilters.page == 1 && (nextFilters.status == null || nextFilters.status!.isEmpty)) {
+    if (nextFilters.page == 1 &&
+        (nextFilters.status == null || nextFilters.status!.isEmpty)) {
       final cached = await repository.cachedDisputes();
       if (epoch != _loadEpoch) return;
       if (cached.isNotEmpty) {
-        state = state.copyWith(loading: false, filters: nextFilters, items: cached, clearError: true);
+        state = state.copyWith(
+          loading: false,
+          filters: nextFilters,
+          items: cached,
+          clearError: true,
+        );
       } else {
-        state = state.copyWith(loading: true, filters: nextFilters, clearError: true, clearActionError: true);
+        state = state.copyWith(
+          loading: true,
+          filters: nextFilters,
+          clearError: true,
+          clearActionError: true,
+        );
       }
     } else {
-      state = state.copyWith(loading: true, filters: nextFilters, clearError: true, clearActionError: true);
+      state = state.copyWith(
+        loading: true,
+        filters: nextFilters,
+        clearError: true,
+        clearActionError: true,
+      );
     }
     if (epoch != _loadEpoch) return;
     try {
@@ -94,7 +110,10 @@ class WorkerDisputesController extends StateNotifier<WorkerDisputesState> {
         clearError: true,
       );
     } on ApiException catch (error) {
-      state = state.copyWith(loading: false, error: state.items.isEmpty ? _error(error) : null);
+      state = state.copyWith(
+        loading: false,
+        error: state.items.isEmpty ? _error(error) : null,
+      );
     } catch (_) {
       state = state.copyWith(loading: false, error: 'تعذر تحميل النزاعات.');
     }

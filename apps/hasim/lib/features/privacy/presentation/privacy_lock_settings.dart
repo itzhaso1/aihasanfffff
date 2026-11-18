@@ -6,11 +6,27 @@ import 'package:hasim/features/auth/providers/auth_controller.dart';
 import 'package:hasim/features/privacy/presentation/pin_prompt.dart';
 import 'package:hasim/features/privacy/providers/chat_lock_controller.dart';
 
-class PrivacyLockSettings extends ConsumerWidget {
+class PrivacyLockSettings extends ConsumerStatefulWidget {
   const PrivacyLockSettings({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PrivacyLockSettings> createState() =>
+      _PrivacyLockSettingsState();
+}
+
+class _PrivacyLockSettingsState extends ConsumerState<PrivacyLockSettings> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref
+          .read(chatLockControllerProvider.notifier)
+          .refreshBiometricAvailability();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(chatLockControllerProvider);
     final notifier = ref.read(chatLockControllerProvider.notifier);
     final showChatLockSettings = ref
@@ -38,7 +54,7 @@ class PrivacyLockSettings extends ConsumerWidget {
           trailing: AppSwitch(
             key: const Key('privacy-app-lock'),
             value: state.appLockEnabled,
-            onChanged: (value) => _setAppLock(context, ref, value),
+            onChanged: (value) => _setAppLock(context, value),
           ),
         ),
         AppSettingsTile(
@@ -75,7 +91,7 @@ class PrivacyLockSettings extends ConsumerWidget {
           icon: Icons.password_outlined,
           title: state.pinSet ? 'تغيير رمز PIN' : 'إنشاء رمز PIN',
           subtitle: '4 أرقام',
-          onTap: () => _editPin(context, ref),
+          onTap: () => _editPin(context),
           trailing: Icon(
             Icons.chevron_left_rounded,
             color: HasimTokens.mutedColor(context),
@@ -85,11 +101,7 @@ class PrivacyLockSettings extends ConsumerWidget {
     );
   }
 
-  Future<void> _setAppLock(
-    BuildContext context,
-    WidgetRef ref,
-    bool enabled,
-  ) async {
+  Future<void> _setAppLock(BuildContext context, bool enabled) async {
     final notifier = ref.read(chatLockControllerProvider.notifier);
     if (enabled && !ref.read(chatLockControllerProvider).pinSet) {
       final pin = await showCreatePinDialog(context);
@@ -126,7 +138,7 @@ class PrivacyLockSettings extends ConsumerWidget {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
   }
 
-  Future<void> _editPin(BuildContext context, WidgetRef ref) async {
+  Future<void> _editPin(BuildContext context) async {
     final notifier = ref.read(chatLockControllerProvider.notifier);
     if (!ref.read(chatLockControllerProvider).pinSet) {
       final pin = await showCreatePinDialog(context);

@@ -18,10 +18,12 @@ class SecuritySessionsScreen extends ConsumerStatefulWidget {
   final bool embedded;
 
   @override
-  ConsumerState<SecuritySessionsScreen> createState() => _SecuritySessionsScreenState();
+  ConsumerState<SecuritySessionsScreen> createState() =>
+      _SecuritySessionsScreenState();
 }
 
-class _SecuritySessionsScreenState extends ConsumerState<SecuritySessionsScreen> {
+class _SecuritySessionsScreenState
+    extends ConsumerState<SecuritySessionsScreen> {
   List<DeviceSessionModel> _sessions = [];
   bool _loading = true;
 
@@ -41,7 +43,12 @@ class _SecuritySessionsScreenState extends ConsumerState<SecuritySessionsScreen>
     });
     try {
       final sessions = await repo.list();
-      if (mounted) setState(() { _sessions = sessions; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _sessions = sessions;
+          _loading = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -49,7 +56,10 @@ class _SecuritySessionsScreenState extends ConsumerState<SecuritySessionsScreen>
 
   IconData _deviceIcon(String? type) {
     final t = (type ?? '').toLowerCase();
-    if (t.contains('mobile') || t.contains('phone') || t.contains('android') || t.contains('ios')) {
+    if (t.contains('mobile') ||
+        t.contains('phone') ||
+        t.contains('android') ||
+        t.contains('ios')) {
       return Icons.smartphone_outlined;
     }
     if (t.contains('cashier') || t.contains('pos')) {
@@ -60,14 +70,19 @@ class _SecuritySessionsScreenState extends ConsumerState<SecuritySessionsScreen>
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (previous, next) {
+    ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+      previous,
+      next,
+    ) {
       if (previous != null && previous != next) _load();
     });
     final push = ref.watch(pushServiceProvider);
     final compact = HasimLayout.isCompact(context);
 
     if (_loading) {
-      final loading = const Center(child: CircularProgressIndicator(strokeWidth: 2));
+      final loading = const Center(
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
       if (widget.embedded) return loading;
       if (compact) {
         return HasimMobileScaffold(title: 'الأمان والجلسات', body: loading);
@@ -104,7 +119,9 @@ class _SecuritySessionsScreenState extends ConsumerState<SecuritySessionsScreen>
             onRevoke: session.isCurrent
                 ? null
                 : () async {
-                    await ref.read(sessionRepositoryProvider).revoke(session.id);
+                    await ref
+                        .read(sessionRepositoryProvider)
+                        .revoke(session.id);
                     await _load();
                   },
           ),
@@ -179,12 +196,16 @@ class _DeviceRow extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: AppTextStyles.body(color: HasimTokens.inkColor(context)),
+                  style: AppTextStyles.body(
+                    color: HasimTokens.inkColor(context),
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: AppTextStyles.secondary(color: HasimTokens.mutedColor(context)),
+                  style: AppTextStyles.secondary(
+                    color: HasimTokens.mutedColor(context),
+                  ),
                 ),
               ],
             ),
@@ -194,7 +215,11 @@ class _DeviceRow extends StatelessWidget {
             IconButton(
               tooltip: 'إنهاء الجلسة',
               onPressed: onRevoke,
-              icon: Icon(Icons.close_rounded, color: HasimTokens.mutedColor(context), size: 20),
+              icon: Icon(
+                Icons.close_rounded,
+                color: HasimTokens.mutedColor(context),
+                size: 20,
+              ),
             ),
         ],
       ),

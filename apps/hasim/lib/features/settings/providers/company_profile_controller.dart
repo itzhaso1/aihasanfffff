@@ -39,17 +39,17 @@ class CompanyProfileState {
 
 final companyProfileControllerProvider =
     StateNotifierProvider<CompanyProfileController, CompanyProfileState>((ref) {
-  final controller = CompanyProfileController(ref);
-  ref.listen<String>(
-    authControllerProvider.select((s) => s.isolationKey),
-    (previous, next) {
-      if (previous != next) {
-        controller.reload();
-      }
-    },
-  );
-  return controller;
-});
+      final controller = CompanyProfileController(ref);
+      ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+        previous,
+        next,
+      ) {
+        if (previous != next) {
+          controller.reload();
+        }
+      });
+      return controller;
+    });
 
 class CompanyProfileController extends StateNotifier<CompanyProfileState> {
   CompanyProfileController(this._ref) : super(const CompanyProfileState()) {
@@ -67,7 +67,9 @@ class CompanyProfileController extends StateNotifier<CompanyProfileState> {
 
     state = state.copyWith(loading: true, forbidden: false, clearError: true);
     try {
-      final profile = await _ref.read(aiRepositoryProvider).fetchCompanyProfile();
+      final profile = await _ref
+          .read(aiRepositoryProvider)
+          .fetchCompanyProfile();
       state = CompanyProfileState(profile: profile);
     } on ApiException catch (e) {
       state = CompanyProfileState(

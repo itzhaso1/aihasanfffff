@@ -107,7 +107,9 @@ class _AiSkillsSheetState extends State<_AiSkillsSheet> {
                 padding: const EdgeInsets.all(16),
                 child: FilledButton(
                   key: const Key('ai-skills-save'),
-                  onPressed: _saving || _loading || _error != null ? null : _save,
+                  onPressed: _saving || _loading || _error != null
+                      ? null
+                      : _save,
                   child: const Text('حفظ المهارات'),
                 ),
               ),
@@ -119,7 +121,9 @@ class _AiSkillsSheetState extends State<_AiSkillsSheet> {
 
   Widget _body() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(key: Key('ai-skills-loading')));
+      return const Center(
+        child: CircularProgressIndicator(key: Key('ai-skills-loading')),
+      );
     }
     if (_error != null) {
       return Center(
@@ -149,7 +153,9 @@ class _AiSkillsSheetState extends State<_AiSkillsSheet> {
       );
     }
     if (_skills.isEmpty) {
-      return const Center(child: Text('لا توجد مهارات', key: Key('ai-skills-empty')));
+      return const Center(
+        child: Text('لا توجد مهارات', key: Key('ai-skills-empty')),
+      );
     }
     return ListView(
       key: const Key('ai-skills-list'),

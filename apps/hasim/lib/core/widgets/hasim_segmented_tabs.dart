@@ -61,7 +61,9 @@ class _TabChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fg = selected
-        ? (HasimTokens.isDark(context) ? HasimTokens.chatGreen : AppTheme.brandDark)
+        ? (HasimTokens.isDark(context)
+              ? HasimTokens.chatGreen
+              : AppTheme.brandDark)
         : HasimTokens.mutedColor(context);
     return Material(
       color: selected ? HasimTokens.mintFill(context) : Colors.transparent,

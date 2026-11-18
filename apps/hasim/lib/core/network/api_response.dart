@@ -19,7 +19,8 @@ class ApiResponse<T> {
   ) {
     final raw = json['data'];
     return ApiResponse<T>(
-      success: json['success'] == true || (json['success'] == null && raw != null),
+      success:
+          json['success'] == true || (json['success'] == null && raw != null),
       data: raw == null || mapData == null ? raw as T? : mapData(raw),
       meta: json['meta'] is Map<String, dynamic>
           ? json['meta'] as Map<String, dynamic>

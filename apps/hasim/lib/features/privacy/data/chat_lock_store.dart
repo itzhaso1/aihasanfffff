@@ -21,7 +21,11 @@ class ChatLockRecord {
   final bool lockedChatsBiometricEnabled;
   final Map<int, Set<int>> lockedIdsByWorkspace;
 
-  bool get pinSet => pinSalt != null && pinSalt!.isNotEmpty && pinHash != null && pinHash!.isNotEmpty;
+  bool get pinSet =>
+      pinSalt != null &&
+      pinSalt!.isNotEmpty &&
+      pinHash != null &&
+      pinHash!.isNotEmpty;
 
   ChatLockRecord copyWith({
     String? pinSalt,
@@ -36,7 +40,8 @@ class ChatLockRecord {
       pinHash: pinHash ?? this.pinHash,
       appLockEnabled: appLockEnabled ?? this.appLockEnabled,
       appBiometricEnabled: appBiometricEnabled ?? this.appBiometricEnabled,
-      lockedChatsBiometricEnabled: lockedChatsBiometricEnabled ?? this.lockedChatsBiometricEnabled,
+      lockedChatsBiometricEnabled:
+          lockedChatsBiometricEnabled ?? this.lockedChatsBiometricEnabled,
       lockedIdsByWorkspace: lockedIdsByWorkspace ?? this.lockedIdsByWorkspace,
     );
   }
@@ -49,7 +54,8 @@ class ChatLockRecord {
       'appBiometric': appBiometricEnabled,
       'chatsBiometric': lockedChatsBiometricEnabled,
       'locked': {
-        for (final entry in lockedIdsByWorkspace.entries) '${entry.key}': entry.value.toList(),
+        for (final entry in lockedIdsByWorkspace.entries)
+          '${entry.key}': entry.value.toList(),
       },
     };
   }
@@ -104,10 +110,11 @@ class MemoryChatLockStore implements ChatLockStore {
 
 class SecureChatLockStore implements ChatLockStore {
   SecureChatLockStore({FlutterSecureStorage? storage})
-      : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
+    : _storage =
+          storage ??
+          const FlutterSecureStorage(
+            aOptions: AndroidOptions(encryptedSharedPreferences: true),
+          );
 
   static const _key = 'hasim_chat_lock_v1';
   final FlutterSecureStorage _storage;

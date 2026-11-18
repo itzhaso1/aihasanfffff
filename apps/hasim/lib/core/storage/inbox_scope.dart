@@ -4,7 +4,8 @@ import 'package:hasim/core/storage/inbox_session.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
 
 final activeWorkspaceIdProvider = Provider<int?>((ref) {
-  return ref.watch(authControllerProvider).workspace?.id ?? ref.watch(prefsStoreProvider).workspaceId;
+  return ref.watch(authControllerProvider).workspace?.id ??
+      ref.watch(prefsStoreProvider).workspaceId;
 });
 
 InboxScope captureInboxScope(Ref ref) {
@@ -16,8 +17,7 @@ InboxScope captureInboxScope(Ref ref) {
 }
 
 bool inboxScopeIsCurrent(Ref ref, InboxScope scope) {
-  return ref.read(inboxSessionProvider).isCurrent(
-        generation: scope.generation,
-        workspaceId: scope.workspaceId,
-      );
+  return ref
+      .read(inboxSessionProvider)
+      .isCurrent(generation: scope.generation, workspaceId: scope.workspaceId);
 }

@@ -1460,105 +1460,110 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       appBar: selectingMessages
           ? _messageSelectionAppBar(headerBg)
           : AppBar(
-        automaticallyImplyLeading: !widget.embedded,
-        centerTitle: false,
-        backgroundColor: headerBg,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        titleSpacing: widget.embedded ? 16 : 0,
-        shape: Border(
-          bottom: BorderSide(color: HasimTokens.lineColor(context)),
-        ),
-        bottom: _findingMessages
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(52),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                  child: TextField(
-                    controller: _messageSearch,
-                    autofocus: true,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'بحث في هذه المحادثة',
-                      isDense: true,
-                      suffixIcon: IconButton(
-                        onPressed: () {
-                          _messageSearch.clear();
-                          setState(() => _findingMessages = false);
-                        },
-                        icon: const Icon(Icons.close),
+              automaticallyImplyLeading: !widget.embedded,
+              centerTitle: false,
+              backgroundColor: headerBg,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              titleSpacing: widget.embedded ? 16 : 0,
+              shape: Border(
+                bottom: BorderSide(color: HasimTokens.lineColor(context)),
+              ),
+              bottom: _findingMessages
+                  ? PreferredSize(
+                      preferredSize: const Size.fromHeight(52),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                        child: TextField(
+                          controller: _messageSearch,
+                          autofocus: true,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            hintText: 'بحث في هذه المحادثة',
+                            isDense: true,
+                            suffixIcon: IconButton(
+                              onPressed: () {
+                                _messageSearch.clear();
+                                setState(() => _findingMessages = false);
+                              },
+                              icon: const Icon(Icons.close),
+                            ),
+                          ),
+                        ),
                       ),
+                    )
+                  : null,
+              title: titleBlock(),
+              actions: [
+                if (widget.embedded)
+                  IconButton(
+                    key: const Key('desktop-customer-info'),
+                    tooltip: 'معلومات العميل',
+                    onPressed: () =>
+                        ref
+                                .read(
+                                  desktopCustomerDrawerOpenProvider.notifier,
+                                )
+                                .state =
+                            true,
+                    icon: Icon(
+                      Icons.info_outline_rounded,
+                      color: HasimTokens.mutedColor(context),
                     ),
                   ),
-                ),
-              )
-            : null,
-        title: titleBlock(),
-        actions: [
-          if (widget.embedded)
-            IconButton(
-              key: const Key('desktop-customer-info'),
-              tooltip: 'معلومات العميل',
-              onPressed: () =>
-                  ref.read(desktopCustomerDrawerOpenProvider.notifier).state =
-                      true,
-              icon: Icon(
-                Icons.info_outline_rounded,
-                color: HasimTokens.mutedColor(context),
-              ),
-            ),
-          PopupMenuButton<String>(
-            key: _chatMenuKey,
-            enabled: !state.mutating,
-            icon: Icon(
-              Icons.more_vert_rounded,
-              color: HasimTokens.mutedColor(context),
-            ),
-            offset: const Offset(0, 44),
-            color: HasimTokens.cardBg(context),
-            elevation: 8,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            onSelected: (v) => _onChatMenuSelected(context, v, conversation),
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'add_contact',
-                child: Text('إضافة إلى جهات الاتصال'),
-              ),
-              const PopupMenuItem(value: 'search', child: Text('بحث')),
-              const PopupMenuItem(
-                value: 'add_list',
-                child: Text('إضافة إلى القائمة'),
-              ),
-              const PopupMenuItem(
-                value: 'media',
-                child: Text('وسائط وروابط ومستندات'),
-              ),
-              const PopupMenuItem(
-                value: 'disappearing',
-                child: Text('الرسائل ذاتية الاختفاء'),
-              ),
-              const PopupMenuItem(
-                key: Key('chat-action-themes'),
-                value: 'themes',
-                child: Text('سمة الدردشة'),
-              ),
-              const PopupMenuItem(
-                value: 'more',
-                child: Row(
-                  children: [
-                    Expanded(child: Text('المزيد')),
-                    Icon(Icons.chevron_left, size: 18),
+                PopupMenuButton<String>(
+                  key: _chatMenuKey,
+                  enabled: !state.mutating,
+                  icon: Icon(
+                    Icons.more_vert_rounded,
+                    color: HasimTokens.mutedColor(context),
+                  ),
+                  offset: const Offset(0, 44),
+                  color: HasimTokens.cardBg(context),
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  onSelected: (v) =>
+                      _onChatMenuSelected(context, v, conversation),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'add_contact',
+                      child: Text('إضافة إلى جهات الاتصال'),
+                    ),
+                    const PopupMenuItem(value: 'search', child: Text('بحث')),
+                    const PopupMenuItem(
+                      value: 'add_list',
+                      child: Text('إضافة إلى القائمة'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'media',
+                      child: Text('وسائط وروابط ومستندات'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'disappearing',
+                      child: Text('الرسائل ذاتية الاختفاء'),
+                    ),
+                    const PopupMenuItem(
+                      key: Key('chat-action-themes'),
+                      value: 'themes',
+                      child: Text('سمة الدردشة'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'more',
+                      child: Row(
+                        children: [
+                          Expanded(child: Text('المزيد')),
+                          Icon(Icons.chevron_left, size: 18),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
+                const SizedBox(width: 8),
+              ],
+            ),
       body: Stack(
         children: [
           Positioned.fill(
@@ -1576,7 +1581,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: SizedBox(
                     width: double.infinity,
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       child: Text(
                         'تحتاج مراجعة من الفريق',
                         key: Key('chat-team-review'),

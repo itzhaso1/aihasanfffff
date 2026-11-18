@@ -16,10 +16,7 @@ class CatalogDigitalScreen extends ConsumerWidget {
           'المخزون الرقمي وتسليم الملفات عبر الشات ملغيان. أدر المنتجات كمرجع لمعلومات الذكاء الاصطناعي.',
           key: const Key('digital-inventory-retired'),
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: HasimTokens.inkColor(context),
-            height: 1.5,
-          ),
+          style: TextStyle(color: HasimTokens.inkColor(context), height: 1.5),
         ),
       ),
     );

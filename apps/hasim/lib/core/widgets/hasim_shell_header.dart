@@ -79,7 +79,8 @@ class HasimShellHeader extends ConsumerWidget implements PreferredSizeWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ?brandLeading,
-                if (brandLeading != null && brand != null) const SizedBox(width: 8),
+                if (brandLeading != null && brand != null)
+                  const SizedBox(width: 8),
                 if (brand != null) Flexible(child: brand),
               ],
             )

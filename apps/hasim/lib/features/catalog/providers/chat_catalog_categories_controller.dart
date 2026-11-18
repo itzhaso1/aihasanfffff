@@ -43,38 +43,53 @@ class ChatCatalogCategoriesState {
 }
 
 final chatCatalogCategoriesControllerProvider =
-    StateNotifierProvider<ChatCatalogCategoriesController, ChatCatalogCategoriesState>((ref) {
-  final controller = ChatCatalogCategoriesController(ref);
-  ref.listen<String>(
-    authControllerProvider.select((s) => s.isolationKey),
-    (previous, next) {
-      if (previous != next) controller.reload();
-    },
-  );
-  return controller;
-});
+    StateNotifierProvider<
+      ChatCatalogCategoriesController,
+      ChatCatalogCategoriesState
+    >((ref) {
+      final controller = ChatCatalogCategoriesController(ref);
+      ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+        previous,
+        next,
+      ) {
+        if (previous != next) controller.reload();
+      });
+      return controller;
+    });
 
-class ChatCatalogCategoriesController extends StateNotifier<ChatCatalogCategoriesState> {
-  ChatCatalogCategoriesController(this._ref) : super(const ChatCatalogCategoriesState()) {
+class ChatCatalogCategoriesController
+    extends StateNotifier<ChatCatalogCategoriesState> {
+  ChatCatalogCategoriesController(this._ref)
+    : super(const ChatCatalogCategoriesState()) {
     reload();
   }
 
   final Ref _ref;
 
   Future<void> reload() async {
-    final cached = await _ref.read(chatCatalogRepositoryProvider).cachedCategories();
+    final cached = await _ref
+        .read(chatCatalogRepositoryProvider)
+        .cachedCategories();
     if (cached.isNotEmpty) {
       state = state.copyWith(items: cached, loading: false, clearError: true);
     } else {
       state = const ChatCatalogCategoriesState(loading: true);
     }
     try {
-      final page = await _ref.read(chatCatalogRepositoryProvider).listCategories();
-      state = ChatCatalogCategoriesState(items: page.items, nextCursor: page.nextCursor);
+      final page = await _ref
+          .read(chatCatalogRepositoryProvider)
+          .listCategories();
+      state = ChatCatalogCategoriesState(
+        items: page.items,
+        nextCursor: page.nextCursor,
+      );
     } on ApiException catch (e) {
       state = state.copyWith(loading: false, error: e.message);
     } catch (_) {
-      state = state.copyWith(loading: false, error: 'catalogCategoriesLoadFailed');
+      state = state.copyWith(
+        loading: false,
+        error: 'catalogCategoriesLoadFailed',
+      );
     }
   }
 
@@ -82,7 +97,9 @@ class ChatCatalogCategoriesController extends StateNotifier<ChatCatalogCategorie
     if (state.loadingMore || state.nextCursor == null) return;
     state = state.copyWith(loadingMore: true, clearError: true);
     try {
-      final page = await _ref.read(chatCatalogRepositoryProvider).listCategories(cursor: state.nextCursor);
+      final page = await _ref
+          .read(chatCatalogRepositoryProvider)
+          .listCategories(cursor: state.nextCursor);
       state = state.copyWith(
         items: [...state.items, ...page.items],
         nextCursor: page.nextCursor,
@@ -91,7 +108,10 @@ class ChatCatalogCategoriesController extends StateNotifier<ChatCatalogCategorie
     } on ApiException catch (e) {
       state = state.copyWith(loadingMore: false, error: e.message);
     } catch (_) {
-      state = state.copyWith(loadingMore: false, error: 'catalogCategoriesLoadFailed');
+      state = state.copyWith(
+        loadingMore: false,
+        error: 'catalogCategoriesLoadFailed',
+      );
     }
   }
 
@@ -125,7 +145,10 @@ class ChatCatalogCategoriesController extends StateNotifier<ChatCatalogCategorie
       state = state.copyWith(saving: false, error: e.message);
       return false;
     } catch (_) {
-      state = state.copyWith(saving: false, error: 'catalogCategoryDeleteFailed');
+      state = state.copyWith(
+        saving: false,
+        error: 'catalogCategoryDeleteFailed',
+      );
       return false;
     }
   }

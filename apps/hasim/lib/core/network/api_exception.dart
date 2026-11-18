@@ -11,11 +11,11 @@ class ApiException implements Exception {
 
   /// Arabic user-facing message; does not mutate API payloads.
   String get userMessage => ApiErrorTranslator.format(
-        message: message,
-        statusCode: statusCode,
-        errorCode: errorCode,
-        errors: errors,
-      );
+    message: message,
+    statusCode: statusCode,
+    errorCode: errorCode,
+    errors: errors,
+  );
 
   @override
   String toString() => message;

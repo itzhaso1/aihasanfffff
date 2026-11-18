@@ -131,6 +131,7 @@ class _RecordingRepo extends ConversationRepository {
   Future<({List<MessageModel> items, String? nextCursor})> messages(
     int conversationId, {
     String? cursor,
+    int? afterId,
     int? workspaceId,
   }) async {
     return (items: const <MessageModel>[], nextCursor: null);

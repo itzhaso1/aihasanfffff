@@ -21,7 +21,9 @@ abstract final class ChatAttachmentPolicy {
   };
 
   static String? extensionOf(File file) {
-    final name = file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : file.path;
+    final name = file.uri.pathSegments.isNotEmpty
+        ? file.uri.pathSegments.last
+        : file.path;
     final dot = name.lastIndexOf('.');
     if (dot <= 0 || dot >= name.length - 1) return null;
     return name.substring(dot + 1).toLowerCase();

@@ -24,7 +24,10 @@ class HasimPrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = enabled && !busy;
     final child = Padding(
-      padding: EdgeInsets.symmetric(horizontal: 26, vertical: expanded ? 16 : 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: 26,
+        vertical: expanded ? 16 : 14,
+      ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: Row(
@@ -35,7 +38,10 @@ class HasimPrimaryButton extends StatelessWidget {
               const SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(width: 10),
             ] else if (icon != null) ...[
@@ -45,9 +51,9 @@ class HasimPrimaryButton extends StatelessWidget {
             Text(
               label,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
             ),
           ],
         ),
@@ -67,7 +73,9 @@ class HasimPrimaryButton extends StatelessWidget {
         child: InkWell(
           onTap: active ? onPressed : null,
           customBorder: const StadiumBorder(),
-          child: expanded ? SizedBox(width: double.infinity, child: child) : child,
+          child: expanded
+              ? SizedBox(width: double.infinity, child: child)
+              : child,
         ),
       ),
     );
@@ -96,7 +104,10 @@ class HasimOutlineButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = enabled && !busy;
     final child = Padding(
-      padding: EdgeInsets.symmetric(horizontal: 26, vertical: expanded ? 16 : 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: 26,
+        vertical: expanded ? 16 : 14,
+      ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: Row(
@@ -107,7 +118,10 @@ class HasimOutlineButton extends StatelessWidget {
               const SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brand),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.brand,
+                ),
               ),
               const SizedBox(width: 10),
             ] else if (icon != null) ...[
@@ -117,9 +131,9 @@ class HasimOutlineButton extends StatelessWidget {
             Text(
               label,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.brand,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: AppTheme.brand,
+              ),
             ),
           ],
         ),
@@ -130,13 +144,19 @@ class HasimOutlineButton extends StatelessWidget {
       color: HasimTokens.cardBg(context),
       elevation: 0,
       shape: StadiumBorder(
-        side: BorderSide(color: active ? AppTheme.brand : AppTheme.brand.withValues(alpha: 0.35)),
+        side: BorderSide(
+          color: active
+              ? AppTheme.brand
+              : AppTheme.brand.withValues(alpha: 0.35),
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: active ? onPressed : null,
         customBorder: const StadiumBorder(),
-        child: expanded ? SizedBox(width: double.infinity, child: child) : child,
+        child: expanded
+            ? SizedBox(width: double.infinity, child: child)
+            : child,
       ),
     );
   }

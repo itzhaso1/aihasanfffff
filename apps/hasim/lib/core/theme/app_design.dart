@@ -29,14 +29,16 @@ abstract final class AppRadius {
 }
 
 abstract final class AppTextStyles {
-  static TextStyle screenTitle({Color color = AppColors.text}) => GoogleFonts.cairo(
+  static TextStyle screenTitle({Color color = AppColors.text}) =>
+      GoogleFonts.cairo(
         fontSize: 20,
         fontWeight: FontWeight.w700,
         height: 1.25,
         color: color,
       );
 
-  static TextStyle sectionTitle({Color color = AppColors.text}) => GoogleFonts.cairo(
+  static TextStyle sectionTitle({Color color = AppColors.text}) =>
+      GoogleFonts.cairo(
         fontSize: 16,
         fontWeight: FontWeight.w700,
         height: 1.35,
@@ -44,13 +46,14 @@ abstract final class AppTextStyles {
       );
 
   static TextStyle body({Color color = AppColors.text}) => GoogleFonts.cairo(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        height: 1.35,
-        color: color,
-      );
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    height: 1.35,
+    color: color,
+  );
 
-  static TextStyle secondary({Color color = AppColors.secondary}) => GoogleFonts.cairo(
+  static TextStyle secondary({Color color = AppColors.secondary}) =>
+      GoogleFonts.cairo(
         fontSize: 13,
         fontWeight: FontWeight.w500,
         height: 1.4,
@@ -59,11 +62,7 @@ abstract final class AppTextStyles {
 }
 
 class AppIconContainer extends StatelessWidget {
-  const AppIconContainer({
-    super.key,
-    required this.icon,
-    this.danger = false,
-  });
+  const AppIconContainer({super.key, required this.icon, this.danger = false});
 
   final IconData icon;
   final bool danger;
@@ -75,7 +74,9 @@ class AppIconContainer extends StatelessWidget {
       height: 40,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: danger ? HasimTokens.dangerSoftColor(context) : HasimTokens.mintFill(context),
+        color: danger
+            ? HasimTokens.dangerSoftColor(context)
+            : HasimTokens.mintFill(context),
         borderRadius: BorderRadius.circular(AppRadius.icon),
       ),
       child: Icon(
@@ -88,11 +89,7 @@ class AppIconContainer extends StatelessWidget {
 }
 
 class AppSectionHeader extends StatelessWidget {
-  const AppSectionHeader({
-    super.key,
-    required this.title,
-    this.subtitle,
-  });
+  const AppSectionHeader({super.key, required this.title, this.subtitle});
 
   final String title;
   final String? subtitle;
@@ -104,10 +101,20 @@ class AppSectionHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: AppTextStyles.sectionTitle(color: HasimTokens.inkColor(context))),
+          Text(
+            title,
+            style: AppTextStyles.sectionTitle(
+              color: HasimTokens.inkColor(context),
+            ),
+          ),
           if (subtitle != null) ...[
             const SizedBox(height: 4),
-            Text(subtitle!, style: AppTextStyles.secondary(color: HasimTokens.mutedColor(context))),
+            Text(
+              subtitle!,
+              style: AppTextStyles.secondary(
+                color: HasimTokens.mutedColor(context),
+              ),
+            ),
           ],
         ],
       ),
@@ -152,7 +159,12 @@ class AppSettingsTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppTextStyles.body(color: ink)),
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.body(color: ink),
+                    ),
                     if (subtitle != null) ...[
                       const SizedBox(height: 3),
                       Text(
@@ -160,16 +172,15 @@ class AppSettingsTile extends StatelessWidget {
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         textDirection: subtitleDirection,
-                        style: AppTextStyles.secondary(color: HasimTokens.mutedColor(context)),
+                        style: AppTextStyles.secondary(
+                          color: HasimTokens.mutedColor(context),
+                        ),
                       ),
                     ],
                   ],
                 ),
               ),
-              if (trailing != null) ...[
-                const SizedBox(width: 8),
-                trailing!,
-              ],
+              if (trailing != null) ...[const SizedBox(width: 8), trailing!],
             ],
           ),
         ),
@@ -191,7 +202,11 @@ class AppSwitch extends StatelessWidget {
 }
 
 class AppPrimaryButton extends StatelessWidget {
-  const AppPrimaryButton({super.key, required this.label, required this.onPressed});
+  const AppPrimaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
 
   final String label;
   final VoidCallback? onPressed;
@@ -203,7 +218,11 @@ class AppPrimaryButton extends StatelessWidget {
 }
 
 class AppSecondaryButton extends StatelessWidget {
-  const AppSecondaryButton({super.key, required this.label, required this.onPressed});
+  const AppSecondaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
 
   final String label;
   final VoidCallback? onPressed;

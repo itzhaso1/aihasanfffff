@@ -20,7 +20,9 @@ class HiveMigrationReport {
 /// Unscoped keys (`list`, `c_{id}`) cannot be attributed to a tenant and are discarded.
 class HiveInboxMigrator {
   static final _conversationsKey = RegExp(r'^workspace:(\d+):conversations$');
-  static final _messagesKey = RegExp(r'^workspace:(\d+):conversation:(\d+):messages$');
+  static final _messagesKey = RegExp(
+    r'^workspace:(\d+):conversation:(\d+):messages$',
+  );
 
   static int? conversationsWorkspaceId(String key) {
     final match = _conversationsKey.firstMatch(key);
@@ -66,7 +68,11 @@ class HiveInboxMigrator {
       }
       final items = _decodeMessages(entry.value);
       if (items.isEmpty) continue;
-      await store.upsertMessages(identity.workspaceId, identity.conversationId, items);
+      await store.upsertMessages(
+        identity.workspaceId,
+        identity.conversationId,
+        items,
+      );
       importedMessages += items.length;
     }
 
@@ -78,7 +84,9 @@ class HiveInboxMigrator {
   }
 
   /// Opens leftover Hive inbox boxes once, imports scoped rows, then deletes the boxes.
-  static Future<HiveMigrationReport> migrateIfNeeded(InboxLocalStore store) async {
+  static Future<HiveMigrationReport> migrateIfNeeded(
+    InboxLocalStore store,
+  ) async {
     try {
       await Hive.initFlutter();
     } catch (_) {

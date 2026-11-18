@@ -53,9 +53,15 @@ class WorkerPayoutsController extends StateNotifier<WorkerPayoutsState> {
       final items = await repository.getWorkerPayouts();
       state = state.copyWith(loading: false, items: items, clearError: true);
     } on ApiException catch (error) {
-      state = state.copyWith(loading: false, error: state.items.isEmpty ? error.userMessage : null);
+      state = state.copyWith(
+        loading: false,
+        error: state.items.isEmpty ? error.userMessage : null,
+      );
     } catch (_) {
-      state = state.copyWith(loading: false, error: state.items.isEmpty ? 'تعذر تحميل الدفعات.' : null);
+      state = state.copyWith(
+        loading: false,
+        error: state.items.isEmpty ? 'تعذر تحميل الدفعات.' : null,
+      );
     }
   }
 }

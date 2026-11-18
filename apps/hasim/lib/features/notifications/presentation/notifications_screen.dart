@@ -11,7 +11,8 @@ import 'package:hasim/router/notification_deep_link.dart';
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
   @override
-  ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
+  ConsumerState<NotificationsScreen> createState() =>
+      _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
@@ -48,7 +49,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       setState(() {
         _items = items;
         _loading = false;
-        _error = repo.lastReadFromCache ? 'تعذر التحديث. تُعرض البيانات المحفوظة على الجهاز.' : null;
+        _error = repo.lastReadFromCache
+            ? 'تعذر التحديث. تُعرض البيانات المحفوظة على الجهاز.'
+            : null;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -67,7 +70,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (previous, next) {
+    ref.listen<String>(authControllerProvider.select((s) => s.isolationKey), (
+      previous,
+      next,
+    ) {
       if (previous != null && previous != next) _load();
     });
     return Scaffold(
@@ -98,11 +104,22 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               final n = _items[i];
               return ListTile(
                 leading: Icon(
-                  n.isRead ? Icons.notifications_none : Icons.notifications_active,
+                  n.isRead
+                      ? Icons.notifications_none
+                      : Icons.notifications_active,
                   color: Theme.of(context).colorScheme.primary,
                 ),
-                title: Text(n.title, style: TextStyle(fontWeight: n.isRead ? FontWeight.w500 : FontWeight.w800)),
-                subtitle: Text(n.body, maxLines: 2, overflow: TextOverflow.ellipsis),
+                title: Text(
+                  n.title,
+                  style: TextStyle(
+                    fontWeight: n.isRead ? FontWeight.w500 : FontWeight.w800,
+                  ),
+                ),
+                subtitle: Text(
+                  n.body,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 onTap: () async {
                   await ref.read(notificationRepositoryProvider).markRead(n.id);
                   if (!context.mounted) return;

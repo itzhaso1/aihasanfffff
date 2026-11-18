@@ -7,7 +7,8 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
 
   @override
-  ConsumerState<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  ConsumerState<ForgotPasswordScreen> createState() =>
+      _ForgotPasswordScreenState();
 }
 
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
@@ -23,7 +24,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    final msg = await ref.read(authControllerProvider.notifier).forgotPassword(_email.text.trim());
+    final msg = await ref
+        .read(authControllerProvider.notifier)
+        .forgotPassword(_email.text.trim());
     if (!mounted) return;
     if (msg != null) {
       setState(() => _success = msg);
@@ -68,11 +71,21 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                   ),
                   if (auth.error != null) ...[
                     const SizedBox(height: 12),
-                    Text(auth.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    Text(
+                      auth.error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
                   ],
                   if (_success != null) ...[
                     const SizedBox(height: 12),
-                    Text(_success!, style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+                    Text(
+                      _success!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 20),
                   FilledButton(
@@ -81,7 +94,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                         ? const SizedBox(
                             height: 22,
                             width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text('إرسال رابط إعادة التعيين'),
                   ),

@@ -9,7 +9,8 @@ class ResetPasswordScreen extends ConsumerStatefulWidget {
   final String? initialEmail;
 
   @override
-  ConsumerState<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
+  ConsumerState<ResetPasswordScreen> createState() =>
+      _ResetPasswordScreenState();
 }
 
 class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
@@ -37,7 +38,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    final ok = await ref.read(authControllerProvider.notifier).resetPassword(
+    final ok = await ref
+        .read(authControllerProvider.notifier)
+        .resetPassword(
           email: _email.text.trim(),
           token: _token.text.trim(),
           password: _password.text,
@@ -74,18 +77,24 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _email,
-                    decoration: const InputDecoration(labelText: 'البريد الإلكتروني'),
+                    decoration: const InputDecoration(
+                      labelText: 'البريد الإلكتروني',
+                    ),
                     textDirection: TextDirection.ltr,
                     textAlign: TextAlign.left,
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _token,
-                    decoration: const InputDecoration(labelText: 'رمز إعادة التعيين'),
+                    decoration: const InputDecoration(
+                      labelText: 'رمز إعادة التعيين',
+                    ),
                     textDirection: TextDirection.ltr,
                     textAlign: TextAlign.left,
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -95,7 +104,11 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                       labelText: 'كلمة المرور الجديدة',
                       suffixIcon: IconButton(
                         onPressed: () => setState(() => _obscure = !_obscure),
-                        icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                        icon: Icon(
+                          _obscure
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
                       ),
                     ),
                     validator: (v) {
@@ -108,7 +121,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   TextFormField(
                     controller: _confirm,
                     obscureText: _obscure,
-                    decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور'),
+                    decoration: const InputDecoration(
+                      labelText: 'تأكيد كلمة المرور',
+                    ),
                     validator: (v) {
                       if (v != _password.text) return 'كلمة المرور غير متطابقة';
                       return null;
@@ -116,7 +131,12 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   ),
                   if (auth.error != null) ...[
                     const SizedBox(height: 12),
-                    Text(auth.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    Text(
+                      auth.error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 20),
                   FilledButton(
@@ -125,7 +145,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                         ? const SizedBox(
                             height: 22,
                             width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text('حفظ كلمة المرور'),
                   ),

@@ -51,8 +51,7 @@ class _WorkerWorkSessionSectionState
       for (final session in state.sessions)
         if (session.id != current?.id) session,
     ];
-    final showStart =
-        current == null && widget.engagement.status == 'active';
+    final showStart = current == null && widget.engagement.status == 'active';
     final open = current?.openSegment;
 
     return WorkerSectionCard(
@@ -148,9 +147,7 @@ class _CurrentSession extends StatelessWidget {
         if (session.endedAt != null)
           Text('انتهت: ${_formatDateTime(session.endedAt)}'),
         if (session.durationSeconds != null)
-          Text(
-            'المدة: ${formatWorkSessionDuration(session.durationSeconds!)}',
-          ),
+          Text('المدة: ${formatWorkSessionDuration(session.durationSeconds!)}'),
         if (open != null) Text('القطعة الحالية: ${open!.typeLabel}'),
         if (open?.startedAt != null)
           Text('بداية القطعة: ${_formatDateTime(open!.startedAt)}'),
@@ -348,9 +345,7 @@ class _HistoryRow extends StatelessWidget {
         if (session.endedAt != null)
           Text('انتهت: ${_formatDateTime(session.endedAt)}'),
         if (session.durationSeconds != null)
-          Text(
-            'المدة: ${formatWorkSessionDuration(session.durationSeconds!)}',
-          ),
+          Text('المدة: ${formatWorkSessionDuration(session.durationSeconds!)}'),
         for (final segment in session.segments) Text(_segmentLine(segment)),
       ],
     );

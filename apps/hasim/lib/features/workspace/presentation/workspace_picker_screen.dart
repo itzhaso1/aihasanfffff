@@ -7,7 +7,8 @@ class WorkspacePickerScreen extends ConsumerStatefulWidget {
   const WorkspacePickerScreen({super.key});
 
   @override
-  ConsumerState<WorkspacePickerScreen> createState() => _WorkspacePickerScreenState();
+  ConsumerState<WorkspacePickerScreen> createState() =>
+      _WorkspacePickerScreenState();
 }
 
 class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
@@ -19,7 +20,8 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
     final items = auth.workspaces.where((w) {
       if (_query.trim().isEmpty) return true;
       final q = _query.trim().toLowerCase();
-      return w.name.toLowerCase().contains(q) || (w.type ?? '').toLowerCase().contains(q);
+      return w.name.toLowerCase().contains(q) ||
+          (w.type ?? '').toLowerCase().contains(q);
     }).toList();
 
     return Scaffold(
@@ -49,11 +51,15 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                     side: BorderSide(
-                      color: selected ? Theme.of(context).colorScheme.primary : Colors.grey.shade300,
+                      color: selected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey.shade300,
                     ),
                   ),
                   leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.15),
                     child: Text(
                       initial,
                       style: TextStyle(
@@ -65,10 +71,15 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
                   title: Text(ws.name),
                   subtitle: Text(ws.type ?? 'مساحة عمل'),
                   trailing: selected
-                      ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
+                      ? Icon(
+                          Icons.check_circle,
+                          color: Theme.of(context).colorScheme.primary,
+                        )
                       : null,
                   onTap: () async {
-                    final ok = await ref.read(authControllerProvider.notifier).switchWorkspace(ws);
+                    final ok = await ref
+                        .read(authControllerProvider.notifier)
+                        .switchWorkspace(ws);
                     if (!context.mounted) return;
                     if (ok) {
                       context.go('/conversations');
@@ -76,7 +87,9 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
                     }
                     final error = ref.read(authControllerProvider).error;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(error ?? 'تعذر تبديل مساحة العمل.')),
+                      SnackBar(
+                        content: Text(error ?? 'تعذر تبديل مساحة العمل.'),
+                      ),
                     );
                   },
                 );

@@ -24,6 +24,12 @@ class CommerceOrderResource extends JsonResource
             'order_number' => $this->order_number,
             'cart_id' => $this->commerce_cart_id,
             'customer_id' => $this->customer_id,
+            'customer' => $this->whenLoaded('customer', fn () => $this->customer ? [
+                'id' => $this->customer->id,
+                'name' => $this->customer->name,
+                'phone' => $this->customer->phone,
+                'email' => $this->customer->email,
+            ] : null),
             'status' => $commerceStatus,
             'payment_status' => $this->payment_status,
             'fulfillment_status' => $this->fulfillment_status,

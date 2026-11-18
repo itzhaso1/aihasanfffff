@@ -45,9 +45,18 @@ class WorkerProductsController extends StateNotifier<WorkerProductsState> {
     final repository = _ref.read(workerRepositoryProvider);
     final cached = await repository.cachedProducts(engagementId);
     if (cached.isNotEmpty) {
-      state = state.copyWith(loading: false, items: cached, permissionDenied: false, clearError: true);
+      state = state.copyWith(
+        loading: false,
+        items: cached,
+        permissionDenied: false,
+        clearError: true,
+      );
     } else {
-      state = state.copyWith(loading: true, permissionDenied: false, clearError: true);
+      state = state.copyWith(
+        loading: true,
+        permissionDenied: false,
+        clearError: true,
+      );
     }
     try {
       final items = await repository.products(engagementId);
@@ -61,7 +70,9 @@ class WorkerProductsController extends StateNotifier<WorkerProductsState> {
       state = state.copyWith(
         loading: false,
         permissionDenied: error.statusCode == 403,
-        error: state.items.isEmpty && error.statusCode != 403 ? error.userMessage : null,
+        error: state.items.isEmpty && error.statusCode != 403
+            ? error.userMessage
+            : null,
       );
     } catch (_) {
       state = state.copyWith(

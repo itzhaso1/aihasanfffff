@@ -102,8 +102,15 @@ class ConversationController extends Controller
                         });
                 });
             })
-            ->when($request->filled('status') && in_array($request->string('status')->toString(), ['open', 'closed', 'archived'], true), function ($query) use ($request): void {
-                $query->where('status', $request->string('status')->toString());
+            ->when($request->filled('status'), function ($query) use ($request): void {
+                $status = $request->string('status')->toString();
+                if ($status === 'new') {
+                    $query->where('status', 'open')->where('created_at', '>=', now()->subDays(2));
+                } elseif ($status === 'needs_review') {
+                    $query->whereIn('handoff_status', ['requested', 'queued', 'assigned']);
+                } elseif (in_array($status, ['open', 'closed', 'archived'], true)) {
+                    $query->where('status', $status);
+                }
             })
             ->when($request->boolean('unread'), function ($query): void {
                 $this->conversationInboxService->applyUnreadFilter($query, requireInbound: true);
@@ -334,7 +341,7 @@ class ConversationController extends Controller
             ->where('conversation_id', $conversation->id)
             ->when($afterId > 0, fn ($query) => $query->where('id', '>', $afterId))
             ->with([
-                'user',
+                'user:id,name',
                 'workerEngagement.workerProfile:id,display_name',
                 'attachments',
             ])
@@ -342,15 +349,65 @@ class ConversationController extends Controller
             ->limit(50)
             ->get();
 
+        $user = $request->user();
+        $unreadCount = $user ? $this->conversationInboxService->unreadCountForConversation($conversation, $user) : 0;
+        $latestMessage = $conversation->messages()->latest('id')->first();
+
         return response()->json([
             'messages' => $messages->map(fn (Message $m): array => $this->serializeMessageForInbox($m))->values(),
             'conversation' => [
                 'id' => $conversation->id,
                 'ai_enabled' => (bool) $conversation->ai_enabled,
+                'ai_replying' => $conversation->isAiReplying(),
                 'handoff_status' => $conversation->handoff_status instanceof ConversationHandoffStatus
                     ? $conversation->handoff_status->value
                     : ($conversation->handoff_status ?? 'none'),
+                'last_message' => $latestMessage?->content ?? '',
+                'last_message_at' => $conversation->last_message_at?->format('h:i A') ?? '',
+                'unread_count' => $unreadCount,
             ],
+        ]);
+    }
+
+    public function pollUpdates(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Conversation::class);
+
+        $user = $request->user();
+        abort_unless($user !== null, 403);
+
+        $workspaceId = (int) $this->currentWorkspace()->id;
+
+        $recent = Conversation::query()
+            ->where('workspace_id', $workspaceId)
+            ->with([
+                'customer:id,name',
+                'messages' => fn ($q) => $q->latest('id')->limit(1),
+            ])
+            ->latest('last_message_at')
+            ->limit(20)
+            ->get();
+
+        $items = $recent->map(function (Conversation $conv) use ($user): array {
+            $latestMsg = $conv->messages->first();
+
+            return [
+                'id' => $conv->id,
+                'customer_name' => $conv->customer?->name ?? 'عميل غير معروف',
+                'channel' => $this->resolveDisplayChannel($conv),
+                'last_message' => $latestMsg?->content ?? '',
+                'last_message_at' => $conv->last_message_at?->format('h:i A') ?? '',
+                'unread_count' => $this->conversationInboxService->unreadCountForConversation($conv, $user),
+                'is_ai_replying' => $conv->isAiReplying(),
+                'handoff_status' => $conv->handoff_status instanceof ConversationHandoffStatus
+                    ? $conv->handoff_status->value
+                    : ($conv->handoff_status ?? 'none'),
+                'status' => $conv->status,
+            ];
+        });
+
+        return response()->json([
+            'conversations' => $items,
         ]);
     }
 
@@ -359,7 +416,22 @@ class ConversationController extends Controller
      */
     private function serializeMessageForInbox(Message $message): array
     {
-        $message->loadMissing('attachments');
+        $message->loadMissing(['attachments', 'user:id,name', 'workerEngagement.workerProfile:id,display_name']);
+
+        $isInternalNote = $message->direction === 'internal_note'
+            || $message->message_type === 'system'
+            || (bool) data_get($message->metadata, 'handoff_acknowledgement');
+
+        $participantType = WorkforceInboxAttribution::typeForMessage($message)?->value;
+
+        $senderName = null;
+        if ($participantType === 'ai_employee' || $message->ai_generated) {
+            $senderName = 'AI';
+        } elseif ($participantType === 'independent_worker') {
+            $senderName = $message->workerEngagement?->workerProfile?->display_name ?? 'عامل مستقل';
+        } elseif ($message->user) {
+            $senderName = $message->user->name;
+        }
 
         return [
             'id' => $message->id,
@@ -368,7 +440,10 @@ class ConversationController extends Controller
             'message_type' => $message->message_type,
             'content' => $message->content,
             'ai_generated' => (bool) $message->ai_generated,
-            'participant_type' => WorkforceInboxAttribution::typeForMessage($message)?->value,
+            'is_internal_note' => $isInternalNote,
+            'sender_name' => $senderName,
+            'created_at_time' => optional($message->created_at)?->format('h:i A'),
+            'participant_type' => $participantType,
             'worker_engagement_id' => $message->worker_engagement_id,
             'created_at' => optional($message->created_at)?->toIso8601String(),
             'attachments' => $message->attachments->map(function ($attachment): array {

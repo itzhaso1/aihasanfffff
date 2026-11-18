@@ -84,9 +84,9 @@ class _StoryViewersSheetState extends ConsumerState<StoryViewersSheet> {
               child: Text(
                 'المشاهدون',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
             Expanded(child: _body()),
@@ -123,10 +123,7 @@ class _StoryViewersSheetState extends ConsumerState<StoryViewersSheet> {
     }
     if (_viewers.isEmpty) {
       return const Center(
-        child: Text(
-          'لا يوجد مشاهدون بعد',
-          key: Key('story-viewers-empty'),
-        ),
+        child: Text('لا يوجد مشاهدون بعد', key: Key('story-viewers-empty')),
       );
     }
     return ListView.separated(
@@ -142,7 +139,9 @@ class _StoryViewersSheetState extends ConsumerState<StoryViewersSheet> {
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: AppTheme.brand.withValues(alpha: 0.12),
-            backgroundImage: hasHttp ? CachedNetworkImageProvider(avatar) : null,
+            backgroundImage: hasHttp
+                ? CachedNetworkImageProvider(avatar)
+                : null,
             child: hasHttp
                 ? null
                 : Text(
@@ -153,7 +152,10 @@ class _StoryViewersSheetState extends ConsumerState<StoryViewersSheet> {
                     ),
                   ),
           ),
-          title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+          title: Text(
+            name,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
           subtitle: viewer.viewedAt == null
               ? null
               : Text(_formatViewedAt(viewer.viewedAt)),

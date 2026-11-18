@@ -47,7 +47,10 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
   }
 
   Future<void> _pickImage({bool replace = false}) async {
-    final file = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
     if (file == null) return;
     setState(() {
       _media = file;
@@ -81,11 +84,15 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
     if (type == null) return;
 
     if (type == 'text' && _text.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اكتب نص التحديث.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('اكتب نص التحديث.')));
       return;
     }
     if (type != 'text' && _media == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر ملفًا للتحديث.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('اختر ملفًا للتحديث.')));
       return;
     }
 
@@ -94,7 +101,9 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       _uploadProgress = 0;
     });
     try {
-      await ref.read(storyRepositoryProvider).create(
+      await ref
+          .read(storyRepositoryProvider)
+          .create(
             type: type,
             bodyText: type == 'text' ? _text.text.trim() : null,
             caption: _caption.text.trim().isEmpty ? null : _caption.text.trim(),
@@ -109,13 +118,23 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
           );
       await ref.read(storiesControllerProvider.notifier).refresh(force: true);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نشر التحديث')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تم نشر التحديث')));
         context.pop();
       }
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر نشر التحديث')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تعذر نشر التحديث')));
+      }
     } finally {
       if (mounted) setState(() => _publishing = false);
     }
@@ -136,43 +155,46 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
       ),
       body: Column(
         children: [
-          if (_publishing) LinearProgressIndicator(value: _uploadProgress > 0 ? _uploadProgress : null),
+          if (_publishing)
+            LinearProgressIndicator(
+              value: _uploadProgress > 0 ? _uploadProgress : null,
+            ),
           Expanded(
             child: switch (_mode) {
               _CreateMode.choose => _ChooseType(
-                  onText: () => setState(() => _mode = _CreateMode.text),
-                  onImage: () => _pickImage(),
-                  onVideo: () => _pickVideo(),
-                ),
+                onText: () => setState(() => _mode = _CreateMode.text),
+                onImage: () => _pickImage(),
+                onVideo: () => _pickVideo(),
+              ),
               _CreateMode.text => _TextEditor(
-                  controller: _text,
-                  bg: _bg,
-                  colors: _colors,
-                  onColor: (c) => setState(() => _bg = c),
-                  onBack: () => setState(() => _mode = _CreateMode.choose),
-                ),
+                controller: _text,
+                bg: _bg,
+                colors: _colors,
+                onColor: (c) => setState(() => _bg = c),
+                onBack: () => setState(() => _mode = _CreateMode.choose),
+              ),
               _CreateMode.image => _MediaEditor(
-                  isVideo: false,
-                  media: _media,
-                  caption: _caption,
-                  onPick: () => _pickImage(replace: true),
-                  onRemove: _removeMedia,
-                  onBack: () => setState(() {
-                    _media = null;
-                    _mode = _CreateMode.choose;
-                  }),
-                ),
+                isVideo: false,
+                media: _media,
+                caption: _caption,
+                onPick: () => _pickImage(replace: true),
+                onRemove: _removeMedia,
+                onBack: () => setState(() {
+                  _media = null;
+                  _mode = _CreateMode.choose;
+                }),
+              ),
               _CreateMode.video => _MediaEditor(
-                  isVideo: true,
-                  media: _media,
-                  caption: _caption,
-                  onPick: () => _pickVideo(replace: true),
-                  onRemove: _removeMedia,
-                  onBack: () => setState(() {
-                    _media = null;
-                    _mode = _CreateMode.choose;
-                  }),
-                ),
+                isVideo: true,
+                media: _media,
+                caption: _caption,
+                onPick: () => _pickVideo(replace: true),
+                onRemove: _removeMedia,
+                onBack: () => setState(() {
+                  _media = null;
+                  _mode = _CreateMode.choose;
+                }),
+              ),
             },
           ),
           if (_mode != _CreateMode.choose)
@@ -180,7 +202,10 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Text(
                 'الظهور: مساحة العمل · ينتهي خلال $_expiresInHours ساعة (حسب الخادم)',
-                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
         ],
@@ -190,7 +215,11 @@ class _CreateStoryScreenState extends ConsumerState<CreateStoryScreen> {
 }
 
 class _ChooseType extends StatelessWidget {
-  const _ChooseType({required this.onText, required this.onImage, required this.onVideo});
+  const _ChooseType({
+    required this.onText,
+    required this.onImage,
+    required this.onVideo,
+  });
 
   final VoidCallback onText;
   final VoidCallback onImage;
@@ -202,10 +231,19 @@ class _ChooseType extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Text('اختر نوع التحديث', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+        Text(
+          'اختر نوع التحديث',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
         const SizedBox(height: 16),
         _TypeTile(icon: Icons.image_outlined, title: 'صورة', onTap: onImage),
-        _TypeTile(icon: Icons.videocam_outlined, title: 'فيديو', onTap: onVideo),
+        _TypeTile(
+          icon: Icons.videocam_outlined,
+          title: 'فيديو',
+          onTap: onVideo,
+        ),
         _TypeTile(icon: Icons.edit_outlined, title: 'نص', onTap: onText),
       ],
     );
@@ -213,7 +251,11 @@ class _ChooseType extends StatelessWidget {
 }
 
 class _TypeTile extends StatelessWidget {
-  const _TypeTile({required this.icon, required this.title, required this.onTap});
+  const _TypeTile({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String title;
@@ -257,18 +299,29 @@ class _TextEditor extends StatelessWidget {
       children: [
         Align(
           alignment: AlignmentDirectional.centerStart,
-          child: TextButton.icon(onPressed: onBack, icon: const Icon(Icons.arrow_forward), label: const Text('رجوع')),
+          child: TextButton.icon(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_forward),
+            label: const Text('رجوع'),
+          ),
         ),
         Container(
           height: 280,
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: TextField(
             controller: controller,
             maxLines: null,
             expands: true,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+            ),
             decoration: const InputDecoration(
               border: InputBorder.none,
               filled: false,
@@ -290,7 +343,10 @@ class _TextEditor extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: c,
                     shape: BoxShape.circle,
-                    border: Border.all(color: c == bg ? AppTheme.brand : Colors.transparent, width: 2.5),
+                    border: Border.all(
+                      color: c == bg ? AppTheme.brand : Colors.transparent,
+                      width: 2.5,
+                    ),
                   ),
                 ),
               ),
@@ -325,7 +381,11 @@ class _MediaEditor extends StatelessWidget {
       children: [
         Align(
           alignment: AlignmentDirectional.centerStart,
-          child: TextButton.icon(onPressed: onBack, icon: const Icon(Icons.arrow_forward), label: const Text('رجوع')),
+          child: TextButton.icon(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_forward),
+            label: const Text('رجوع'),
+          ),
         ),
         AspectRatio(
           aspectRatio: 9 / 12,
@@ -340,23 +400,32 @@ class _MediaEditor extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(isVideo ? Icons.videocam_outlined : Icons.image_outlined, size: 40),
+                          Icon(
+                            isVideo
+                                ? Icons.videocam_outlined
+                                : Icons.image_outlined,
+                            size: 40,
+                          ),
                           const SizedBox(height: 8),
                           Text(isVideo ? 'اختر فيديو' : 'اختر صورة'),
                         ],
                       ),
                     )
                   : isVideo
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(media!.name, textAlign: TextAlign.center),
-                          ),
-                        )
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Image.file(File(media!.path), fit: BoxFit.cover, width: double.infinity),
-                        ),
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(media!.name, textAlign: TextAlign.center),
+                      ),
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.file(
+                        File(media!.path),
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                      ),
+                    ),
             ),
           ),
         ),
@@ -382,7 +451,10 @@ class _MediaEditor extends StatelessWidget {
             ],
           ),
         const SizedBox(height: 12),
-        TextField(controller: caption, decoration: const InputDecoration(labelText: 'تعليق (اختياري)')),
+        TextField(
+          controller: caption,
+          decoration: const InputDecoration(labelText: 'تعليق (اختياري)'),
+        ),
       ],
     );
   }

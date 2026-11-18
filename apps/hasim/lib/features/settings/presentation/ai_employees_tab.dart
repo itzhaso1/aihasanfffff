@@ -290,7 +290,9 @@ class _EmployeesTab extends ConsumerWidget {
       employeeName: employee.name,
       selectedKeys: employee.skills,
       load: () => ref.read(aiRepositoryProvider).fetchSkills(),
-      save: (keys) => ref.read(aiEmployeesControllerProvider.notifier).setSkills(employee.id, keys),
+      save: (keys) => ref
+          .read(aiEmployeesControllerProvider.notifier)
+          .setSkills(employee.id, keys),
     );
   }
 }
@@ -445,7 +447,10 @@ class _EmployeeAvatar extends StatelessWidget {
       width: 56,
       height: 56,
       color: HasimTokens.mintChip,
-      child: Icon(Icons.support_agent_outlined, color: HasimTokens.mutedColor(context)),
+      child: Icon(
+        Icons.support_agent_outlined,
+        color: HasimTokens.mutedColor(context),
+      ),
     );
     final key = avatarKey;
     return ClipRRect(

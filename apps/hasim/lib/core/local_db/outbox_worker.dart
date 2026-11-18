@@ -14,10 +14,10 @@ class OutboxWorker {
     required ConversationRepository repository,
     required InboxSession session,
     Connectivity? connectivity,
-  })  : _store = store,
-        _repository = repository,
-        _session = session,
-        _connectivity = connectivity ?? Connectivity();
+  }) : _store = store,
+       _repository = repository,
+       _session = session,
+       _connectivity = connectivity ?? Connectivity();
 
   final InboxLocalStore _store;
   final ConversationRepository _repository;
@@ -34,7 +34,9 @@ class OutboxWorker {
 
   void start() {
     try {
-      _connectivitySub ??= _connectivity.onConnectivityChanged.listen((results) {
+      _connectivitySub ??= _connectivity.onConnectivityChanged.listen((
+        results,
+      ) {
         final online = results.any((r) => r != ConnectivityResult.none);
         if (online) {
           unawaited(flush(workspaceId: _session.workspaceId));
@@ -73,7 +75,8 @@ class OutboxWorker {
         _flushAgain = false;
         final due = await _store.dueOutbox(workspaceId: scoped);
         for (final op in due) {
-          if (_session.workspaceId != null && _session.workspaceId != op.workspaceId) {
+          if (_session.workspaceId != null &&
+              _session.workspaceId != op.workspaceId) {
             continue;
           }
           await _process(op);
@@ -101,7 +104,8 @@ class OutboxWorker {
         );
         return;
       }
-      if (_session.workspaceId != null && _session.workspaceId != op.workspaceId) {
+      if (_session.workspaceId != null &&
+          _session.workspaceId != op.workspaceId) {
         await _store.failOutbox(
           id: op.id,
           workspaceId: op.workspaceId,
@@ -130,7 +134,11 @@ class OutboxWorker {
         await _store.completeOutbox(
           workspaceId: op.workspaceId,
           clientId: op.clientId,
-          server: saved.copyWith(clientId: op.clientId, localPending: false, localFailed: false),
+          server: saved.copyWith(
+            clientId: op.clientId,
+            localPending: false,
+            localFailed: false,
+          ),
         );
       } on ApiException catch (e) {
         if (kDebugMode) {
@@ -154,7 +162,11 @@ class OutboxWorker {
     }
   }
 
-  Future<void> _handleFailure(OutboxRecord op, String error, int? statusCode) async {
+  Future<void> _handleFailure(
+    OutboxRecord op,
+    String error,
+    int? statusCode,
+  ) async {
     final attempts = op.attempts + 1;
     final permanent = _isPermanent(statusCode) || attempts >= _maxAutoAttempts;
     final next = permanent

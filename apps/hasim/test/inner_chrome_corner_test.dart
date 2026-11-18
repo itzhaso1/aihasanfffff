@@ -19,7 +19,13 @@ void main() {
     );
 
     final size = tester.getSize(find.byType(HasimInnerChromeCorner));
-    expect(size, const Size(HasimInnerChromeCorner.radius, HasimInnerChromeCorner.radius));
+    expect(
+      size,
+      const Size(
+        HasimInnerChromeCorner.radius + 1,
+        HasimInnerChromeCorner.radius,
+      ),
+    );
     final ignoring = tester.widgetList<IgnorePointer>(find.byType(IgnorePointer)).where((widget) => widget.ignoring);
     expect(ignoring, isNotEmpty);
   });

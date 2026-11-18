@@ -176,6 +176,7 @@ class _FakeConversationRepository extends ConversationRepository {
   Future<({List<MessageModel> items, String? nextCursor})> messages(
     int conversationId, {
     String? cursor,
+    int? afterId,
     int? workspaceId,
   }) async {
     messageCalls++;
@@ -187,6 +188,9 @@ class _FakeConversationRepository extends ConversationRepository {
         await _store.upsertMessages(scoped, conversationId, messagesA);
       }
       return (items: messagesA, nextCursor: null);
+    }
+    if (conversationId != 123) {
+      return (items: const <MessageModel>[], nextCursor: null);
     }
     final items = scoped == 2 ? messagesB : messagesA;
     if (scoped != null) {

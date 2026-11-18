@@ -9,9 +9,14 @@ import 'package:hasim/features/conversations/presentation/widgets/chat_bubble_co
 import 'package:hasim/features/conversations/presentation/widgets/chat_wallpaper_picker.dart';
 import 'package:hasim/features/conversations/providers/conversation_theme_controller.dart';
 import 'package:hasim/features/settings/presentation/widgets/display_appearance_settings.dart';
+
 /// من قائمة المحادثة — نفس محتوى «المظهر والسمات» في الإعدادات.
 class ChatThemesScreen extends ConsumerWidget {
-  const ChatThemesScreen({super.key, this.embedded = false, this.conversationId});
+  const ChatThemesScreen({
+    super.key,
+    this.embedded = false,
+    this.conversationId,
+  });
 
   final bool embedded;
   final int? conversationId;
@@ -26,14 +31,21 @@ class ChatThemesScreen extends ConsumerWidget {
       mobileLayout: compact && !embedded,
       children: [
         if (forConversation) ...[
-          const Text('سمة هذه المحادثة', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const Text(
+            'سمة هذه المحادثة',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
           const SizedBox(height: 8),
-          const Text('تُحفظ لهذه المحادثة فقط، وباقي المحادثات تبقى على السمة العامة.'),
+          const Text(
+            'تُحفظ لهذه المحادثة فقط، وباقي المحادثات تبقى على السمة العامة.',
+          ),
           const SizedBox(height: 12),
           Align(
             alignment: AlignmentDirectional.centerStart,
             child: TextButton(
-              onPressed: () => ref.read(conversationThemeProvider(conversationId!).notifier).useSharedTheme(),
+              onPressed: () => ref
+                  .read(conversationThemeProvider(conversationId!).notifier)
+                  .useSharedTheme(),
               child: const Text('استخدام السمة العامة'),
             ),
           ),
@@ -44,7 +56,8 @@ class ChatThemesScreen extends ConsumerWidget {
           DisplayAppearanceSettings(
             themeMode: themeMode,
             compactPreview: compact,
-            onThemeChanged: (mode) => ref.read(themeModeControllerProvider.notifier).setMode(mode),
+            onThemeChanged: (mode) =>
+                ref.read(themeModeControllerProvider.notifier).setMode(mode),
           ),
       ],
     );

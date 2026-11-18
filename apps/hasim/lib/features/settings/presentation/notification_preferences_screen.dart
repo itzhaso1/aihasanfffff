@@ -20,7 +20,9 @@ class NotificationPreferencesScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final compact = HasimLayout.isCompact(context);
     final state = ref.watch(notificationPreferencesControllerProvider);
-    final notifier = ref.read(notificationPreferencesControllerProvider.notifier);
+    final notifier = ref.read(
+      notificationPreferencesControllerProvider.notifier,
+    );
 
     Widget body;
     if (state.loading) {
@@ -87,7 +89,10 @@ class NotificationPreferencesScreen extends ConsumerWidget {
     if (embedded) return body;
 
     if (compact) {
-      return HasimMobileScaffold(title: l10n.notificationPreferencesTitle, body: body);
+      return HasimMobileScaffold(
+        title: l10n.notificationPreferencesTitle,
+        body: body,
+      );
     }
 
     return Scaffold(
@@ -123,9 +128,9 @@ class _PrefSwitch extends StatelessWidget {
             child: Text(
               title,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: HasimTokens.inkColor(context),
-                  ),
+                fontWeight: FontWeight.w600,
+                color: HasimTokens.inkColor(context),
+              ),
             ),
           ),
           Switch.adaptive(

@@ -52,7 +52,9 @@ class _CompanyPushBinderState extends ConsumerState<CompanyPushBinder> {
     if (!companyPushMatchesSession(auth: auth, plan: plan)) return;
 
     if (plan.workspaceId != null && auth.workspace?.id != plan.workspaceId) {
-      final target = auth.workspaces.where((item) => item.id == plan.workspaceId);
+      final target = auth.workspaces.where(
+        (item) => item.id == plan.workspaceId,
+      );
       if (target.isEmpty) return;
       final switched = await ref
           .read(authControllerProvider.notifier)

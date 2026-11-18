@@ -39,7 +39,9 @@ Future<void> main() async {
   try {
     db = InboxDatabase.open();
     if (prefs.getBool('hasim_hive_migrated_v1') != true) {
-      await HiveInboxMigrator.migrateIfNeeded(InboxLocalStore(db)).timeout(const Duration(seconds: 10));
+      await HiveInboxMigrator.migrateIfNeeded(
+        InboxLocalStore(db),
+      ).timeout(const Duration(seconds: 10));
       await prefs.setBool('hasim_hive_migrated_v1', true);
     }
   } catch (e, st) {

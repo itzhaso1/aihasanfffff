@@ -89,16 +89,12 @@ class DashboardSubscriptionUsageTest extends TestCase
             ->withSession(['current_workspace_id' => $workspace->id])
             ->get(route('workspace.dashboard'))
             ->assertOk()
-            ->assertSee('الباقة الحالية والاستخدام')
+            ->assertSee('باقة الاشتراك وحدود الاستخدام')
             ->assertSee('Company Usage Plan')
-            ->assertSee('المتبقي')
-            ->assertSee('سجل الاشتراكات')
-            ->assertSee('مقارنة الباقات')
-            ->assertSee('المزيد')
-            ->assertDontSee('Messages Used', false)
-            ->assertDontSee('إجمالي المبيعات')
-            ->assertDontSee('Quick Actions')
-            ->assertDontSee('مبيعات خلال آخر 7 أيام');
+            ->assertSee('إجمالي المحادثات')
+            ->assertSee('إجمالي المبيعات')
+            ->assertSee('مشعل')
+            ->assertDontSee('Messages Used', false);
     }
 
     /**

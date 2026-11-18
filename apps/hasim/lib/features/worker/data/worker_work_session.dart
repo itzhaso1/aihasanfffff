@@ -10,10 +10,7 @@ class WorkerWorkSession {
     this.durationSeconds,
   });
 
-  static const statusLabels = {
-    'started': 'جارية',
-    'ended': 'منتهية',
-  };
+  static const statusLabels = {'started': 'جارية', 'ended': 'منتهية'};
 
   final int id;
   final int workerEngagementId;

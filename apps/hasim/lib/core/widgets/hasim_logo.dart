@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
 class HasimLogo extends StatelessWidget {
-  const HasimLogo({
-    super.key,
-    this.size = 96,
-    this.showWordmark = false,
-  });
+  const HasimLogo({super.key, this.size = 96, this.showWordmark = false});
 
   final double size;
   final bool showWordmark;
@@ -31,9 +27,9 @@ class HasimLogo extends StatelessWidget {
           Text(
             'حاسم',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+              fontWeight: FontWeight.w800,
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
         ],
       ],

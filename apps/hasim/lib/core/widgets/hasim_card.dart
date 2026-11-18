@@ -30,7 +30,9 @@ class HasimCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: backgroundColor ?? HasimTokens.cardBg(context),
           borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: borderColor ?? HasimTokens.lineColor(context)),
+          border: Border.all(
+            color: borderColor ?? HasimTokens.lineColor(context),
+          ),
           boxShadow: showShadow ? HasimTokens.softShadow(context) : const [],
         ),
         child: Padding(padding: padding, child: child),
