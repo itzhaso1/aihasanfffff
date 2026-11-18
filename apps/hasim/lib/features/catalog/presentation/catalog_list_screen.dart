@@ -93,7 +93,13 @@ class _CatalogListScreenState extends ConsumerState<CatalogListScreen> {
       if (!mounted) return;
       final visible = result.items.where(_matchesMode).toList();
       setState(() {
-        _items = reset ? visible : [..._items, ...visible];
+        if (reset) {
+          _items = visible;
+        } else {
+          final existingIds = _items.map((e) => e.id).toSet();
+          final newItems = visible.where((e) => !existingIds.contains(e.id));
+          _items = [..._items, ...newItems];
+        }
         _nextCursor = result.nextCursor;
         _loading = false;
         _loadingMore = false;

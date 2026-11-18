@@ -881,10 +881,14 @@ class DomainLocalStore {
   }
 
   static String _like(String query) {
-    final escaped = query
+    var escaped = query
         .replaceAll(r'\', r'\\')
         .replaceAll('%', r'\%')
         .replaceAll('_', r'\_');
+    escaped = escaped
+        .replaceAll(RegExp(r'[أإآٱا]'), '_')
+        .replaceAll(RegExp(r'[ةه]'), '_')
+        .replaceAll(RegExp(r'[ىي]'), '_');
     return '%$escaped%';
   }
 

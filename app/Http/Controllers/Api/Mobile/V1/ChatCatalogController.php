@@ -15,6 +15,7 @@ use App\Http\Resources\Mobile\ChatCatalogItemResource;
 use App\Models\ChatCatalogCategory;
 use App\Models\ChatCatalogItem;
 use App\Services\Chat\ChatCatalogService;
+use App\Support\Chat\ArabicSearchNormalizer;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,14 +48,21 @@ class ChatCatalogController extends MobileController
             ->when($request->filled('classification'), fn ($query) => $query->where('classification', $request->string('classification')->toString()))
             ->when($request->integer('category_id'), fn ($query, $id) => $query->where('chat_catalog_category_id', $id))
             ->when($search !== '', function ($query) use ($search): void {
-                $query->where(function ($inner) use ($search): void {
-                    $inner->where('name', 'like', '%'.$search.'%')
-                        ->orWhere('sku', 'like', '%'.$search.'%')
-                        ->orWhere('description', 'like', '%'.$search.'%');
+                $normalizer = app(ArabicSearchNormalizer::class);
+                $normalizedSearch = $normalizer->normalize($search);
+                $terms = array_values(array_unique(array_filter([$search, $normalizedSearch])));
+
+                $query->where(function ($inner) use ($terms): void {
+                    foreach ($terms as $term) {
+                        $inner->orWhere('name', 'like', '%'.$term.'%')
+                            ->orWhere('sku', 'like', '%'.$term.'%')
+                            ->orWhere('description', 'like', '%'.$term.'%');
+                    }
                 });
             })
             ->orderBy('sort_order')
             ->orderBy('name')
+            ->orderBy('id')
             ->cursorPaginate($perPage);
 
         return $this->ok(

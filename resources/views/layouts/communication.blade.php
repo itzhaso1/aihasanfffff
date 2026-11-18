@@ -18,25 +18,30 @@
         $userInitials = $user ? mb_substr($user->name, 0, 1, 'utf-8') : 'ح';
         $userWorkspaces = $user ? $user->workspaces()->take(6)->get() : collect();
     @endphp
+    @php
+        $isConversations = request()->routeIs('workspace.conversations.*');
+    @endphp
     <body class="bg-[#F8FAFC] font-sans text-slate-900 antialiased selection:bg-[#E8FAF6] selection:text-[#067E6B] {{ ($flush ?? false) ? 'hs-flush-layout h-screen h-dvh max-h-screen max-h-dvh overflow-hidden' : 'min-h-screen' }}" data-hs-shell="communication">
         <div 
             x-data="{ 
                 sidebarOpen: false, 
-                sidebarCollapsed: localStorage.getItem('hs_sidebar_collapsed') === 'true',
+                sidebarCollapsed: {{ $isConversations ? 'true' : "(localStorage.getItem('hs_sidebar_collapsed') === 'true')" }},
                 searchOpen: false,
                 toggleSidebar() {
                     this.sidebarCollapsed = !this.sidebarCollapsed;
                     localStorage.setItem('hs_sidebar_collapsed', this.sidebarCollapsed);
                 }
             }" 
+            @keydown.window.ctrl.b.prevent="toggleSidebar()"
+            @keydown.window.meta.b.prevent="toggleSidebar()"
             @keydown.window.ctrl.k.prevent="searchOpen = true"
             @keydown.window.meta.k.prevent="searchOpen = true"
             class="hs-workspace-shell {{ ($flush ?? false) ? 'h-screen h-dvh max-h-screen max-h-dvh overflow-hidden' : 'min-h-screen' }} w-full bg-[#F8FAFC] lg:flex"
         >
             <!-- Desktop Sidebar -->
             <aside 
-                :class="sidebarCollapsed ? 'w-20' : 'w-64'"
-                class="hs-workspace-sidebar hidden shrink-0 h-screen max-h-screen border-e border-slate-200/80 bg-white shadow-[1px_0_3px_0_rgba(15,23,42,0.03)] lg:flex lg:flex-col transition-all duration-200" 
+                :class="sidebarCollapsed ? 'w-0 border-transparent overflow-hidden opacity-0 pointer-events-none' : 'w-64 border-slate-200/80 opacity-100'"
+                class="hs-workspace-sidebar hidden shrink-0 h-screen max-h-screen border-e bg-white shadow-[1px_0_3px_0_rgba(15,23,42,0.03)] lg:flex lg:flex-col transition-all duration-300 ease-in-out select-none" 
                 data-hs-chrome="sidebar"
             >
                 <!-- Brand Header -->
@@ -91,13 +96,29 @@
                 </div>
             </aside>
 
+            <!-- Floating Sidebar Toggle Arrow Tab on edge when collapsed -->
+            <button 
+                x-show="sidebarCollapsed"
+                x-cloak
+                @click="toggleSidebar()" 
+                type="button" 
+                class="hidden lg:flex fixed top-20 end-0 z-40 h-10 w-7 items-center justify-center rounded-s-xl border border-e-0 border-slate-200/90 bg-white text-slate-500 shadow-md transition-all hover:w-8 hover:bg-[#E8FAF6] hover:text-[#067e6b] hover:border-[#C9F0E8] focus:outline-none focus:ring-2 focus:ring-[#06C2A4]/20"
+                title="إظهار الشريط الجانبي (Ctrl+B)"
+                aria-label="إظهار الشريط الجانبي"
+            >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+            </button>
+
             <!-- Main Workspace Area -->
             <div class="hs-workspace-main flex min-h-0 w-full min-w-0 flex-1 flex-col {{ ($flush ?? false) ? 'h-screen h-dvh max-h-screen max-h-dvh overflow-hidden' : '' }}">
                 <!-- Top Navigation Bar -->
                 <header class="sticky top-0 z-30 shrink-0 border-b border-slate-200/80 bg-white/95 backdrop-blur shadow-[0_1px_2px_0_rgba(15,23,42,0.02)]" data-hs-chrome="topbar">
                     <div class="flex h-16 min-w-0 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-                        <!-- Left: Mobile Menu & Current Breadcrumb -->
-                        <div class="flex items-center gap-3 min-w-0">
+                        <!-- Left: Mobile Menu, Desktop Sidebar Arrow Toggle & Current Breadcrumb -->
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <!-- Mobile Menu Button -->
                             <button 
                                 @click="sidebarOpen = true" 
                                 type="button" 
@@ -106,6 +127,25 @@
                             >
                                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                                </svg>
+                            </button>
+
+                            <!-- Desktop Sidebar Toggle Arrow Button (السهم) -->
+                            <button 
+                                @click="toggleSidebar()" 
+                                type="button" 
+                                class="hidden lg:inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#06C2A4]/20" 
+                                :title="sidebarCollapsed ? 'إظهار الشريط الجانبي (Ctrl+B)' : 'إخفاء الشريط الجانبي (Ctrl+B)'"
+                                aria-label="تبديل الشريط الجانبي"
+                            >
+                                <svg 
+                                    class="h-4 w-4 transition-transform duration-300" 
+                                    :class="sidebarCollapsed ? '' : 'rotate-180'" 
+                                    fill="none" 
+                                    stroke="currentColor" 
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
                                 </svg>
                             </button>
 

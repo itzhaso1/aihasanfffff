@@ -128,7 +128,8 @@ class ConversationController extends Controller
             })
             ->when($handoffFilter === 'active', fn ($query) => $query->where('handoff_status', 'active'))
             ->when($handoffFilter === 'resolved', fn ($query) => $query->where('handoff_status', 'resolved'))
-            ->latest('last_message_at')
+            ->orderByRaw('COALESCE(conversations.last_message_at, conversations.updated_at, conversations.created_at) DESC')
+            ->orderByDesc('conversations.id')
             ->paginate(12)
             ->withQueryString();
 
@@ -176,7 +177,7 @@ class ConversationController extends Controller
                         'user',
                         'workerEngagement.workerProfile:id,display_name',
                         'attachments',
-                    ])->latest()->limit(80),
+                    ])->latest('id')->limit(80),
                 ])
                 ->find($activeConversationId);
 
@@ -191,7 +192,7 @@ class ConversationController extends Controller
 
                 $activeConversation->setRelation(
                     'messages',
-                    $activeConversation->messages->sortBy('created_at')->values()
+                    $activeConversation->messages->sortBy('id')->values()
                 );
 
                 $request->session()->put($sessionKey, $activeConversation->id);
@@ -384,7 +385,8 @@ class ConversationController extends Controller
                 'customer:id,name',
                 'messages' => fn ($q) => $q->latest('id')->limit(1),
             ])
-            ->latest('last_message_at')
+            ->orderByRaw('COALESCE(last_message_at, updated_at, created_at) DESC')
+            ->orderByDesc('id')
             ->limit(20)
             ->get();
 

@@ -227,7 +227,7 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
 
 const inArray = (val, arr) => arr.indexOf(val) !== -1;
 
-const updateConversationInSidebar = (conv) => {
+const updateConversationInSidebar = (conv, { moveToTop = false } = {}) => {
     if (!conv?.id) return;
     const link = document.querySelector(`[data-conversation-id="${conv.id}"]`);
     if (!link) return;
@@ -253,12 +253,12 @@ const updateConversationInSidebar = (conv) => {
     // Update unread count
     const badgeWrap = link.querySelector('.mt-2.flex.items-center.justify-between') || link.querySelector('.flex.flex-wrap.items-center.justify-between');
     if (badgeWrap) {
-        let badge = badgeWrap.querySelector('.bg-\\[\\#00BFAE\\].text-white');
+        let badge = badgeWrap.querySelector('.bg-\\[\\#00BFAE\\].text-white') || badgeWrap.querySelector('.bg-\\[\\#06C2A4\\].text-white');
         const count = Number(conv.unread_count) || 0;
         if (count > 0) {
             if (!badge) {
                 badge = document.createElement('span');
-                badge.className = 'inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#00BFAE] px-1.5 text-[10px] font-bold text-white shadow-2xs';
+                badge.className = 'inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#06C2A4] px-1.5 text-[10px] font-bold text-white shadow-2xs';
                 badgeWrap.appendChild(badge);
             }
             badge.textContent = String(count);
@@ -267,10 +267,12 @@ const updateConversationInSidebar = (conv) => {
         }
     }
 
-    // Move to top of conversations list
-    const container = document.querySelector('[data-inbox-conversation-list]');
-    if (container && container.firstElementChild && container.firstElementChild !== row) {
-        container.insertBefore(row, container.firstElementChild);
+    // Move to top of conversations list ONLY if explicitly requested (e.g. new message arrived)
+    if (moveToTop) {
+        const container = document.querySelector('[data-inbox-conversation-list]');
+        if (container && container.firstElementChild && container.firstElementChild !== row) {
+            container.insertBefore(row, container.firstElementChild);
+        }
     }
 };
 
@@ -357,7 +359,7 @@ const bindComposeForm = () => {
             if (data?.message) {
                 appendInboxMessage(data.message);
                 if (data?.conversation) {
-                    updateConversationInSidebar(data.conversation);
+                    updateConversationInSidebar(data.conversation, { moveToTop: true });
                 }
             }
 
@@ -440,7 +442,7 @@ const bindLivePolling = () => {
                     }
                 }
                 if (data?.conversation) {
-                    updateConversationInSidebar(data.conversation);
+                    updateConversationInSidebar(data.conversation, { moveToTop: anyAppended });
                 }
             } catch (_) {
                 // silent ignore
@@ -467,7 +469,7 @@ const bindLivePolling = () => {
             const data = await res.json();
             if (Array.isArray(data?.conversations)) {
                 for (const conv of data.conversations) {
-                    updateConversationInSidebar(conv);
+                    updateConversationInSidebar(conv, { moveToTop: false });
                 }
             }
         } catch (_) {

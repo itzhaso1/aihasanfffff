@@ -16,9 +16,10 @@ class ChatCatalogItemResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $primaryPath = $this->primaryImagePath();
         $imageUrl = null;
-        if (is_string($this->image_path) && $this->image_path !== '') {
-            $imageUrl = Storage::disk('public')->url($this->image_path);
+        if (is_string($primaryPath) && $primaryPath !== '') {
+            $imageUrl = Storage::disk($this->primaryImageDisk())->url($primaryPath);
         }
 
         return [

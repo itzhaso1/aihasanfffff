@@ -38,7 +38,7 @@
 
 <section class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-[#F8FBFA]">
     {{-- Chat Header --}}
-    <div class="flex flex-col gap-2.5 border-b border-slate-200/90 bg-white px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
+    <div class="relative z-20 flex flex-col gap-2.5 border-b border-slate-200/90 bg-white px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 overflow-visible">
         <div class="flex min-w-0 items-center gap-3">
             <a
                 href="{{ route($inboxIndexRoute, array_merge($inboxRouteParameters, $backQuery)) }}"
@@ -101,7 +101,7 @@
         </div>
 
         {{-- Actions in Header --}}
-        <div class="flex max-w-full flex-wrap items-center justify-end gap-2 overflow-x-auto">
+        <div class="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 overflow-visible">
             @if($inboxAllowsCompanyActions && $conversationIsOpen)
                 @can('manageHandoff', $activeConversation)
                     @if($canEndActiveHandoff)
@@ -152,7 +152,7 @@
                         x-show="statusOpen"
                         x-cloak
                         x-transition.origin.top
-                        class="absolute end-0 top-full z-30 mt-1 min-w-[8.5rem] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-lg"
+                        class="absolute end-0 top-full z-50 mt-1.5 min-w-[9rem] rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl"
                     >
                         @foreach(['open' => ['مفتوحة', 'bg-emerald-500'], 'closed' => ['مغلقة', 'bg-slate-400'], 'archived' => ['مؤرشفة', 'bg-amber-500']] as $sKey => [$sLabel, $sDot])
                             <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}">
