@@ -17,7 +17,7 @@
 @endphp
 
 <aside @class([
-    'h-full min-h-0 w-full max-w-full flex-col border-slate-200/90 bg-white md:flex md:w-[22rem] md:max-w-[22rem] md:border-e lg:w-[24rem] lg:max-w-[24rem] xl:w-[26rem] xl:max-w-[26rem]',
+    'h-full min-h-0 w-full max-w-full flex-col border-slate-200/90 bg-white md:flex md:w-[22rem] md:max-w-[22rem] md:border-e lg:w-[24rem] lg:max-w-[24rem] xl:w-[26rem] xl:max-w-[26rem] overflow-hidden shrink-0',
     'flex' => ! $activeConversation,
     'hidden' => $activeConversation,
 ])>
@@ -204,7 +204,7 @@
         </div>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100" data-inbox-conversation-list data-hs-result>
+    <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100 overscroll-contain hs-scrollbar" data-inbox-conversation-list data-hs-result style="overscroll-behavior: contain; -webkit-overflow-scrolling: touch;">
         @forelse($conversations as $conversation)
             @php
                 $isActive = $activeConversation && $activeConversation->id === $conversation->id;

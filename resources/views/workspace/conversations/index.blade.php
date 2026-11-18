@@ -16,11 +16,11 @@
         data-active-conversation-id="{{ $activeConversation?->id }}"
         x-data="{ detailsOpen: false }"
         @keydown.escape.window="detailsOpen = false"
-        class="hs-inbox-shell hs-inbox-shell--embedded flex min-h-0 flex-1 flex-col"
+        class="hs-inbox-shell hs-inbox-shell--embedded flex min-h-0 flex-1 h-full max-h-full flex-col overflow-hidden"
     >
         @include('partials.flash')
 
-        <div class="flex min-h-0 flex-1">
+        <div class="flex min-h-0 flex-1 h-full max-h-full overflow-hidden">
             @include('workspace.communication.inbox.conversation-list')
 
             @if($activeConversation)

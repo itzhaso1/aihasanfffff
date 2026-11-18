@@ -116,6 +116,8 @@ class AuthController extends StateNotifier<AuthState> {
   /// Ends a hung bootstrap (secure storage / network) so splash can reach login.
   Future<void> abortBootstrapAsGuest() async {
     if (!state.bootstrapping) return;
+    state = const AuthState(bootstrapping: false);
+    _syncWorkerProfileId();
     await _wipeLocalSession();
   }
 
@@ -125,7 +127,7 @@ class AuthController extends StateNotifier<AuthState> {
       token = await _ref
           .read(secureStoreProvider)
           .readToken()
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 2));
     } catch (_) {
       token = null;
     }
@@ -148,7 +150,9 @@ class AuthController extends StateNotifier<AuthState> {
       _ref.read(inboxSessionProvider).beginWorkspace(lastWorkspaceId);
     }
     try {
-      await _refreshAccount(allowWorkspaceReset: true);
+      await _refreshAccount(
+        allowWorkspaceReset: true,
+      ).timeout(const Duration(seconds: 3));
       _startInboxServices();
     } catch (_) {
       await _wipeLocalSession();
@@ -199,11 +203,16 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> _refreshAccount({required bool allowWorkspaceReset}) async {
     final token = await _ref.read(secureStoreProvider).readToken();
-    if (token == null || token.isEmpty) return;
+    if (token == null || token.isEmpty) {
+      if (state.bootstrapping) {
+        state = state.copyWith(bootstrapping: false, clearSession: true);
+      }
+      return;
+    }
     final me = await _ref
         .read(authRepositoryProvider)
         .me()
-        .timeout(const Duration(seconds: 25));
+        .timeout(const Duration(seconds: 10));
     final prefs = _ref.read(prefsStoreProvider);
     WorkspaceModel? workspace;
     if (!me.participant.isIndependentWorker) {

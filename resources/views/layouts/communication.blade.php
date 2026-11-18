@@ -18,7 +18,7 @@
         $userInitials = $user ? mb_substr($user->name, 0, 1, 'utf-8') : 'ح';
         $userWorkspaces = $user ? $user->workspaces()->take(6)->get() : collect();
     @endphp
-    <body class="bg-[#F8FAFC] font-sans text-slate-900 antialiased selection:bg-[#E8FAF6] selection:text-[#067E6B]" data-hs-shell="communication">
+    <body class="bg-[#F8FAFC] font-sans text-slate-900 antialiased selection:bg-[#E8FAF6] selection:text-[#067E6B] {{ ($flush ?? false) ? 'hs-flush-layout h-screen h-dvh max-h-screen max-h-dvh overflow-hidden' : 'min-h-screen' }}" data-hs-shell="communication">
         <div 
             x-data="{ 
                 sidebarOpen: false, 
@@ -31,12 +31,12 @@
             }" 
             @keydown.window.ctrl.k.prevent="searchOpen = true"
             @keydown.window.meta.k.prevent="searchOpen = true"
-            class="hs-workspace-shell min-h-screen w-full bg-[#F8FAFC] lg:flex"
+            class="hs-workspace-shell {{ ($flush ?? false) ? 'h-screen h-dvh max-h-screen max-h-dvh overflow-hidden' : 'min-h-screen' }} w-full bg-[#F8FAFC] lg:flex"
         >
             <!-- Desktop Sidebar -->
             <aside 
                 :class="sidebarCollapsed ? 'w-20' : 'w-64'"
-                class="hs-workspace-sidebar hidden shrink-0 border-e border-slate-200/80 bg-white shadow-[1px_0_3px_0_rgba(15,23,42,0.03)] lg:flex lg:flex-col transition-all duration-200" 
+                class="hs-workspace-sidebar hidden shrink-0 h-screen max-h-screen border-e border-slate-200/80 bg-white shadow-[1px_0_3px_0_rgba(15,23,42,0.03)] lg:flex lg:flex-col transition-all duration-200" 
                 data-hs-chrome="sidebar"
             >
                 <!-- Brand Header -->
@@ -92,9 +92,9 @@
             </aside>
 
             <!-- Main Workspace Area -->
-            <div class="hs-workspace-main flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div class="hs-workspace-main flex min-h-0 w-full min-w-0 flex-1 flex-col {{ ($flush ?? false) ? 'h-screen h-dvh max-h-screen max-h-dvh overflow-hidden' : '' }}">
                 <!-- Top Navigation Bar -->
-                <header class="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur shadow-[0_1px_2px_0_rgba(15,23,42,0.02)]" data-hs-chrome="topbar">
+                <header class="sticky top-0 z-30 shrink-0 border-b border-slate-200/80 bg-white/95 backdrop-blur shadow-[0_1px_2px_0_rgba(15,23,42,0.02)]" data-hs-chrome="topbar">
                     <div class="flex h-16 min-w-0 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
                         <!-- Left: Mobile Menu & Current Breadcrumb -->
                         <div class="flex items-center gap-3 min-w-0">
@@ -299,16 +299,16 @@
                 @endisset
 
                 <!-- Main Content -->
-                <main @class([
+                <main data-hs-region @class([
                     'min-w-0 flex-1',
                     'px-4 py-6 sm:px-6 lg:px-8' => ! ($flush ?? false),
-                    'p-0 overflow-hidden flex flex-row' => ($flush ?? false) && ($secondarySidebar ?? false),
-                    'p-0 overflow-hidden' => ($flush ?? false) && ! ($secondarySidebar ?? false),
+                    'p-0 min-h-0 h-[calc(100%-4rem)] max-h-[calc(100%-4rem)] overflow-hidden flex flex-row' => ($flush ?? false) && ($secondarySidebar ?? false),
+                    'p-0 min-h-0 h-[calc(100%-4rem)] max-h-[calc(100%-4rem)] overflow-hidden' => ($flush ?? false) && ! ($secondarySidebar ?? false),
                 ])>
                     @if($secondarySidebar ?? false)
                         @include('workspace.communication.partials.secondary-nav')
                     @endif
-                    <div class="flex-1 min-w-0 overflow-hidden flex flex-col">
+                    <div class="flex-1 min-w-0 min-h-0 h-full max-h-full overflow-hidden flex flex-col">
                         {{ $slot }}
                     </div>
                 </main>

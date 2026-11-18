@@ -5,7 +5,10 @@ class SecureStore {
     : _storage =
           storage ??
           const FlutterSecureStorage(
-            aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            aOptions: AndroidOptions(
+              encryptedSharedPreferences: true,
+              resetOnError: true,
+            ),
           );
 
   final FlutterSecureStorage _storage;
@@ -17,14 +20,22 @@ class SecureStore {
   Future<void> saveToken(String token) async {
     _cachedToken = token;
     _tokenLoaded = true;
-    await _storage.write(key: _tokenKey, value: token);
+    try {
+      await _storage.write(key: _tokenKey, value: token);
+    } catch (_) {}
   }
 
   Future<String?> readToken() async {
     if (_tokenLoaded) {
       return _cachedToken;
     }
-    _cachedToken = await _storage.read(key: _tokenKey);
+    try {
+      _cachedToken = await _storage
+          .read(key: _tokenKey)
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      _cachedToken = null;
+    }
     _tokenLoaded = true;
     return _cachedToken;
   }
@@ -32,7 +43,9 @@ class SecureStore {
   Future<void> clearToken() async {
     _cachedToken = null;
     _tokenLoaded = true;
-    await _storage.delete(key: _tokenKey);
+    try {
+      await _storage.delete(key: _tokenKey).timeout(const Duration(seconds: 2));
+    } catch (_) {}
   }
 
   void invalidateCache() {

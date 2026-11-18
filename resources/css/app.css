@@ -239,14 +239,39 @@
     }
 
     /* Conversations / Inbox styles */
+    body.hs-flush-layout {
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100vh;
+        max-height: 100dvh;
+        overflow: hidden !important;
+        overscroll-behavior: none !important;
+    }
+
+    .hs-flush-layout .hs-workspace-shell {
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100vh;
+        max-height: 100dvh;
+        overflow: hidden !important;
+    }
+
+    .hs-flush-layout .hs-workspace-main {
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100vh;
+        max-height: 100dvh;
+        overflow: hidden !important;
+    }
+
     .hs-inbox-shell {
         display: flex;
         min-height: 0;
         min-width: 0;
         flex: 1 1 auto;
         flex-direction: column;
-        height: calc(100dvh - 4.5rem);
-        max-height: calc(100dvh - 4.5rem);
+        height: 100%;
+        max-height: 100%;
         overflow: hidden;
     }
 
@@ -256,16 +281,16 @@
         flex: 1 1 auto;
     }
 
-    @media (max-width: 767px) {
-        .hs-inbox-shell {
-            height: calc(100dvh - 4rem);
-            max-height: calc(100dvh - 4rem);
-        }
-    }
-
     #inbox-message-list {
         min-width: 0;
         overflow-x: hidden;
+        overscroll-behavior: contain !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    [data-inbox-conversation-list] {
+        overscroll-behavior: contain !important;
+        -webkit-overflow-scrolling: touch;
     }
 
     .hs-inbox-message-row {

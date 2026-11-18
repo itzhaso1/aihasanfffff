@@ -2,11 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 
 class _CatalogCard extends StatelessWidget {
-  const _CatalogCard({
-    required this.child,
-    this.minHeight,
-    this.radius = 10,
-  });
+  const _CatalogCard({required this.child, this.minHeight, this.radius = 10});
 
   final Widget child;
   final double? minHeight;

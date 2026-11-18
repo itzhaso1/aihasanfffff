@@ -244,7 +244,7 @@
     @endif
 
     {{-- Messages Area --}}
-    <div id="inbox-message-list" class="min-h-0 flex-1 space-y-3 overflow-y-auto px-3.5 py-4 sm:px-6">
+    <div id="inbox-message-list" class="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain hs-scrollbar px-3 py-3.5 sm:px-6" style="overscroll-behavior: contain; -webkit-overflow-scrolling: touch;">
         @forelse($activeConversation->messages as $message)
             @php
                 $isInternalNote = $message->direction === 'internal_note'
@@ -261,10 +261,10 @@
                     $isInternalNote ? 'justify-center' : ($outbound ? 'hs-inbox-message-row--sent' : 'hs-inbox-message-row--received'),
                 ]) data-message-id="{{ $message->id }}">
                 <div @class([
-                    'hs-inbox-message-bubble max-w-[80%] rounded-2xl px-4 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
-                    'rounded-bl-xs bg-[#D8F6F0] text-slate-900 border border-[#BDEFE5]/70' => $outbound && ! $isInternalNote,
-                    'mx-auto border border-amber-300 bg-amber-50/90 text-amber-950 shadow-xs' => $isInternalNote,
-                    'rounded-br-xs border border-slate-200/80 bg-white text-slate-800' => ! $outbound && ! $isInternalNote,
+                    'hs-inbox-message-bubble max-w-[85%] sm:max-w-[72%] rounded-2xl px-3.5 py-2 shadow-2xs transition',
+                    'rounded-bl-xs bg-[#E8FAF6] text-slate-900 border border-[#C9F0E8]' => $outbound && ! $isInternalNote,
+                    'mx-auto border border-amber-300/80 bg-amber-50/90 text-amber-950 shadow-2xs' => $isInternalNote,
+                    'rounded-br-xs border border-slate-200/90 bg-white text-slate-800' => ! $outbound && ! $isInternalNote,
                 ])>
                     @if($message->attachments && $message->attachments->isNotEmpty())
                         <div class="mb-2 space-y-2">
@@ -308,18 +308,18 @@
                     @endif
 
                     @if($isInternalNote)
-                        <div class="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-amber-800">
+                        <div class="mb-1 flex items-center gap-1 text-[11px] font-bold text-amber-800">
                             <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                             <span>{{ $statusLabel }}</span>
                         </div>
                     @endif
 
-                    <div class="text-[13.5px] leading-relaxed whitespace-pre-wrap font-normal">
+                    <div class="text-[12.5px] sm:text-[13px] leading-[1.6] whitespace-pre-wrap font-normal text-slate-800">
                         {{ $message->content ?: '—' }}
                     </div>
 
                     {{-- Message Metadata Footer --}}
-                    <div class="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-slate-400 select-none">
+                    <div class="mt-1 flex items-center justify-end gap-1.5 text-[9.5px] text-slate-400 select-none">
                         <span>{{ $message->created_at?->format('h:i A') }}</span>
                         @if($messageType === \App\Enums\WorkforceParticipantType::AiEmployee)
                             <span class="inline-flex items-center gap-0.5 text-emerald-700 font-medium">
@@ -334,7 +334,7 @@
 
                         @if($outbound && ! $isInternalNote)
                             {{-- Double Checkmark Icon (WhatsApp Style) --}}
-                            <svg class="h-3.5 w-3.5 text-[#00BFAE]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="h-3 w-3 text-[#06C2A4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5" />
                             </svg>
                         @endif
@@ -352,38 +352,38 @@
     </div>
 
     {{-- Message Input Bar --}}
-    <div class="border-t border-slate-200/90 bg-white px-3.5 py-3 sm:px-5">
+    <div class="shrink-0 border-t border-slate-200/90 bg-white px-3.5 py-2.5 sm:px-5">
         @if($inboxCanSend)
-        <form id="inbox-compose-form" method="POST" action="{{ $inboxMessageAction }}" class="space-y-2">
+        <form id="inbox-compose-form" method="POST" action="{{ $inboxMessageAction }}" class="space-y-1.5">
             @csrf
             <input type="hidden" name="conversation_id" value="{{ $activeConversation->id }}">
             <input type="hidden" name="customer_id" value="{{ $activeConversation->customer_id }}">
             <input type="hidden" name="direction" value="outbound">
             <input type="hidden" name="message_type" value="text">
             <input type="hidden" name="metadata_json" value="{}">
-            <div class="flex items-end gap-2.5">
-                <div class="relative min-w-0 flex-1 rounded-2xl border border-slate-200/90 bg-slate-50/60 transition focus-within:border-[#00BFAE] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#00BFAE]/15">
+            <div class="flex items-end gap-2">
+                <div class="relative min-w-0 flex-1 rounded-2xl border border-slate-200/90 bg-slate-50/70 transition focus-within:border-[#06C2A4] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#06C2A4]/15">
                     <textarea
                         name="content"
                         rows="1"
-                        class="w-full resize-none border-0 bg-transparent px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-0 leading-normal"
+                        class="w-full resize-none border-0 bg-transparent px-3.5 py-2.5 text-[13px] text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-0 leading-normal"
                         placeholder="اكتب رسالتك هنا... (اضغط Enter للإرسال)"
                     ></textarea>
                 </div>
                 <button
                     type="submit"
-                    class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#00BFAE] to-[#049a8c] text-white shadow-xs transition hover:brightness-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[#00BFAE]/40"
+                    class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#06C2A4] to-[#049E86] text-white shadow-xs transition hover:brightness-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[#06C2A4]/40"
                     aria-label="إرسال الرسالة"
                     title="إرسال الرسالة"
                 >
-                    <svg class="h-5 w-5 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="h-4 w-4 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                     </svg>
                 </button>
             </div>
-            <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+            <div class="flex items-center justify-between text-[10px] text-slate-400 px-1">
                 <span class="inline-flex items-center gap-1.5">
-                    <span class="h-2 w-2 rounded-full {{ $activeChannelChip['dot'] ?? 'bg-slate-400' }}"></span>
+                    <span class="h-1.5 w-1.5 rounded-full {{ $activeChannelChip['dot'] ?? 'bg-slate-400' }}"></span>
                     <span>المصدر: {{ $activeChannelChip['label'] }}</span>
                 </span>
                 <span class="hidden sm:inline">اضغط Enter للإرسال · Shift+Enter لسطر جديد</span>

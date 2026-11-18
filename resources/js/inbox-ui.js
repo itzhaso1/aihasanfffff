@@ -162,16 +162,16 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
 
     const bubble = document.createElement('div');
     if (isInternalNote) {
-        bubble.className = 'hs-inbox-message-bubble max-w-[80%] rounded-2xl px-4 py-2.5 mx-auto border border-amber-300 bg-amber-50/90 text-amber-950 shadow-xs';
+        bubble.className = 'hs-inbox-message-bubble max-w-[85%] sm:max-w-[72%] rounded-2xl px-3.5 py-2 mx-auto border border-amber-300/80 bg-amber-50/90 text-amber-950 shadow-2xs';
     } else if (outbound) {
-        bubble.className = 'hs-inbox-message-bubble max-w-[80%] rounded-2xl px-4 py-2.5 rounded-bl-xs bg-[#D8F6F0] text-slate-900 border border-[#BDEFE5]/70 shadow-[0_1px_2px_rgba(0,0,0,0.04)]';
+        bubble.className = 'hs-inbox-message-bubble max-w-[85%] sm:max-w-[72%] rounded-2xl px-3.5 py-2 rounded-bl-xs bg-[#E8FAF6] text-slate-900 border border-[#C9F0E8] shadow-2xs';
     } else {
-        bubble.className = 'hs-inbox-message-bubble max-w-[80%] rounded-2xl px-4 py-2.5 rounded-br-xs border border-slate-200/80 bg-white text-slate-800 shadow-[0_1px_2px_rgba(0,0,0,0.04)]';
+        bubble.className = 'hs-inbox-message-bubble max-w-[85%] sm:max-w-[72%] rounded-2xl px-3.5 py-2 rounded-br-xs border border-slate-200/90 bg-white text-slate-800 shadow-2xs';
     }
 
     if (isInternalNote) {
         const noteBadge = document.createElement('div');
-        noteBadge.className = 'mb-1.5 flex items-center gap-1 text-[11px] font-bold text-amber-800';
+        noteBadge.className = 'mb-1 flex items-center gap-1 text-[11px] font-bold text-amber-800';
         noteBadge.innerHTML = `<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg><span>ملاحظة داخلية</span>`;
         bubble.appendChild(noteBadge);
     }
@@ -186,13 +186,13 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
     }
 
     const text = document.createElement('div');
-    text.className = 'text-[13.5px] leading-relaxed whitespace-pre-wrap font-normal';
+    text.className = 'text-[12.5px] sm:text-[13px] leading-[1.6] whitespace-pre-wrap font-normal text-slate-800';
     text.textContent = payload.content || '—';
     bubble.appendChild(text);
 
     // Message Metadata Footer
     const footer = document.createElement('div');
-    footer.className = 'mt-1 flex items-center justify-end gap-1.5 text-[10px] text-slate-400 select-none';
+    footer.className = 'mt-1 flex items-center justify-end gap-1.5 text-[9.5px] text-slate-400 select-none';
 
     const timeSpan = document.createElement('span');
     timeSpan.textContent = payload.created_at_time || formatTimeNow();
@@ -213,7 +213,7 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
     if (outbound && !isInternalNote) {
         const checkmark = document.createElement('span');
         checkmark.className = 'inline-flex items-center';
-        checkmark.innerHTML = `<svg class="h-3.5 w-3.5 text-[#00BFAE]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5" /></svg>`;
+        checkmark.innerHTML = `<svg class="h-3 w-3 text-[#06C2A4]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5" /></svg>`;
         footer.appendChild(checkmark);
     }
 

@@ -29,6 +29,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   bool _navigated = false;
   Timer? _bootstrapGuard;
   Timer? _minHold;
+  Timer? _retryTimer;
   late final DateTime _openedAt;
   late final AnimationController _intro;
   late final Animation<double> _markFade;
@@ -87,13 +88,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     });
 
     if (!_isFlutterTest) {
-      _bootstrapGuard = Timer(const Duration(seconds: 12), () {
+      _bootstrapGuard = Timer(const Duration(milliseconds: 3200), () async {
         if (!mounted || _navigated) return;
         final auth = ref.read(authControllerProvider);
         if (auth.bootstrapping) {
-          ref.read(authControllerProvider.notifier).abortBootstrapAsGuest();
-          _scheduleNavigationCheck();
+          await ref
+              .read(authControllerProvider.notifier)
+              .abortBootstrapAsGuest();
         }
+        if (mounted) _scheduleNavigationCheck();
       });
     }
   }
@@ -117,7 +120,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (!mounted) return;
     await _intro.forward();
     if (!mounted) return;
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await Future<void>.delayed(const Duration(milliseconds: 200));
     if (!mounted) return;
     _scheduleNavigationCheck();
   }
@@ -126,6 +129,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   void dispose() {
     _bootstrapGuard?.cancel();
     _minHold?.cancel();
+    _retryTimer?.cancel();
     _intro.dispose();
     super.dispose();
   }
@@ -141,7 +145,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (_navigated || !mounted) return;
     if (_intro.status != AnimationStatus.completed) return;
     final auth = ref.read(authControllerProvider);
-    if (auth.bootstrapping) return;
+    if (auth.bootstrapping) {
+      _retryTimer?.cancel();
+      _retryTimer = Timer(const Duration(milliseconds: 150), () {
+        if (mounted) _scheduleNavigationCheck();
+      });
+      return;
+    }
+    _retryTimer?.cancel();
     if (!_isFlutterTest) {
       final elapsed = DateTime.now().difference(_openedAt);
       const minShow = Duration(milliseconds: 2600);

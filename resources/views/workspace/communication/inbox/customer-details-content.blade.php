@@ -13,7 +13,7 @@
         : ($customer?->orders ?? collect());
 @endphp
 
-<div class="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100">
+<div class="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100 overscroll-contain hs-scrollbar" style="overscroll-behavior: contain; -webkit-overflow-scrolling: touch;">
     @if($customer)
         {{-- Profile Header --}}
         <div class="px-5 py-6 text-center bg-gradient-to-b from-slate-50/50 to-white">
