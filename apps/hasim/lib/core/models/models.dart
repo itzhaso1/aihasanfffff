@@ -105,6 +105,13 @@ class CustomerNoteModel extends Equatable {
         userName: json['user_name']?.toString(),
       );
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'body': body,
+    if (createdAt != null) 'created_at': createdAt,
+    if (userName != null) 'user_name': userName,
+  };
+
   @override
   List<Object?> get props => [id, body, createdAt, userName];
 }
@@ -178,6 +185,23 @@ class CustomerModel extends Equatable {
         const [],
     createdAt: json['created_at']?.toString(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    if (phone != null) 'phone': phone,
+    'status': status,
+    if (statusLabel != null) 'status_label': statusLabel,
+    if (email != null) 'email': email,
+    if (whatsapp != null) 'whatsapp': whatsapp,
+    if (city != null) 'city': city,
+    'orders_count': ordersCount,
+    'total_purchases': totalPurchases,
+    if (lastOrderAt != null) 'last_order_at': lastOrderAt,
+    if (lastConversationAt != null) 'last_conversation_at': lastConversationAt,
+    'notes': notes.map((n) => n.toJson()).toList(),
+    if (createdAt != null) 'created_at': createdAt,
+  };
 
   @override
   List<Object?> get props => [
@@ -684,8 +708,8 @@ class ConversationModel extends Equatable {
           userId: assignedUserId,
           userInitials:
               (assignedUserName != null && assignedUserName!.isNotEmpty)
-                  ? assignedUserName!.trim().substring(0, 1)
-                  : 'م',
+              ? assignedUserName!.trim().substring(0, 1)
+              : 'م',
         );
       }
       return const ConversationResponder(

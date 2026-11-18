@@ -85,7 +85,7 @@ class ConversationController extends MobileController
         } catch (ModelNotFoundException) {
             return $this->fail('العنصر المطلوب غير موجود.', 404);
         }
-        $conversation->load(['customer']);
+        $conversation->load(['customer', 'assignedUser']);
         if (app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($conversation)) {
             $conversation = $conversation->fresh(['customer']) ?? $conversation;
         }

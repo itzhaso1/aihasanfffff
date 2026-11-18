@@ -332,15 +332,19 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
     if (widget.attachments != null) {
       allAttachments.addAll(widget.attachments!);
     } else if (widget.conversation.id > 0) {
-      final chatState = ref.watch(chatControllerProvider(widget.conversation.id));
+      final chatState = ref.watch(
+        chatControllerProvider(widget.conversation.id),
+      );
       for (final m in chatState.messages) {
         allAttachments.addAll(m.attachments);
       }
     }
-    final imageAttachments =
-        allAttachments.where((a) => a.kind == 'image').toList();
-    final fileAttachments =
-        allAttachments.where((a) => a.kind != 'image').toList();
+    final imageAttachments = allAttachments
+        .where((a) => a.kind == 'image')
+        .toList();
+    final fileAttachments = allAttachments
+        .where((a) => a.kind != 'image')
+        .toList();
 
     return Material(
       color: HasimTokens.cardBg(context),
@@ -677,7 +681,8 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
             )
           else ...[
             // Thumbnail grid for images
-            if (_mediaFilter == 'images' || (_mediaFilter == 'all' && images.isNotEmpty)) ...[
+            if (_mediaFilter == 'images' ||
+                (_mediaFilter == 'all' && images.isNotEmpty)) ...[
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -698,7 +703,8 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
                         context,
                         attachments: images,
                         initialIndex: idx,
-                        senderName: widget.conversation.customer?.name ??
+                        senderName:
+                            widget.conversation.customer?.name ??
                             widget.conversation.title,
                       );
                     },
@@ -717,13 +723,18 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
                                   child: SizedBox(
                                     width: 16,
                                     height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 1.5),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.5,
+                                    ),
                                   ),
                                 ),
                               ),
                               errorWidget: (_, _, _) => Container(
                                 color: Colors.black12,
-                                child: const Icon(Icons.broken_image_outlined, size: 24),
+                                child: const Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 24,
+                                ),
                               ),
                             )
                           : Container(
@@ -739,10 +750,12 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
             ],
 
             // Files list
-            if (_mediaFilter == 'files' || (_mediaFilter == 'all' && files.isNotEmpty)) ...[
-              for (final f in (_mediaFilter == 'files'
-                  ? files
-                  : (files.length > 4 ? files.take(4).toList() : files)))
+            if (_mediaFilter == 'files' ||
+                (_mediaFilter == 'all' && files.isNotEmpty)) ...[
+              for (final f
+                  in (_mediaFilter == 'files'
+                      ? files
+                      : (files.length > 4 ? files.take(4).toList() : files)))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: InkWell(
@@ -757,7 +770,10 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
                       }
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: HasimTokens.mintFill(context),
                         borderRadius: BorderRadius.circular(8),

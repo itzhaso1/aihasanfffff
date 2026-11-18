@@ -91,6 +91,7 @@ class ConversationResponderService
         if (
             in_array($handoffStatus, [ConversationHandoffStatus::Assigned, ConversationHandoffStatus::Active], true)
             || ($conversation->assigned_user_id !== null && ! (bool) $conversation->ai_enabled)
+            || ($conversation->responder_type === self::TYPE_HUMAN)
         ) {
             $isWorkerAssigned = $conversation->assigned_worker_engagement_id !== null;
             if ($isWorkerAssigned) {

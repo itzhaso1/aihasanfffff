@@ -45,6 +45,7 @@ class ConversationInboxService
         $query = Conversation::query()
             ->with([
                 'customer:id,name,phone,email',
+                'assignedUser:id,name',
                 'messages' => fn ($q) => $q->latest('id')->limit(1),
             ])
             ->leftJoin('conversation_user_states as cus', function ($join) use ($user): void {

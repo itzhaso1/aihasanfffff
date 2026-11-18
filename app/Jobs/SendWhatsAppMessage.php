@@ -33,6 +33,10 @@ class SendWhatsAppMessage implements ShouldQueue
     public function handle(): void
     {
         $outbound = $this->outboundMessage();
+        if ($outbound && $outbound->status === WhatsAppOutboundMessage::STATUS_SENT) {
+            return;
+        }
+
         if ($outbound && ! $outbound->workspace_id) {
             throw MissingWorkspaceContextException::forWrite(
                 WhatsAppOutboundMessage::class,

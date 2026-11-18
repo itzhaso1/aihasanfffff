@@ -40,6 +40,19 @@ class CommerceOrderItemModel extends Equatable {
         description: json['description']?.toString(),
       );
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'quantity': quantity,
+    'unit_price': unitPrice,
+    'total_amount': totalAmount,
+    if (variantName != null) 'variant_name': variantName,
+    if (sku != null) 'sku': sku,
+    'currency': currency,
+    if (sellerDisplayName != null) 'seller_display_name': sellerDisplayName,
+    if (description != null) 'description': description,
+  };
+
   @override
   List<Object?> get props => [
     id,
@@ -138,6 +151,26 @@ class CommerceOrderModel extends Equatable {
       _ => status,
     };
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'order_number': orderNumber,
+    'status': status,
+    'currency': currency,
+    if (customerId != null) 'customer_id': customerId,
+    if (customer != null) 'customer': customer!.toJson(),
+    if (paymentStatus != null) 'payment_status': paymentStatus,
+    if (fulfillmentStatus != null) 'fulfillment_status': fulfillmentStatus,
+    if (subtotal != null) 'subtotal': subtotal,
+    if (discountAmount != null) 'discount_amount': discountAmount,
+    if (taxAmount != null) 'tax_amount': taxAmount,
+    if (shippingAmount != null) 'shipping_amount': shippingAmount,
+    if (totalAmount != null) 'total_amount': totalAmount,
+    if (channel != null) 'channel': channel,
+    if (placedAt != null) 'placed_at': placedAt,
+    if (cancelledAt != null) 'cancelled_at': cancelledAt,
+    'items': items.map((e) => e.toJson()).toList(),
+  };
 
   @override
   List<Object?> get props => [

@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Policies\Concerns\ChecksWorkspaceMembership;
+use App\Services\Mobile\MobileInboxActor;
 use App\Support\Tenancy\WorkspaceContext;
 
 class ConversationPolicy
@@ -60,7 +61,9 @@ class ConversationPolicy
 
     public function manageHandoff(User $user, Conversation $conversation): bool
     {
-        return $this->update($user, $conversation);
+        return $this->update($user, $conversation)
+            || $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['member', 'staff'])
+            || app(MobileInboxActor::class)->canAccessInbox($user, $conversation->workspace);
     }
 
     public function resumeAi(User $user, Conversation $conversation): bool

@@ -381,7 +381,8 @@ class ConversationController extends Controller
             $conversation = $conversation->fresh() ?? $conversation;
         }
 
-        if ($sentMessage->direction === 'inbound'
+        if ($sentMessage->wasRecentlyCreated
+            && $sentMessage->direction === 'inbound'
             && $this->aiEligibility->shouldDispatchAiJob($conversation, $sentMessage)) {
             ProcessAIResponse::dispatch($conversation->id, $sentMessage->id, (int) $conversation->workspace_id);
         }

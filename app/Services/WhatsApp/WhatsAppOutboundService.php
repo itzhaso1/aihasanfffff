@@ -141,6 +141,23 @@ class WhatsAppOutboundService
             return;
         }
 
+        $existingSentOutbound = WhatsAppOutboundMessage::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->where('message_id', $message->id)
+            ->where('status', WhatsAppOutboundMessage::STATUS_SENT)
+            ->first();
+
+        if ($existingSentOutbound) {
+            $delivery->forceFill([
+                'status' => ChannelOutboundDelivery::STATUS_SENT,
+                'provider_message_id' => $existingSentOutbound->provider_message_id ?: $delivery->provider_message_id,
+                'sent_at' => $existingSentOutbound->sent_at ?? now(),
+                'last_error' => null,
+            ])->save();
+
+            return;
+        }
+
         $delivery->forceFill([
             'status' => ChannelOutboundDelivery::STATUS_SENDING,
             'attempts' => (int) $delivery->attempts + 1,

@@ -172,7 +172,8 @@ class _ChatMediaViewerDialogState extends ConsumerState<ChatMediaViewerDialog> {
                         ),
                         const SizedBox(height: 16),
                         FilledButton.icon(
-                          onPressed: () => _openExternal(item.downloadUrl ?? url),
+                          onPressed: () =>
+                              _openExternal(item.downloadUrl ?? url),
                           icon: const Icon(Icons.open_in_new_rounded, size: 18),
                           label: const Text('فتح المستند'),
                           style: FilledButton.styleFrom(
@@ -211,7 +212,10 @@ class _ChatMediaViewerDialogState extends ConsumerState<ChatMediaViewerDialog> {
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.white,
+                      ),
                       tooltip: 'رجوع',
                       onPressed: () => Navigator.of(context).pop(),
                     ),
@@ -255,10 +259,14 @@ class _ChatMediaViewerDialogState extends ConsumerState<ChatMediaViewerDialog> {
                         ),
                       ),
                     IconButton(
-                      icon: const Icon(Icons.download_rounded, color: Colors.white),
+                      icon: const Icon(
+                        Icons.download_rounded,
+                        color: Colors.white,
+                      ),
                       tooltip: 'تنزيل أو فتح',
-                      onPressed: () =>
-                          _openExternal(active.downloadUrl ?? active.displayUrl),
+                      onPressed: () => _openExternal(
+                        active.downloadUrl ?? active.displayUrl,
+                      ),
                     ),
                   ],
                 ),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim/core/di/providers.dart';
@@ -26,6 +27,8 @@ import 'package:hasim/features/conversations/presentation/widgets/chat_media_pre
 import 'package:hasim/features/conversations/presentation/widgets/chat_media_viewer_dialog.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_message_bubble.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_wallpaper.dart';
+import 'package:hasim/features/conversations/providers/chat_bubble_color_controller.dart';
+import 'package:hasim/features/conversations/providers/conversation_theme_controller.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_channel_avatar.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_classification_sheet.dart';
 import 'package:hasim/features/conversations/presentation/widgets/conversation_context_menu.dart';
@@ -923,10 +926,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .read(chatControllerProvider(widget.conversationId))
           .mutating;
       final Future<String?> request;
+      final String successMessage;
       if (selected == 'resume_ai') {
         request = notifier.resumeAi();
+        successMessage = 'تم إعادة تفعيل الرد الآلي بواسطة AI';
+      } else if (selected == 'move_to_team') {
+        request = notifier.requestHandoff();
+        successMessage = 'تم تحويل المحادثة إلى الفريق';
       } else {
         request = notifier.endHandoff();
+        successMessage = 'تم إنهاء التسليم البشري';
       }
       final error = await request;
       if (!mounted) return;
@@ -939,7 +948,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (wasMutating) return;
       ScaffoldMessenger.of(
         this.context,
-      ).showSnackBar(const SnackBar(content: Text('تم تحديث حالة التحويل')));
+      ).showSnackBar(SnackBar(content: Text(successMessage)));
     }
   }
 
@@ -1059,7 +1068,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     switch (action) {
       case 'photos_videos':
         try {
-          final pickedList = await ImagePicker().pickMultiImage(imageQuality: 85);
+          final pickedList = await ImagePicker().pickMultiImage(
+            imageQuality: 85,
+          );
           if (pickedList.isNotEmpty) {
             files.addAll(pickedList.map((x) => File(x.path)));
           } else {
@@ -1072,7 +1083,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
       case 'gallery':
         try {
-          final pickedList = await ImagePicker().pickMultiImage(imageQuality: 85);
+          final pickedList = await ImagePicker().pickMultiImage(
+            imageQuality: 85,
+          );
           if (pickedList.isNotEmpty) {
             files.addAll(pickedList.map((x) => File(x.path)));
           } else {
@@ -1335,7 +1348,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     for (final m in state.messages) {
       for (final a in m.attachments) {
         if (a.kind == 'image' && a.displayUrl != null) {
-          if (a.displayUrl == url || a.previewUrl == url || a.downloadUrl == url) {
+          if (a.displayUrl == url ||
+              a.previewUrl == url ||
+              a.downloadUrl == url) {
             targetIndex = allImages.length;
           }
           allImages.add(a);
@@ -1357,7 +1372,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       context,
       attachments: allImages,
       initialIndex: targetIndex,
-      senderName: state.conversation?.customer?.name ?? state.conversation?.title,
+      senderName:
+          state.conversation?.customer?.name ?? state.conversation?.title,
     );
   }
 
@@ -1441,16 +1457,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     final state = ref.watch(chatControllerProvider(widget.conversationId));
     final marks = ref.watch(conversationMarksProvider);
+    final sharedBubble = ref.watch(chatBubbleColorControllerProvider);
+    final bubbleOverride = ref.watch(
+      conversationThemeProvider(
+        widget.conversationId,
+      ).select((t) => t.bubbleColorId),
+    );
+    final activeBubbleColorId = bubbleOverride ?? sharedBubble;
     final l10n = AppLocalizations.of(context);
     final title = state.conversation?.title ?? 'محادثة';
     final query = _messageSearch.text.trim();
     final rows = _rowsFor(state.messages, query, marks.hiddenMessageKeys);
     final selectingMessages = _selectedMessageKeys.isNotEmpty;
     MessageModel? pinnedMessage;
-    for (final message in state.messages.reversed) {
-      if (marks.isMessagePinned(message) && !marks.isMessageHidden(message)) {
-        pinnedMessage = message;
-        break;
+    if (marks.pinnedMessageKeys.isNotEmpty) {
+      for (final message in state.messages.reversed) {
+        if (marks.isMessagePinned(message) && !marks.isMessageHidden(message)) {
+          pinnedMessage = message;
+          break;
+        }
       }
     }
     final replyTo = _replyTo;
@@ -1657,7 +1682,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               if (conversation != null)
                 _LiveResponderHeaderBar(
                   conversation: conversation,
-                  isWorker: ref.watch(authControllerProvider).isIndependentWorker,
+                  isWorker: ref
+                      .watch(authControllerProvider)
+                      .isIndependentWorker,
                   onTakeover: () async {
                     final err = await ref
                         .read(
@@ -1671,6 +1698,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ScaffoldMessenger.of(
                         this.context,
                       ).showSnackBar(SnackBar(content: Text(err)));
+                    } else {
+                      ScaffoldMessenger.of(
+                        this.context,
+                      ).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم تولي الرد على المحادثة بنجاح'),
+                        ),
+                      );
+                    }
+                  },
+                  onMoveToTeam: () async {
+                    final err = await ref
+                        .read(
+                          chatControllerProvider(
+                            widget.conversationId,
+                          ).notifier,
+                        )
+                        .requestHandoff();
+                    if (!mounted) return;
+                    if (err != null) {
+                      ScaffoldMessenger.of(
+                        this.context,
+                      ).showSnackBar(SnackBar(content: Text(err)));
+                    } else {
+                      ScaffoldMessenger.of(
+                        this.context,
+                      ).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم تحويل المحادثة إلى الفريق'),
+                        ),
+                      );
                     }
                   },
                   onResumeAi: () async {
@@ -1686,6 +1744,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ScaffoldMessenger.of(
                         this.context,
                       ).showSnackBar(SnackBar(content: Text(err)));
+                    } else {
+                      ScaffoldMessenger.of(
+                        this.context,
+                      ).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم إعادة تفعيل الرد الآلي بواسطة AI'),
+                        ),
+                      );
                     }
                   },
                 ),
@@ -1722,6 +1788,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             final list = ListView.builder(
                               controller: _scroll,
                               reverse: true,
+                              scrollCacheExtent: const ScrollCacheExtent.pixels(
+                                600,
+                              ),
                               padding: EdgeInsets.fromLTRB(
                                 compact ? 10 : 16,
                                 8,
@@ -1740,49 +1809,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   );
                                 }
                                 final m = row.message!;
-                                return RepaintBoundary(
+                                return SizedBox(
                                   key: ValueKey(
                                     'chat-message-${m.id}-${m.clientId ?? ''}',
                                   ),
-                                  child: SizedBox(
-                                    width: double.infinity,
-                                    child: ChatMessageBubble(
-                                      message: m,
-                                      maxWidth: bubbleCap,
-                                      onRetry: m.localFailed
-                                          ? () => ref
-                                                .read(
-                                                  chatControllerProvider(
-                                                    widget.conversationId,
-                                                  ).notifier,
-                                                )
-                                                .retryFailed(m)
-                                          : null,
-                                      onImageTap: _openImage,
-                                      onMediaUrlExpired: _refreshMessages,
-                                      onOpenFailed: () {
-                                        if (!mounted) return;
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              l10n.chatAttachmentOpenFailed,
-                                            ),
+                                  width: double.infinity,
+                                  child: ChatMessageBubble(
+                                    message: m,
+                                    maxWidth: bubbleCap,
+                                    bubbleColorId: activeBubbleColorId,
+                                    onRetry: m.localFailed
+                                        ? () => ref
+                                              .read(
+                                                chatControllerProvider(
+                                                  widget.conversationId,
+                                                ).notifier,
+                                              )
+                                              .retryFailed(m)
+                                        : null,
+                                    onImageTap: _openImage,
+                                    onMediaUrlExpired: _refreshMessages,
+                                    onOpenFailed: () {
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            l10n.chatAttachmentOpenFailed,
                                           ),
-                                        );
-                                      },
-                                      pinned: marks.isMessagePinned(m),
-                                      starred: marks.isMessageStarred(m),
-                                      selected: _selectedMessageKeys.contains(
-                                        ConversationMarks.messageKey(m),
-                                      ),
-                                      selectionMode: selectingMessages,
-                                      onToggleSelected: () =>
-                                          _toggleMessageSelection(m),
-                                      onContextMenu: (position) =>
-                                          _showMessageMenu(m, position),
+                                        ),
+                                      );
+                                    },
+                                    pinned: marks.isMessagePinned(m),
+                                    starred: marks.isMessageStarred(m),
+                                    selected: _selectedMessageKeys.contains(
+                                      ConversationMarks.messageKey(m),
                                     ),
+                                    selectionMode: selectingMessages,
+                                    onToggleSelected: () =>
+                                        _toggleMessageSelection(m),
+                                    onContextMenu: (position) =>
+                                        _showMessageMenu(m, position),
                                   ),
                                 );
                               },
@@ -1982,12 +2050,14 @@ class _LiveResponderHeaderBar extends StatelessWidget {
     required this.conversation,
     this.isWorker = false,
     required this.onTakeover,
+    required this.onMoveToTeam,
     required this.onResumeAi,
   });
 
   final ConversationModel conversation;
   final bool isWorker;
   final VoidCallback onTakeover;
+  final VoidCallback onMoveToTeam;
   final VoidCallback onResumeAi;
 
   @override
@@ -2047,9 +2117,7 @@ class _LiveResponderHeaderBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: bgColor,
-        border: Border(
-          bottom: BorderSide(color: borderColor, width: 0.8),
-        ),
+        border: Border(bottom: BorderSide(color: borderColor, width: 0.8)),
       ),
       child: Row(
         children: [
@@ -2111,10 +2179,11 @@ class _LiveResponderHeaderBar extends StatelessWidget {
                           '• ${responder.assignedAtHuman}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            fontSize: 9.5,
-                            color: textColor.withValues(alpha: 0.75),
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                fontSize: 9.5,
+                                color: textColor.withValues(alpha: 0.75),
+                              ),
                         ),
                       ),
                     ],
@@ -2125,16 +2194,14 @@ class _LiveResponderHeaderBar extends StatelessWidget {
           ),
           if (!isWorker &&
               conversation.status == 'open' &&
-              !conversation.archived &&
-              conversation.isHumanHandoffActive) ...[
-            if (responder.status == 'human_needed' ||
-                responder.status == 'waiting')
+              !conversation.archived) ...[
+            if (responder.status == 'ai_active') ...[
               TextButton(
                 onPressed: onTakeover,
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                    horizontal: 7,
                     vertical: 2,
                   ),
                   backgroundColor: const Color(0xFF2563EB),
@@ -2144,20 +2211,57 @@ class _LiveResponderHeaderBar extends StatelessWidget {
                   ),
                 ),
                 child: const Text(
-                  'تولي المحادثة',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                  'تولي الرد',
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 4),
+              TextButton(
+                onPressed: onMoveToTeam,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  backgroundColor: const Color(0xFFD97706),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(7),
                   ),
                 ),
-              )
-            else if (responder.status == 'human_active')
+                child: const Text(
+                  'تحويل للفريق',
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ] else if (responder.status == 'human_active') ...[
+              TextButton(
+                onPressed: onMoveToTeam,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  backgroundColor: const Color(0xFFD97706),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                ),
+                child: const Text(
+                  'تحويل للفريق',
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 4),
               TextButton(
                 onPressed: onResumeAi,
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                    horizontal: 7,
                     vertical: 2,
                   ),
                   backgroundColor: const Color(0xFF067E6B),
@@ -2168,12 +2272,51 @@ class _LiveResponderHeaderBar extends StatelessWidget {
                 ),
                 child: const Text(
                   'إعادة إلى AI',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
                 ),
               ),
+            ] else if (responder.status == 'human_needed' ||
+                responder.status == 'waiting') ...[
+              TextButton(
+                onPressed: onTakeover,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  backgroundColor: const Color(0xFF2563EB),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                ),
+                child: const Text(
+                  'تولي المحادثة',
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 4),
+              TextButton(
+                onPressed: onResumeAi,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  backgroundColor: const Color(0xFF067E6B),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                ),
+                child: const Text(
+                  'إعادة إلى AI',
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
           ],
         ],
       ),

@@ -46,6 +46,19 @@ final class InboxRealtimePublisher
         $this->publish($message, $conversation, 'outbound', $context);
     }
 
+    public function publishConversationUpdate(Conversation $conversation): void
+    {
+        try {
+            event(new ConversationUpdated($conversation->fresh() ?? $conversation));
+        } catch (Throwable $exception) {
+            Log::warning('inbox.realtime.conversation_update_failed', [
+                'workspace_id' => $conversation->workspace_id,
+                'conversation_id' => $conversation->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $context
      */

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:hasim/core/local_db/inbox_database.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/features/catalog/data/chat_catalog_models.dart';
+import 'package:hasim/features/commerce/data/commerce_order_models.dart';
 
 /// Catalog, contacts, and email rows on the same Drift database as the inbox.
 class DomainLocalStore {
@@ -828,6 +829,233 @@ class DomainLocalStore {
       createdAt: _time(row['created_at']),
       emailAccountId: (row['email_account_id'] as num?)?.toInt(),
     );
+  }
+
+  // ── Commerce Orders ──────────────────────────────────────────
+
+  Future<List<CommerceOrderModel>> orders(
+    int workspaceId, {
+    String? status,
+    int? customerId,
+    int limit = listLimit,
+  }) async {
+    final args = <Object?>[workspaceId];
+    final where = StringBuffer('workspace_id = ?');
+    if (status != null && status.isNotEmpty) {
+      where.write(' AND status = ?');
+      args.add(status);
+    }
+    if (customerId != null) {
+      where.write(' AND customer_id = ?');
+      args.add(customerId);
+    }
+    args.add(limit);
+    final rows = await _db.select(
+      'SELECT payload_json FROM local_commerce_orders WHERE $where ORDER BY cached_at DESC LIMIT ?',
+      args,
+    );
+    final list = <CommerceOrderModel>[];
+    for (final row in rows) {
+      try {
+        final map = jsonDecode(row['payload_json']?.toString() ?? '');
+        if (map is Map<String, dynamic>) {
+          list.add(CommerceOrderModel.fromJson(map));
+        } else if (map is Map) {
+          list.add(CommerceOrderModel.fromJson(Map<String, dynamic>.from(map)));
+        }
+      } catch (_) {}
+    }
+    return list;
+  }
+
+  Stream<List<CommerceOrderModel>> watchOrders(
+    int workspaceId, {
+    String? status,
+    int? customerId,
+  }) {
+    return _query(
+      () => orders(workspaceId, status: status, customerId: customerId),
+    );
+  }
+
+  Future<CommerceOrderModel?> order(int workspaceId, int serverId) async {
+    final rows = await _db.select(
+      'SELECT payload_json FROM local_commerce_orders WHERE workspace_id = ? AND server_id = ? LIMIT 1',
+      [workspaceId, serverId],
+    );
+    if (rows.isEmpty) return null;
+    try {
+      final map = jsonDecode(rows.first['payload_json']?.toString() ?? '');
+      if (map is Map<String, dynamic>) {
+        return CommerceOrderModel.fromJson(map);
+      } else if (map is Map) {
+        return CommerceOrderModel.fromJson(Map<String, dynamic>.from(map));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> upsertOrders(
+    int workspaceId,
+    List<CommerceOrderModel> items,
+  ) async {
+    if (workspaceId <= 0 || items.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final item in items) {
+      if (item.id <= 0) continue;
+      await _db.custom(
+        '''
+        INSERT INTO local_commerce_orders (
+          workspace_id, server_id, order_number, status, currency, customer_id,
+          customer_name, payment_status, fulfillment_status, total_amount, channel,
+          placed_at, payload_json, cached_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id, server_id) DO UPDATE SET
+          order_number = excluded.order_number,
+          status = excluded.status,
+          currency = excluded.currency,
+          customer_id = excluded.customer_id,
+          customer_name = excluded.customer_name,
+          payment_status = excluded.payment_status,
+          fulfillment_status = excluded.fulfillment_status,
+          total_amount = excluded.total_amount,
+          channel = excluded.channel,
+          placed_at = excluded.placed_at,
+          payload_json = excluded.payload_json,
+          cached_at = excluded.cached_at
+        ''',
+        [
+          workspaceId,
+          item.id,
+          item.orderNumber,
+          item.status,
+          item.currency,
+          item.customerId,
+          item.customer?.name,
+          item.paymentStatus,
+          item.fulfillmentStatus,
+          item.totalAmount?.toString(),
+          item.channel,
+          item.placedAt,
+          jsonEncode(item.toJson()),
+          now,
+        ],
+      );
+    }
+    _changed();
+  }
+
+  // ── Customers (CRM) ──────────────────────────────────────────
+
+  Future<List<CustomerModel>> customers(
+    int workspaceId, {
+    String? search,
+    String? status,
+    int limit = listLimit,
+  }) async {
+    final args = <Object?>[workspaceId];
+    final where = StringBuffer('workspace_id = ?');
+    if (status != null && status.isNotEmpty) {
+      where.write(' AND status = ?');
+      args.add(status);
+    }
+    final q = search?.trim().toLowerCase() ?? '';
+    if (q.isNotEmpty) {
+      where.write(" AND search_text LIKE ? ESCAPE '\\'");
+      args.add(_like(q));
+    }
+    args.add(limit);
+    final rows = await _db.select(
+      'SELECT payload_json FROM local_customers WHERE $where ORDER BY name COLLATE NOCASE LIMIT ?',
+      args,
+    );
+    final list = <CustomerModel>[];
+    for (final row in rows) {
+      try {
+        final map = jsonDecode(row['payload_json']?.toString() ?? '');
+        if (map is Map<String, dynamic>) {
+          list.add(CustomerModel.fromJson(map));
+        } else if (map is Map) {
+          list.add(CustomerModel.fromJson(Map<String, dynamic>.from(map)));
+        }
+      } catch (_) {}
+    }
+    return list;
+  }
+
+  Stream<List<CustomerModel>> watchCustomers(
+    int workspaceId, {
+    String? search,
+    String? status,
+  }) {
+    return _query(() => customers(workspaceId, search: search, status: status));
+  }
+
+  Future<CustomerModel?> customer(int workspaceId, int serverId) async {
+    final rows = await _db.select(
+      'SELECT payload_json FROM local_customers WHERE workspace_id = ? AND server_id = ? LIMIT 1',
+      [workspaceId, serverId],
+    );
+    if (rows.isEmpty) return null;
+    try {
+      final map = jsonDecode(rows.first['payload_json']?.toString() ?? '');
+      if (map is Map<String, dynamic>) {
+        return CustomerModel.fromJson(map);
+      } else if (map is Map) {
+        return CustomerModel.fromJson(Map<String, dynamic>.from(map));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> upsertCustomers(
+    int workspaceId,
+    List<CustomerModel> items,
+  ) async {
+    if (workspaceId <= 0 || items.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final item in items) {
+      if (item.id <= 0) continue;
+      final searchText =
+          '${item.name} ${item.phone ?? ''} ${item.email ?? ''} ${item.city ?? ''}'
+              .toLowerCase();
+      await _db.custom(
+        '''
+        INSERT INTO local_customers (
+          workspace_id, server_id, name, phone, email, whatsapp, city, status,
+          orders_count, total_purchases, search_text, payload_json, cached_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id, server_id) DO UPDATE SET
+          name = excluded.name,
+          phone = excluded.phone,
+          email = excluded.email,
+          whatsapp = excluded.whatsapp,
+          city = excluded.city,
+          status = excluded.status,
+          orders_count = excluded.orders_count,
+          total_purchases = excluded.total_purchases,
+          search_text = excluded.search_text,
+          payload_json = excluded.payload_json,
+          cached_at = excluded.cached_at
+        ''',
+        [
+          workspaceId,
+          item.id,
+          item.name,
+          item.phone,
+          item.email,
+          item.whatsapp,
+          item.city,
+          item.status,
+          item.ordersCount,
+          item.totalPurchases,
+          searchText,
+          jsonEncode(item.toJson()),
+          now,
+        ],
+      );
+    }
+    _changed();
   }
 
   Map<String, dynamic> _safeMap(Map<String, dynamic> raw) {

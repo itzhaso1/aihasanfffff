@@ -55,18 +55,20 @@ const bindRealtime = () => {
     );
 
     const appendMessage = (payload) => {
-        if (!payload?.id || seenMessageIds.has(payload.id)) {
+        if (!payload?.id) {
+            return;
+        }
+        const messageList = document.getElementById('inbox-message-list');
+        if (!messageList) {
+            return;
+        }
+        if (messageList.querySelector(`[data-message-id="${payload.id}"]`) || seenMessageIds.has(payload.id)) {
             return;
         }
         seenMessageIds.add(payload.id);
 
         if (window.__INBOX_UI__?.appendInboxMessage) {
             window.__INBOX_UI__.appendInboxMessage(payload);
-            return;
-        }
-
-        const messageList = document.getElementById('inbox-message-list');
-        if (!messageList) {
             return;
         }
 

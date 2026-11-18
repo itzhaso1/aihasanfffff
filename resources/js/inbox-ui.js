@@ -279,11 +279,38 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
         return existingId;
     }
 
-    const tempId = payload.temp_id;
-    if (tempId) {
+    const tempId = payload.temp_id || payload.client_id || payload.idempotency_key;
+    if (tempId && !payload.id) {
         const tempNode = list.querySelector(`[data-temp-id="${tempId}"]`);
         if (tempNode) {
             return tempNode;
+        }
+    }
+
+    // Reconcile optimistic temporary node with real server message
+    if (payload.id) {
+        let matchingTemp = null;
+        if (tempId) {
+            matchingTemp = list.querySelector(`[data-temp-id="${tempId}"]`);
+        }
+        if (!matchingTemp) {
+            const pendingNodes = list.querySelectorAll('[data-temp-id]:not([data-message-id])');
+            for (const p of pendingNodes) {
+                const txt = p.querySelector('.whitespace-pre-wrap');
+                if (txt && txt.textContent.trim() === String(payload.content || '').trim()) {
+                    matchingTemp = p;
+                    break;
+                }
+            }
+        }
+        if (matchingTemp) {
+            matchingTemp.dataset.messageId = String(payload.id);
+            matchingTemp.removeAttribute('data-temp-id');
+            const timeEl = matchingTemp.querySelector('.mt-1 span');
+            if (timeEl && payload.created_at_time) {
+                timeEl.textContent = payload.created_at_time;
+            }
+            return matchingTemp;
         }
     }
 
@@ -358,7 +385,21 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
 
     bubble.appendChild(footer);
     wrap.appendChild(bubble);
-    list.appendChild(wrap);
+
+    // Insert message in sorted order by message ID
+    if (payload.id && !optimistic) {
+        const id = Number(payload.id);
+        const existingNodes = [...list.querySelectorAll('.hs-inbox-message-row[data-message-id]')];
+        const nextNode = existingNodes.find((el) => Number(el.dataset.messageId) > id);
+        if (nextNode) {
+            list.insertBefore(wrap, nextNode);
+        } else {
+            list.appendChild(wrap);
+        }
+    } else {
+        list.appendChild(wrap);
+    }
+
     scrollMessagesToBottom(!optimistic);
 
     return wrap;

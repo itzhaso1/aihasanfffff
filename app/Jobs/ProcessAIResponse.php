@@ -15,8 +15,10 @@ use App\Services\AI\AIService;
 use App\Services\AI\Inbox\AiReplyEligibility;
 use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Channel\Outbound\ChannelOutboundService;
+use App\Services\Inbox\InboundMessageDeduplicationService;
 use App\Services\Inbox\InboxHumanHandoffDetector;
 use App\Services\Inbox\InboxHumanHandoffService;
+use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Observability\OpsMetricsRecorder;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -65,6 +67,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         AiOutputValidator $outputValidator,
     ): void {
         $started = microtime(true);
+        $generationId = (string) Str::uuid();
 
         $conversation = Conversation::withoutGlobalScopes()->find($this->conversationId);
         $incomingMessage = Message::withoutGlobalScopes()
@@ -73,20 +76,52 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             ->first();
 
         if (! $conversation || ! $incomingMessage) {
+            Log::info('ai.reply.skipped_missing_entities', [
+                'conversation_id' => $this->conversationId,
+                'incoming_message_id' => $this->messageId,
+                'workspace_id' => $this->workspaceId,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
+                'reason' => 'conversation_or_message_not_found',
+            ]);
+
             return;
         }
 
         if ((int) $incomingMessage->workspace_id !== (int) $conversation->workspace_id) {
+            Log::warning('ai.reply.skipped_tenant_mismatch', [
+                'conversation_id' => $this->conversationId,
+                'incoming_message_id' => $this->messageId,
+                'conversation_workspace_id' => $conversation->workspace_id,
+                'message_workspace_id' => $incomingMessage->workspace_id,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
+                'reason' => 'workspace_tenant_mismatch',
+            ]);
+
             return;
         }
 
-        $lockKey = "ai_reply_lock:{$conversation->workspace_id}:{$conversation->id}:{$incomingMessage->id}";
-        $lock = Cache::lock($lockKey, 60);
-        if (! $lock->get()) {
-            Log::info('ai.reply.skipped_concurrency_lock', [
+        // Conversation-level lock to strictly serialize AI replies per conversation
+        $conversationLockKey = "ai_reply_conv_lock:{$conversation->workspace_id}:{$conversation->id}";
+        $lock = Cache::lock($conversationLockKey, 60);
+
+        $acquired = false;
+        try {
+            $acquired = $lock->block(15);
+        } catch (Throwable) {
+            $acquired = $lock->get();
+        }
+
+        if (! $acquired) {
+            Log::warning('ai.reply.skipped_concurrency_lock', [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
-                'message_id' => $incomingMessage->id,
+                'incoming_message_id' => $incomingMessage->id,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
+                'attempts' => $this->attempts(),
+                'reason' => 'concurrency_lock_acquisition_failed',
             ]);
 
             return;
@@ -100,18 +135,38 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 $outputValidator,
                 $conversation,
                 $incomingMessage,
+                $generationId,
                 $started,
             ): void {
                 $fresh = $conversation->fresh() ?? $conversation;
+
+                // 1. Human handoff check
                 if (app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage($fresh, $incomingMessage, onlyIfJustCreated: false)) {
+                    Log::info('ai.reply.skipped_handoff', [
+                        'workspace_id' => $conversation->workspace_id,
+                        'conversation_id' => $conversation->id,
+                        'incoming_message_id' => $incomingMessage->id,
+                        'job_id' => $this->job?->getJobId(),
+                        'ai_generation_id' => $generationId,
+                        'attempts' => $this->attempts(),
+                        'reason' => 'human_handoff_requested',
+                    ]);
+
                     return;
                 }
                 $fresh = $fresh->fresh() ?? $fresh;
+
+                // 2. Pre-check eligibility
                 if (! $eligibility->mayGenerate($fresh, $incomingMessage)) {
                     Log::info('ai.reply.skipped_precheck', [
                         'workspace_id' => $conversation->workspace_id,
                         'conversation_id' => $conversation->id,
                         'message_id' => $incomingMessage->id,
+                        'inbound_message_id' => $incomingMessage->id,
+                        'incoming_message_id' => $incomingMessage->id,
+                        'job_id' => $this->job?->getJobId(),
+                        'ai_generation_id' => $generationId,
+                        'attempts' => $this->attempts(),
                         'reason' => $eligibility->skipReason($fresh, $incomingMessage),
                         'ai_enabled' => (bool) $fresh->ai_enabled,
                         'handoff_status' => $fresh->handoffStatusEnum()->value,
@@ -120,13 +175,48 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                     return;
                 }
 
+                // 3. Check if reply ALREADY exists for this incoming message (Idempotency & Queue Retry)
                 $existingReply = $this->existingReply($conversation, $incomingMessage);
                 if ($existingReply !== null) {
                     app(InboxHumanHandoffService::class)->repairAssistantHandoffClaim($fresh);
 
+                    // Ensure outbound channel delivery is queued if it was missed
+                    $channelOutbound->queueOutboundForMessage($fresh, $existingReply);
+
+                    Log::info('ai.reply.skipped_already_replied', [
+                        'workspace_id' => $conversation->workspace_id,
+                        'conversation_id' => $conversation->id,
+                        'incoming_message_id' => $incomingMessage->id,
+                        'outbound_message_id' => $existingReply->id,
+                        'job_id' => $this->job?->getJobId(),
+                        'ai_generation_id' => $generationId,
+                        'attempts' => $this->attempts(),
+                        'reason' => 'inbound_message_already_has_ai_reply',
+                    ]);
+
                     return;
                 }
 
+                // 4. Check for rapid duplicate / webhook retry of recently answered identical question
+                $dedup = app(InboundMessageDeduplicationService::class);
+                $recentDuplicate = $dedup->findRecentAnsweredIdenticalInbound($fresh, $incomingMessage, windowSeconds: 30);
+                if ($recentDuplicate !== null) {
+                    Log::info('ai.reply.skipped_duplicate_inbound', [
+                        'workspace_id' => $conversation->workspace_id,
+                        'conversation_id' => $conversation->id,
+                        'incoming_message_id' => $incomingMessage->id,
+                        'previous_message_id' => $recentDuplicate['message']->id,
+                        'previous_reply_id' => $recentDuplicate['reply']->id,
+                        'job_id' => $this->job?->getJobId(),
+                        'ai_generation_id' => $generationId,
+                        'attempts' => $this->attempts(),
+                        'reason' => 'identical_question_already_answered_recently',
+                    ]);
+
+                    return;
+                }
+
+                // 5. Generate and store reply
                 $this->generateAndStoreReply(
                     $aiService,
                     $channelOutbound,
@@ -134,6 +224,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                     $outputValidator,
                     $conversation,
                     $incomingMessage,
+                    $generationId,
                     $started,
                 );
             });
@@ -144,23 +235,32 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        Log::warning('ai.reply.job_failed', $this->safeFailureContext(
-            $exception,
-            workspaceId: $this->workspaceId,
-            conversationId: $this->conversationId,
-            messageId: $this->messageId,
+        Log::warning('ai.reply.job_failed', array_merge(
+            $this->safeFailureContext(
+                $exception,
+                workspaceId: $this->workspaceId,
+                conversationId: $this->conversationId,
+                messageId: $this->messageId,
+            ),
+            [
+                'job_id' => $this->job?->getJobId(),
+                'attempts' => $this->attempts(),
+            ]
         ));
 
         app(OpsMetricsRecorder::class)->increment('ai.job_failed');
     }
 
-    private function existingReply(Conversation $conversation, Message $incomingMessage): ?Message
+    public function existingReply(Conversation $conversation, Message $incomingMessage): ?Message
     {
         return Message::withoutGlobalScopes()
             ->where('workspace_id', $conversation->workspace_id)
             ->where('conversation_id', $conversation->id)
             ->where('ai_generated', true)
-            ->where('metadata->in_reply_to_message_id', $incomingMessage->id)
+            ->where(function ($query) use ($incomingMessage): void {
+                $query->where('external_message_id', 'ai_reply:'.$incomingMessage->id)
+                    ->orWhere('metadata->in_reply_to_message_id', $incomingMessage->id);
+            })
             ->first();
     }
 
@@ -171,6 +271,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         AiOutputValidator $outputValidator,
         Conversation $conversation,
         Message $incomingMessage,
+        string $generationId,
         float $startedAt,
     ): void {
         $conversationFresh = $conversation->fresh() ?? $conversation;
@@ -178,7 +279,10 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             Log::info('ai.reply.skipped_precheck', [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
-                'message_id' => $incomingMessage->id,
+                'incoming_message_id' => $incomingMessage->id,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
+                'attempts' => $this->attempts(),
                 'reason' => $eligibility->skipReason($conversationFresh, $incomingMessage),
                 'ai_enabled' => (bool) $conversationFresh->ai_enabled,
                 'handoff_status' => $conversationFresh->handoffStatusEnum()->value,
@@ -197,6 +301,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 $outputValidator,
                 $conversation,
                 $incomingMessage,
+                $generationId,
                 $startedAt,
             );
         } finally {
@@ -211,6 +316,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         AiOutputValidator $outputValidator,
         Conversation $conversation,
         Message $incomingMessage,
+        string $generationId,
         float $startedAt,
     ): void {
         $conversationFresh = $conversation->fresh() ?? $conversation;
@@ -223,7 +329,9 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             Log::info('ai.reply.skipped_limits', [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
-                'message_id' => $incomingMessage->id,
+                'incoming_message_id' => $incomingMessage->id,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
                 'feature' => $exception->feature,
             ]);
 
@@ -232,7 +340,9 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             $payload = [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
-                'message_id' => $incomingMessage->id,
+                'incoming_message_id' => $incomingMessage->id,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
                 'meter' => $exception->meter,
                 'limit' => $exception->limit,
                 'used' => $exception->used,
@@ -248,21 +358,33 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
             return;
         } catch (InvalidArgumentException $exception) {
-            Log::warning('ai.reply.non_retryable', $this->safeFailureContext(
-                $exception,
-                workspaceId: (int) $conversation->workspace_id,
-                conversationId: (int) $conversation->id,
-                messageId: (int) $incomingMessage->id,
+            Log::warning('ai.reply.non_retryable', array_merge(
+                $this->safeFailureContext(
+                    $exception,
+                    workspaceId: (int) $conversation->workspace_id,
+                    conversationId: (int) $conversation->id,
+                    messageId: (int) $incomingMessage->id,
+                ),
+                [
+                    'job_id' => $this->job?->getJobId(),
+                    'ai_generation_id' => $generationId,
+                ]
             ));
             $this->fail($exception);
 
             return;
         } catch (Throwable $exception) {
-            Log::warning('ai.reply.generation_exception', $this->safeFailureContext(
-                $exception,
-                workspaceId: (int) $conversation->workspace_id,
-                conversationId: (int) $conversation->id,
-                messageId: (int) $incomingMessage->id,
+            Log::warning('ai.reply.generation_exception', array_merge(
+                $this->safeFailureContext(
+                    $exception,
+                    workspaceId: (int) $conversation->workspace_id,
+                    conversationId: (int) $conversation->id,
+                    messageId: (int) $incomingMessage->id,
+                ),
+                [
+                    'job_id' => $this->job?->getJobId(),
+                    'ai_generation_id' => $generationId,
+                ]
             ));
             $reply = '';
             $fallbackReason = 'generation_exception';
@@ -273,7 +395,10 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             Log::info('ai.reply.discarded_takeover', [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
-                'inbound_message_id' => $incomingMessage->id,
+                'incoming_message_id' => $incomingMessage->id,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
+                'reason' => 'human_takeover_during_generation',
             ]);
 
             return;
@@ -285,7 +410,9 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             Log::warning('ai.reply.'.$fallbackReason, [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
-                'inbound_message_id' => $incomingMessage->id,
+                'incoming_message_id' => $incomingMessage->id,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
                 'catalog_missing_is_not_a_skip_reason' => true,
             ]);
 
@@ -299,7 +426,9 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 Log::warning('ai.reply.fallback_rejected', [
                     'workspace_id' => $conversation->workspace_id,
                     'conversation_id' => $conversation->id,
-                    'inbound_message_id' => $incomingMessage->id,
+                    'incoming_message_id' => $incomingMessage->id,
+                    'job_id' => $this->job?->getJobId(),
+                    'ai_generation_id' => $generationId,
                 ]);
 
                 return;
@@ -308,7 +437,9 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             Log::info('ai.reply.honest_fallback', [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
-                'inbound_message_id' => $incomingMessage->id,
+                'incoming_message_id' => $incomingMessage->id,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
                 'reason' => $fallbackReason,
             ]);
         }
@@ -331,6 +462,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 $incomingMessage,
                 $eligibility,
                 $validated,
+                $generationId,
                 &$outboundMessage,
             ): void {
                 if ($this->existingReply($conversationFresh, $incomingMessage)) {
@@ -354,8 +486,11 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                     'message_type' => ! empty($stagedAttachments) ? 'image' : 'text',
                     'content' => $validated,
                     'ai_generated' => true,
+                    'external_message_id' => 'ai_reply:'.$incomingMessage->id,
                     'metadata' => [
                         'in_reply_to_message_id' => $incomingMessage->id,
+                        'ai_generation_id' => $generationId,
+                        'ai_employee_name' => 'مشعل',
                     ],
                 ]);
 
@@ -376,6 +511,17 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 }
             });
         } catch (UniqueConstraintViolationException) {
+            $outboundMessage = $this->existingReply($conversationFresh, $incomingMessage);
+            Log::info('ai.reply.dedup_unique_collision', [
+                'workspace_id' => $conversationFresh->workspace_id,
+                'conversation_id' => $conversationFresh->id,
+                'incoming_message_id' => $incomingMessage->id,
+                'outbound_message_id' => $outboundMessage?->id,
+                'job_id' => $this->job?->getJobId(),
+                'ai_generation_id' => $generationId,
+                'reason' => 'unique_constraint_prevented_duplicate_ai_reply',
+            ]);
+
             return;
         }
 
@@ -389,16 +535,30 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
         $conversationFresh->update(['last_message_at' => now()]);
 
+        app(InboxRealtimePublisher::class)->publishNewMessage(
+            $outboundMessage,
+            $conversationFresh,
+            [
+                'provider' => 'ai_employee',
+                'ai_generation_id' => $generationId,
+                'inbound_message_id' => $incomingMessage->id,
+            ],
+        );
+
         $channelOutbound->queueOutboundForMessage(
             $conversationFresh->fresh() ?? $conversationFresh,
             $outboundMessage,
         );
 
-        ExtractInboxAgentMemoryJob::dispatch(
-            (int) $conversationFresh->workspace_id,
-            (int) $conversationFresh->id,
-            (int) $incomingMessage->id,
-        );
+        try {
+            ExtractInboxAgentMemoryJob::dispatch(
+                (int) $conversationFresh->workspace_id,
+                (int) $conversationFresh->id,
+                (int) $incomingMessage->id,
+            );
+        } catch (Throwable) {
+            // Memory extraction is non-blocking
+        }
 
         $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
@@ -406,7 +566,12 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             'workspace_id' => $conversationFresh->workspace_id,
             'conversation_id' => $conversationFresh->id,
             'inbound_message_id' => $incomingMessage->id,
+            'incoming_message_id' => $incomingMessage->id,
+            'message_id' => $incomingMessage->id,
             'outbound_message_id' => $outboundMessage->id,
+            'job_id' => $this->job?->getJobId(),
+            'ai_generation_id' => $generationId,
+            'attempts' => $this->attempts(),
             'duration_ms' => $durationMs,
         ]);
 

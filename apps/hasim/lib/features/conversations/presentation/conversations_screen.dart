@@ -1602,7 +1602,9 @@ class _ConversationsPanel extends StatelessWidget {
                     },
                   )
                 : ScrollConfiguration(
-                    behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                    behavior: ScrollConfiguration.of(
+                      context,
+                    ).copyWith(scrollbars: false),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
@@ -1625,7 +1627,9 @@ class _ConversationsPanel extends StatelessWidget {
           ),
           if (!compactEmpty)
             ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              behavior: ScrollConfiguration.of(
+                context,
+              ).copyWith(scrollbars: false),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
@@ -1926,7 +1930,8 @@ class _ConversationsPanel extends StatelessWidget {
                                                     runSpacing: 4,
                                                     children: [
                                                       _ResponderBadge(
-                                                        responder: c.effectiveResponder,
+                                                        responder: c
+                                                            .effectiveResponder,
                                                         key: Key(
                                                           'responder-badge-${c.id}',
                                                         ),
@@ -2472,10 +2477,7 @@ class _ResponderBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: dotColor.withValues(alpha: 0.35),
-          width: 0.5,
-        ),
+        border: Border.all(color: dotColor.withValues(alpha: 0.35), width: 0.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2483,10 +2485,7 @@ class _ResponderBadge extends StatelessWidget {
           Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(
-              color: dotColor,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
           ),
           const SizedBox(width: 4),
           Flexible(

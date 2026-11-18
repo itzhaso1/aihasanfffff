@@ -178,7 +178,11 @@ final brandingRepositoryProvider = Provider(
   (ref) => BrandingRepository(ref.watch(apiClientProvider)),
 );
 final customerRepositoryProvider = Provider(
-  (ref) => CustomerRepository(ref.watch(apiClientProvider)),
+  (ref) => CustomerRepository(
+    ref.watch(apiClientProvider),
+    local: ref.watch(domainLocalStoreProvider),
+    workspaceIdOf: () => _domainWorkspaceId(ref),
+  ),
 );
 final aiRepositoryProvider = Provider(
   (ref) => AiRepository(ref.watch(apiClientProvider)),
@@ -187,7 +191,11 @@ final companyWorkerDiscoveryRepositoryProvider = Provider(
   (ref) => CompanyWorkerDiscoveryRepository(ref.watch(apiClientProvider)),
 );
 final commerceOrderRepositoryProvider = Provider(
-  (ref) => CommerceOrderRepository(ref.watch(apiClientProvider)),
+  (ref) => CommerceOrderRepository(
+    ref.watch(apiClientProvider),
+    local: ref.watch(domainLocalStoreProvider),
+    workspaceIdOf: () => _domainWorkspaceId(ref),
+  ),
 );
 
 final realtimeServiceProvider = Provider<RealtimeService>((ref) {

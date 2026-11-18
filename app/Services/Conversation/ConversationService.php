@@ -2,6 +2,7 @@
 
 namespace App\Services\Conversation;
 
+use App\Enums\ConversationHandoffStatus;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
@@ -9,6 +10,7 @@ use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Mobile\MessageAttachmentService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
@@ -36,12 +38,60 @@ class ConversationService
      */
     public function addMessage(Conversation $conversation, array $data, ?User $actor = null, array $uploadedFiles = []): Message
     {
-        $message = DB::transaction(function () use ($conversation, $data, $actor, $uploadedFiles): Message {
-            $message = $conversation->messages()->create([
-                ...$data,
-                'workspace_id' => $data['workspace_id'] ?? $conversation->workspace_id,
-                'user_id' => $data['user_id'] ?? $actor?->id,
-            ]);
+        $workspaceId = (int) ($data['workspace_id'] ?? $conversation->workspace_id);
+        $externalMessageId = isset($data['external_message_id']) && is_string($data['external_message_id']) && trim($data['external_message_id']) !== ''
+            ? trim($data['external_message_id'])
+            : null;
+
+        $idempotencyKey = $data['idempotency_key']
+            ?? $data['metadata']['idempotency_key']
+            ?? $data['metadata']['client_id']
+            ?? null;
+        $idempotencyKey = is_string($idempotencyKey) && trim($idempotencyKey) !== '' ? trim($idempotencyKey) : null;
+
+        if ($externalMessageId !== null) {
+            $existing = Message::withoutGlobalScopes()
+                ->where('workspace_id', $workspaceId)
+                ->where('external_message_id', $externalMessageId)
+                ->first();
+            if ($existing) {
+                return $existing->load('attachments');
+            }
+        }
+
+        if ($idempotencyKey !== null) {
+            $existing = Message::withoutGlobalScopes()
+                ->where('workspace_id', $workspaceId)
+                ->where('conversation_id', $conversation->id)
+                ->where(function ($query) use ($idempotencyKey): void {
+                    $query->where('metadata->idempotency_key', $idempotencyKey)
+                        ->orWhere('metadata->client_id', $idempotencyKey);
+                })
+                ->first();
+            if ($existing) {
+                return $existing->load('attachments');
+            }
+        }
+
+        $message = DB::transaction(function () use ($conversation, $data, $actor, $uploadedFiles, $workspaceId, $externalMessageId): Message {
+            try {
+                $message = $conversation->messages()->create([
+                    ...$data,
+                    'workspace_id' => $workspaceId,
+                    'user_id' => $data['user_id'] ?? $actor?->id,
+                ]);
+            } catch (UniqueConstraintViolationException $e) {
+                if ($externalMessageId !== null) {
+                    $existing = Message::withoutGlobalScopes()
+                        ->where('workspace_id', $workspaceId)
+                        ->where('external_message_id', $externalMessageId)
+                        ->first();
+                    if ($existing) {
+                        return $existing->load('attachments');
+                    }
+                }
+                throw $e;
+            }
 
             if (! empty($uploadedFiles) && $actor) {
                 $attachmentService = app(MessageAttachmentService::class);
@@ -61,6 +111,17 @@ class ConversationService
             ];
             if ($message->direction === 'inbound') {
                 $conversationAttributes = $conversation->attributesForInboundCustomerMessage($conversationAttributes);
+            } elseif ($actor instanceof User && ! (bool) ($data['ai_generated'] ?? false)) {
+                $conversationAttributes['assigned_user_id'] = $actor->id;
+                $conversationAttributes['responder_type'] = ConversationResponderService::TYPE_HUMAN;
+                $conversationAttributes['responder_name'] = $actor->name;
+                $conversationAttributes['responder_assigned_at'] = now();
+                $conversationAttributes['handoff_status'] = ConversationHandoffStatus::Active->value;
+                $conversationAttributes['handoff_assigned_at'] = $conversation->handoff_assigned_at ?? now();
+                $conversationAttributes['ai_enabled'] = false;
+                $metadata['human_handoff'] = true;
+                $metadata['human_handoff_status'] = 'active';
+                $conversationAttributes['metadata'] = $metadata;
             }
             $conversation->update($conversationAttributes);
 
@@ -72,6 +133,10 @@ class ConversationService
 
             return $message->load('attachments');
         });
+
+        if (! $message->wasRecentlyCreated) {
+            return $message;
+        }
 
         if ($message->direction === 'outbound') {
             $this->channelOutbound->queueOutboundForMessage(
@@ -97,6 +162,19 @@ class ConversationService
             $conversation->fresh() ?? $conversation,
             ['provider' => 'web_inbox'],
         );
+
+        if ($message->direction === 'outbound' && $actor instanceof User && ! (bool) ($data['ai_generated'] ?? false)) {
+            app(ConversationResponderService::class)->recordTransition(
+                $conversation->fresh() ?? $conversation,
+                ConversationResponderService::TYPE_HUMAN,
+                $actor,
+                'staff_reply',
+                'user',
+                $actor,
+                'رد الموظف على المحادثة',
+            );
+            app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
+        }
 
         return $message;
     }

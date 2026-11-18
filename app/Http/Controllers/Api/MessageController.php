@@ -40,11 +40,16 @@ class MessageController extends Controller
             ->findOrFail($request->integer('conversation_id'));
         $this->authorize('update', $conversation);
 
-        $message = $this->conversationService->addMessage($conversation, $request->validated(), $request->user());
+        $payload = $request->validated();
+        if ($request->hasHeader('Idempotency-Key')) {
+            $payload['idempotency_key'] = trim((string) $request->header('Idempotency-Key'));
+        }
+
+        $message = $this->conversationService->addMessage($conversation, $payload, $request->user());
 
         $conversation = $conversation->fresh() ?? $conversation;
-        if ($this->aiEligibility->shouldDispatchAiJob($conversation, $message)) {
-            ProcessAIResponse::dispatch($conversation->id, $message->id);
+        if ($message->wasRecentlyCreated && $this->aiEligibility->shouldDispatchAiJob($conversation, $message)) {
+            ProcessAIResponse::dispatch($conversation->id, $message->id, (int) $conversation->workspace_id);
         }
 
         return response()->json(['data' => $message], 201);

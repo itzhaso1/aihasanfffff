@@ -35,6 +35,7 @@ final class SmartResponseEngine
                     : 'Provide delivery info directly if asked.',
                 'pronoun_resolution' => 'Words like (أبغاه, نعم, تمام, كم؟, الثاني, نفسه, خلاص) refer to the active product in context. Do not ask which product.',
                 'catalog_truth' => 'Chat catalog is the sole source of truth. Never hallucinate products, prices, or variants.',
+                'anti_repetition_identical_answer' => 'Do NOT repeat the exact same sentence or response as the previous AI turn. If the customer is reiterating their query, acknowledge politely and provide a more specific follow-up or options.',
                 'no_boilerplate_closings' => 'Do not add unsolicited closing questions (e.g. هل ترغب في معرفة المزيد من التفاصيل؟) to simple answers.',
             ],
             'facts_summary' => [
@@ -85,7 +86,53 @@ final class SmartResponseEngine
         $isPurchaseIntent = (bool) ($facts['purchase_intent'] ?? false);
         $cleaned = $this->cleanUnsolicitedClosing($cleaned, $isPurchaseIntent);
 
+        // Avoid verbatim repeating of identical consecutive AI responses
+        $cleaned = $this->diversifyConsecutiveIdenticalReply($cleaned, $conversation, $incomingMessage);
+
         return trim($cleaned);
+    }
+
+    /**
+     * Prevents Meshal from outputting the exact same boilerplate reply twice in a row.
+     */
+    public function diversifyConsecutiveIdenticalReply(
+        string $reply,
+        Conversation $conversation,
+        Message $incomingMessage,
+    ): string {
+        $lastAiReply = Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', 'outbound')
+            ->where('ai_generated', true)
+            ->where('id', '<', $incomingMessage->id ?? PHP_INT_MAX)
+            ->latest('id')
+            ->first();
+
+        if (! $lastAiReply) {
+            return $reply;
+        }
+
+        $normLast = $this->normalizeArabicComparison((string) $lastAiReply->content);
+        $normCurrent = $this->normalizeArabicComparison($reply);
+
+        if ($normLast !== '' && $normLast === $normCurrent) {
+            return 'أهلاً بك مجدداً، بخصوص استفسارك، يسعدني توضيح التفاصيل أو الخيارات اللي تحتاجها لمساعدتك بشكل مباشر.';
+        }
+
+        return $reply;
+    }
+
+    private function normalizeArabicComparison(string $text): string
+    {
+        $normalized = trim($text);
+        $normalized = preg_replace('/[\x{064B}-\x{065F}\x{0670}]/u', '', $normalized) ?? $normalized;
+        $normalized = preg_replace('/[إأآآ]/u', 'ا', $normalized) ?? $normalized;
+        $normalized = preg_replace('/ة/u', 'ه', $normalized) ?? $normalized;
+        $normalized = preg_replace('/\s+/u', ' ', $normalized) ?? $normalized;
+        $normalized = trim($normalized, " \t\n\r\0\x0B?!؟.,؛");
+
+        return mb_strtolower($normalized, 'UTF-8');
     }
 
     /**
@@ -145,13 +192,17 @@ final class SmartResponseEngine
         }
 
         $result = $text;
+        $modified = false;
         foreach ($closingPatterns as $pattern) {
-            $result = (string) preg_replace($pattern, '', $result);
+            $replaced = (string) preg_replace($pattern, '', $result);
+            if ($replaced !== $result) {
+                $result = $replaced;
+                $modified = true;
+            }
         }
 
-        // Ensure trailing period if sentence ends bare
         $trimmed = trim($result);
-        if ($trimmed !== '' && ! in_array(mb_substr($trimmed, -1), ['.', '!', '؟', '?', '،'], true)) {
+        if ($modified && $trimmed !== '' && ! in_array(mb_substr($trimmed, -1), ['.', '!', '؟', '?', '،'], true)) {
             $trimmed .= '.';
         }
 

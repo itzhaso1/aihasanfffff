@@ -6,10 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 /// نتيجة معاينة الوسائط قبل الإرسال
 class ChatMediaPreviewResult {
-  const ChatMediaPreviewResult({
-    required this.files,
-    required this.caption,
-  });
+  const ChatMediaPreviewResult({required this.files, required this.caption});
 
   final List<File> files;
   final String caption;
@@ -143,7 +140,11 @@ class _ChatMediaPreviewDialogState extends State<ChatMediaPreviewDialog> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Colors.white, size: 24),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                     tooltip: 'إلغاء',
                     onPressed: () => Navigator.of(context).pop(null),
                   ),
@@ -159,7 +160,11 @@ class _ChatMediaPreviewDialogState extends State<ChatMediaPreviewDialog> {
                     ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 24),
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                     tooltip: 'حذف هذه الصورة',
                     onPressed: _removeCurrent,
                   ),
@@ -200,14 +205,16 @@ class _ChatMediaPreviewDialogState extends State<ChatMediaPreviewDialog> {
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: _files.length,
-                            separatorBuilder: (_, _) => const SizedBox(width: 8),
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 8),
                             itemBuilder: (context, index) {
                               final f = _files[index];
                               final isCurrent = index == _activeIndex;
                               final isThumbImg = _isImage(f);
 
                               return GestureDetector(
-                                onTap: () => setState(() => _activeIndex = index),
+                                onTap: () =>
+                                    setState(() => _activeIndex = index),
                                 child: Container(
                                   width: 48,
                                   height: 48,
@@ -295,7 +302,9 @@ class _ChatMediaPreviewDialogState extends State<ChatMediaPreviewDialog> {
                                 ),
                                 border: InputBorder.none,
                                 isDense: true,
-                                contentPadding: EdgeInsets.symmetric(vertical: 12),
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                               ),
                             ),
                           ),

@@ -18,8 +18,9 @@ class InboxDatabase implements QueryExecutorUser {
   /// v6: stories and notifications.
   /// v7: independent worker read models.
   /// v8: channel and company settings read models.
+  /// v9: commerce orders and customers local-first read/write models.
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   Future<void> ensureReady() async {
     if (_opened) return;
@@ -57,6 +58,9 @@ class InboxDatabase implements QueryExecutorUser {
       }
       if (from < 8) {
         await _createSettingsTables(e);
+      }
+      if (from < 9) {
+        await _createCommerceAndCustomerTables(e);
       }
     }
     await _createIndexes(e);
@@ -157,6 +161,7 @@ class InboxDatabase implements QueryExecutorUser {
     await _createFeedTables(e);
     await _createWorkerTables(e);
     await _createSettingsTables(e);
+    await _createCommerceAndCustomerTables(e);
     await _createIndexes(e);
   }
 
@@ -596,6 +601,62 @@ class InboxDatabase implements QueryExecutorUser {
         PRIMARY KEY (workspace_id, resource)
       )
     ''');
+  }
+
+  Future<void> _createCommerceAndCustomerTables(QueryExecutor e) async {
+    await e.runCustom('''
+      CREATE TABLE IF NOT EXISTS local_commerce_orders (
+        workspace_id INTEGER NOT NULL,
+        server_id INTEGER NOT NULL,
+        order_number TEXT NOT NULL,
+        status TEXT NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'SAR',
+        customer_id INTEGER,
+        customer_name TEXT,
+        payment_status TEXT,
+        fulfillment_status TEXT,
+        total_amount TEXT,
+        channel TEXT,
+        placed_at TEXT,
+        payload_json TEXT NOT NULL,
+        cached_at INTEGER NOT NULL,
+        PRIMARY KEY (workspace_id, server_id)
+      )
+    ''');
+    await e.runCustom('''
+      CREATE TABLE IF NOT EXISTS local_customers (
+        workspace_id INTEGER NOT NULL,
+        server_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        whatsapp TEXT,
+        city TEXT,
+        status TEXT NOT NULL DEFAULT 'needs_review',
+        orders_count INTEGER NOT NULL DEFAULT 0,
+        total_purchases TEXT NOT NULL DEFAULT '0.00',
+        search_text TEXT NOT NULL DEFAULT '',
+        payload_json TEXT NOT NULL,
+        cached_at INTEGER NOT NULL,
+        PRIMARY KEY (workspace_id, server_id)
+      )
+    ''');
+    await e.runCustom(
+      'CREATE INDEX IF NOT EXISTS idx_local_commerce_orders_ws_status '
+      'ON local_commerce_orders (workspace_id, status)',
+    );
+    await e.runCustom(
+      'CREATE INDEX IF NOT EXISTS idx_local_commerce_orders_ws_customer '
+      'ON local_commerce_orders (workspace_id, customer_id)',
+    );
+    await e.runCustom(
+      'CREATE INDEX IF NOT EXISTS idx_local_customers_ws_search '
+      'ON local_customers (workspace_id, search_text)',
+    );
+    await e.runCustom(
+      'CREATE INDEX IF NOT EXISTS idx_local_customers_ws_status '
+      'ON local_customers (workspace_id, status)',
+    );
   }
 
   Future<void> _ensureColumn(

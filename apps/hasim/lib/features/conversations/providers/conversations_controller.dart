@@ -996,7 +996,32 @@ class ChatController extends StateNotifier<ChatState> {
     }
 
     if (!_canCommit(scope)) return true;
-    state = state.copyWith(sending: false, error: null);
+    final currentUser = _ref.read(authControllerProvider).user;
+    final currentConv = state.conversation;
+    final updatedConv = (currentUser != null && _companyInboxWriteAllowed() && currentConv != null)
+        ? currentConv.copyWith(
+            aiEnabled: false,
+            handoffStatus: 'active',
+            assignedUserId: currentUser.id,
+            assignedUserName: currentUser.name,
+            responder: ConversationResponder(
+              status: 'human_active',
+              type: 'human',
+              name: currentUser.name,
+              label: 'الموظف يرد الآن',
+              userId: currentUser.id,
+              userInitials: currentUser.name.trim().isNotEmpty
+                  ? currentUser.name.trim().substring(0, 1)
+                  : null,
+            ),
+          )
+        : currentConv;
+
+    state = state.copyWith(
+      sending: false,
+      error: null,
+      conversation: updatedConv,
+    );
     _clearUnreadAfterSend();
     unawaited(_persistReadAfterSend(workspaceId));
     unawaited(
@@ -1057,6 +1082,7 @@ class ChatController extends StateNotifier<ChatState> {
         messages: after,
         error: failed ? 'تعذر إرسال الرسالة.' : null,
       );
+      unawaited(_syncConversationFromServer(scope));
       _realtime.triggerPoll();
     } catch (_) {
       // The outbox remains responsible for retrying transient send failures.
@@ -1177,6 +1203,7 @@ class ChatController extends StateNotifier<ChatState> {
       }
       _clearUnreadAfterSend();
       unawaited(_persistReadAfterSend(workspaceId));
+      unawaited(_syncConversationFromServer(scope));
       return null;
     } catch (e) {
       if (kDebugMode) {
@@ -1278,6 +1305,7 @@ class ChatController extends StateNotifier<ChatState> {
       }
       _clearUnreadAfterSend();
       unawaited(_persistReadAfterSend(workspaceId));
+      unawaited(_syncConversationFromServer(scope));
       return withAttach;
     } catch (e) {
       if (kDebugMode) {
@@ -1360,6 +1388,7 @@ class ChatController extends StateNotifier<ChatState> {
       }
       _clearUnreadAfterSend();
       unawaited(_persistReadAfterSend(workspaceId));
+      unawaited(_syncConversationFromServer(scope));
       return withAttach;
     } catch (e) {
       if (kDebugMode) {

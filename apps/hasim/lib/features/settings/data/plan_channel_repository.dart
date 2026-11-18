@@ -1,3 +1,4 @@
+import 'package:hasim/core/local_db/domain_local_store.dart';
 import 'package:hasim/core/local_db/settings_local_store.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_client.dart';
@@ -277,30 +278,87 @@ class BrandingRepository {
 }
 
 class CustomerRepository {
-  CustomerRepository(this._api);
+  CustomerRepository(
+    this._api, {
+    DomainLocalStore? local,
+    int? Function()? workspaceIdOf,
+  }) : _local = local,
+       _workspaceIdOf = workspaceIdOf;
+
   final ApiClient _api;
+  final DomainLocalStore? _local;
+  final int? Function()? _workspaceIdOf;
+  bool lastReadFromCache = false;
+
+  int? get _workspace => _workspaceIdOf?.call();
+
+  Future<List<CustomerModel>> cachedCustomers({String? search}) async {
+    final workspaceId = _workspace;
+    if (workspaceId == null || _local == null) return const [];
+    return _local.customers(workspaceId, search: search);
+  }
+
+  Stream<List<CustomerModel>> watchCustomers({String? search, String? status}) {
+    final workspaceId = _workspace;
+    if (workspaceId == null || _local == null) return const Stream.empty();
+    return _local.watchCustomers(workspaceId, search: search, status: status);
+  }
 
   Future<List<CustomerModel>> list({
     String? search,
     String? cursor,
     int perPage = 20,
   }) async {
-    final query = <String, dynamic>{'per_page': perPage};
-    if (search != null && search.trim().isNotEmpty) {
-      query['search'] = search.trim();
+    final workspaceId = _workspace;
+    try {
+      final query = <String, dynamic>{'per_page': perPage};
+      if (search != null && search.trim().isNotEmpty) {
+        query['search'] = search.trim();
+      }
+      if (cursor != null && cursor.isNotEmpty) {
+        query['cursor'] = cursor;
+      }
+      final res = await _api.get('/customers', query: query);
+      final items = asMapList(res.data).map(CustomerModel.fromJson).toList();
+      lastReadFromCache = false;
+      if (workspaceId != null && items.isNotEmpty) {
+        await _local?.upsertCustomers(workspaceId, items);
+      }
+      return items;
+    } catch (_) {
+      if (workspaceId != null && _local != null) {
+        final cached = await _local.customers(workspaceId, search: search);
+        if (cached.isNotEmpty) {
+          lastReadFromCache = true;
+          return cached;
+        }
+      }
+      rethrow;
     }
-    if (cursor != null && cursor.isNotEmpty) {
-      query['cursor'] = cursor;
-    }
-    final res = await _api.get('/customers', query: query);
-    return asMapList(res.data).map(CustomerModel.fromJson).toList();
   }
 
   Future<CustomerModel> show(int id) async {
-    final res = await _api.get('/customers/$id');
-    final map = asMap(res.data);
-    if (map == null) throw ApiException(res.message ?? 'العميل غير موجود.');
-    return CustomerModel.fromJson(map);
+    final workspaceId = _workspace;
+    try {
+      final res = await _api.get('/customers/$id');
+      final map = asMap(res.data);
+      if (map == null) throw ApiException(res.message ?? 'العميل غير موجود.');
+      final customer = CustomerModel.fromJson(map);
+      lastReadFromCache = false;
+      if (workspaceId != null) {
+        await _local?.upsertCustomers(workspaceId, [customer]);
+      }
+      return customer;
+    } catch (_) {
+      if (workspaceId != null && _local != null) {
+        final cached = await _local.customer(workspaceId, id);
+        if (cached != null) {
+          lastReadFromCache = true;
+          return cached;
+        }
+      }
+      rethrow;
+    }
   }
 
   Future<CustomerModel> create({
@@ -323,7 +381,12 @@ class CustomerRepository {
     final res = await _api.post('/customers', body: body);
     final map = asMap(res.data);
     if (map == null) throw ApiException(res.message ?? 'تعذر إنشاء العميل.');
-    return CustomerModel.fromJson(map);
+    final customer = CustomerModel.fromJson(map);
+    final workspaceId = _workspace;
+    if (workspaceId != null) {
+      await _local?.upsertCustomers(workspaceId, [customer]);
+    }
+    return customer;
   }
 
   Future<CustomerModel> update(
@@ -346,7 +409,12 @@ class CustomerRepository {
     if (map == null) {
       throw ApiException(res.message ?? 'تعذر تحديث بيانات العميل.');
     }
-    return CustomerModel.fromJson(map);
+    final customer = CustomerModel.fromJson(map);
+    final workspaceId = _workspace;
+    if (workspaceId != null) {
+      await _local?.upsertCustomers(workspaceId, [customer]);
+    }
+    return customer;
   }
 
   Future<void> addNote(int id, String note) async {

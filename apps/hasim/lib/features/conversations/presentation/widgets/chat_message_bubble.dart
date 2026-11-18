@@ -1,11 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/features/conversations/data/chat_bubble_color_catalog.dart';
-import 'package:hasim/features/conversations/providers/chat_bubble_color_controller.dart';
-import 'package:hasim/features/conversations/providers/conversation_theme_controller.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/utils/quoted_reply.dart';
@@ -15,7 +12,7 @@ import 'package:hasim/features/conversations/presentation/widgets/chat_media_vie
 import 'package:hasim/l10n/app_localizations.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
-class ChatMessageBubble extends ConsumerWidget {
+class ChatMessageBubble extends StatelessWidget {
   const ChatMessageBubble({
     super.key,
     required this.message,
@@ -30,6 +27,7 @@ class ChatMessageBubble extends ConsumerWidget {
     this.selected = false,
     this.selectionMode = false,
     this.onToggleSelected,
+    this.bubbleColorId,
   });
 
   final MessageModel message;
@@ -48,9 +46,28 @@ class ChatMessageBubble extends ConsumerWidget {
   /// أثناء التحديد: النقر يبدّل تحديد الرسالة بدل فتح المرفقات.
   final bool selectionMode;
   final VoidCallback? onToggleSelected;
+  final String? bubbleColorId;
+
+  static const _outboundRadius = BorderRadius.only(
+    topLeft: Radius.circular(12),
+    topRight: Radius.circular(12),
+    bottomLeft: Radius.circular(4),
+    bottomRight: Radius.circular(12),
+  );
+
+  static const _inboundRadius = BorderRadius.only(
+    topLeft: Radius.circular(12),
+    topRight: Radius.circular(12),
+    bottomLeft: Radius.circular(12),
+    bottomRight: Radius.circular(4),
+  );
+
+  static const _bubbleShadow = [
+    BoxShadow(color: Color(0x0A000000), blurRadius: 1, offset: Offset(0, 1)),
+  ];
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     if (message.isInternalNote) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
@@ -95,13 +112,7 @@ class ChatMessageBubble extends ConsumerWidget {
     }
 
     final l10n = AppLocalizations.of(context);
-    final sharedBubble = ref.watch(chatBubbleColorControllerProvider);
-    final bubbleOverride = ref.watch(
-      conversationThemeProvider(
-        message.conversationId,
-      ).select((t) => t.bubbleColorId),
-    );
-    final bubbleColorId = bubbleOverride ?? sharedBubble;
+    final activeBubbleColor = bubbleColorId ?? 'default';
     final mine = message.isOutbound;
     final compact = HasimLayout.isCompact(context);
     // Sent (outbound) on the physical left, received on the right — all breakpoints.
@@ -128,7 +139,10 @@ class ChatMessageBubble extends ConsumerWidget {
     final bg = failed
         ? Colors.red.shade50
         : (mine
-              ? ChatBubbleColorCatalog.outgoingBubble(context, bubbleColorId)
+              ? ChatBubbleColorCatalog.outgoingBubble(
+                  context,
+                  activeBubbleColor,
+                )
               : HasimTokens.cardBg(context));
     final fg = HasimTokens.inkColor(context);
     final meta = HasimTokens.mutedColor(context);
@@ -166,19 +180,10 @@ class ChatMessageBubble extends ConsumerWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(12),
-                      topRight: const Radius.circular(12),
-                      bottomLeft: Radius.circular(onPhysicalLeft ? 4 : 12),
-                      bottomRight: Radius.circular(onPhysicalLeft ? 12 : 4),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 1,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
+                    borderRadius: onPhysicalLeft
+                        ? _outboundRadius
+                        : _inboundRadius,
+                    boxShadow: _bubbleShadow,
                   ),
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
@@ -268,6 +273,8 @@ class _BubbleBody extends StatelessWidget {
     fontWeight: FontWeight.w500,
   );
 
+  static final DateFormat _timeFormat = DateFormat('HH:mm');
+
   Widget _metaRow() {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -293,7 +300,7 @@ class _BubbleBody extends StatelessWidget {
         Text(
           message.createdAt == null
               ? ''
-              : DateFormat('HH:mm').format(message.createdAt!.toLocal()),
+              : _timeFormat.format(message.createdAt!.toLocal()),
           style: TextStyle(
             color: meta,
             fontSize: 11,
@@ -361,23 +368,23 @@ class _BubbleBody extends StatelessWidget {
       if (quoted.quote == null) {
         return textRow;
       }
-      return IntrinsicWidth(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _QuotedReplyBlock(text: quoted.quote!, mine: mine),
-            const SizedBox(height: 4),
-            textRow,
-          ],
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _QuotedReplyBlock(text: quoted.quote!, mine: mine),
+          const SizedBox(height: 4),
+          textRow,
+        ],
       );
     }
 
-    final imageAttachments =
-        message.attachments.where((a) => a.kind == 'image').toList();
-    final otherAttachments =
-        message.attachments.where((a) => a.kind != 'image').toList();
+    final imageAttachments = message.attachments
+        .where((a) => a.kind == 'image')
+        .toList();
+    final otherAttachments = message.attachments
+        .where((a) => a.kind != 'image')
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

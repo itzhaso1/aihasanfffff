@@ -33,12 +33,12 @@ final class ConversationHandoffService
      * @var array<string, list<string>>
      */
     private const TRANSITIONS = [
-        'none' => ['requested', 'assigned'],
-        'requested' => ['queued', 'assigned', 'active', 'resolved'],
-        'queued' => ['assigned', 'resolved'],
-        'assigned' => ['active', 'queued', 'resolved'],
-        'active' => ['resolved'],
-        'resolved' => ['none', 'requested'],
+        'none' => ['requested', 'assigned', 'active'],
+        'requested' => ['queued', 'assigned', 'active', 'resolved', 'none'],
+        'queued' => ['assigned', 'active', 'resolved', 'none'],
+        'assigned' => ['active', 'queued', 'requested', 'resolved', 'none'],
+        'active' => ['resolved', 'queued', 'requested', 'assigned', 'none'],
+        'resolved' => ['none', 'requested', 'queued', 'assigned', 'active'],
     ];
 
     public function __construct(
@@ -125,9 +125,11 @@ final class ConversationHandoffService
             $this->assertOpen($fresh);
 
             $status = $this->currentStatus($fresh);
-            if ($status === ConversationHandoffStatus::None || $status === ConversationHandoffStatus::Resolved) {
-                $this->transition($fresh, ConversationHandoffStatus::Requested);
-                $fresh = $fresh->fresh() ?? $fresh;
+            if (in_array($status, [ConversationHandoffStatus::None, ConversationHandoffStatus::Resolved, ConversationHandoffStatus::Active, ConversationHandoffStatus::Assigned], true)) {
+                if ($status !== ConversationHandoffStatus::Requested && $status !== ConversationHandoffStatus::Queued) {
+                    $this->transition($fresh, ConversationHandoffStatus::Requested);
+                    $fresh = $fresh->fresh() ?? $fresh;
+                }
             }
 
             $fresh = $this->applyHandoffPayload($fresh, $reason, $context);
@@ -136,7 +138,15 @@ final class ConversationHandoffService
                 $fresh = $this->transition($fresh, ConversationHandoffStatus::Queued);
             }
 
-            $fresh->update(['ai_enabled' => false]);
+            $fresh->update([
+                'ai_enabled' => false,
+                'assigned_user_id' => null,
+                'assigned_worker_engagement_id' => null,
+                'handoff_assigned_at' => null,
+                'responder_type' => ConversationResponderService::TYPE_NONE,
+                'responder_name' => 'فريق العمل (بانتظار الاستلام)',
+                'responder_assigned_at' => now(),
+            ]);
             $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
 
             $this->responderService->recordTransition(
