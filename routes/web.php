@@ -275,7 +275,9 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::post('{apiKey}/regenerate', [WorkspaceApiKeyController::class, 'regenerate'])->name('regenerate');
         });
 
-        Route::resource('customers', CustomerController::class)->except(['show']);
+        Route::resource('customers', CustomerController::class);
+        Route::patch('customers/{customer}/status', [CustomerController::class, 'updateStatus'])->name('customers.status.update');
+        Route::post('customers/orders/{order}/review-action', [CustomerController::class, 'orderReviewAction'])->name('customers.orders.review-action');
         Route::post('customers/{customer}/notes', [CustomerController::class, 'storeNote'])->name('customers.notes.store');
         Route::middleware('workspace.feature:advanced_customers')->group(function (): void {
             Route::post('customers/{customer}/tags', [CustomerController::class, 'attachTag'])->name('customers.tags.attach');
@@ -307,6 +309,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::get('commerce/intelligence/items/{item}', [WorkspaceCommerceIntelligenceController::class, 'item'])->name('commerce.intelligence.items.show');
             Route::post('commerce/intelligence/items/{item}/attributes', [WorkspaceCommerceIntelligenceController::class, 'storeItemAttributes'])->name('commerce.intelligence.items.attributes.store');
         });
+        Route::get('conversations/poll-updates', [ConversationController::class, 'pollUpdates'])->name('conversations.updates.poll');
         Route::resource('conversations', ConversationController::class)->except(['show']);
         Route::get('conversations/{conversation}/poll-messages', [ConversationController::class, 'pollMessages'])->name('conversations.messages.poll');
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');

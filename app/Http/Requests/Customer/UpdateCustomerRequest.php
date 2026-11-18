@@ -25,6 +25,7 @@ class UpdateCustomerRequest extends FormRequest
         return array_merge([
             'name' => ['sometimes', 'string', 'max:255'],
             'phone' => ['sometimes', 'string', 'max:32'],
+            'status' => ['nullable', 'string', 'in:needs_review,completed,awaiting_payment,paid,in_progress,delivered,cancelled'],
             'whatsapp' => ['nullable', 'string', 'max:32'],
             'email' => ['nullable', 'email', 'max:255'],
             'notes' => ['nullable', 'string'],

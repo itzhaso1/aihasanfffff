@@ -12,6 +12,16 @@
         </select>
     </div>
     <div>
+        <label class="mb-1 block text-sm">حالة العميل</label>
+        <select name="status" class="w-full rounded-lg border-gray-300">
+            @foreach(\App\Enums\CustomerStatus::cases() as $st)
+                <option value="{{ $st->value }}" @selected(old('status', $customer?->status?->value ?? $customer?->status ?? 'needs_review') === $st->value)>
+                    {{ $st->label() }}
+                </option>
+            @endforeach
+        </select>
+    </div>
+    <div>
         <label class="mb-1 block text-sm">الهاتف</label>
         <input name="phone" required value="{{ old('phone', $customer?->phone) }}" class="w-full rounded-lg border-gray-300" />
     </div>

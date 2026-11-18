@@ -64,6 +64,7 @@ use App\Services\AI\Contracts\GeminiInteractionsClient;
 use App\Services\AI\Gemini\GeminiInteractionsHttpClient;
 use App\Services\AI\Inbox\Memory\Contracts\InboxAgentMemoryExtractor;
 use App\Services\AI\Inbox\Memory\LlmInboxAgentMemoryExtractor;
+use App\Services\AI\Inbox\Tools\CreateCustomerOrderTool;
 use App\Services\AI\Inbox\Tools\EvaluateProductSuitabilityTool;
 use App\Services\AI\Inbox\Tools\GetProductIntelligenceTool;
 use App\Services\AI\Inbox\Tools\InboxAgentToolRegistry;
@@ -187,7 +188,7 @@ class AppServiceProvider extends ServiceProvider
     private function configureMobileRateLimiting(): void
     {
         RateLimiter::for('mobile-api', function (Request $request) {
-            return Limit::perMinute(120)->by((string) ($request->user()?->id ?: $request->ip()));
+            return Limit::perMinute(300)->by((string) ($request->user()?->id ?: $request->ip()));
         });
 
         RateLimiter::for('mobile-login', function (Request $request) {
@@ -271,5 +272,6 @@ class AppServiceProvider extends ServiceProvider
         $registry->register($this->app->make(EvaluateProductSuitabilityTool::class));
         $registry->register($this->app->make(GetProductIntelligenceTool::class));
         $registry->register($this->app->make(SaveCustomerCommerceContextTool::class));
+        $registry->register($this->app->make(CreateCustomerOrderTool::class));
     }
 }

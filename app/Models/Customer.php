@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CustomerStatus;
 use App\Models\Concerns\BelongsToWorkspace;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'name',
     'party_type',
     'phone',
+    'status',
     'client_reference',
     'whatsapp',
     'email',
@@ -49,12 +51,20 @@ class Customer extends WorkspaceScopedModel
     protected function casts(): array
     {
         return [
+            'status' => CustomerStatus::class,
             'total_purchases' => 'decimal:2',
             'balance' => 'decimal:2',
             'last_order_at' => 'datetime',
             'last_conversation_at' => 'datetime',
             'metadata' => 'array',
         ];
+    }
+
+    public function statusEnum(): CustomerStatus
+    {
+        return $this->status instanceof CustomerStatus
+            ? $this->status
+            : CustomerStatus::tryFrom((string) $this->status) ?? CustomerStatus::NeedsReview;
     }
 
     public function partyType(): string

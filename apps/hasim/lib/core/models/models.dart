@@ -84,31 +84,118 @@ class WorkspaceModel extends Equatable {
   List<Object?> get props => [id, name, type, slug, role, isOwner];
 }
 
+class CustomerNoteModel extends Equatable {
+  const CustomerNoteModel({
+    required this.id,
+    required this.body,
+    this.createdAt,
+    this.userName,
+  });
+
+  final int id;
+  final String body;
+  final String? createdAt;
+  final String? userName;
+
+  factory CustomerNoteModel.fromJson(Map<String, dynamic> json) =>
+      CustomerNoteModel(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        body: json['body']?.toString() ?? '',
+        createdAt: json['created_at']?.toString(),
+        userName: json['user_name']?.toString(),
+      );
+
+  @override
+  List<Object?> get props => [id, body, createdAt, userName];
+}
+
 class CustomerModel extends Equatable {
   const CustomerModel({
     required this.id,
     required this.name,
     this.phone,
+    this.status = 'needs_review',
+    this.statusLabel,
     this.email,
     this.whatsapp,
+    this.city,
+    this.ordersCount = 0,
+    this.totalPurchases = '0.00',
+    this.lastOrderAt,
+    this.lastConversationAt,
+    this.notes = const [],
+    this.createdAt,
   });
 
   final int id;
   final String name;
   final String? phone;
+  final String status;
+  final String? statusLabel;
   final String? email;
   final String? whatsapp;
+  final String? city;
+  final int ordersCount;
+  final String totalPurchases;
+  final String? lastOrderAt;
+  final String? lastConversationAt;
+  final List<CustomerNoteModel> notes;
+  final String? createdAt;
+
+  String get displayStatus =>
+      statusLabel ??
+      switch (status) {
+        'needs_review' => 'يحتاج إلى مراجعة',
+        'completed' => 'مكتمل',
+        'awaiting_payment' => 'بانتظار الدفع',
+        'paid' => 'تم الدفع',
+        'in_progress' => 'قيد التنفيذ',
+        'delivered' => 'مكتمل التسليم',
+        'cancelled' => 'ملغي',
+        _ => status,
+      };
 
   factory CustomerModel.fromJson(Map<String, dynamic> json) => CustomerModel(
     id: (json['id'] as num).toInt(),
     name: json['name']?.toString() ?? '',
     phone: json['phone']?.toString(),
+    status: json['status']?.toString() ?? 'needs_review',
+    statusLabel: json['status_label']?.toString(),
     email: json['email']?.toString(),
     whatsapp: json['whatsapp']?.toString(),
+    city: json['city']?.toString(),
+    ordersCount: (json['orders_count'] as num?)?.toInt() ?? 0,
+    totalPurchases: json['total_purchases']?.toString() ?? '0.00',
+    lastOrderAt: json['last_order_at']?.toString(),
+    lastConversationAt: json['last_conversation_at']?.toString(),
+    notes:
+        (json['notes'] as List?)
+            ?.whereType<Map>()
+            .map(
+              (e) => CustomerNoteModel.fromJson(Map<String, dynamic>.from(e)),
+            )
+            .toList() ??
+        const [],
+    createdAt: json['created_at']?.toString(),
   );
 
   @override
-  List<Object?> get props => [id, name, phone, email, whatsapp];
+  List<Object?> get props => [
+    id,
+    name,
+    phone,
+    status,
+    statusLabel,
+    email,
+    whatsapp,
+    city,
+    ordersCount,
+    totalPurchases,
+    lastOrderAt,
+    lastConversationAt,
+    notes,
+    createdAt,
+  ];
 }
 
 class MessageAttachmentModel extends Equatable {
@@ -244,7 +331,8 @@ class MessageModel extends Equatable {
   factory MessageModel.fromJson(Map<String, dynamic> json) {
     final payload = _unwrapMessageJson(json);
     final attachmentsRaw = payload['attachments'];
-    final attachmentRows = attachmentsRaw is Map && attachmentsRaw['data'] is List
+    final attachmentRows =
+        attachmentsRaw is Map && attachmentsRaw['data'] is List
         ? attachmentsRaw['data'] as List
         : attachmentsRaw;
     final attachments = <MessageAttachmentModel>[];
@@ -269,12 +357,16 @@ class MessageModel extends Equatable {
     return MessageModel(
       id: (payload['id'] as num?)?.toInt() ?? 0,
       conversationId: (payload['conversation_id'] as num?)?.toInt() ?? 0,
-      direction: payload['direction']?.toString().trim().toLowerCase() ?? 'inbound',
+      direction:
+          payload['direction']?.toString().trim().toLowerCase() ?? 'inbound',
       messageType: payload['message_type']?.toString() ?? 'text',
       content: payload['content']?.toString() ?? '',
-      aiGenerated: payload['ai_generated'] == true || payload['ai_generated'] == 1,
+      aiGenerated:
+          payload['ai_generated'] == true || payload['ai_generated'] == 1,
       createdAt: DateTime.tryParse(payload['created_at']?.toString() ?? ''),
-      userName: payload['user'] is Map ? payload['user']['name']?.toString() : null,
+      userName: payload['user'] is Map
+          ? payload['user']['name']?.toString()
+          : null,
       customerName: payload['customer'] is Map
           ? payload['customer']['name']?.toString()
           : null,

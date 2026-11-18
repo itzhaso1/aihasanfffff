@@ -7,6 +7,7 @@ namespace App\AI\Tools\Adapters;
 use App\AI\Tools\CanonicalTools;
 use App\AI\Tools\Contracts\RuntimeTool;
 use App\AI\Tools\ToolRegistry;
+use App\Services\AI\Inbox\Tools\CreateCustomerOrderTool;
 use App\Services\AI\Inbox\Tools\EvaluateProductSuitabilityTool;
 use App\Services\AI\Inbox\Tools\GetProductIntelligenceTool;
 use App\Services\AI\Inbox\Tools\SaveCustomerCommerceContextTool;
@@ -19,6 +20,7 @@ final class InboxToolAdapters
         private readonly GetProductIntelligenceTool $productIntelligence,
         private readonly EvaluateProductSuitabilityTool $evaluateSuitability,
         private readonly SaveCustomerCommerceContextTool $saveCustomerContext,
+        private readonly CreateCustomerOrderTool $createCustomerOrder,
         private readonly InboxToolContextFactory $contexts = new InboxToolContextFactory,
     ) {}
 
@@ -32,6 +34,7 @@ final class InboxToolAdapters
             new InboxToolAdapter($this->evaluateSuitability, CanonicalTools::evaluateProductSuitability(), $this->contexts),
             new InboxToolAdapter($this->productIntelligence, CanonicalTools::getProductIntelligence(), $this->contexts),
             new InboxToolAdapter($this->saveCustomerContext, CanonicalTools::saveCustomerCommerceContext(), $this->contexts),
+            new InboxToolAdapter($this->createCustomerOrder, CanonicalTools::createCustomerOrder(), $this->contexts),
         ];
     }
 

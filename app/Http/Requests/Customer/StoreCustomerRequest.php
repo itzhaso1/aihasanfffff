@@ -25,6 +25,7 @@ class StoreCustomerRequest extends FormRequest
         return array_merge([
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:32'],
+            'status' => ['nullable', 'string', 'in:needs_review,completed,awaiting_payment,paid,in_progress,delivered,cancelled'],
             'whatsapp' => ['nullable', 'string', 'max:32'],
             'email' => ['nullable', 'email', 'max:255'],
             'notes' => ['nullable', 'string'],

@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'workspace_id',
     'customer_id',
+    'conversation_id',
     'commerce_seller_id',
     'commerce_cart_id',
     'dining_table_id', // legacy Business column; Chat Commerce does not write this
@@ -44,6 +45,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'total_amount',
     'payment_link',
     'notes',
+    'review_reason',
+    'review_required_action',
     'metadata',
     'placed_at',
     'cancelled_at',
@@ -78,6 +81,11 @@ class Order extends WorkspaceScopedModel
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function conversation(): BelongsTo
+    {
+        return $this->belongsTo(Conversation::class);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\CustomerStatus;
 use App\Models\Customer;
 use App\Models\Workspace;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -23,6 +24,7 @@ class CustomerFactory extends Factory
             'name' => fake()->name(),
             'party_type' => Customer::PARTY_TYPE_INDIVIDUAL,
             'phone' => '+9665'.fake()->unique()->numerify('########'),
+            'status' => CustomerStatus::NeedsReview,
             'whatsapp' => null,
             'email' => fake()->safeEmail(),
             'orders_count' => 0,

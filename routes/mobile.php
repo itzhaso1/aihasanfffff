@@ -348,7 +348,12 @@ Route::middleware([
         Route::post('/commerce/intelligence/evaluate', [CommerceIntelligenceController::class, 'evaluate'])->middleware('throttle:mobile-write');
     });
 
+    Route::get('/customers/stats', [CustomerController::class, 'stats']);
+    Route::get('/customers', [CustomerController::class, 'index']);
+    Route::post('/customers', [CustomerController::class, 'store'])->middleware('throttle:mobile-write');
     Route::get('/customers/{customer}', [CustomerController::class, 'show']);
+    Route::patch('/customers/{customer}', [CustomerController::class, 'update'])->middleware('throttle:mobile-write');
+    Route::post('/customers/{customer}/notes', [CustomerController::class, 'storeNote'])->middleware('throttle:mobile-write');
     Route::get('/customers/{customer}/conversations', [CustomerController::class, 'conversations']);
 
     Route::get('/notifications', [NotificationController::class, 'index']);

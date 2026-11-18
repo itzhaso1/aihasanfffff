@@ -18,6 +18,11 @@ final class CanonicalTools
 
     public const SAVE_CUSTOMER_COMMERCE_CONTEXT = 'save_customer_commerce_context';
 
+    public const CREATE_CUSTOMER_ORDER = 'create_customer_order';
+
+    /** @var list<string> */
+    public const ORDER_CAPTURE_SKILLS = ['customer_support', 'sales', 'booking_agent', 'product_recommendation'];
+
     /** @var list<string> */
     public const CATALOG_READ_SKILLS = ['customer_support', 'product_recommendation', 'product_search', 'sales'];
 
@@ -129,6 +134,61 @@ final class CanonicalTools
         );
     }
 
+    public static function createCustomerOrder(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::CREATE_CUSTOMER_ORDER,
+            description: 'Record customer details and create or update customer order when customer wants to buy, order, or book items. De-duplicates by phone.',
+            category: 'order',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            allowedSkillKeys: self::ORDER_CAPTURE_SKILLS,
+            inputSchema: [
+                'customer_name' => [
+                    'type' => 'string',
+                    'required' => true,
+                    'description' => 'Customer name.',
+                ],
+                'phone' => [
+                    'type' => 'string',
+                    'required' => true,
+                    'description' => 'Customer phone or WhatsApp number.',
+                ],
+                'items' => [
+                    'type' => 'array',
+                    'required' => true,
+                    'description' => 'Array of items/products with name, id, quantity.',
+                ],
+                'notes' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Customer notes, delivery address or instructions.',
+                ],
+                'address' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Delivery address.',
+                ],
+                'is_complete' => [
+                    'type' => 'boolean',
+                    'required' => false,
+                    'description' => 'True if info is complete, false if incomplete and needs review.',
+                ],
+                'review_reason' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Reason if human review is needed.',
+                ],
+                'required_action' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Action required from the store agent.',
+                ],
+            ],
+        );
+    }
+
     /**
      * @return list<ToolDefinition>
      */
@@ -139,6 +199,7 @@ final class CanonicalTools
             self::getProductIntelligence(),
             self::evaluateProductSuitability(),
             self::saveCustomerCommerceContext(),
+            self::createCustomerOrder(),
         ];
         usort($definitions, static fn (ToolDefinition $a, ToolDefinition $b): int => strcmp($a->name, $b->name));
 
