@@ -15,8 +15,6 @@ import 'package:hasim/core/storage/prefs_store.dart';
 import 'package:hasim/core/storage/secure_store.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
 import 'package:hasim/features/conversations/data/conversation_repository.dart';
-import 'package:hasim/features/email/data/email_repository.dart';
-import 'package:hasim/features/email/providers/email_controller.dart';
 import 'package:hasim/features/stories/data/story_repository.dart';
 import 'package:hasim/features/stories/providers/stories_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -284,25 +282,8 @@ void main() {
       );
       final db = InboxDatabase.memory();
       addTearDown(db.close);
-      final domain = DomainLocalStore(db);
       final feed = FeedLocalStore(db);
       final now = DateTime.now();
-      await domain.upsertEmails(4, 'inbox', const [
-        EmailMessageModel(
-          id: 1,
-          sender: 'a@shop.test',
-          recipient: 'me',
-          subject: 'بريد أ',
-        ),
-      ]);
-      await domain.upsertEmails(9, 'inbox', const [
-        EmailMessageModel(
-          id: 2,
-          sender: 'b@shop.test',
-          recipient: 'me',
-          subject: 'بريد ب',
-        ),
-      ]);
       await feed.upsertStories(4, [
         StoryModel(
           id: 1,
@@ -331,13 +312,6 @@ void main() {
             auth = _SwitchableAuth(ref);
             return auth;
           }),
-          emailRepositoryProvider.overrideWithValue(
-            EmailRepository(
-              api,
-              local: domain,
-              workspaceIdOf: () => prefs.workspaceId,
-            ),
-          ),
           storyRepositoryProvider.overrideWithValue(
             StoryRepository(
               api,
@@ -349,14 +323,7 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      container.read(emailControllerProvider);
       container.read(storiesControllerProvider);
-      await _until(
-        () => container
-            .read(emailControllerProvider)
-            .items
-            .any((item) => item.subject == 'بريد أ'),
-      );
       await _until(
         () => container
             .read(storiesControllerProvider)
@@ -367,28 +334,14 @@ void main() {
 
       await prefs.setWorkspaceId(9);
       auth.use(9);
-      expect(container.read(emailControllerProvider).items, isEmpty);
       expect(container.read(storiesControllerProvider).buckets, isEmpty);
 
-      await _until(
-        () => container
-            .read(emailControllerProvider)
-            .items
-            .any((item) => item.subject == 'بريد ب'),
-      );
       await _until(
         () => container
             .read(storiesControllerProvider)
             .buckets
             .expand((bucket) => bucket.stories)
             .any((story) => story.bodyText == 'قصة ب'),
-      );
-      expect(
-        container
-            .read(emailControllerProvider)
-            .items
-            .any((item) => item.subject == 'بريد أ'),
-        isFalse,
       );
       expect(
         container

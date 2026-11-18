@@ -102,7 +102,10 @@ class HasimBottomNav extends StatelessWidget {
                     for (final item in items)
                       NavigationDestination(
                         icon: _NavIcon(icon: item.icon, badge: item.badge),
-                        selectedIcon: _NavIcon(icon: item.selectedIcon, badge: item.badge),
+                        selectedIcon: _NavIcon(
+                          icon: item.selectedIcon,
+                          badge: item.badge,
+                        ),
                         label: item.label,
                       ),
                     if (onSettingsTap != null)
@@ -143,7 +146,6 @@ class _NavIcon extends StatelessWidget {
 
 List<HasimBottomNavItem> hasimBottomNavItems({
   required int chatBadge,
-  required int emailBadge,
   required int updatesBadge,
 }) {
   return [
@@ -152,12 +154,6 @@ List<HasimBottomNavItem> hasimBottomNavItems({
       selectedIcon: Icons.chat_bubble_rounded,
       label: HasimNav.bottomLabels[HasimNav.conversationsIndex],
       badge: chatBadge,
-    ),
-    HasimBottomNavItem(
-      icon: Icons.mail_outline_rounded,
-      selectedIcon: Icons.mail_rounded,
-      label: HasimNav.bottomLabels[HasimNav.emailIndex],
-      badge: emailBadge,
     ),
     HasimBottomNavItem(
       icon: Icons.auto_stories_outlined,

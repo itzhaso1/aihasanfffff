@@ -13,7 +13,6 @@ void main() {
 
   final items = hasimBottomNavItems(
     chatBadge: 0,
-    emailBadge: 0,
     updatesBadge: 0,
   );
 
@@ -73,8 +72,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('المحادثات'), findsOneWidget);
-    expect(find.text('البريد'), findsOneWidget);
     expect(find.text('التحديثات'), findsOneWidget);
+    expect(find.text('البريد'), findsNothing);
   });
 
   testWidgets('compact chat hides the bottom navigation bar', (tester) async {
@@ -124,13 +123,11 @@ void main() {
       expect(find.byType(HasimNavRail), findsOneWidget);
       expect(find.byType(HasimBottomNav), findsNothing);
       expect(find.byKey(const Key('nav-rail-conversations')), findsOneWidget);
-      expect(find.byKey(const Key('nav-rail-email')), findsOneWidget);
       expect(find.byKey(const Key('nav-rail-updates')), findsOneWidget);
       expect(find.byKey(const Key('nav-rail-archived')), findsOneWidget);
       expect(find.byKey(const Key('nav-rail-locked')), findsOneWidget);
       expect(find.byKey(const Key('nav-rail-settings')), findsOneWidget);
       expect(find.byTooltip('المحادثات'), findsOneWidget);
-      expect(find.byTooltip('البريد'), findsOneWidget);
       expect(find.byTooltip('التحديثات'), findsOneWidget);
       expect(find.byTooltip('المؤرشفة'), findsOneWidget);
       expect(find.byTooltip('الدردشات المقفلة'), findsOneWidget);
@@ -232,13 +229,11 @@ void main() {
     final conversations = tester.getCenter(
       find.byKey(const Key('nav-rail-conversations')),
     );
-    final email = tester.getCenter(find.byKey(const Key('nav-rail-email')));
     final rail = tester.getRect(find.byType(HasimNavRail));
 
-    expect(selector.dy, lessThan(updates.dy));
+    expect(selector.dy, lessThan(conversations.dy));
     expect(conversations.dy, lessThan(updates.dy));
-    expect(updates.dy, lessThan(email.dy));
-    expect(email.dy, lessThan(archived.dy));
+    expect(updates.dy, lessThan(archived.dy));
     expect(rail.width, HasimLayout.navRailWidth);
   });
 

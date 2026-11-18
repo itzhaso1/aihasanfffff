@@ -3,14 +3,9 @@ abstract final class HasimNav {
   static const initialShellRoute = '/conversations';
 
   /// ترتيب التبويبات في RTL (يمين → يسار بصريًا عبر Directionality).
-  static const bottomLabels = <String>[
-    'المحادثات',
-    'البريد',
-    'التحديثات',
-  ];
+  static const bottomLabels = <String>['المحادثات', 'التحديثات'];
 
   static const conversationsIndex = 0;
-  static const emailIndex = 1;
-  static const updatesIndex = 2;
-  static const tabCount = 3;
+  static const updatesIndex = 1;
+  static const tabCount = 2;
 }

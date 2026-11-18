@@ -16,6 +16,8 @@ import 'package:hasim/core/widgets/hasim_search_bar.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
 import 'package:hasim/features/home/providers/home_controller.dart';
+import 'package:hasim/features/commerce/presentation/orders_list_screen.dart';
+import 'package:hasim/features/customers/presentation/customers_list_screen.dart';
 import 'package:hasim/features/more/presentation/security_sessions_screen.dart';
 import 'package:hasim/features/catalog/presentation/catalog_list_screen.dart';
 import 'package:hasim/features/settings/presentation/widgets/display_appearance_settings.dart';
@@ -54,6 +56,8 @@ enum _SettingsId {
   privacyLock,
   channels,
   notifications,
+  customers,
+  orders,
   products,
   ai,
   companyProfile,
@@ -183,6 +187,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         icon: Icons.notifications_outlined,
         title: 'تفضيلات الإشعارات',
         route: '/notification-preferences',
+      ),
+      const _SettingsItem(
+        id: _SettingsId.customers,
+        icon: Icons.people_outline,
+        title: 'العملاء',
+        subtitle: 'إدارة بيانات العملاء، الملاحظات، وسجل التواصل',
+        route: '/customers',
+      ),
+      const _SettingsItem(
+        id: _SettingsId.orders,
+        icon: Icons.shopping_bag_outlined,
+        title: 'الطلبات والمبيعات',
+        subtitle: 'إدارة الطلبات، الحالات، والفواتير',
+        route: '/orders',
       ),
       const _SettingsItem(
         id: _SettingsId.products,
@@ -349,7 +367,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       },
       items: hasimBottomNavItems(
         chatBadge: homeSnapshot?.unreadConversations ?? 0,
-        emailBadge: homeSnapshot?.unreadEmail ?? 0,
         updatesBadge: updatesBadge,
       ),
       body: body,
@@ -1217,6 +1234,16 @@ class _SettingsDetailPane extends StatelessWidget {
       _SettingsId.notifications => const _EmbeddedDetail(
         title: 'تفضيلات الإشعارات',
         child: NotificationPreferencesScreen(embedded: true),
+      ),
+      _SettingsId.customers => const _EmbeddedDetail(
+        title: 'العملاء',
+        subtitle: 'إدارة بيانات العملاء، الملاحظات، وسجل التواصل',
+        child: CustomersListScreen(),
+      ),
+      _SettingsId.orders => const _EmbeddedDetail(
+        title: 'الطلبات والمبيعات',
+        subtitle: 'إدارة الطلبات، الحالات، والفواتير',
+        child: OrdersListScreen(),
       ),
       _SettingsId.products => const _EmbeddedDetail(
         title: 'المنتجات والمخزون',

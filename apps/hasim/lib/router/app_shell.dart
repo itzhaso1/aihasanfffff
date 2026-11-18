@@ -47,9 +47,6 @@ class AppRootShell extends ConsumerWidget {
         location.startsWith('/conversations/')) {
       return HasimNav.conversationsIndex;
     }
-    if (location == '/email' || location.startsWith('/email/')) {
-      return HasimNav.emailIndex;
-    }
     if (location == '/updates' || location.startsWith('/updates/')) {
       return HasimNav.updatesIndex;
     }
@@ -99,13 +96,6 @@ class AppRootShell extends ConsumerWidget {
               (state) => state.snapshot?.unreadConversations ?? 0,
             ),
           );
-    final unreadEmailBadge = isIndependentWorker
-        ? 0
-        : ref.watch(
-            homeControllerProvider.select(
-              (state) => state.snapshot?.unreadEmail ?? 0,
-            ),
-          );
     // Worker access to Updates is checked by the screen against its engagement capability.
     final updatesBadge = isIndependentWorker
         ? 0
@@ -124,7 +114,6 @@ class AppRootShell extends ConsumerWidget {
       chatBadge: isIndependentWorker
           ? workerUnreadCount
           : unreadConversationsBadge,
-      emailBadge: unreadEmailBadge,
       updatesBadge: updatesBadge,
     );
 

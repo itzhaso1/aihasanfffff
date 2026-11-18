@@ -97,7 +97,7 @@ Future<void> _pumpThemeHost(
           bottomNavigationBar: HasimBottomNav(
             selectedIndex: HasimNav.conversationsIndex,
             onDestinationSelected: (_) {},
-            items: hasimBottomNavItems(chatBadge: 0, emailBadge: 0, updatesBadge: 0),
+            items: hasimBottomNavItems(chatBadge: 0, updatesBadge: 0),
           ),
         ),
       ),

@@ -10,7 +10,6 @@ void main() {
     test('bottom navigation contains required tabs in order', () {
       expect(HasimNav.bottomLabels, [
         'المحادثات',
-        'البريد',
         'التحديثات',
       ]);
       expect(HasimNav.bottomLabels.length, HasimNav.tabCount);
@@ -19,8 +18,8 @@ void main() {
     test('conversations is initial shell route', () {
       expect(HasimNav.initialShellRoute, '/conversations');
       expect(HasimNav.conversationsIndex, 0);
-      expect(HasimNav.updatesIndex, 2);
-      expect(HasimNav.tabCount, 3);
+      expect(HasimNav.updatesIndex, 1);
+      expect(HasimNav.tabCount, 2);
     });
   });
 

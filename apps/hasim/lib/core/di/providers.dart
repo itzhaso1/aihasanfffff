@@ -12,11 +12,10 @@ import 'package:hasim/core/storage/prefs_store.dart';
 import 'package:hasim/core/storage/secure_store.dart';
 import 'package:hasim/features/auth/data/auth_repository.dart';
 import 'package:hasim/features/catalog/data/chat_catalog_repository.dart';
+import 'package:hasim/features/commerce/data/commerce_order_repository.dart';
 import 'package:hasim/features/contacts/data/contact_group_repository.dart';
 import 'package:hasim/features/contacts/data/contact_repository.dart';
 import 'package:hasim/features/conversations/data/conversation_repository.dart';
-import 'package:hasim/features/email/data/campaign_repository.dart';
-import 'package:hasim/features/email/data/email_repository.dart';
 import 'package:hasim/features/home/data/home_repository.dart';
 import 'package:hasim/features/search/data/search_repository.dart';
 import 'package:hasim/features/notifications/data/notification_repository.dart';
@@ -116,20 +115,6 @@ final conversationRepositoryProvider = Provider(
     local: ref.watch(inboxLocalStoreProvider),
   ),
 );
-final emailRepositoryProvider = Provider(
-  (ref) => EmailRepository(
-    ref.watch(apiClientProvider),
-    local: ref.watch(domainLocalStoreProvider),
-    workspaceIdOf: () => _domainWorkspaceId(ref),
-  ),
-);
-final campaignRepositoryProvider = Provider(
-  (ref) => CampaignRepository(
-    ref.watch(apiClientProvider),
-    local: ref.watch(domainLocalStoreProvider),
-    workspaceIdOf: () => _domainWorkspaceId(ref),
-  ),
-);
 final contactRepositoryProvider = Provider(
   (ref) => ContactRepository(
     ref.watch(apiClientProvider),
@@ -201,11 +186,16 @@ final aiRepositoryProvider = Provider(
 final companyWorkerDiscoveryRepositoryProvider = Provider(
   (ref) => CompanyWorkerDiscoveryRepository(ref.watch(apiClientProvider)),
 );
+final commerceOrderRepositoryProvider = Provider(
+  (ref) => CommerceOrderRepository(ref.watch(apiClientProvider)),
+);
 
 final realtimeServiceProvider = Provider<RealtimeService>((ref) {
   final polling = PollingRealtimeService(
     ref.watch(conversationRepositoryProvider),
-    workspaceIdOf: () => ref.read(prefsStoreProvider).workspaceId,
+    workspaceIdOf: () =>
+        ref.read(inboxSessionProvider).workspaceId ??
+        ref.read(prefsStoreProvider).workspaceId,
   );
 
   return HybridRealtimeService(
@@ -229,7 +219,8 @@ final nativeMessagingGatewayProvider = Provider<NativeMessagingGateway>(
 );
 
 final pushTokenSourceProvider = Provider<PushTokenSource>(
-  (ref) => NativeDevicePushTokenSource(ref.watch(nativeMessagingGatewayProvider)),
+  (ref) =>
+      NativeDevicePushTokenSource(ref.watch(nativeMessagingGatewayProvider)),
 );
 
 final pushServiceProvider = Provider<PushService>((ref) {

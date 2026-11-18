@@ -16,7 +16,6 @@ void main() {
 
   final items = hasimBottomNavItems(
     chatBadge: 0,
-    emailBadge: 0,
     updatesBadge: 0,
   );
 

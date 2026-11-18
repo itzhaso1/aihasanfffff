@@ -38,7 +38,7 @@ class HasimAdaptiveScaffold extends StatelessWidget {
   final bool showBottomNavigation;
   final Widget? workerWorkspaceSelector;
 
-  static const shellRoutes = ['/conversations', '/email', '/updates'];
+  static const shellRoutes = ['/conversations', '/updates'];
 
   static void goBranch(BuildContext context, int index) {
     if (index < 0 || index >= shellRoutes.length) return;

@@ -120,16 +120,12 @@ class HasimNavRail extends StatelessWidget {
   }
 
   int _destinationIndex(int position) {
-    if (workerWorkspaceSelector == null) return position;
-    if (position == 1) return HasimNav.updatesIndex;
-    if (position == HasimNav.updatesIndex) return 1;
     return position;
   }
 
   Key _itemKey(int index) {
     return switch (index) {
       HasimNav.conversationsIndex => const Key('nav-rail-conversations'),
-      HasimNav.emailIndex => const Key('nav-rail-email'),
       HasimNav.updatesIndex => const Key('nav-rail-updates'),
       _ => Key('nav-rail-$index'),
     };

@@ -106,7 +106,7 @@ void main() {
 
   test('push payload uses only known notification keys', () {
     expect(resolvePushPayloadRoute({'conversation_id': 7}), '/conversations/7');
-    expect(resolvePushPayloadRoute({'email_id': 4}), '/email/4');
+    expect(resolvePushPayloadRoute({'story_id': 4}), '/updates');
     expect(resolvePushPayloadRoute({'unrelated': 'value'}), isNull);
     expect(resolvePushPayloadRoute({}), isNull);
   });

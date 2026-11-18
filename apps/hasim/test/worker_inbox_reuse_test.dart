@@ -102,6 +102,7 @@ class _ScriptedChatRepository extends ConversationRepository {
   Future<({List<MessageModel> items, String? nextCursor})> messages(
     int conversationId, {
     String? cursor,
+    int? afterId,
     int? workspaceId,
   }) async {
     return (items: const <MessageModel>[], nextCursor: null);
@@ -356,7 +357,6 @@ void main() {
                     onSettingsTap: () {},
                     items: hasimBottomNavItems(
                       chatBadge: 0,
-                      emailBadge: 0,
                       updatesBadge: 0,
                     ),
                     body: const ConversationsScreen(),
@@ -376,7 +376,7 @@ void main() {
       expect(find.text('لا توجد محادثات حاليًا'), findsOneWidget);
       expect(find.text('محادثات الارتباطات المسندة إليك'), findsNothing);
       expect(find.text('ابحث في المحادثات'), findsOneWidget);
-      expect(find.text('البريد'), findsOneWidget);
+      expect(find.text('البريد'), findsNothing);
       expect(find.text('التحديثات'), findsOneWidget);
       expect(find.text('الإعدادات'), findsOneWidget);
       expect(find.text('العروض'), findsNothing);

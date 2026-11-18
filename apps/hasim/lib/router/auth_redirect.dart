@@ -50,9 +50,6 @@ String? resolveHasimRedirect({
     if (location == '/workspaces') {
       return '/conversations';
     }
-    if (location == '/email' || location.startsWith('/email/')) {
-      return location == '/email/compose' ? '/email' : null;
-    }
     if (location == '/updates' || location.startsWith('/updates/')) {
       return location == '/updates/create' ? '/updates' : null;
     }

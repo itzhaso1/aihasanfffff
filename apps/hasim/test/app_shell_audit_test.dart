@@ -83,7 +83,7 @@ void main() {
     expect(hidesPhoneBottomNav('/conversations/7'), isTrue);
     expect(hidesPhoneBottomNav('/customers/12'), isTrue);
     expect(hidesPhoneBottomNav('/search'), isTrue);
-    expect(hidesPhoneBottomNav('/email'), isFalse);
+    expect(hidesPhoneBottomNav('/updates'), isFalse);
     expect(hidesPhoneBottomNav('/settings'), isFalse);
   });
 
@@ -114,16 +114,6 @@ void main() {
         reason: location,
       );
     }
-    expect(
-      resolveHasimRedirect(
-        bootstrapping: worker.bootstrapping,
-        isAuthenticated: worker.isAuthenticated,
-        isIndependentWorker: worker.isIndependentWorker,
-        hasWorkspace: worker.hasWorkspace,
-        location: '/email',
-      ),
-      isNull,
-    );
     expect(
       resolveHasimRedirect(
         bootstrapping: worker.bootstrapping,
@@ -168,10 +158,6 @@ void main() {
             GoRoute(
               path: '/conversations',
               builder: (_, _) => const Text('inbox-body'),
-            ),
-            GoRoute(
-              path: '/email',
-              builder: (_, _) => const Text('email-body'),
             ),
             GoRoute(
               path: '/updates',
@@ -219,11 +205,6 @@ void main() {
       find.byKey(const Key('worker-inbox-workspace-selector')),
       findsOneWidget,
     );
-
-    await tester.tap(find.byKey(const Key('nav-rail-email')));
-    await tester.pumpAndSettle();
-    expect(find.text('email-body'), findsOneWidget);
-    expect(find.text('inbox-body'), findsNothing);
 
     await tester.tap(find.byKey(const Key('nav-rail-updates')));
     await tester.pumpAndSettle();

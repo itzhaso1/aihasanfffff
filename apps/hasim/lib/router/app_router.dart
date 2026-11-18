@@ -22,10 +22,11 @@ import 'package:hasim/features/conversations/presentation/chat_themes_screen.dar
 import 'package:hasim/features/conversations/presentation/conversations_screen.dart';
 import 'package:hasim/features/conversations/presentation/inbox_folder_page.dart';
 import 'package:hasim/features/customers/presentation/customer_profile_screen.dart';
-import 'package:hasim/features/email/presentation/campaign_status_screen.dart';
-import 'package:hasim/features/email/presentation/email_compose_screen.dart';
-import 'package:hasim/features/email/presentation/email_detail_screen.dart';
-import 'package:hasim/features/email/presentation/email_list_screen.dart';
+import 'package:hasim/features/customers/presentation/customers_list_screen.dart';
+import 'package:hasim/features/customers/presentation/customer_form_screen.dart';
+import 'package:hasim/features/commerce/presentation/orders_list_screen.dart';
+import 'package:hasim/features/commerce/presentation/order_detail_screen.dart';
+import 'package:hasim/features/commerce/data/commerce_order_models.dart';
 import 'package:hasim/features/home/presentation/home_screen.dart';
 import 'package:hasim/features/more/presentation/security_sessions_screen.dart';
 import 'package:hasim/features/notifications/presentation/notifications_screen.dart';
@@ -283,11 +284,40 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const GlobalSearchScreen(),
           ),
           GoRoute(
+            path: '/customers',
+            builder: (context, state) => const CustomersListScreen(),
+          ),
+          GoRoute(
+            path: '/customers/create',
+            builder: (context, state) => const CustomerFormScreen(),
+          ),
+          GoRoute(
             path: '/customers/:id',
             builder: (context, state) => CustomerProfileScreen(
               customerId: int.parse(state.pathParameters['id']!),
               initialCustomer: state.extra is CustomerModel
                   ? state.extra as CustomerModel
+                  : null,
+            ),
+          ),
+          GoRoute(
+            path: '/customers/:id/edit',
+            builder: (context, state) => CustomerFormScreen(
+              customer: state.extra is CustomerModel
+                  ? state.extra as CustomerModel
+                  : null,
+            ),
+          ),
+          GoRoute(
+            path: '/orders',
+            builder: (context, state) => const OrdersListScreen(),
+          ),
+          GoRoute(
+            path: '/orders/:id',
+            builder: (context, state) => OrderDetailScreen(
+              orderId: int.parse(state.pathParameters['id']!),
+              initialOrder: state.extra is CommerceOrderModel
+                  ? state.extra as CommerceOrderModel
                   : null,
             ),
           ),
@@ -301,21 +331,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     : null,
               ),
             ),
-          ),
-          GoRoute(
-            path: '/email/compose',
-            builder: (context, state) => const EmailComposeScreen(),
-          ),
-          GoRoute(
-            path: '/email/campaigns/:id',
-            builder: (context, state) => CampaignStatusScreen(
-              campaignId: int.parse(state.pathParameters['id']!),
-            ),
-          ),
-          GoRoute(
-            path: '/email/:id',
-            builder: (context, state) =>
-                EmailDetailScreen(id: int.parse(state.pathParameters['id']!)),
           ),
           GoRoute(
             path: '/stories/create',
@@ -417,14 +432,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                         initialChannel: state.uri.queryParameters['channel'],
                       ),
                     ),
-                  ),
-                ],
-              ),
-              StatefulShellBranch(
-                routes: [
-                  GoRoute(
-                    path: '/email',
-                    builder: (context, state) => const EmailListScreen(),
                   ),
                 ],
               ),

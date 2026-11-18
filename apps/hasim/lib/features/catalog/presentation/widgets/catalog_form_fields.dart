@@ -1,6 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
-import 'package:hasim/features/email/presentation/widgets/compose_fields.dart';
+
+class _CatalogCard extends StatelessWidget {
+  const _CatalogCard({
+    required this.child,
+    this.minHeight,
+    this.radius = 10,
+  });
+
+  final Widget child;
+  final double? minHeight;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(radius);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: HasimTokens.cardBg(context),
+        borderRadius: borderRadius,
+        border: Border.all(
+          color: HasimTokens.fieldBorder.withValues(
+            alpha: HasimTokens.isDark(context) ? 0.35 : 1,
+          ),
+        ),
+        boxShadow: HasimTokens.softShadow(context),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: minHeight ?? 56),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
 
 class CatalogFieldCard extends StatelessWidget {
   const CatalogFieldCard({
@@ -25,7 +60,7 @@ class CatalogFieldCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!dense) {
-      return ComposeCard(
+      return _CatalogCard(
         radius: 10,
         minHeight: minHeight ?? 72,
         child: Padding(
