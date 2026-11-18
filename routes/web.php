@@ -311,7 +311,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         Route::get('conversations/{conversation}', function ($conversation) {
             $id = is_object($conversation) ? $conversation->id : $conversation;
 
-            return redirect()->route('workspace.conversations.index', ['conversation_id' => $id]);
+            return redirect()->route('workspace.conversations.index', ['conversation' => $id]);
         })->name('conversations.show');
         Route::get('conversations/{conversation}/poll-messages', [ConversationController::class, 'pollMessages'])->name('conversations.messages.poll');
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');

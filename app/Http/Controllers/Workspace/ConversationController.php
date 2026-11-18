@@ -154,11 +154,22 @@ class ConversationController extends Controller
         $workspaceId = (int) $this->currentWorkspace()->id;
         $sessionKey = 'inbox.last_conversation.'.$workspaceId;
 
-        $activeConversationId = $request->integer('conversation');
-        if (! $activeConversationId && ! $request->has('conversation')) {
-            $remembered = (int) $request->session()->get($sessionKey, 0);
-            if ($remembered > 0) {
-                $activeConversationId = $remembered;
+        $hasExplicitConversation = $request->has('conversation') || $request->has('conversation_id');
+        $rawConversation = $request->get('conversation') ?? $request->get('conversation_id');
+
+        if ($rawConversation === 'none') {
+            $request->session()->forget($sessionKey);
+            $activeConversationId = 0;
+        } else {
+            $activeConversationId = $request->integer('conversation') ?: $request->integer('conversation_id');
+            if (! $activeConversationId && ! $hasExplicitConversation) {
+                $isMobile = (bool) preg_match('/(android|iphone|ipad|ipod|mobile|phone)/i', (string) $request->userAgent());
+                if (! $isMobile) {
+                    $remembered = (int) $request->session()->get($sessionKey, 0);
+                    if ($remembered > 0) {
+                        $activeConversationId = $remembered;
+                    }
+                }
             }
         }
 

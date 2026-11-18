@@ -254,7 +254,7 @@
         </div>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100 overscroll-contain hs-scrollbar" data-inbox-conversation-list data-hs-result style="overscroll-behavior: contain; -webkit-overflow-scrolling: touch;">
+    <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-slate-100 overscroll-contain hs-scrollbar pb-16 md:pb-0" data-inbox-conversation-list data-hs-result style="overscroll-behavior: contain; -webkit-overflow-scrolling: touch;">
         @forelse($conversations as $conversation)
             @php
                 $isActive = $activeConversation && $activeConversation->id === $conversation->id;

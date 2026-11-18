@@ -15,8 +15,10 @@
     @php
         $hsWorkspace = request()->attributes->get('workspace') ?? app(\App\Support\Tenancy\WorkspaceContext::class)->workspace();
         $user = Auth::user();
-        $userInitials = $user ? mb_substr($user->name, 0, 1, 'utf-8') : 'ح';
-        $userWorkspaces = $user ? $user->workspaces()->take(6)->get() : collect();
+        $isIndependentWorker = $user ? app(\App\Services\Worker\IndependentWorkerWebBoundary::class)->isIndependentWorker($user) : false;
+        $userDisplayName = $isIndependentWorker ? 'حسابي' : ($user?->name ?? 'المستخدم');
+        $userInitials = $user ? mb_substr($userDisplayName, 0, 1, 'utf-8') : 'ح';
+        $userWorkspaces = $user && ! $isIndependentWorker ? $user->workspaces()->take(6)->get() : collect();
     @endphp
     @php
         $isConversations = request()->routeIs('workspace.conversations.*');
@@ -240,21 +242,25 @@
                                         <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 text-white text-xs font-bold shadow-sm">
                                             {{ $userInitials }}
                                         </span>
-                                        <span class="hidden md:inline font-semibold text-slate-800">{{ $user->name }}</span>
+                                        <span class="hidden md:inline font-semibold text-slate-800">{{ $userDisplayName }}</span>
                                         <svg class="h-3.5 w-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
                                     </button>
                                 </x-slot>
                                 <x-slot name="content">
                                     <div class="px-4 py-2.5 border-b border-slate-100">
-                                        <p class="text-xs font-bold text-slate-900">{{ $user->name }}</p>
-                                        <p class="text-[11px] text-slate-400 truncate mt-0.5">{{ $user->email }}</p>
+                                        <p class="text-xs font-bold text-slate-900">{{ $userDisplayName }}</p>
+                                        @unless($isIndependentWorker)
+                                            <p class="text-[11px] text-slate-400 truncate mt-0.5">{{ $user?->email }}</p>
+                                        @endunless
                                     </div>
-                                    <x-dropdown-link :href="route('profile.edit')" class="text-xs">
-                                        الملف الشخصي والحساب
-                                    </x-dropdown-link>
-                                    <x-dropdown-link :href="route('workspace.dashboard')" class="text-xs">
-                                        لوحة التحكم
-                                    </x-dropdown-link>
+                                    @unless($isIndependentWorker)
+                                        <x-dropdown-link :href="route('profile.edit')" class="text-xs">
+                                            الملف الشخصي والحساب
+                                        </x-dropdown-link>
+                                        <x-dropdown-link :href="route('workspace.dashboard')" class="text-xs">
+                                            لوحة التحكم
+                                        </x-dropdown-link>
+                                    @endunless
                                     <form method="POST" action="{{ route('logout') }}" class="border-t border-slate-100">
                                         @csrf
                                         <x-dropdown-link :href="route('logout')" onclick="event.preventDefault(); this.closest('form').submit();" class="text-xs text-rose-600 hover:text-rose-700">

@@ -38,86 +38,104 @@
 
 <section class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-[#F8FBFA]">
     {{-- Chat Header --}}
-    <div class="relative z-20 flex flex-col gap-2.5 border-b border-slate-200/90 bg-white px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 overflow-visible">
-        <div class="flex min-w-0 items-center gap-3">
-            <a
-                href="{{ route($inboxIndexRoute, array_merge($inboxRouteParameters, $backQuery)) }}"
-                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 md:hidden"
-                aria-label="العودة إلى قائمة المحادثات"
-            >
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                </svg>
-            </a>
-            <button
-                type="button"
-                class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E8FAF6] to-[#C9F0E8] text-sm font-bold text-[#067e6b] shadow-2xs transition hover:opacity-90"
-                @click="detailsOpen = true"
-                aria-controls="inbox-customer-details"
-                :aria-expanded="detailsOpen.toString()"
-                aria-label="عرض تفاصيل {{ $customerName }}"
-            >
-                {{ $initial }}
-                <span class="absolute -bottom-0.5 -end-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white shadow-2xs ring-1 ring-white">
-                    <span class="h-2.5 w-2.5 rounded-full {{ $activeChannelChip['dot'] ?? 'bg-slate-400' }}"></span>
-                </span>
-            </button>
-            <div class="min-w-0 flex-1">
+    <div class="relative z-20 flex flex-col gap-2 border-b border-slate-200/90 bg-white px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 overflow-visible">
+        <div class="flex min-w-0 items-center justify-between sm:justify-start gap-2.5 sm:gap-3">
+            <div class="flex min-w-0 items-center gap-2.5 sm:gap-3">
+                <a
+                    href="{{ route($inboxIndexRoute, array_merge($inboxRouteParameters, $backQuery, ['conversation' => 'none'])) }}"
+                    data-inbox-back-button
+                    class="inline-flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 md:hidden"
+                    aria-label="العودة إلى قائمة المحادثات"
+                >
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                </a>
                 <button
                     type="button"
-                    class="block max-w-full truncate text-start text-sm font-bold text-slate-900 transition hover:text-[#00BFAE]"
+                    class="relative flex h-9 w-9 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E8FAF6] to-[#C9F0E8] text-xs sm:text-sm font-bold text-[#067e6b] shadow-2xs transition hover:opacity-90"
                     @click="detailsOpen = true"
                     aria-controls="inbox-customer-details"
                     :aria-expanded="detailsOpen.toString()"
+                    aria-label="عرض تفاصيل {{ $customerName }}"
                 >
-                    {{ $customerName }}
+                    {{ $initial }}
+                    <span class="absolute -bottom-0.5 -end-0.5 flex h-3.5 w-3.5 sm:h-4 sm:w-4 items-center justify-center rounded-full bg-white shadow-2xs ring-1 ring-white">
+                        <span class="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full {{ $activeChannelChip['dot'] ?? 'bg-slate-400' }}"></span>
+                    </span>
                 </button>
-                <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
-                    @if($customer?->phone)
-                        <span class="font-medium text-slate-600">{{ $customer->phone }}</span>
-                    @endif
-                    @if($activeConversation->external_id)
-                        <span class="hidden text-slate-400 sm:inline">#{{ $activeConversation->external_id }}</span>
-                    @endif
-                    <span class="{{ $activeChannelChip['badge'] }} rounded-full px-2 py-0.5 text-[10px] font-semibold">{{ $activeChannelChip['label'] }}</span>
-                    @if($activeConversation->isAiReplying())
-                        <span class="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
-                            <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                            <span>رد AI</span>
-                        </span>
-                    @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
-                        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
-                            AI Employee{{ $activeConversation->aiEmployee?->name ? ': '.$activeConversation->aiEmployee->name : '' }}
-                        </span>
-                    @endif
-                    @if($handoffEnum->blocksAi())
-                        <span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
-                            <svg class="h-2.5 w-2.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                            <span>تحتاج مراجعة</span>
-                        </span>
-                    @endif
+                <div class="min-w-0 flex-1">
+                    <button
+                        type="button"
+                        class="block max-w-[150px] sm:max-w-none truncate text-start text-xs sm:text-sm font-bold text-slate-900 transition hover:text-[#00BFAE]"
+                        @click="detailsOpen = true"
+                        aria-controls="inbox-customer-details"
+                        :aria-expanded="detailsOpen.toString()"
+                    >
+                        {{ $customerName }}
+                    </button>
+                    <div class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] sm:text-[11px] text-slate-500">
+                        @if($customer?->phone)
+                            <span class="font-medium text-slate-600">{{ $customer->phone }}</span>
+                        @endif
+                        @if($activeConversation->external_id)
+                            <span class="hidden text-slate-400 sm:inline">#{{ $activeConversation->external_id }}</span>
+                        @endif
+                        <span class="{{ $activeChannelChip['badge'] }} rounded-full px-1.5 py-0.2 sm:px-2 sm:py-0.5 text-[9px] sm:text-[10px] font-semibold">{{ $activeChannelChip['label'] }}</span>
+                        @if($activeConversation->isAiReplying())
+                            <span class="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.2 sm:px-2 sm:py-0.5 text-[9px] sm:text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
+                                <svg class="h-2 w-2 sm:h-2.5 sm:w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                <span>AI</span>
+                            </span>
+                        @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
+                            <span class="rounded-full bg-emerald-50 px-1.5 py-0.2 sm:px-2 sm:py-0.5 text-[9px] sm:text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
+                                AI{{ $activeConversation->aiEmployee?->name ? ': '.$activeConversation->aiEmployee->name : '' }}
+                            </span>
+                        @endif
+                        @if($handoffEnum->blocksAi())
+                            <span class="inline-flex items-center gap-0.5 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.2 sm:px-2 sm:py-0.5 text-[9px] sm:text-[10px] font-semibold text-amber-900">
+                                <svg class="h-2 w-2 sm:h-2.5 sm:w-2.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                <span>مراجعة</span>
+                            </span>
+                        @endif
+                    </div>
                 </div>
             </div>
+
+            {{-- Mobile Details Drawer Button --}}
+            <button
+                type="button"
+                @click="detailsOpen = !detailsOpen"
+                class="inline-flex sm:hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200/90 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 shadow-2xs"
+                title="تفاصيل العميل والملاحظات"
+                aria-label="تفاصيل العميل"
+            >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </button>
         </div>
 
         {{-- Actions in Header --}}
-        <div class="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 overflow-visible">
+        <div class="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 overflow-visible pt-1.5 sm:pt-0 border-t border-slate-100 sm:border-t-0">
             @if($inboxAllowsCompanyActions && $conversationIsOpen)
                 @can('manageHandoff', $activeConversation)
                     @if($canEndActiveHandoff)
                         <form method="POST" action="{{ route('workspace.conversations.handoff.resolve', $activeConversation) }}">
                             @csrf
-                            <button type="submit" class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50">
+                            <button type="submit" class="inline-flex items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50">
                                 <svg class="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                <span>إنهاء المراجعة</span>
+                                <span class="hidden sm:inline">إنهاء المراجعة</span>
+                                <span class="sm:hidden">إنهاء</span>
                             </button>
                         </form>
                     @elseif($canTakeControlFromAi)
                         <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">
                             @csrf
-                            <button type="submit" class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50">
+                            <button type="submit" class="inline-flex items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50">
                                 <svg class="h-3.5 w-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                                <span>تحويل إلى الفريق</span>
+                                <span class="hidden sm:inline">تحويل إلى الفريق</span>
+                                <span class="sm:hidden">تحويل</span>
                             </button>
                         </form>
                     @endif
@@ -126,9 +144,10 @@
                     @if($canConvertToAi)
                         <form method="POST" action="{{ route('workspace.conversations.handoff.resume-ai', $activeConversation) }}">
                             @csrf
-                            <button type="submit" class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-2xs transition hover:bg-emerald-100">
+                            <button type="submit" class="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-emerald-800 shadow-2xs transition hover:bg-emerald-100">
                                 <svg class="h-3.5 w-3.5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                                <span>تحويل إلى AI</span>
+                                <span class="hidden sm:inline">تحويل إلى AI</span>
+                                <span class="sm:hidden">إلى AI</span>
                             </button>
                         </form>
                     @endif
@@ -141,7 +160,7 @@
                     <button
                         type="button"
                         @click="statusOpen = !statusOpen"
-                        class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50"
+                        class="inline-flex items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1 sm:px-2.5 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50"
                         title="تغيير حالة المحادثة"
                     >
                         <span class="h-2 w-2 rounded-full {{ $activeConversation->status === 'open' ? 'bg-emerald-500' : ($activeConversation->status === 'archived' ? 'bg-amber-500' : 'bg-slate-400') }}"></span>
@@ -152,7 +171,7 @@
                         x-show="statusOpen"
                         x-cloak
                         x-transition.origin.top
-                        class="absolute end-0 top-full z-50 mt-1.5 min-w-[9rem] rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl"
+                        class="absolute end-0 top-full z-50 mt-1.5 min-w-[9rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl"
                     >
                         @foreach(['open' => ['مفتوحة', 'bg-emerald-500'], 'closed' => ['مغلقة', 'bg-slate-400'], 'archived' => ['مؤرشفة', 'bg-amber-500']] as $sKey => [$sLabel, $sDot])
                             <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}">
@@ -186,19 +205,20 @@
                     <button
                         type="submit"
                         title="{{ $activeConversation->ai_enabled ? 'تعطيل AI لهذه المحادثة' : 'تفعيل AI لهذه المحادثة' }}"
-                        class="inline-flex items-center gap-1.5 rounded-xl border {{ $activeConversation->ai_enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200/90 bg-white text-slate-500' }} px-2.5 py-1.5 text-xs font-semibold shadow-2xs transition hover:opacity-90"
+                        class="inline-flex items-center gap-1 rounded-xl border {{ $activeConversation->ai_enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200/90 bg-white text-slate-500' }} px-2.5 py-1 sm:px-2.5 sm:py-1.5 text-xs font-semibold shadow-2xs transition hover:opacity-90"
                     >
                         <svg class="h-3.5 w-3.5 {{ $activeConversation->ai_enabled ? 'text-emerald-700' : 'text-slate-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                        <span>{{ $activeConversation->ai_enabled ? 'AI نشط' : 'AI معطل' }}</span>
+                        <span class="hidden sm:inline">{{ $activeConversation->ai_enabled ? 'AI نشط' : 'AI معطل' }}</span>
+                        <span class="sm:hidden">{{ $activeConversation->ai_enabled ? 'AI' : 'معطل' }}</span>
                     </button>
                 </form>
             @endif
 
-            {{-- Details Drawer Button --}}
+            {{-- Desktop Details Drawer Button --}}
             <button
                 type="button"
                 @click="detailsOpen = !detailsOpen"
-                class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-600 shadow-2xs transition hover:bg-slate-50 hover:text-slate-900"
+                class="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-600 shadow-2xs transition hover:bg-slate-50 hover:text-slate-900"
                 aria-controls="inbox-customer-details"
                 :aria-expanded="detailsOpen.toString()"
                 aria-label="عرض تفاصيل {{ $customerName }}"
@@ -352,7 +372,7 @@
     </div>
 
     {{-- Message Input Bar --}}
-    <div class="shrink-0 border-t border-slate-200/90 bg-white px-3.5 py-2.5 sm:px-5">
+    <div class="shrink-0 border-t border-slate-200/90 bg-white px-3 py-2 sm:px-5 sm:py-2.5" style="padding-bottom: max(0.5rem, env(safe-area-inset-bottom));">
         @if($inboxCanSend)
         <form id="inbox-compose-form" method="POST" action="{{ $inboxMessageAction }}" class="space-y-1.5">
             @csrf
@@ -366,13 +386,13 @@
                     <textarea
                         name="content"
                         rows="1"
-                        class="w-full resize-none border-0 bg-transparent px-3.5 py-2.5 text-[13px] text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-0 leading-normal"
+                        class="w-full resize-none border-0 bg-transparent px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-[13px] text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-0 leading-normal"
                         placeholder="اكتب رسالتك هنا... (اضغط Enter للإرسال)"
                     ></textarea>
                 </div>
                 <button
                     type="submit"
-                    class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#06C2A4] to-[#049E86] text-white shadow-xs transition hover:brightness-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[#06C2A4]/40"
+                    class="inline-flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#06C2A4] to-[#049E86] text-white shadow-xs transition hover:brightness-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[#06C2A4]/40"
                     aria-label="إرسال الرسالة"
                     title="إرسال الرسالة"
                 >

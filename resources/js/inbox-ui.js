@@ -37,6 +37,11 @@ const restoreConversationFromStorage = (workspaceId) => {
         return;
     }
 
+    // On mobile screens (< 768px), do not auto-redirect so the user can browse their inbox list
+    if (window.innerWidth < 768) {
+        return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     if (params.has('conversation')) {
         return;
@@ -90,6 +95,20 @@ const bindConversationLinks = (workspaceId) => {
         link.addEventListener('click', () => {
             const id = link.getAttribute('data-conversation-id');
             rememberConversation(id, workspaceId);
+        });
+    });
+
+    document.querySelectorAll('[data-inbox-back-button]').forEach((btn) => {
+        if (btn.dataset.hsBound === 'back') {
+            return;
+        }
+        btn.dataset.hsBound = 'back';
+        btn.addEventListener('click', () => {
+            if (workspaceId) {
+                try {
+                    localStorage.removeItem(`${CONVERSATION_STORAGE_PREFIX}${workspaceId}`);
+                } catch (_) {}
+            }
         });
     });
 };

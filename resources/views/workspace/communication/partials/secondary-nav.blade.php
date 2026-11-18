@@ -44,6 +44,14 @@
             </a>
         @endif
     </nav>
+    @php
+        $hideMobileBarOnConversation = request()->routeIs('workspace.conversations.*') && (
+            (request()->filled('conversation') && request('conversation') !== 'none')
+            || (request()->filled('conversation_id') && request('conversation_id') !== 'none')
+            || ! empty($activeConversation)
+        );
+    @endphp
+    @unless($hideMobileBarOnConversation)
     <nav
         class="fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around gap-0.5 border-t border-slate-200/80 bg-white/95 px-1 py-1 backdrop-blur md:hidden"
         style="padding-bottom: max(0.25rem, env(safe-area-inset-bottom));"
@@ -51,9 +59,15 @@
         aria-label="أقسام التواصل"
     >
         @foreach($communicationSecondaryLinks as $link)
-            @php $isActive = \App\Support\Ui\CommunicationNav::secondaryLinkIsActive($link); @endphp
+            @php
+                $isActive = \App\Support\Ui\CommunicationNav::secondaryLinkIsActive($link);
+                $href = \App\Support\Ui\CommunicationNav::secondaryHref($link);
+                if ($link['route'] === 'workspace.conversations.index' && empty($link['query'])) {
+                    $href = route('workspace.conversations.index', ['conversation' => 'none']);
+                }
+            @endphp
             <a
-                href="{{ \App\Support\Ui\CommunicationNav::secondaryHref($link) }}"
+                href="{{ $href }}"
                 @isset($link['nav']) data-communication-nav="{{ $link['nav'] }}" @endisset
                 class="{{ $isActive ? 'text-[#067e6b]' : 'text-slate-500' }} flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-semibold transition"
             >
@@ -72,6 +86,7 @@
             </a>
         @endif
     </nav>
+    @endunless
 @else
     <nav @class([
         'sticky z-30 border-b border-slate-200/80 bg-white',
