@@ -36,7 +36,6 @@ class CommunicationNav
             ['label' => 'القنوات', 'route' => 'workspace.channels.index', 'active' => 'workspace.channels.*', 'icon' => 'channels'],
             ['label' => 'واتساب', 'route' => 'workspace.whatsapp-accounts.index', 'active' => 'workspace.whatsapp-accounts.*', 'icon' => 'whatsapp'],
             ['label' => 'المنتجات والمخزون', 'route' => 'workspace.chat-catalog.index', 'active' => 'workspace.chat-catalog.*', 'icon' => 'cube'],
-            ['label' => 'البريد', 'route' => 'workspace.emails.index', 'active' => 'workspace.emails.*', 'icon' => 'mail'],
         ])->filter(fn (array $link): bool => Route::has($link['route']))->values();
 
         return [
@@ -49,7 +48,6 @@ class CommunicationNav
                 'workspace.chat-catalog.*',
                 'workspace.customers.*',
                 'workspace.channels.*',
-                'workspace.emails.*',
                 'workspace.whatsapp-accounts.*',
             ]),
         ];

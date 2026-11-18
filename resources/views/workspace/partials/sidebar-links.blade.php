@@ -25,28 +25,6 @@
             ],
         ],
         [
-            'title' => 'البريد',
-            'links' => [
-                [
-                    'label' => 'صندوق البريد',
-                    'route' => 'workspace.emails.index',
-                    'active' => [
-                        'workspace.emails.index',
-                        'workspace.emails.inbox',
-                        'workspace.emails.sent',
-                        'workspace.emails.compose',
-                        'workspace.emails.messages.*',
-                        'workspace.emails.logs.*',
-                    ],
-                    'icon' => 'mail',
-                ],
-                ['label' => 'الحسابات', 'route' => 'workspace.emails.accounts.index', 'active' => 'workspace.emails.accounts.*', 'icon' => 'bank'],
-                ['label' => 'جهات الاتصال', 'route' => 'workspace.emails.contacts.index', 'active' => 'workspace.emails.contacts.*', 'icon' => 'users'],
-                ['label' => 'قوالب البريد', 'route' => 'workspace.emails.templates.index', 'active' => 'workspace.emails.templates.*', 'icon' => 'template'],
-                ['label' => 'هوية البريد', 'route' => 'workspace.emails.branding.edit', 'active' => 'workspace.emails.branding.*', 'icon' => 'id-card'],
-            ],
-        ],
-        [
             'title' => 'الفريق',
             'links' => [
                 ['label' => 'اكتشاف العمال', 'route' => 'workspace.worker-discovery.index', 'active' => 'workspace.worker-discovery.*', 'icon' => 'users'],

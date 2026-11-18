@@ -74,7 +74,6 @@ use App\Services\Payment\Contracts\MerchantSettlementProviderInterface;
 use App\Services\Payment\Providers\HyperPayMerchantSettlementProvider;
 use App\Services\Platform\PlatformAiConfiguration;
 use App\Services\Subscription\Contracts\SubscriptionBillingProviderInterface;
-use App\Support\Email\EmailLibraryBrandingComposer;
 use App\Support\Site\PublicSite;
 use App\Support\Subscription\SubscriptionBillingGuard;
 use App\Support\Tenancy\WorkspaceContext;
@@ -116,7 +115,6 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Notification::extend('central_mail', fn ($app) => $app->make(CentralMailChannel::class));
-        View::composer('emails.library.*', EmailLibraryBrandingComposer::class);
         View::composer('*', function ($view): void {
             if (! $view->offsetExists('publicSite')) {
                 $view->with('publicSite', PublicSite::current());

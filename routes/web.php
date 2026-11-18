@@ -38,9 +38,6 @@ use App\Http\Controllers\Workspace\ConversationController;
 use App\Http\Controllers\Workspace\ConversationHandoffController;
 use App\Http\Controllers\Workspace\CustomerController;
 use App\Http\Controllers\Workspace\DashboardController as WorkspaceDashboardController;
-use App\Http\Controllers\Workspace\Email\EmailBrandingController;
-use App\Http\Controllers\Workspace\Email\EmailTemplateLibraryController;
-use App\Http\Controllers\Workspace\EmailController;
 use App\Http\Controllers\Workspace\EmployeeInvitationController;
 use App\Http\Controllers\Workspace\FacebookChannelConnectController;
 use App\Http\Controllers\Workspace\InstagramChannelConnectController;
@@ -427,49 +424,6 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             ])
             ->name('channels.tiktok.callback');
         Route::get('channels', [ChannelController::class, 'index'])->name('channels.index');
-
-        Route::middleware('workspace.feature:email')->prefix('emails')->group(function (): void {
-            Route::get('/', [EmailController::class, 'index'])->name('emails.index');
-            Route::get('/inbox', [EmailController::class, 'inbox'])->name('emails.inbox');
-            Route::get('/sent', [EmailController::class, 'sent'])->name('emails.sent');
-            Route::get('/messages/{emailMessage}', [EmailController::class, 'showMessage'])->name('emails.messages.show');
-            Route::delete('/messages/{emailMessage}', [EmailController::class, 'destroyMessage'])->name('emails.messages.destroy');
-            Route::get('/logs/{emailLog}', [EmailController::class, 'showLog'])->name('emails.logs.show');
-            Route::delete('/logs/{emailLog}', [EmailController::class, 'destroyLog'])->name('emails.logs.destroy');
-            Route::get('/attachments/{emailAttachment}/download', [EmailController::class, 'downloadAttachment'])->name('emails.attachments.download');
-            Route::get('/attachments/{emailAttachment}/preview', [EmailController::class, 'previewAttachment'])->name('emails.attachments.preview');
-            Route::delete('/attachments/{emailAttachment}', [EmailController::class, 'destroyAttachment'])->name('emails.attachments.destroy');
-
-            Route::get('/compose', [EmailController::class, 'compose'])->name('emails.compose');
-            Route::post('/compose/clear', [EmailController::class, 'clearComposeDraft'])->name('emails.compose.clear');
-            Route::post('/messages/send', [EmailController::class, 'sendMessage'])->name('emails.messages.send');
-
-            Route::get('/contacts', [EmailController::class, 'contacts'])->name('emails.contacts.index');
-            Route::post('/contacts', [EmailController::class, 'storeContact'])->name('emails.contacts.store');
-            Route::put('/contacts/{emailContact}', [EmailController::class, 'updateContact'])->name('emails.contacts.update');
-            Route::delete('/contacts/{emailContact}', [EmailController::class, 'destroyContact'])->name('emails.contacts.destroy');
-            Route::get('/contacts/search', [EmailController::class, 'searchContacts'])->name('emails.contacts.search');
-            Route::get('/contacts/lookup', [EmailController::class, 'lookupContact'])->name('emails.contacts.lookup');
-
-            Route::get('/accounts', [EmailController::class, 'accounts'])->name('emails.accounts.index');
-            Route::post('/accounts', [EmailController::class, 'storeAccount'])->name('emails.accounts.store');
-            Route::put('/accounts/{emailAccount}', [EmailController::class, 'updateAccount'])->name('emails.accounts.update');
-            Route::delete('/accounts/{emailAccount}', [EmailController::class, 'destroyAccount'])->name('emails.accounts.destroy');
-            Route::post('/accounts/{emailAccount}/sync', [EmailController::class, 'syncAccount'])->name('emails.accounts.sync');
-            Route::post('/accounts/{emailAccount}/test-smtp', [EmailController::class, 'testAccountSmtp'])->name('emails.accounts.test-smtp');
-
-            Route::get('/branding', [EmailBrandingController::class, 'edit'])->name('emails.branding.edit');
-            Route::put('/branding', [EmailBrandingController::class, 'update'])->name('emails.branding.update');
-            Route::post('/branding/preview', [EmailBrandingController::class, 'preview'])->name('emails.branding.preview');
-
-            Route::get('/templates', [EmailTemplateLibraryController::class, 'index'])->name('emails.templates.index');
-            Route::get('/templates/selected', [EmailTemplateLibraryController::class, 'edit'])->name('emails.templates.edit');
-            Route::put('/templates/selected', [EmailTemplateLibraryController::class, 'update'])->name('emails.templates.update');
-            Route::post('/templates/selected/preview', [EmailTemplateLibraryController::class, 'livePreview'])->name('emails.templates.live-preview');
-            Route::post('/templates/{template}/use', [EmailTemplateLibraryController::class, 'use'])->name('emails.templates.use');
-            Route::get('/templates/{category}/{template}/preview', [EmailTemplateLibraryController::class, 'preview'])->name('emails.templates.preview');
-            Route::get('/templates/{category}', [EmailTemplateLibraryController::class, 'category'])->name('emails.templates.category');
-        });
 
         Route::get('employees', [EmployeeInvitationController::class, 'index'])->name('employees.index');
         Route::get('employees/invite', [EmployeeInvitationController::class, 'create'])->name('employees.create');

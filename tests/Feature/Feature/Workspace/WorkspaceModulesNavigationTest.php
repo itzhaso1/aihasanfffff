@@ -24,9 +24,8 @@ class WorkspaceModulesNavigationTest extends TestCase
         $response->assertOk()
             ->assertDontSee('POS / الإدارة')
             ->assertSee('الشات')
-            ->assertSee('البريد')
-            ->assertSee('صندوق البريد')
-            ->assertSee('قوالب البريد')
+            ->assertDontSee('صندوق البريد')
+            ->assertDontSee('قوالب البريد')
             ->assertSee('المنتجات والمخزون')
             ->assertDontSee('الفوترة والحسابات')
             ->assertSee('النظام')
@@ -59,7 +58,6 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->assertSee(route('workspace.conversations.index'), false)
             ->assertSee(route('workspace.customers.index'), false)
             ->assertSee(route('workspace.channels.index'), false)
-            ->assertSee(route('workspace.emails.index'), false)
             ->assertSee(route('workspace.whatsapp-accounts.index'), false)
             ->assertSee(route('workspace.chat-catalog.index'), false)
             ->assertSee(route('workspace.ai-settings.edit'), false)
@@ -79,7 +77,6 @@ class WorkspaceModulesNavigationTest extends TestCase
             'القنوات',
             'واتساب',
             'المنتجات والمخزون',
-            'البريد',
         ], $labels);
         $this->assertContains('workspace.chat-catalog.index', $routes);
         $this->assertNotContains('workspace.products.index', $routes);

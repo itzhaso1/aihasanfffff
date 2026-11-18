@@ -7,7 +7,6 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Models\Workspace;
-use App\Services\Email\EmailBrandingService;
 use Database\Seeders\FoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -72,16 +71,14 @@ class SecurityHeadersMiddlewareTest extends TestCase
         $response->assertHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     }
 
-    public function test_email_branding_preview_keeps_sameorigin_framing_for_workspace_iframe(): void
+    public function test_workspace_page_keeps_sameorigin_framing_for_workspace(): void
     {
         [$owner, $workspace] = $this->workspaceOwner();
 
         Sanctum::actingAs($owner);
         $this->withSession(['current_workspace_id' => $workspace->id]);
 
-        $response = $this->post(route('workspace.emails.branding.preview'), [
-            'company_name' => 'Header Test Co',
-        ]);
+        $response = $this->get(route('workspace.conversations.index'));
 
         $response->assertOk();
         $response->assertHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -104,17 +101,13 @@ class SecurityHeadersMiddlewareTest extends TestCase
 
     public function test_existing_controller_frame_options_are_not_overridden(): void
     {
-        [$owner, $workspace] = $this->workspaceOwner();
+        $middleware = new SecurityHeaders;
+        $request = Request::create('/custom', 'GET');
+        $response = new Response('content', 200, ['X-Frame-Options' => 'DENY']);
 
-        Sanctum::actingAs($owner);
-        $this->withSession(['current_workspace_id' => $workspace->id]);
+        $result = $middleware->apply($request, $response);
 
-        $response = $this->post(route('workspace.emails.branding.preview'), [
-            'company_name' => 'Frame Options',
-        ]);
-
-        $response->assertOk();
-        $this->assertSame('SAMEORIGIN', $response->headers->get('X-Frame-Options'));
+        $this->assertSame('DENY', $result->headers->get('X-Frame-Options'));
     }
 
     /**
@@ -145,8 +138,6 @@ class SecurityHeadersMiddlewareTest extends TestCase
             'joined_at' => now(),
         ]);
 
-        $this->enableWorkspaceFeature($workspace, 'email');
-
         $plan = Plan::query()->where('workspace_type', 'company')->where('is_active', true)->first();
         if ($plan) {
             Subscription::withoutGlobalScopes()->updateOrCreate(
@@ -160,8 +151,6 @@ class SecurityHeadersMiddlewareTest extends TestCase
                 ]
             );
         }
-
-        app(EmailBrandingService::class)->forWorkspace($workspace);
 
         return [$user, $workspace];
     }
