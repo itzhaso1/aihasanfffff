@@ -4,13 +4,14 @@ namespace App\Services\Email;
 
 use App\Mail\CentralTemplatedEmail;
 use App\Models\EmailLog;
+use App\Support\Tenancy\WorkspaceContext;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Str;
 
 class CentralEmailService
 {
@@ -76,7 +77,7 @@ class CentralEmailService
         ];
         $persist = function (callable $callback) use ($workspaceId) {
             if ($workspaceId) {
-                return app(\App\Support\Tenancy\WorkspaceContext::class)->runForId($workspaceId, $callback);
+                return app(WorkspaceContext::class)->runForId($workspaceId, $callback);
             }
 
             return $callback();

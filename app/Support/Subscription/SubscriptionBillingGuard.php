@@ -2,6 +2,9 @@
 
 namespace App\Support\Subscription;
 
+use App\Services\Subscription\LocalSubscriptionBillingProvider;
+use App\Services\Subscription\UnconfiguredSubscriptionBillingProvider;
+
 /**
  * Server-side subscription billing environment rules.
  * Local/no-charge activation is never allowed in production or staging.
@@ -31,8 +34,8 @@ final class SubscriptionBillingGuard
     public static function billingProviderClass(?string $environment = null): string
     {
         return self::localProviderAllowed($environment)
-            ? \App\Services\Subscription\LocalSubscriptionBillingProvider::class
-            : \App\Services\Subscription\UnconfiguredSubscriptionBillingProvider::class;
+            ? LocalSubscriptionBillingProvider::class
+            : UnconfiguredSubscriptionBillingProvider::class;
     }
 
     public static function isTrustedVerificationSource(string $source, ?string $environment = null): bool

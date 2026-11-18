@@ -43,15 +43,19 @@ final class InboxHonestReplyFallback
             }
         }
 
-        if ($workspace !== null && $this->catalogRetrieval->shouldLookupForAssistant($query)) {
+        $tokens = $this->gulfArabic->interpret($query)['search_tokens'];
+        if ($this->asksAboutOfferings($query)) {
+            return self::OFFERINGS;
+        }
+
+        if ($workspace !== null && $this->browseQueries->isBrowseCatalogQuery($query, $tokens)) {
             $productReply = $this->catalogProductListingFallback($workspace, $query);
             if ($productReply !== null) {
                 return $productReply;
             }
         }
 
-        $tokens = $this->gulfArabic->interpret($query)['search_tokens'];
-        if ($this->browseQueries->isBrowseCatalogQuery($query, $tokens) || $this->asksAboutOfferings($query)) {
+        if ($this->browseQueries->isBrowseCatalogQuery($query, $tokens)) {
             return self::OFFERINGS;
         }
 

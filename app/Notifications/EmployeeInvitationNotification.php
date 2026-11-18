@@ -8,7 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-class EmployeeInvitationNotification extends Notification implements ShouldQueue, CentralEmailNotification
+class EmployeeInvitationNotification extends Notification implements CentralEmailNotification, ShouldQueue
 {
     use Queueable;
 

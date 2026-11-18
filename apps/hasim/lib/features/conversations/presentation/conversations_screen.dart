@@ -102,6 +102,8 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     ('web', 'ويب'),
     ('facebook_messenger', 'ماسنجر'),
     ('instagram', 'إنستغرام'),
+    ('telegram', 'تلغرام'),
+    ('tiktok', 'تيك توك'),
   ];
 
   static const _teamReviewLabel = 'يحتاج إلى مراجعة من الفريق';
@@ -1571,6 +1573,8 @@ class _ConversationsPanel extends StatelessWidget {
                           Icons.facebook_outlined,
                         ),
                         ('instagram', 'إنستغرام', Icons.camera_alt_outlined),
+                        ('telegram', 'تلغرام', Icons.send_rounded),
+                        ('tiktok', 'تيك توك', Icons.music_note_rounded),
                       ];
                       final hidden = [
                         (

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Feature\Merchant;
 
-use App\Models\MerchantDocument;
 use App\Models\MerchantDocumentType;
 use App\Models\MerchantProfile;
 use App\Models\Order;

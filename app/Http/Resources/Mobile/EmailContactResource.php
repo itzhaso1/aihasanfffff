@@ -2,11 +2,12 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Models\EmailContact;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
 
-/** @mixin \App\Models\EmailContact */
+/** @mixin EmailContact */
 class EmailContactResource extends JsonResource
 {
     /**

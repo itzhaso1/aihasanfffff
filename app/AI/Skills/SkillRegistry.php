@@ -23,9 +23,9 @@ final class SkillRegistry
 
     private const HANDOFF_INTENTS = ['human_request', 'complaint', 'confusion'];
 
-    private const CATALOG_READ_TOOLS = ['search_products', 'get_product_intelligence'];
+    private const CATALOG_READ_TOOLS = ['search_products', 'get_product_intelligence', 'send_product_image'];
 
-    private const CATALOG_RECOMMEND_TOOLS = ['search_products', 'get_product_intelligence', 'evaluate_product_suitability', 'save_customer_commerce_context'];
+    private const CATALOG_RECOMMEND_TOOLS = ['search_products', 'get_product_intelligence', 'evaluate_product_suitability', 'save_customer_commerce_context', 'create_customer_order', 'send_product_image'];
 
     private static ?self $default = null;
 
@@ -260,7 +260,7 @@ final class SkillRegistry
                 category: 'support',
                 supportedIntents: self::SUPPORT_INTENTS,
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: self::CATALOG_READ_TOOLS,
+                allowedTools: array_values(array_unique([...self::CATALOG_READ_TOOLS, 'create_customer_order'])),
                 settingsValidation: self::freeformSettings(),
             ),
             new SkillDefinition(
@@ -290,7 +290,7 @@ final class SkillRegistry
                 category: 'workflow',
                 supportedIntents: ['follow_up', 'purchase_intent'],
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: [],
+                allowedTools: ['create_customer_order'],
                 settingsValidation: self::freeformSettings(),
             ),
             new SkillDefinition(

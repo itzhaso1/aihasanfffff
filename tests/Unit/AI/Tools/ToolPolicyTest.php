@@ -25,10 +25,12 @@ class ToolPolicyTest extends TestCase
     {
         $this->assertSame(
             [
+                CanonicalTools::CREATE_CUSTOMER_ORDER,
                 CanonicalTools::EVALUATE_PRODUCT_SUITABILITY,
                 CanonicalTools::GET_PRODUCT_INTELLIGENCE,
                 CanonicalTools::SAVE_CUSTOMER_COMMERCE_CONTEXT,
                 CanonicalTools::SEARCH_PRODUCTS,
+                CanonicalTools::SEND_PRODUCT_IMAGE,
             ],
             $this->offered(AiRunMode::Live, ['sales'], []),
         );

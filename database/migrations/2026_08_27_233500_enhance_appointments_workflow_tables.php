@@ -166,7 +166,7 @@ return new class extends Migration
             $table->unique(['workspace_id', 'public_token'], 'appt_book_ws_pub_tok_uniq');
         });
 
-        DB::statement("update appointment_bookings set appointment_status = status, source_channel = source");
+        DB::statement('update appointment_bookings set appointment_status = status, source_channel = source');
     }
 
     /**

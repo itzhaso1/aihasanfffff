@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Models\EmailCampaign;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\EmailCampaign */
+/** @mixin EmailCampaign */
 class EmailCampaignResource extends JsonResource
 {
     /**

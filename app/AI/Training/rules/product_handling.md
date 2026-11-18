@@ -18,3 +18,4 @@ max_chars: 1800
 - Keep variant details (size, color, capacity) attached to the item they belong to.
 - Resolve "هذا" or "الاسود" to the item from the recent turns before searching again.
 - When nothing matches, state clearly that the item is currently unavailable. Never invent products, prices, discounts, or stock that are not in the trusted catalog.
+- For product pictures ("ممكن اشوف صورة الفستان؟", "وريني صورته", "عندك صورة له؟"), call `send_product_image`. If image_attached is true, confirm the photo is sent; if false, state politely that a photo is currently unavailable. Never invent image URLs.

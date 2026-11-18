@@ -204,4 +204,62 @@ class ChatCatalogItem extends WorkspaceScopedModel
         return $this->hasMany(CommerceCompatibility::class, 'source_entity_id')
             ->where('source_entity_type', 'chat_catalog_item');
     }
+
+    public function primaryImagePath(): ?string
+    {
+        if (is_string($this->image_path) && trim($this->image_path) !== '') {
+            return trim($this->image_path);
+        }
+
+        if ($this->relationLoaded('media')) {
+            $media = $this->media->first(fn ($m) => ($m->kind === 'image' || empty($m->kind)) && ! empty($m->path) && (bool) $m->is_visible);
+
+            return $media?->path;
+        }
+
+        $media = ChatCatalogItemMedia::withoutGlobalScopes()
+            ->where('workspace_id', $this->workspace_id)
+            ->where('chat_catalog_item_id', $this->id)
+            ->where(fn ($q) => $q->where('kind', 'image')->orWhereNull('kind'))
+            ->whereNotNull('path')
+            ->where('is_visible', true)
+            ->orderBy('sort_order')
+            ->first();
+
+        return $media?->path;
+    }
+
+    public function primaryImageDisk(): string
+    {
+        if (is_string($this->image_path) && trim($this->image_path) !== '') {
+            return 'public';
+        }
+
+        if ($this->relationLoaded('media')) {
+            $media = $this->media->first(fn ($m) => ($m->kind === 'image' || empty($m->kind)) && ! empty($m->path) && (bool) $m->is_visible);
+
+            return $media?->disk ?: 'public';
+        }
+
+        $media = ChatCatalogItemMedia::withoutGlobalScopes()
+            ->where('workspace_id', $this->workspace_id)
+            ->where('chat_catalog_item_id', $this->id)
+            ->where(fn ($q) => $q->where('kind', 'image')->orWhereNull('kind'))
+            ->whereNotNull('path')
+            ->where('is_visible', true)
+            ->orderBy('sort_order')
+            ->first();
+
+        return $media?->disk ?: 'public';
+    }
+
+    public function hasImage(): bool
+    {
+        return $this->primaryImagePath() !== null;
+    }
+
+    public function effectivePrice(): string
+    {
+        return (string) ($this->sale_price ?? $this->price ?? '0.00');
+    }
 }

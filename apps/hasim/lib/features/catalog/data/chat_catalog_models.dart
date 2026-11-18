@@ -312,7 +312,13 @@ class ChatCatalogItemModel extends Equatable {
       stock: (json['stock'] as num?)?.toInt(),
       inventoryPolicy: json['inventory_policy']?.toString(),
       isActive: json['is_active'] != false,
-      imageUrl: json['image_url']?.toString(),
+      imageUrl:
+          json['image_url']?.toString() ??
+          (json['media'] is List &&
+                  (json['media'] as List).isNotEmpty &&
+                  (json['media'] as List).first is Map
+              ? (json['media'] as List).first['url']?.toString()
+              : null),
       categoryId:
           categoryId ??
           (categoryRaw is Map ? (categoryRaw['id'] as num?)?.toInt() : null),

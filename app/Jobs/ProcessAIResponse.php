@@ -7,7 +7,9 @@ use App\Exceptions\FeatureNotAvailableException;
 use App\Exceptions\UsageLimitExceededException;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\MessageAttachment;
 use App\Models\Workspace;
+use App\Services\AI\AiMediaStagingService;
 use App\Services\AI\AiOutputValidator;
 use App\Services\AI\AIService;
 use App\Services\AI\Inbox\AiReplyEligibility;
@@ -23,6 +25,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Throwable;
 
@@ -293,18 +296,39 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                     return;
                 }
 
+                $stagedAttachments = app(AiMediaStagingService::class)->consumeStagedAttachments(
+                    (int) $conversationFresh->workspace_id,
+                    (int) $conversationFresh->id,
+                );
+
                 $outboundMessage = Message::withoutGlobalScopes()->create([
                     'workspace_id' => $conversationFresh->workspace_id,
                     'conversation_id' => $conversationFresh->id,
                     'customer_id' => $conversationFresh->customer_id,
                     'direction' => 'outbound',
-                    'message_type' => 'text',
+                    'message_type' => ! empty($stagedAttachments) ? 'image' : 'text',
                     'content' => $validated,
                     'ai_generated' => true,
                     'metadata' => [
                         'in_reply_to_message_id' => $incomingMessage->id,
                     ],
                 ]);
+
+                foreach ($stagedAttachments as $staged) {
+                    MessageAttachment::withoutGlobalScopes()->create([
+                        'workspace_id' => $outboundMessage->workspace_id,
+                        'message_id' => $outboundMessage->id,
+                        'provider' => 'chat_catalog',
+                        'provider_media_id' => (string) Str::uuid(),
+                        'disk' => $staged['disk'] ?? 'public',
+                        'path' => $staged['path'],
+                        'original_name' => $staged['original_name'] ?? basename((string) $staged['path']),
+                        'mime_type' => $staged['mime_type'] ?? 'image/jpeg',
+                        'size_bytes' => (int) ($staged['size_bytes'] ?? 0),
+                        'kind' => 'image',
+                        'status' => MessageAttachment::STATUS_STORED,
+                    ]);
+                }
             });
         } catch (UniqueConstraintViolationException) {
             return;

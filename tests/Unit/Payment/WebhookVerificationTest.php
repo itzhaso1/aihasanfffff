@@ -28,7 +28,7 @@ class WebhookVerificationTest extends TestCase
         $timestamp = time();
         $signature = hash_hmac('sha256', $timestamp.'.'.$rawBody, 'whsec_test_123');
 
-        $gateway = new StripePaymentGateway();
+        $gateway = new StripePaymentGateway;
 
         $valid = $gateway->verifyWebhook([
             'stripe-signature' => "t={$timestamp},v1={$signature}",
@@ -56,7 +56,7 @@ class WebhookVerificationTest extends TestCase
         $timestamp = time();
         $signature = hash_hmac('sha256', $timestamp.'.'.$rawBody, 'local_test_secret');
 
-        $gateway = new LocalPaymentGateway();
+        $gateway = new LocalPaymentGateway;
 
         $valid = $gateway->verifyWebhook([
             'x-webhook-timestamp' => (string) $timestamp,
@@ -84,7 +84,7 @@ class WebhookVerificationTest extends TestCase
         $rawBody = json_encode($payload, JSON_UNESCAPED_SLASHES);
         $timestamp = time();
 
-        $gateway = new LocalPaymentGateway();
+        $gateway = new LocalPaymentGateway;
         $result = $gateway->verifyWebhook([
             'x-webhook-timestamp' => (string) $timestamp,
             'x-webhook-signature' => 'anything',

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\MissingWorkspaceContextException;
 use App\Models\WhatsAppOutboundMessage;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -33,7 +34,7 @@ class SendWhatsAppMessage implements ShouldQueue
     {
         $outbound = $this->outboundMessage();
         if ($outbound && ! $outbound->workspace_id) {
-            throw \App\Exceptions\MissingWorkspaceContextException::forWrite(
+            throw MissingWorkspaceContextException::forWrite(
                 WhatsAppOutboundMessage::class,
                 'send'
             );
@@ -47,7 +48,6 @@ class SendWhatsAppMessage implements ShouldQueue
             return;
         }
 
-        return;
     }
 
     private function send(?WhatsAppOutboundMessage $outbound): void

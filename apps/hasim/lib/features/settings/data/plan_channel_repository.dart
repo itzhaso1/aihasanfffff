@@ -94,11 +94,79 @@ class ChannelRepository {
 
   int? get _workspace => _workspaceIdOf?.call();
 
+  static List<ChannelModel> get defaultSupportedChannels => const [
+    ChannelModel(
+      key: 'whatsapp',
+      name: 'WhatsApp',
+      icon: 'whatsapp',
+      hint: 'اربط عبر Meta Embedded Signup لإدارة رسائل واتساب.',
+      connectionMode: 'embedded_signup',
+      canConnectInApp: true,
+      canManage: true,
+    ),
+    ChannelModel(
+      key: 'facebook_messenger',
+      name: 'Facebook Messenger',
+      icon: 'messenger',
+      hint: 'اربط صفحة Facebook لاستقبال رسائل Messenger.',
+      connectionMode: 'oauth',
+      canConnectInApp: true,
+      canManage: true,
+    ),
+    ChannelModel(
+      key: 'instagram',
+      name: 'Instagram',
+      icon: 'instagram',
+      hint: 'اربط عبر Meta Business Login للرد على رسائل إنستغرام.',
+      connectionMode: 'oauth',
+      canConnectInApp: true,
+      canManage: true,
+    ),
+    ChannelModel(
+      key: 'telegram',
+      name: 'Telegram',
+      icon: 'telegram',
+      hint: 'أدخل رمز البوت من BotFather لربط تيليجرام.',
+      connectionMode: 'bot_token',
+      canConnectInApp: true,
+      canManage: true,
+    ),
+    ChannelModel(
+      key: 'tiktok',
+      name: 'TikTok',
+      icon: 'tiktok',
+      hint: 'اربط عبر TikTok Business OAuth.',
+      connectionMode: 'oauth',
+      canConnectInApp: true,
+      canManage: true,
+    ),
+    ChannelModel(
+      key: 'email',
+      name: 'Email',
+      icon: 'email',
+      hint: 'ربط وإدارة حساب البريد الإلكتروني.',
+      connectionMode: 'web_only',
+      canConnectInApp: false,
+      canManage: true,
+    ),
+    ChannelModel(
+      key: 'web',
+      name: 'الدردشة المباشرة (ويب)',
+      icon: 'web',
+      connected: true,
+      status: 'connected',
+      hint: 'الدردشة المباشرة على موقع الويب نشطة ومتاحة.',
+      connectionMode: 'web_only',
+      canConnectInApp: false,
+      canManage: true,
+    ),
+  ];
+
   Future<List<ChannelModel>> cached() async {
     final workspaceId = _workspace;
     if (workspaceId == null || _local == null) return const [];
     final raw = await _local.get(workspaceId, 'channels');
-    if (raw is! List) return const [];
+    if (raw is! List || raw.isEmpty) return const [];
     return asMapList(raw).map(ChannelModel.fromJson).toList();
   }
 
@@ -106,9 +174,12 @@ class ChannelRepository {
     final workspaceId = _workspace;
     try {
       final res = await _api.get('/channels');
-      final safe = [
-        for (final item in asMapList(res.data)) channelCachePayload(item),
-      ];
+      final rawList = asMapList(res.data);
+      if (rawList.isEmpty) {
+        final saved = await cached();
+        return saved.isNotEmpty ? saved : defaultSupportedChannels;
+      }
+      final safe = [for (final item in rawList) channelCachePayload(item)];
       lastReadFromCache = false;
       if (workspaceId != null) await _local?.put(workspaceId, 'channels', safe);
       return safe.map(ChannelModel.fromJson).toList();
@@ -118,7 +189,7 @@ class ChannelRepository {
         lastReadFromCache = true;
         return saved;
       }
-      rethrow;
+      return defaultSupportedChannels;
     }
   }
 

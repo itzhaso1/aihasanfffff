@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToWorkspace;
+use Database\Factories\WhatsAppPhoneNumberFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,7 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class WhatsAppPhoneNumber extends WorkspaceScopedModel
 {
-    /** @use HasFactory<\Database\Factories\WhatsAppPhoneNumberFactory> */
+    /** @use HasFactory<WhatsAppPhoneNumberFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
 
     public function account(): BelongsTo

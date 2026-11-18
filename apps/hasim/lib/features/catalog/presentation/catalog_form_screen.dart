@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -248,6 +249,11 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
     const dropHeight = 2 * CatalogFieldCard.denseHeight;
     final dark = HasimTokens.isDark(context);
     final muted = HasimTokens.mutedColor(context);
+    final currentUrl = _currentItem?.imageUrl;
+    final hasRemoteImage =
+        currentUrl != null && currentUrl.isNotEmpty && _imageBytes == null;
+    final hasImage = _imageBytes != null || hasRemoteImage;
+
     return CatalogFormSection(
       title: 'صورة المنتج',
       icon: Icons.image_outlined,
@@ -267,8 +273,41 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
           child: Stack(
             children: [
               Positioned.fill(
-                child: _imageBytes == null
-                    ? Padding(
+                child: _imageBytes != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.memory(
+                          _imageBytes!,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: dropHeight,
+                        ),
+                      )
+                    : hasRemoteImage
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CachedNetworkImage(
+                          imageUrl: currentUrl,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: dropHeight,
+                          placeholder: (_, _) => const Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                          errorWidget: (_, _, _) => Center(
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              color: muted,
+                              size: 32,
+                            ),
+                          ),
+                        ),
+                      )
+                    : Padding(
                         padding: const EdgeInsets.only(bottom: 14),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -288,19 +327,10 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
                               ),
                             ),
                             Text(
-                              'أو اضغط للاختيار',
+                              'أو اضغط للاختيار من المعرض',
                               style: TextStyle(color: muted, fontSize: 11),
                             ),
                           ],
-                        ),
-                      )
-                    : ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.memory(
-                          _imageBytes!,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: dropHeight,
                         ),
                       ),
               ),
@@ -309,7 +339,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
                   top: 8,
                   start: 8,
                   child: IconButton.filled(
-                    tooltip: 'حذف الصورة',
+                    tooltip: 'إلغاء التغيير',
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: const Color(0xFFEF4444),
@@ -334,7 +364,7 @@ class _CatalogFormScreenState extends ConsumerState<CatalogFormScreen> {
                     ),
                     const Spacer(),
                     Text(
-                      '${_imageBytes == null ? 0 : 1}/1',
+                      '${hasImage ? 1 : 0}/1',
                       style: TextStyle(fontSize: 11, color: muted),
                     ),
                   ],

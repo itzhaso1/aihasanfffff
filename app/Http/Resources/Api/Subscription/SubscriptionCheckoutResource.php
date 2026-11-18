@@ -2,11 +2,12 @@
 
 namespace App\Http\Resources\Api\Subscription;
 
+use App\Models\SubscriptionCheckoutSession;
 use App\Support\Subscription\SubscriptionWorkspacePresenter;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\SubscriptionCheckoutSession */
+/** @mixin SubscriptionCheckoutSession */
 class SubscriptionCheckoutResource extends JsonResource
 {
     /**

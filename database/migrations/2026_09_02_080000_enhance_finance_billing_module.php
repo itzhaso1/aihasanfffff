@@ -268,7 +268,7 @@ return new class extends Migration
             Schema::table('finance_journal_entries', function (Blueprint $table): void {
                 $table->string('type', 64)->default('manual')->change();
             });
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // SQLite without doctrine change support still stores enum values as strings.
         }
     }

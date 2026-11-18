@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Workspace;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Workspace\Concerns\InteractsWithWorkspace;
+use App\Models\MerchantDocument;
 use App\Models\MerchantDocumentType;
 use App\Services\Merchant\MerchantPaymentEligibilityService;
 use App\Services\Merchant\MerchantVerificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MerchantPaymentController extends Controller
 {
@@ -88,15 +91,15 @@ class MerchantPaymentController extends Controller
             ->with('success', 'تم إرسال طلب التوثيق للمراجعة.');
     }
 
-    public function downloadDocument(int $document): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function downloadDocument(int $document): StreamedResponse
     {
         $workspace = $this->currentWorkspace();
-        $doc = \App\Models\MerchantDocument::withoutGlobalScopes()
+        $doc = MerchantDocument::withoutGlobalScopes()
             ->where('workspace_id', $workspace->id)
             ->whereKey($document)
             ->firstOrFail();
 
-        $disk = \Illuminate\Support\Facades\Storage::disk($doc->disk ?: 'local');
+        $disk = Storage::disk($doc->disk ?: 'local');
         abort_unless($disk->exists($doc->path), 404);
 
         return $disk->response(

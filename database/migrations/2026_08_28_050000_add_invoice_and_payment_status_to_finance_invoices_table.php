@@ -134,7 +134,7 @@ return new class extends Migration
     {
         try {
             return Carbon::parse($value)->isPast();
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return false;
         }
     }

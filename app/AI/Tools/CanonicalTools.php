@@ -20,11 +20,16 @@ final class CanonicalTools
 
     public const CREATE_CUSTOMER_ORDER = 'create_customer_order';
 
+    public const SEND_PRODUCT_IMAGE = 'send_product_image';
+
     /** @var list<string> */
     public const ORDER_CAPTURE_SKILLS = ['customer_support', 'sales', 'booking_agent', 'product_recommendation'];
 
     /** @var list<string> */
-    public const CATALOG_READ_SKILLS = ['customer_support', 'product_recommendation', 'product_search', 'sales'];
+    public const CATALOG_READ_SKILLS = ['customer_support', 'product_recommendation', 'product_search', 'sales', 'booking_agent'];
+
+    /** @var list<string> */
+    public const CATALOG_IMAGE_SKILLS = ['customer_support', 'product_recommendation', 'product_search', 'sales', 'booking_agent'];
 
     /** @var list<string> */
     public const CATALOG_INTELLIGENCE_SKILLS = ['customer_support', 'product_recommendation', 'sales'];
@@ -189,6 +194,31 @@ final class CanonicalTools
         );
     }
 
+    public static function sendProductImage(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::SEND_PRODUCT_IMAGE,
+            description: 'Send the official product image/photo to the customer in the chat when they ask to see a picture or photo of a product. If the item has an image, it will be attached and sent to the conversation. If no image exists for the product, the tool reports that no image is available.',
+            category: 'catalog',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            allowedSkillKeys: self::CATALOG_IMAGE_SKILLS,
+            inputSchema: [
+                'item_id' => [
+                    'type' => 'integer',
+                    'required' => false,
+                    'description' => 'Catalog item ID to send image for.',
+                ],
+                'product_name' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Product name or search keyword if item ID is not known.',
+                ],
+            ],
+        );
+    }
+
     /**
      * @return list<ToolDefinition>
      */
@@ -200,6 +230,7 @@ final class CanonicalTools
             self::evaluateProductSuitability(),
             self::saveCustomerCommerceContext(),
             self::createCustomerOrder(),
+            self::sendProductImage(),
         ];
         usort($definitions, static fn (ToolDefinition $a, ToolDefinition $b): int => strcmp($a->name, $b->name));
 

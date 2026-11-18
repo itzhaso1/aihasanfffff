@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Feature\Backup;
 
+use App\Services\Backup\DatabaseRestoreService;
 use App\Services\Backup\RestoreDrillService;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
@@ -40,7 +41,7 @@ class DatabaseRestoreDrillTest extends TestCase
         $this->assertStringNotContainsString((string) config('app.key'), $output);
         $this->assertStringNotContainsString('password=', $output);
 
-        app(\App\Services\Backup\DatabaseRestoreService::class)
+        app(DatabaseRestoreService::class)
             ->dropDatabase('backup_source', $result['restore_database']);
     }
 

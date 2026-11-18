@@ -20,6 +20,11 @@ return [
         'whatsapp' => ['image', 'audio', 'video', 'file'],
         'instagram' => ['image'],
         'facebook_messenger' => ['image', 'file'],
+        'telegram' => ['image', 'audio', 'video', 'file'],
+        'tiktok' => ['image', 'video'],
+        'chat' => ['image', 'audio', 'video', 'file'],
+        'manual' => ['image', 'audio', 'video', 'file'],
+        'web' => ['image', 'audio', 'video', 'file'],
     ],
 
     'retention' => [

@@ -8,6 +8,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionBillingAttempt;
 use App\Models\SubscriptionCheckoutSession;
 use App\Models\User;
+use App\Models\WebhookEvent;
 use App\Models\Workspace;
 use App\Services\Feature\FeatureAccessService;
 use App\Services\Subscription\SubscriptionLifecycleService;
@@ -83,7 +84,7 @@ class SubscriptionLifecyclePhase2Test extends TestCase
         $this->postSignedSubscriptionWebhook('evt_dup_1', $payload);
 
         $this->assertSame(1, Subscription::withoutGlobalScopes()->where('workspace_id', $workspace->id)->count());
-        $this->assertSame(1, \App\Models\WebhookEvent::withoutGlobalScopes()->where('external_event_id', 'evt_dup_1')->count());
+        $this->assertSame(1, WebhookEvent::withoutGlobalScopes()->where('external_event_id', 'evt_dup_1')->count());
     }
 
     public function test_invalid_webhook_cannot_activate(): void

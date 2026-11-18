@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToWorkspace;
+use Database\Factories\WhatsAppAccountFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -18,7 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class WhatsAppAccount extends WorkspaceScopedModel
 {
-    /** @use HasFactory<\Database\Factories\WhatsAppAccountFactory> */
+    /** @use HasFactory<WhatsAppAccountFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
 
     protected function casts(): array

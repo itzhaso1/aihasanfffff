@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\AI\Core\Data;
 
-use App\AI\Context\AiContext;
 use App\AI\Core\AiDirective;
 use App\AI\Core\Decision\AiReference;
 use App\AI\Core\Decision\FactRecord;
@@ -33,7 +32,7 @@ final readonly class ContextPayload
         array $references = [],
         array $facts = [],
         public AiDirective $directive = AiDirective::Respond,
-        public ?AiContext $structuredContext = null,
+        public ?object $structuredContext = null,
     ) {
         $this->sections = TypedList::of($sections, PromptSection::class, 'Context sections');
         $this->references = TypedList::of($references, AiReference::class, 'Context references');

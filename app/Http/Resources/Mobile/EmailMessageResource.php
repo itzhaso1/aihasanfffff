@@ -2,12 +2,13 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Models\EmailMessage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
-/** @mixin \App\Models\EmailMessage */
+/** @mixin EmailMessage */
 class EmailMessageResource extends JsonResource
 {
     public function __construct($resource, private readonly bool $detailed = false)

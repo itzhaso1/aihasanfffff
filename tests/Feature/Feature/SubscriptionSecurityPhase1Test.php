@@ -8,6 +8,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionCheckoutSession;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Subscription\Contracts\SubscriptionBillingProviderInterface;
 use App\Services\Subscription\LocalSubscriptionBillingProvider;
 use App\Services\Subscription\SubscriptionService;
 use App\Services\Subscription\UnconfiguredSubscriptionBillingProvider;
@@ -126,7 +127,7 @@ class SubscriptionSecurityPhase1Test extends TestCase
         $this->assertTrue(app()->environment('testing'));
         $this->assertInstanceOf(
             LocalSubscriptionBillingProvider::class,
-            app(\App\Services\Subscription\Contracts\SubscriptionBillingProviderInterface::class)
+            app(SubscriptionBillingProviderInterface::class)
         );
 
         [$owner, $workspace] = $this->makeWorkspaceOwner();

@@ -2,11 +2,12 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Models\Story;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
 
-/** @mixin \App\Models\Story */
+/** @mixin Story */
 class StoryResource extends JsonResource
 {
     /**

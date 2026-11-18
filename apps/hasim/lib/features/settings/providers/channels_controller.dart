@@ -7,6 +7,7 @@ import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
 import 'package:hasim/features/settings/data/channel_connection.dart';
 import 'package:hasim/features/settings/data/channel_connection_runtime.dart';
+import 'package:hasim/features/settings/data/plan_channel_repository.dart';
 
 class ChannelsState {
   const ChannelsState({
@@ -95,26 +96,34 @@ class ChannelsController extends StateNotifier<ChannelsState> {
   StreamSubscription<Uri>? _links;
 
   Future<void> reload({bool reset = false}) async {
-    final workspaceId = _ref.read(authControllerProvider).workspace?.id;
-    if (workspaceId == null) {
-      state = const ChannelsState();
-      return;
+    final workspaceId =
+        _ref.read(authControllerProvider).workspace?.id ??
+        _ref.read(prefsStoreProvider).workspaceId;
+    final repo = _ref.read(channelRepositoryProvider);
+
+    final cached = await repo.cached();
+    final initialItems = cached.isNotEmpty
+        ? cached
+        : ChannelRepository.defaultSupportedChannels;
+
+    if (!reset) {
+      state = state.copyWith(
+        items: initialItems,
+        loading: false,
+        clearError: true,
+      );
+    } else {
+      state = ChannelsState(items: initialItems, loading: false);
     }
 
-    final repo = _ref.read(channelRepositoryProvider);
-    final cached = await repo.cached();
-    if (cached.isNotEmpty && !reset) {
-      state = state.copyWith(items: cached, loading: false, clearError: true);
-    } else if (reset) {
-      state = ChannelsState(items: cached, loading: cached.isEmpty);
-    } else {
-      state = state.copyWith(loading: state.items.isEmpty, clearError: true);
+    if (workspaceId == null) {
+      return;
     }
 
     try {
       final items = await repo.list();
       state = state.copyWith(
-        items: items,
+        items: items.isNotEmpty ? items : initialItems,
         loading: false,
         clearError: !repo.lastReadFromCache,
         error: repo.lastReadFromCache
@@ -124,16 +133,18 @@ class ChannelsController extends StateNotifier<ChannelsState> {
         clearPending: reset,
         clearPages: reset,
       );
-    } on ApiException catch (e) {
+    } on ApiException {
       state = state.copyWith(
+        items: state.items.isEmpty ? initialItems : state.items,
         loading: false,
-        error: state.items.isEmpty ? e.userMessage : null,
+        error: null,
         clearBusy: true,
       );
     } catch (_) {
       state = state.copyWith(
+        items: state.items.isEmpty ? initialItems : state.items,
         loading: false,
-        error: state.items.isEmpty ? 'تعذر تحميل القنوات.' : null,
+        error: null,
         clearBusy: true,
       );
     }

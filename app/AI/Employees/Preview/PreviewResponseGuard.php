@@ -130,6 +130,9 @@ final class PreviewResponseGuard implements ResponseGuard
         if ($this->asks($ask, ['توصل', 'توصيل'])) {
             return 'delivery';
         }
+        if ($this->asks($ask, ['انت من وين', 'أنت من وين', 'من وين انت', 'من وين أنت', 'من وين'])) {
+            return null;
+        }
         if ($this->asks($ask, ['موقع', 'وين'])) {
             return 'location';
         }
@@ -186,7 +189,7 @@ final class PreviewResponseGuard implements ResponseGuard
                 ? 'معلومات التوصيل غير محمّلة في وضع الاختبار.'
                 : 'ما أقدر أأكد موعد التوصيل من البيانات المتوفرة.';
         }
-        if ($this->asks($ask, ['موقع', 'وين'])) {
+        if (! $this->asks($ask, ['انت من وين', 'أنت من وين', 'من وين انت', 'من وين أنت', 'من وين']) && $this->asks($ask, ['موقع', 'وين'])) {
             return $test
                 ? 'الموقع غير محمّل عندي في وضع الاختبار.'
                 : 'ما عندي موقع مؤكد أقدر أرسله.';

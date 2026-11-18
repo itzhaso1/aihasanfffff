@@ -12,6 +12,7 @@ use App\Services\AI\Inbox\Tools\EvaluateProductSuitabilityTool;
 use App\Services\AI\Inbox\Tools\GetProductIntelligenceTool;
 use App\Services\AI\Inbox\Tools\SaveCustomerCommerceContextTool;
 use App\Services\AI\Inbox\Tools\SearchProductsTool;
+use App\Services\AI\Inbox\Tools\SendProductImageTool;
 
 final class InboxToolAdapters
 {
@@ -21,6 +22,7 @@ final class InboxToolAdapters
         private readonly EvaluateProductSuitabilityTool $evaluateSuitability,
         private readonly SaveCustomerCommerceContextTool $saveCustomerContext,
         private readonly CreateCustomerOrderTool $createCustomerOrder,
+        private readonly SendProductImageTool $sendProductImage,
         private readonly InboxToolContextFactory $contexts = new InboxToolContextFactory,
     ) {}
 
@@ -35,6 +37,7 @@ final class InboxToolAdapters
             new InboxToolAdapter($this->productIntelligence, CanonicalTools::getProductIntelligence(), $this->contexts),
             new InboxToolAdapter($this->saveCustomerContext, CanonicalTools::saveCustomerCommerceContext(), $this->contexts),
             new InboxToolAdapter($this->createCustomerOrder, CanonicalTools::createCustomerOrder(), $this->contexts),
+            new InboxToolAdapter($this->sendProductImage, CanonicalTools::sendProductImage(), $this->contexts),
         ];
     }
 

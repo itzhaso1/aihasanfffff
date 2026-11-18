@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources\Mobile;
 
+use App\Models\DevicePushToken;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\DevicePushToken */
+/** @mixin DevicePushToken */
 class DevicePushTokenResource extends JsonResource
 {
     /**

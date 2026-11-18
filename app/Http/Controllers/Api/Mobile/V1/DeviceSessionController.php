@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Mobile\V1;
 use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Http\Resources\Mobile\DeviceSessionResource;
 use App\Services\Mobile\MobileAuthService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -40,7 +41,7 @@ class DeviceSessionController extends MobileController
 
         try {
             $this->mobileAuthService->revokeSession($user, $tokenId);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+        } catch (ModelNotFoundException) {
             return $this->fail('الجلسة غير موجودة.', 404);
         }
 

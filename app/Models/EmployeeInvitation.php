@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToWorkspace;
+use Database\Factories\EmployeeInvitationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class EmployeeInvitation extends WorkspaceScopedModel
 {
-    /** @use HasFactory<\Database\Factories\EmployeeInvitationFactory> */
+    /** @use HasFactory<EmployeeInvitationFactory> */
     use BelongsToWorkspace, HasFactory;
 
     protected function casts(): array

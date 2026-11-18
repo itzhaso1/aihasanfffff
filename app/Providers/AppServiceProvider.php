@@ -70,6 +70,7 @@ use App\Services\AI\Inbox\Tools\GetProductIntelligenceTool;
 use App\Services\AI\Inbox\Tools\InboxAgentToolRegistry;
 use App\Services\AI\Inbox\Tools\SaveCustomerCommerceContextTool;
 use App\Services\AI\Inbox\Tools\SearchProductsTool;
+use App\Services\AI\Inbox\Tools\SendProductImageTool;
 use App\Services\Payment\Contracts\MerchantSettlementProviderInterface;
 use App\Services\Payment\Providers\HyperPayMerchantSettlementProvider;
 use App\Services\Platform\PlatformAiConfiguration;
@@ -271,5 +272,6 @@ class AppServiceProvider extends ServiceProvider
         $registry->register($this->app->make(GetProductIntelligenceTool::class));
         $registry->register($this->app->make(SaveCustomerCommerceContextTool::class));
         $registry->register($this->app->make(CreateCustomerOrderTool::class));
+        $registry->register($this->app->make(SendProductImageTool::class));
     }
 }

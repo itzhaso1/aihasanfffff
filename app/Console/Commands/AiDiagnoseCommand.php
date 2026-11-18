@@ -9,14 +9,12 @@ use App\AI\Core\AiRunMode;
 use App\AI\Employees\DatabaseEmployeeResolver;
 use App\AI\Employees\EmployeeRepository;
 use App\AI\Employees\Models\AiEmployee;
-use App\AI\Inbox\HasimInboxRuntime;
 use App\AI\Models\ProviderId;
 use App\AI\Training\GreetingStyleSelector;
 use App\Models\ChatCatalogItem;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Workspace;
-use App\Services\AI\AIService;
 use App\Services\Chat\ChatCatalogRetrievalService;
 use App\Services\Platform\PlatformAiConfiguration;
 use App\Support\Chat\CatalogBrowseQueryDetector;
@@ -125,8 +123,9 @@ class AiDiagnoseCommand extends Command
                 $samples = (clone $itemsQuery)->where('is_active', true)->where('is_searchable', true)->limit(5)->get();
                 $this->line('   • Sample items currently in database:');
                 foreach ($samples as $sample) {
-                    $price = $sample->price ?? '0.00';
-                    $this->line("     - [ID: {$sample->id}] <fg=green>{$sample->name}</> (Price: {$price} {$sample->currency})");
+                    $price = $sample->effectivePrice();
+                    $hasImg = $sample->hasImage() ? '<fg=green>YES</>' : '<fg=yellow>NO</>';
+                    $this->line("     - [ID: {$sample->id}] <fg=green>{$sample->name}</> (Price: {$price} {$sample->currency}, Has Image: {$hasImg})");
                 }
             }
 
@@ -149,7 +148,8 @@ class AiDiagnoseCommand extends Command
             $this->line("   • Items Retrieved: {$retrievedCount}");
             if ($retrievedCount > 0) {
                 foreach ($lookup['items'] as $item) {
-                    $this->line("     - <fg=green>{$item['name']}</> | {$item['price']}");
+                    $hasImg = ($item['has_image'] ?? false) ? '<fg=green>[Image: YES]</>' : '<fg=yellow>[Image: NO]</>';
+                    $this->line("     - <fg=green>{$item['name']}</> | {$item['price']} {$hasImg}");
                 }
             } elseif ($lookup['status'] === 'catalog_empty') {
                 $this->warn('   ⚠️ Status is catalog_empty: Database has no discoverable products.');
@@ -170,7 +170,7 @@ class AiDiagnoseCommand extends Command
                 $this->line("   • Total messages in conversation: {$msgCount}");
 
                 $latestMsg = Message::withoutGlobalScopes()->where('conversation_id', $conversation->id)->latest('id')->first();
-                $this->line("   • Latest message: \"".($latestMsg ? mb_substr((string) $latestMsg->content, 0, 80) : 'none').'"');
+                $this->line('   • Latest message: "'.($latestMsg ? mb_substr((string) $latestMsg->content, 0, 80) : 'none').'"');
 
                 try {
                     $aiReq = new AiRequest(

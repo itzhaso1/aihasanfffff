@@ -8,7 +8,9 @@ use App\Models\CustomerNote;
 use App\Models\CustomerTag;
 use App\Models\Payment;
 use App\Models\User;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 class CustomerCrmService
 {
@@ -38,13 +40,13 @@ class CustomerCrmService
 
     public function addNote(Customer $customer, string $body, ?User $author = null): CustomerNote
     {
-        return app(\App\Support\Tenancy\WorkspaceContext::class)->runForId((int) $customer->workspace_id, function () use ($customer, $body, $author): CustomerNote {
-        return CustomerNote::withoutGlobalScopes()->create([
-            'workspace_id' => $customer->workspace_id,
-            'customer_id' => $customer->id,
-            'user_id' => $author?->id,
-            'body' => $body,
-        ]);
+        return app(WorkspaceContext::class)->runForId((int) $customer->workspace_id, function () use ($customer, $body, $author): CustomerNote {
+            return CustomerNote::withoutGlobalScopes()->create([
+                'workspace_id' => $customer->workspace_id,
+                'customer_id' => $customer->id,
+                'user_id' => $author?->id,
+                'body' => $body,
+            ]);
         });
     }
 
@@ -118,7 +120,7 @@ class CustomerCrmService
                 'type' => 'note',
                 'id' => $note->id,
                 'at' => optional($note->created_at)?->toIso8601String(),
-                'summary' => \Illuminate\Support\Str::limit((string) $note->body, 120),
+                'summary' => Str::limit((string) $note->body, 120),
                 'meta' => [
                     'user_id' => $note->user_id,
                 ],

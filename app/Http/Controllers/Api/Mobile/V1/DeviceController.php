@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Http\Resources\Mobile\DevicePushTokenResource;
 use App\Services\Mobile\PushDeviceService;
 use App\Support\Tenancy\WorkspaceContext;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -62,7 +63,7 @@ class DeviceController extends MobileController
         try {
             $workspace = $this->requireWorkspace($this->workspaceContext);
             $this->pushDeviceService->revoke($user, $device, (int) $workspace->id);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+        } catch (ModelNotFoundException) {
             return $this->fail('رمز الإشعار غير موجود.', 404);
         }
 

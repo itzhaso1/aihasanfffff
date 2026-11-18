@@ -185,6 +185,9 @@ class ChatCatalogRetrievalService
             'catalog_item_id' => (int) $id,
             'name' => trim($name),
         ];
+        if (isset($row['has_image'])) {
+            $item['has_image'] = (bool) $row['has_image'];
+        }
         $description = $row['description'] ?? null;
         if (is_string($description) && trim($description) !== '') {
             $item['description'] = mb_substr(trim($description), 0, 240);
@@ -916,6 +919,7 @@ class ChatCatalogRetrievalService
                 'category:id,name,workspace_id,aliases',
                 'category.searchTerms',
                 'seller:id,workspace_id,name,display_name,status',
+                'media' => fn ($mediaQuery) => $mediaQuery->where('is_visible', true)->orderBy('sort_order'),
                 'variants' => fn ($variantQuery) => $variantQuery
                     ->withoutGlobalScopes()
                     ->where('workspace_id', $workspace->id)
@@ -1333,6 +1337,7 @@ class ChatCatalogRetrievalService
         $row = [
             'catalog_item_id' => $item->id,
             'name' => $item->name,
+            'has_image' => $item->hasImage(),
             'description' => $item->customer_description ?? $item->short_description ?? $item->description,
             'sku' => ($display['show_sku'] ?? false) ? $item->sku : null,
             'barcode' => null,

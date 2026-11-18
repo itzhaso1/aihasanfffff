@@ -11,6 +11,7 @@ use App\Models\SubscriptionCheckoutSession;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Subscription\HyperPaySubscriptionBillingProvider;
+use App\Services\Subscription\SubscriptionLifecycleService;
 use App\Services\Subscription\SubscriptionService;
 use App\Services\Subscription\UnconfiguredSubscriptionBillingProvider;
 use App\Support\Subscription\SubscriptionBillingGuard;
@@ -246,7 +247,7 @@ class SubscriptionHyperPayPhase4Test extends TestCase
             'current_period_end' => $oldEnd,
         ]);
 
-        app(\App\Services\Subscription\SubscriptionLifecycleService::class)->processRenewals();
+        app(SubscriptionLifecycleService::class)->processRenewals();
 
         $attempt = SubscriptionBillingAttempt::withoutGlobalScopes()
             ->where('subscription_id', $subscription->id)
