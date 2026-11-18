@@ -1226,9 +1226,7 @@ class ChatCatalogRetrievalService
         return in_array($folded, [
             'كتاب', 'كتب', 'كتيب', 'كتيبات', 'رواية', 'روايات', 'نسخه', 'نسخ',
             'منتج', 'منتجات', 'خدمه', 'خدمات', 'دوره', 'دورات', 'سلعه', 'سلع',
-            'فستان', 'فساتين', 'لبس', 'ملابس', 'عطر', 'عطور',
             'book', 'books', 'novel', 'novels', 'product', 'products', 'item', 'items',
-            'dress', 'dresses', 'perfume', 'perfumes',
         ], true);
     }
 
