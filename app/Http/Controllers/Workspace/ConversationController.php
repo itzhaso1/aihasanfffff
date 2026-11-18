@@ -310,7 +310,7 @@ class ConversationController extends Controller
 
     public function storeMessage(StoreMessageRequest $request, Conversation $conversation): RedirectResponse|JsonResponse
     {
-        $this->authorize('update', $conversation);
+        $this->authorize('reply', $conversation);
 
         $payload = $request->validated();
         $payload['conversation_id'] = $conversation->id;

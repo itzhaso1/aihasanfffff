@@ -308,37 +308,43 @@ class _BubbleBody extends StatelessWidget {
             fontWeight: FontWeight.w500,
           ),
         ),
-        if (mine && !failed && !message.localPending) ...[
+        if (mine) ...[
           const SizedBox(width: 3),
-          const Icon(
-            Icons.done_all_rounded,
-            size: 14,
-            color: HasimTokens.readReceipt,
-          ),
-        ],
-        if (message.localPending &&
-            (message.localUploading ||
-                message.localAttachmentPath != null ||
-                message.attachments.isNotEmpty)) ...[
-          const SizedBox(width: 4),
-          SizedBox(
-            width: 11,
-            height: 11,
-            child: CircularProgressIndicator(strokeWidth: 1.5, color: meta),
-          ),
-        ],
-        if (failed) ...[
-          const SizedBox(width: 4),
-          Icon(Icons.refresh, size: 13, color: Colors.red.shade400),
-          const SizedBox(width: 3),
-          Text(
-            l10n.chatAttachmentRetry,
-            style: TextStyle(
-              fontSize: 10,
-              height: 1.1,
-              color: Colors.red.shade400,
+          if (failed) ...[
+            Icon(Icons.error_outline_rounded, size: 13, color: Colors.red.shade400),
+            const SizedBox(width: 2),
+            Icon(Icons.refresh, size: 12, color: Colors.red.shade400),
+            const SizedBox(width: 2),
+            Text(
+              l10n.chatAttachmentRetry,
+              style: TextStyle(
+                fontSize: 10,
+                height: 1.1,
+                color: Colors.red.shade400,
+              ),
             ),
-          ),
+          ] else if (message.localPending) ...[
+            if (message.localUploading ||
+                message.localAttachmentPath != null ||
+                message.attachments.isNotEmpty)
+              SizedBox(
+                width: 11,
+                height: 11,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: meta),
+              )
+            else
+              Icon(
+                Icons.access_time_rounded,
+                size: 12,
+                color: meta,
+              ),
+          ] else ...[
+            const Icon(
+              Icons.done_all_rounded,
+              size: 14,
+              color: HasimTokens.readReceipt,
+            ),
+          ],
         ],
       ],
     );

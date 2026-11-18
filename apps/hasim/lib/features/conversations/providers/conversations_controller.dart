@@ -696,6 +696,26 @@ class ChatController extends StateNotifier<ChatState> {
     });
     final repo = _ref.read(conversationRepositoryProvider);
     if (workspaceId != null) {
+      // 1. FAST INITIAL RENDER: Load SQLite cache immediately (< 20ms)
+      final sw = Stopwatch()..start();
+      final cachedConv = await repo.cachedConversation(workspaceId, conversationId);
+      final cachedMsgs = await repo.cachedMessages(workspaceId, conversationId);
+      if (!mounted || _boundWorkspaceId != workspaceId) return;
+      if (cachedConv != null || cachedMsgs.isNotEmpty) {
+        state = state.copyWith(
+          conversation: cachedConv ?? state.conversation,
+          messages: cachedMsgs.isNotEmpty ? cachedMsgs : state.messages,
+          loading: false,
+        );
+        if (kDebugMode) {
+          debugPrint(
+            '[PERF] Chat $conversationId loaded from cache in ${sw.elapsedMilliseconds}ms (${cachedMsgs.length} messages)',
+          );
+        }
+      } else if (state.messages.isEmpty) {
+        state = state.copyWith(loading: true);
+      }
+
       _messageSub = repo
           .watchLatestMessages(
             workspaceId,
@@ -832,7 +852,7 @@ class ChatController extends StateNotifier<ChatState> {
       return;
     }
     final scope = captureInboxScope(_ref);
-    if (!silent) {
+    if (!silent && state.messages.isEmpty) {
       state = state.copyWith(loading: true, error: null);
     } else {
       state = state.copyWith(error: null);
@@ -972,11 +992,17 @@ class ChatController extends StateNotifier<ChatState> {
       return false;
     }
 
+    final sendSw = Stopwatch()..start();
     state = state.copyWith(
       messages: _mergeMessages(_olderMessages, [...state.messages, optimistic]),
       sending: true,
       error: null,
     );
+    if (kDebugMode) {
+      debugPrint(
+        '[PERF] Instant optimistic render: ${sendSw.elapsedMilliseconds}ms (clientId=$clientId)',
+      );
+    }
 
     final repo = _ref.read(conversationRepositoryProvider);
     try {
@@ -1079,7 +1105,7 @@ class ChatController extends StateNotifier<ChatState> {
       if (!_canCommit(scope)) return;
       final failed = after.any((m) => m.clientId == clientId && m.localFailed);
       state = state.copyWith(
-        messages: after,
+        messages: _mergeMessages(_olderMessages, after),
         error: failed ? 'تعذر إرسال الرسالة.' : null,
       );
       unawaited(_syncConversationFromServer(scope));

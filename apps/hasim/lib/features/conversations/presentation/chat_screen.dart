@@ -207,6 +207,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     _keepComposerFocus();
     _stickToBottom = true;
+    _scrollToLatest(frames: 1);
     final accepted = await ref
         .read(chatControllerProvider(widget.conversationId).notifier)
         .send(outgoing);
@@ -1785,9 +1786,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             final emojiDock = _phoneEmojiDock(context);
                             final composerPad =
                                 _composerHeight + 8 + attachDock + emojiDock;
+                            final keyToIndex = <String, int>{};
+                            for (var i = 0; i < rows.length; i++) {
+                              final row = rows[rows.length - 1 - i];
+                              if (row.date != null) {
+                                keyToIndex['chat-date-${row.date!.millisecondsSinceEpoch}'] = i;
+                              } else if (row.message != null) {
+                                final m = row.message!;
+                                final k = (m.clientId != null && m.clientId!.isNotEmpty)
+                                    ? m.clientId!
+                                    : m.id.toString();
+                                keyToIndex['chat-msg-$k'] = i;
+                              }
+                            }
                             final list = ListView.builder(
                               controller: _scroll,
                               reverse: true,
+                              findChildIndexCallback: (Key key) {
+                                if (key is ValueKey<String>) {
+                                  return keyToIndex[key.value];
+                                }
+                                return null;
+                              },
                               scrollCacheExtent: const ScrollCacheExtent.pixels(
                                 600,
                               ),
@@ -1811,7 +1831,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 final m = row.message!;
                                 return SizedBox(
                                   key: ValueKey(
-                                    'chat-message-${m.id}-${m.clientId ?? ''}',
+                                    'chat-msg-${(m.clientId != null && m.clientId!.isNotEmpty) ? m.clientId : m.id}',
                                   ),
                                   width: double.infinity,
                                   child: ChatMessageBubble(

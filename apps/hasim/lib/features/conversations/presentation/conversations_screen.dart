@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -1703,6 +1704,21 @@ class _ConversationsPanel extends StatelessWidget {
                               return false;
                             },
                             child: ListView.builder(
+                              findChildIndexCallback: (Key key) {
+                                if (key is ValueKey<String>) {
+                                  final val = key.value;
+                                  if (val.startsWith('conversation-item-')) {
+                                    final id = int.tryParse(val.substring(18));
+                                    if (id != null) {
+                                      for (var i = 0; i < visibleItems.length; i++) {
+                                        if (visibleItems[i].id == id) return i;
+                                      }
+                                    }
+                                  }
+                                }
+                                return null;
+                              },
+                              scrollCacheExtent: const ScrollCacheExtent.pixels(600),
                               itemCount:
                                   visibleItems.length +
                                   (state.loadingMore ? 1 : 0),

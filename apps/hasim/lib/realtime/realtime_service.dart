@@ -12,7 +12,8 @@ abstract class RealtimeService {
   void triggerPoll();
 }
 
-/// Practical realtime when Laravel broadcast driver is not live (log/local).
+/// Practical realtime when Laravel broadcast driver is not live (log/local)
+/// or as a seamless fallback when WebSocket drops.
 class PollingRealtimeService implements RealtimeService {
   PollingRealtimeService(this._repo, {int? Function()? workspaceIdOf})
     : _workspaceIdOf = workspaceIdOf;
@@ -28,6 +29,10 @@ class PollingRealtimeService implements RealtimeService {
   int _lastMaxMessageId = 0;
   int _pollGeneration = 0;
 
+  /// When true (e.g. WebSocket is active and streaming), periodic poll calls are skipped
+  /// to save CPU, network, and prevent constant SQLite re-reads.
+  bool paused = false;
+
   @override
   Stream<MessageModel> get messageCreated => _messageController.stream;
 
@@ -37,7 +42,8 @@ class PollingRealtimeService implements RealtimeService {
   @override
   Future<void> start() async {
     _listTimer?.cancel();
-    _listTimer = Timer.periodic(const Duration(milliseconds: 3000), (_) {
+    _listTimer = Timer.periodic(const Duration(milliseconds: 8000), (_) {
+      if (paused) return;
       if (_watchingConversationId != null) return;
       _listController.add(null);
     });
@@ -62,10 +68,14 @@ class PollingRealtimeService implements RealtimeService {
       return;
     }
     _chatTimer = Timer.periodic(
-      const Duration(milliseconds: 900),
-      (_) => _pollChat(),
+      const Duration(milliseconds: 4500),
+      (_) {
+        if (!paused) _pollChat();
+      },
     );
-    _pollChat();
+    if (!paused) {
+      _pollChat();
+    }
   }
 
   @override

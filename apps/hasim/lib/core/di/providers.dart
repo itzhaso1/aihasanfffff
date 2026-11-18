@@ -199,16 +199,19 @@ final commerceOrderRepositoryProvider = Provider(
 );
 
 final realtimeServiceProvider = Provider<RealtimeService>((ref) {
+  int? getWorkspaceId() =>
+      ref.read(inboxSessionProvider).workspaceId ??
+      ref.read(prefsStoreProvider).workspaceId;
+
   final polling = PollingRealtimeService(
     ref.watch(conversationRepositoryProvider),
-    workspaceIdOf: () =>
-        ref.read(inboxSessionProvider).workspaceId ??
-        ref.read(prefsStoreProvider).workspaceId,
+    workspaceIdOf: getWorkspaceId,
   );
 
   return HybridRealtimeService(
     polling,
     apiClient: ref.watch(apiClientProvider),
+    workspaceIdOf: getWorkspaceId,
   );
 });
 

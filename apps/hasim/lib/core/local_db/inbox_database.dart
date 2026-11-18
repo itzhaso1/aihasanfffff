@@ -726,6 +726,10 @@ class InboxDatabase implements QueryExecutorUser {
       'ON inbox_messages (workspace_id, conversation_server_id, created_at)',
     );
     await e.runCustom(
+      'CREATE INDEX IF NOT EXISTS idx_inbox_messages_ws_conv_server_id '
+      'ON inbox_messages (workspace_id, conversation_server_id, server_id, id)',
+    );
+    await e.runCustom(
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_outbox_ws_client '
       'ON inbox_outbox (workspace_id, client_id)',
     );

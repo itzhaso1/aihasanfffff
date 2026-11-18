@@ -38,7 +38,7 @@ class MessageController extends Controller
     {
         $conversation = Conversation::query()
             ->findOrFail($request->integer('conversation_id'));
-        $this->authorize('update', $conversation);
+        $this->authorize('reply', $conversation);
 
         $payload = $request->validated();
         if ($request->hasHeader('Idempotency-Key')) {

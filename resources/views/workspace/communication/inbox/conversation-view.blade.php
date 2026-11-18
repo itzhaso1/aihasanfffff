@@ -35,6 +35,12 @@
     $canEndActiveHandoff = $conversationIsOpen && $handoffBlocksAi;
     $canTakeControlFromAi = $conversationIsOpen && $activeConversation->isAiReplying();
     $activeResponder = $activeConversation->currentResponder();
+    $currentUserId = auth()->id();
+    $isAlreadyAssignedToMe = (int) $activeConversation->assigned_user_id === (int) $currentUserId && ! (bool) $activeConversation->ai_enabled;
+    $isHumanNeeded = in_array($handoffEnum, [\App\Enums\ConversationHandoffStatus::Requested, \App\Enums\ConversationHandoffStatus::Queued], true);
+    $canClaimConversation = $conversationIsOpen
+        && ! $isAlreadyAssignedToMe
+        && ($isHumanNeeded || $canTakeControlFromAi || ($handoffEnum === \App\Enums\ConversationHandoffStatus::Active && (int) $activeConversation->assigned_user_id !== (int) $currentUserId));
 @endphp
 
 <section 
@@ -139,6 +145,15 @@
             @if($inboxAllowsCompanyActions && $conversationIsOpen)
                 @can('manageHandoff', $activeConversation)
                     @if($canEndActiveHandoff)
+                        @if($canClaimConversation)
+                            <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">
+                                @csrf
+                                <button type="submit" class="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition" title="استلام المحادثة وتولي الرد عليها">
+                                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                                    <span>استلام المحادثة</span>
+                                </button>
+                            </form>
+                        @endif
                         <form method="POST" action="{{ route('workspace.conversations.handoff.resolve', $activeConversation) }}">
                             @csrf
                             <button type="submit" class="inline-flex items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50">
@@ -299,8 +314,23 @@
                 </div>
             </div>
 
-            {{-- Audit Log Modal Trigger --}}
+            {{-- Actions & Audit Log in Responder Bar --}}
             <div class="flex items-center gap-1.5 shrink-0">
+                @if($inboxAllowsCompanyActions && $canClaimConversation)
+                    @can('manageHandoff', $activeConversation)
+                        <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">
+                            @csrf
+                            <button
+                                type="submit"
+                                class="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition"
+                                title="استلام مسؤولية الرد على هذه المحادثة"
+                            >
+                                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                                <span>استلام المحادثة</span>
+                            </button>
+                        </form>
+                    @endcan
+                @endif
                 <button
                     type="button"
                     @click="auditLogOpen = true; fetchAuditLogs()"

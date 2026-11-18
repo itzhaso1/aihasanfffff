@@ -24,6 +24,7 @@ use Database\Seeders\FoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Mockery;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 class ConversationHandoffV2Test extends TestCase
@@ -908,5 +909,77 @@ class ConversationHandoffV2Test extends TestCase
         ]);
 
         return $user;
+    }
+
+    private function workspaceStaff(Workspace $workspace): User
+    {
+        $user = User::factory()->create();
+        $workspace->users()->attach($user->id, [
+            'membership_role' => 'member',
+            'status' => 'active',
+            'joined_at' => now(),
+        ]);
+
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId($workspace->id);
+        $user->givePermissionTo('conversations.manage');
+        $registrar->setPermissionsTeamId(null);
+
+        return $user;
+    }
+
+    public function test_staff_employee_with_permissions_can_see_claim_button_and_takeover(): void
+    {
+        [, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Queued->value,
+        ]);
+
+        $staff = $this->workspaceStaff($workspace);
+
+        $this->actingAs($staff);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->get(route('workspace.conversations.index', ['conversation' => $conversation->id]))
+            ->assertOk()
+            ->assertSee('استلام المحادثة', false)
+            ->assertSee(route('workspace.conversations.handoff.takeover', $conversation), false);
+
+        $this->post(route('workspace.conversations.handoff.takeover', $conversation))
+            ->assertRedirect();
+
+        $conversation->refresh();
+        $this->assertSame($staff->id, $conversation->assigned_user_id);
+        $this->assertSame(ConversationHandoffStatus::Active, $conversation->handoffStatusEnum());
+        $this->assertFalse((bool) $conversation->ai_enabled);
+    }
+
+    public function test_staff_employee_can_reply_and_reply_automatically_assigns_conversation(): void
+    {
+        [, $workspace, $conversation] = $this->seedConversation();
+        $conversation->update([
+            'ai_enabled' => true,
+            'handoff_status' => ConversationHandoffStatus::None->value,
+        ]);
+
+        $staff = $this->workspaceStaff($workspace);
+
+        $this->actingAs($staff);
+        $this->withSession(['current_workspace_id' => $workspace->id]);
+
+        $this->postJson(route('workspace.conversations.messages.store', $conversation), [
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'content' => 'مرحباً، أنا أتابع معك الآن.',
+            'direction' => 'outbound',
+            'message_type' => 'text',
+        ])->assertOk();
+
+        $conversation->refresh();
+        $this->assertSame($staff->id, $conversation->assigned_user_id);
+        $this->assertSame($staff->name, $conversation->responder_name);
+        $this->assertSame(ConversationHandoffStatus::Active, $conversation->handoffStatusEnum());
+        $this->assertFalse((bool) $conversation->ai_enabled);
     }
 }

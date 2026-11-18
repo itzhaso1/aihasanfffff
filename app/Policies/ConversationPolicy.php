@@ -39,7 +39,7 @@ class ConversationPolicy
             return true;
         }
 
-        return $this->hasAnyWorkspaceRole($user, $workspace, ['owner', 'admin', 'manager', 'agent']);
+        return $this->hasAnyWorkspaceRole($user, $workspace, ['owner', 'admin', 'manager', 'agent', 'staff', 'member']);
     }
 
     /**
@@ -47,7 +47,15 @@ class ConversationPolicy
      */
     public function update(User $user, Conversation $conversation): bool
     {
-        return $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['owner', 'admin', 'manager', 'agent']);
+        if (! $this->hasMembership($user, $conversation->workspace)) {
+            return false;
+        }
+
+        if ($user->can('conversations.manage') || $user->can('workspace.manage')) {
+            return true;
+        }
+
+        return $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['owner', 'admin', 'manager', 'agent', 'staff', 'member']);
     }
 
     /**
@@ -61,6 +69,14 @@ class ConversationPolicy
 
     public function manageHandoff(User $user, Conversation $conversation): bool
     {
+        if (! $this->hasMembership($user, $conversation->workspace)) {
+            return false;
+        }
+
+        if ($user->can('conversations.manage') || $user->can('workspace.manage')) {
+            return true;
+        }
+
         return $this->update($user, $conversation)
             || $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['member', 'staff'])
             || app(MobileInboxActor::class)->canAccessInbox($user, $conversation->workspace);
@@ -68,6 +84,14 @@ class ConversationPolicy
 
     public function resumeAi(User $user, Conversation $conversation): bool
     {
+        if (! $this->hasMembership($user, $conversation->workspace)) {
+            return false;
+        }
+
+        if ($user->can('conversations.manage') || $user->can('workspace.manage') || $user->can('ai.manage')) {
+            return true;
+        }
+
         return $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['owner', 'admin', 'manager']);
     }
 
