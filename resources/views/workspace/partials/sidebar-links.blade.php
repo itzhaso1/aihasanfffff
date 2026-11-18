@@ -10,7 +10,8 @@
         [
             'title' => 'الشات والمبيعات',
             'links' => [
-                ['label' => 'المحادثات', 'route' => 'workspace.conversations.index', 'active' => ['workspace.conversations.*'], 'icon' => 'chat'],
+                ['label' => 'المحادثات', 'route' => 'workspace.conversations.index', 'active' => ['workspace.conversations.index', 'workspace.conversations.show'], 'icon' => 'chat'],
+                ['label' => 'المراقبة المباشرة', 'route' => 'workspace.conversations.monitor', 'active' => ['workspace.conversations.monitor*'], 'icon' => 'spark'],
                 ['label' => 'العملاء (CRM)', 'route' => 'workspace.customers.index', 'active' => ['workspace.customers.*'], 'icon' => 'users'],
                 ['label' => 'الطلبات', 'route' => 'workspace.commerce.orders.index', 'active' => ['workspace.commerce.orders.*'], 'icon' => 'order'],
                 ['label' => 'سلات الشراء', 'route' => 'workspace.commerce.carts.index', 'active' => ['workspace.commerce.carts.*'], 'icon' => 'cart'],

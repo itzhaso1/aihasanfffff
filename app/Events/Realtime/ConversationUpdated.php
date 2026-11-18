@@ -3,6 +3,7 @@
 namespace App\Events\Realtime;
 
 use App\Models\Conversation;
+use App\Services\Conversation\ConversationResponderService;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -56,6 +57,7 @@ class ConversationUpdated implements ShouldBroadcast
             'status' => $this->conversation->status,
             'channel' => $this->conversation->channel,
             'last_message_at' => optional($this->conversation->last_message_at)?->toIso8601String(),
+            'responder' => app(ConversationResponderService::class)->determineResponder($this->conversation),
         ];
     }
 }

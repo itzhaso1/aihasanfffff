@@ -36,6 +36,7 @@ use App\Http\Controllers\Workspace\CompanyProfileController;
 use App\Http\Controllers\Workspace\ConversationBulkMessageController;
 use App\Http\Controllers\Workspace\ConversationController;
 use App\Http\Controllers\Workspace\ConversationHandoffController;
+use App\Http\Controllers\Workspace\ConversationLiveMonitorController;
 use App\Http\Controllers\Workspace\CustomerController;
 use App\Http\Controllers\Workspace\DashboardController as WorkspaceDashboardController;
 use App\Http\Controllers\Workspace\EmployeeInvitationController;
@@ -306,6 +307,8 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::get('commerce/intelligence/items/{item}', [WorkspaceCommerceIntelligenceController::class, 'item'])->name('commerce.intelligence.items.show');
             Route::post('commerce/intelligence/items/{item}/attributes', [WorkspaceCommerceIntelligenceController::class, 'storeItemAttributes'])->name('commerce.intelligence.items.attributes.store');
         });
+        Route::get('conversations/live-monitor', [ConversationLiveMonitorController::class, 'index'])->name('conversations.monitor');
+        Route::get('conversations/live-monitor/data', [ConversationLiveMonitorController::class, 'data'])->name('conversations.monitor.data');
         Route::get('conversations/poll-updates', [ConversationController::class, 'pollUpdates'])->name('conversations.updates.poll');
         Route::resource('conversations', ConversationController::class)->except(['show']);
         Route::get('conversations/{conversation}', function ($conversation) {
@@ -315,6 +318,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         })->name('conversations.show');
         Route::get('conversations/{conversation}/poll-messages', [ConversationController::class, 'pollMessages'])->name('conversations.messages.poll');
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');
+        Route::get('conversations/{conversation}/media', [ConversationController::class, 'media'])->name('conversations.media');
         Route::post('conversations/bulk-messages', [ConversationBulkMessageController::class, 'store'])->name('conversations.bulk-messages.store');
         Route::get('conversations/bulk-messages/{bulkSend}', [ConversationBulkMessageController::class, 'show'])
             ->whereUuid('bulkSend')
@@ -324,6 +328,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         Route::post('conversations/{conversation}/takeover', [ConversationHandoffController::class, 'takeover'])->name('conversations.handoff.takeover');
         Route::post('conversations/{conversation}/resolve-handoff', [ConversationHandoffController::class, 'resolve'])->name('conversations.handoff.resolve');
         Route::post('conversations/{conversation}/resume-ai', [ConversationHandoffController::class, 'resumeAi'])->name('conversations.handoff.resume-ai');
+        Route::get('conversations/{conversation}/responder-logs', [ConversationHandoffController::class, 'responderLogs'])->name('conversations.responder-logs');
         Route::get('message-attachments/{attachment}/download', [MessageAttachmentController::class, 'download'])
             ->name('message-attachments.download');
 

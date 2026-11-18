@@ -14,6 +14,7 @@ use App\Models\Customer;
 use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Services\Conversation\ConversationAiEligibilityService;
+use App\Services\Conversation\ConversationResponderService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use App\Services\Inbox\InboxHumanHandoffService;
@@ -23,6 +24,7 @@ use App\Services\Workforce\WorkforceInboxAttribution;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\View\View;
 use InvalidArgumentException;
 
@@ -316,8 +318,68 @@ class ConversationController extends Controller
         $payload['message_type'] = $payload['message_type'] ?? 'text';
         $payload['metadata'] = $this->parseJsonField($request, 'metadata_json');
 
-        $sentMessage = $this->conversationService->addMessage($conversation, $payload, $request->user());
+        $uploadedFiles = [];
+        if ($request->hasFile('attachments')) {
+            $files = $request->file('attachments');
+            $uploadedFiles = is_array($files) ? $files : [$files];
+        } elseif ($request->hasFile('attachment')) {
+            $uploadedFiles = [$request->file('attachment')];
+        } elseif ($request->hasFile('file')) {
+            $uploadedFiles = [$request->file('file')];
+        }
+
+        if (! empty($uploadedFiles)) {
+            $hasOnlyImages = true;
+            foreach ($uploadedFiles as $f) {
+                if ($f instanceof UploadedFile && ! str_starts_with((string) $f->getMimeType(), 'image/')) {
+                    $hasOnlyImages = false;
+                    break;
+                }
+            }
+            $payload['message_type'] = $hasOnlyImages ? 'image' : 'file';
+        }
+
+        try {
+            $sentMessage = $this->conversationService->addMessage($conversation, $payload, $request->user(), $uploadedFiles);
+        } catch (InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'errors' => ['attachments' => [$e->getMessage()]],
+            ], 422);
+        }
         $conversation = $conversation->fresh() ?? $conversation;
+
+        if ($sentMessage->direction === 'outbound' && $request->user()) {
+            $actor = $request->user();
+            if ((int) $conversation->assigned_user_id !== (int) $actor->id || (bool) $conversation->ai_enabled) {
+                $conversation->update([
+                    'assigned_user_id' => $actor->id,
+                    'ai_enabled' => false,
+                    'handoff_status' => ConversationHandoffStatus::Active,
+                    'handoff_assigned_at' => $conversation->handoff_assigned_at ?? now(),
+                ]);
+                app(ConversationResponderService::class)->recordTransition(
+                    $conversation,
+                    ConversationResponderService::TYPE_HUMAN,
+                    $actor,
+                    'human_message_sent',
+                    'user',
+                    $actor,
+                    'قام الموظف بإرسال رد وتولي المحادثة',
+                );
+            } else {
+                app(ConversationResponderService::class)->recordTransition(
+                    $conversation,
+                    ConversationResponderService::TYPE_HUMAN,
+                    $actor,
+                    'human_message_sent',
+                    'user',
+                    $actor,
+                    'أرسل الموظف رسالة جديدة',
+                );
+            }
+            $conversation = $conversation->fresh() ?? $conversation;
+        }
 
         if ($sentMessage->direction === 'inbound'
             && $this->aiEligibility->shouldDispatchAiJob($conversation, $sentMessage)) {
@@ -334,6 +396,7 @@ class ConversationController extends Controller
                     'handoff_status' => $conversation->handoff_status instanceof ConversationHandoffStatus
                         ? $conversation->handoff_status->value
                         : ($conversation->handoff_status ?? 'none'),
+                    'responder' => $conversation->currentResponder(),
                 ],
             ]);
         }
@@ -377,6 +440,7 @@ class ConversationController extends Controller
                 'last_message' => $latestMessage?->content ?? '',
                 'last_message_at' => $conversation->last_message_at?->format('h:i A') ?? '',
                 'unread_count' => $unreadCount,
+                'responder' => $conversation->currentResponder(),
             ],
         ]);
     }
@@ -394,6 +458,8 @@ class ConversationController extends Controller
             ->where('workspace_id', $workspaceId)
             ->with([
                 'customer:id,name',
+                'assignedUser:id,name',
+                'aiEmployee:id,name',
                 'messages' => fn ($q) => $q->latest('id')->limit(1),
             ])
             ->orderByRaw('COALESCE(last_message_at, updated_at, created_at) DESC')
@@ -416,6 +482,7 @@ class ConversationController extends Controller
                     ? $conv->handoff_status->value
                     : ($conv->handoff_status ?? 'none'),
                 'status' => $conv->status,
+                'responder' => $conv->currentResponder(),
             ];
         });
 
@@ -469,12 +536,77 @@ class ConversationController extends Controller
                     'mime_type' => $attachment->mime_type,
                     'size_bytes' => $attachment->size_bytes,
                     'status' => $attachment->status,
+                    'width' => $attachment->width,
+                    'height' => $attachment->height,
                     'download_url' => $ready
                         ? app(MessageAttachmentService::class)->workspaceDownloadUrl($attachment)
                         : null,
                 ];
             })->values()->all(),
         ];
+    }
+
+    public function media(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+
+        $kind = $request->string('kind')->toString();
+
+        $attachments = MessageAttachment::query()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->whereHas('message', fn ($q) => $q->where('conversation_id', $conversation->id))
+            ->where('status', MessageAttachment::STATUS_STORED)
+            ->when($kind !== '' && $kind !== 'all', fn ($q) => $q->where('kind', $kind))
+            ->with(['message.user:id,name', 'message.workerEngagement.workerProfile:id,display_name'])
+            ->orderByDesc('id')
+            ->limit(120)
+            ->get();
+
+        $attachmentService = app(MessageAttachmentService::class);
+
+        $counts = MessageAttachment::query()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->whereHas('message', fn ($q) => $q->where('conversation_id', $conversation->id))
+            ->where('status', MessageAttachment::STATUS_STORED)
+            ->selectRaw('kind, count(*) as total')
+            ->groupBy('kind')
+            ->pluck('total', 'kind')
+            ->all();
+
+        return response()->json([
+            'counts' => [
+                'all' => array_sum($counts),
+                'image' => $counts['image'] ?? 0,
+                'file' => ($counts['file'] ?? 0) + ($counts['document'] ?? 0),
+                'video' => $counts['video'] ?? 0,
+                'audio' => $counts['audio'] ?? 0,
+            ],
+            'media' => $attachments->map(function (MessageAttachment $att) use ($attachmentService): array {
+                $msg = $att->message;
+                $senderName = 'العميل';
+                if ($msg?->direction === 'outbound') {
+                    $senderName = $msg->user?->name
+                        ?? $msg->workerEngagement?->workerProfile?->display_name
+                        ?? 'فريق العمل';
+                }
+
+                return [
+                    'id' => $att->id,
+                    'message_id' => $att->message_id,
+                    'kind' => $att->kind,
+                    'original_name' => $att->original_name,
+                    'mime_type' => $att->mime_type,
+                    'size_bytes' => $att->size_bytes,
+                    'size_human' => $att->size_bytes ? number_format($att->size_bytes / (1024 * 1024), 1).' MB' : '',
+                    'width' => $att->width,
+                    'height' => $att->height,
+                    'download_url' => $attachmentService->workspaceDownloadUrl($att),
+                    'sender_name' => $senderName,
+                    'created_at' => $att->created_at?->format('Y-m-d h:i A'),
+                    'created_at_human' => $att->created_at?->diffForHumans(),
+                ];
+            })->values(),
+        ]);
     }
 
     private function normalizeChannelFilter(string $channel): ?string

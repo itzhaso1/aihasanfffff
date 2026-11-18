@@ -23,6 +23,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -169,6 +170,34 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
             return;
         }
+
+        Cache::put("conversation:{$conversation->id}:ai_generating", true, 30);
+
+        try {
+            $this->performReplyGeneration(
+                $aiService,
+                $channelOutbound,
+                $eligibility,
+                $outputValidator,
+                $conversation,
+                $incomingMessage,
+                $startedAt,
+            );
+        } finally {
+            Cache::forget("conversation:{$conversation->id}:ai_generating");
+        }
+    }
+
+    private function performReplyGeneration(
+        AIService $aiService,
+        ChannelOutboundService $channelOutbound,
+        AiReplyEligibility $eligibility,
+        AiOutputValidator $outputValidator,
+        Conversation $conversation,
+        Message $incomingMessage,
+        float $startedAt,
+    ): void {
+        $conversationFresh = $conversation->fresh() ?? $conversation;
 
         $fallbackReason = null;
 

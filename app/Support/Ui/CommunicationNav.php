@@ -30,8 +30,9 @@ class CommunicationNav
         ])->filter(fn (array $link): bool => Route::has($link['route']))->values();
 
         $secondaryLinks = collect([
-            ['label' => 'المحادثات', 'route' => 'workspace.conversations.index', 'active' => 'workspace.conversations.*', 'icon' => 'chat', 'excludeQuery' => ['status' => 'archived']],
-            ['label' => 'مؤرشفة', 'route' => 'workspace.conversations.index', 'active' => 'workspace.conversations.*', 'icon' => 'archive', 'query' => ['status' => 'archived'], 'nav' => 'archive'],
+            ['label' => 'المحادثات', 'route' => 'workspace.conversations.index', 'active' => 'workspace.conversations.index', 'icon' => 'chat', 'excludeQuery' => ['status' => 'archived']],
+            ['label' => 'المراقبة المباشرة', 'route' => 'workspace.conversations.monitor', 'active' => 'workspace.conversations.monitor*', 'icon' => 'monitor'],
+            ['label' => 'مؤرشفة', 'route' => 'workspace.conversations.index', 'active' => 'workspace.conversations.index', 'icon' => 'archive', 'query' => ['status' => 'archived'], 'nav' => 'archive'],
             ['label' => 'العملاء', 'route' => 'workspace.customers.index', 'active' => 'workspace.customers.*', 'icon' => 'users'],
             ['label' => 'القنوات', 'route' => 'workspace.channels.index', 'active' => 'workspace.channels.*', 'icon' => 'channels'],
             ['label' => 'واتساب', 'route' => 'workspace.whatsapp-accounts.index', 'active' => 'workspace.whatsapp-accounts.*', 'icon' => 'whatsapp'],
@@ -130,6 +131,7 @@ class CommunicationNav
         return [
             'home' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 10.75 12 3l9 7.75V21a1 1 0 0 1-1 1h-5.5v-7h-5v7H4a1 1 0 0 1-1-1V10.75Z" />',
             'chat' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M7.5 17.25H4.875A1.875 1.875 0 0 1 3 15.375V5.625A1.875 1.875 0 0 1 4.875 3.75h14.25A1.875 1.875 0 0 1 21 5.625v9.75a1.875 1.875 0 0 1-1.875 1.875H12l-4.5 3v-3Z" />',
+            'monitor' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />',
             'users' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M16 19.5v-1.125A3.375 3.375 0 0 0 12.625 15h-4.25A3.375 3.375 0 0 0 5 18.375V19.5m11-9.375a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Zm-8.75 0a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />',
             'box' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="m3.75 7.5 8.25-4.5 8.25 4.5m-16.5 0 8.25 4.5m8.25-4.5v9L12 21.75m0-9.75v9.75" />',
             'cube' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M21 7.5 12 3 3 7.5m18 0-9 4.5m9-4.5v9L12 21m0-9.5L3 7.5m9 4v9.5m0 0L3 16.5v-9" />',

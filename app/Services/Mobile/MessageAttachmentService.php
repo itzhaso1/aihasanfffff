@@ -22,6 +22,8 @@ class MessageAttachmentService
         'image/png',
         'image/webp',
         'image/gif',
+        'image/heic',
+        'image/heif',
         'application/pdf',
         'audio/mpeg',
         'audio/mp3',
@@ -29,14 +31,22 @@ class MessageAttachmentService
         'audio/wav',
         'audio/x-wav',
         'video/webm',
+        'video/quicktime',
         'audio/webm',
         'audio/mp4',
         'audio/x-m4a',
         'audio/m4a',
         'audio/aac',
+        'text/plain',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/zip',
+        'application/x-zip-compressed',
     ];
 
-    private const MAX_BYTES = 10 * 1024 * 1024;
+    private const MAX_BYTES = 20 * 1024 * 1024;
 
     public function upload(Message $message, UploadedFile $file, User $actor): MessageAttachment
     {
@@ -49,30 +59,50 @@ class MessageAttachmentService
             throw new InvalidArgumentException('نوع الملف غير مدعوم.');
         }
 
-        $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf', 'mp3', 'mpeg', 'mp4', 'wav', 'webm', 'm4a', 'aac'];
+        $allowedExtensions = [
+            'jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif',
+            'pdf', 'mp3', 'mpeg', 'mp4', 'wav', 'webm', 'mov', 'm4a', 'aac',
+            'txt', 'doc', 'docx', 'xls', 'xlsx', 'zip',
+        ];
         $guessedExtension = strtolower((string) $file->guessExtension());
         if ($guessedExtension === '' || ! in_array($guessedExtension, $allowedExtensions, true)) {
-            throw new InvalidArgumentException('نوع الملف غير مدعوم.');
+            // Also check client extension as fallback for modern mime types like heic or docx
+            $clientExt = strtolower((string) $file->getClientOriginalExtension());
+            if ($clientExt === '' || ! in_array($clientExt, $allowedExtensions, true)) {
+                throw new InvalidArgumentException('نوع الملف غير مدعوم.');
+            }
+            $guessedExtension = $clientExt;
         }
 
         $clientExtension = strtolower((string) $file->getClientOriginalExtension());
-        if (in_array($clientExtension, ['php', 'phtml', 'phar', 'exe', 'js', 'sh', 'bat', 'cmd', 'com'], true)) {
-            throw new InvalidArgumentException('نوع الملف غير مدعوم.');
+        if (in_array($clientExtension, ['php', 'phtml', 'phar', 'exe', 'js', 'sh', 'bat', 'cmd', 'com', 'msi', 'vbs'], true)) {
+            throw new InvalidArgumentException('نوع الملف غير مدعوم لأسباب أمنية.');
         }
 
         if ($file->getSize() > self::MAX_BYTES) {
-            throw new InvalidArgumentException('حجم الملف يتجاوز الحد المسموح (10 ميجابايت).');
+            throw new InvalidArgumentException('حجم الملف يتجاوز الحد المسموح (20 ميجابايت).');
         }
 
         $workspaceId = (int) $message->workspace_id;
         $messageId = (int) $message->id;
-        $filename = Str::uuid()->toString().'.'.$file->guessExtension();
+        $extension = $guessedExtension ?: 'bin';
+        $filename = Str::uuid()->toString().'.'.$extension;
         $directory = "inbox/{$workspaceId}/{$messageId}";
         $diskName = (string) config('media.disk', 'local');
         $path = $file->storeAs($directory, $filename, $diskName);
 
         if (! is_string($path) || $path === '') {
             throw new RuntimeException('تعذر حفظ المرفق.');
+        }
+
+        $width = null;
+        $height = null;
+        if (str_starts_with($mime, 'image/')) {
+            $dimensions = @getimagesize($file->getRealPath());
+            if (is_array($dimensions)) {
+                $width = (int) ($dimensions[0] ?? null) ?: null;
+                $height = (int) ($dimensions[1] ?? null) ?: null;
+            }
         }
 
         Log::info('chat.attachment.upload', [
@@ -83,12 +113,14 @@ class MessageAttachmentService
             'disk' => $diskName,
             'workspace_id' => $workspaceId,
             'message_id' => $messageId,
+            'width' => $width,
+            'height' => $height,
         ]);
 
         return MessageAttachment::query()->create([
             'workspace_id' => $workspaceId,
             'message_id' => $messageId,
-            'provider' => 'mobile',
+            'provider' => 'web_inbox',
             'provider_media_id' => Str::uuid()->toString(),
             'disk' => $diskName,
             'path' => $path,
@@ -98,6 +130,8 @@ class MessageAttachmentService
             'kind' => $this->kindFromMime($mime),
             'status' => MessageAttachment::STATUS_STORED,
             'checksum' => hash('sha256', (string) file_get_contents($file->getRealPath())),
+            'width' => $width,
+            'height' => $height,
         ]);
     }
 

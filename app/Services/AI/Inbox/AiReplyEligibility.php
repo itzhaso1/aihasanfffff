@@ -21,6 +21,10 @@ final class AiReplyEligibility
             return false;
         }
 
+        if ($conversation->assigned_user_id !== null || ! $conversation->handoffStatusEnum()->allowsAiAutoReply()) {
+            return false;
+        }
+
         return ! $this->humanOutboundSupersedesInbound($conversation, $incomingMessage);
     }
 

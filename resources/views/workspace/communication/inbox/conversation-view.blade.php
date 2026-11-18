@@ -34,9 +34,27 @@
     $canConvertToAi = $conversationIsOpen && ! $activeConversation->isAiReplying() && ! $handoffBlocksAi;
     $canEndActiveHandoff = $conversationIsOpen && $handoffBlocksAi;
     $canTakeControlFromAi = $conversationIsOpen && $activeConversation->isAiReplying();
+    $activeResponder = $activeConversation->currentResponder();
 @endphp
 
-<section class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-[#F8FBFA]">
+<section 
+    x-data="{
+        auditLogOpen: false,
+        auditLogs: [],
+        auditLoading: false,
+        fetchAuditLogs() {
+            this.auditLoading = true;
+            fetch('{{ route('workspace.conversations.responder-logs', $activeConversation) }}')
+                .then(r => r.json())
+                .then(data => {
+                    this.auditLogs = data.logs || [];
+                    this.auditLoading = false;
+                })
+                .catch(() => { this.auditLoading = false; });
+        }
+    }"
+    class="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-[#F8FBFA]"
+>
     {{-- Chat Header --}}
     <div class="relative z-20 flex flex-col gap-2 border-b border-slate-200/90 bg-white px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 overflow-visible">
         <div class="flex min-w-0 items-center justify-between sm:justify-start gap-2.5 sm:gap-3">
@@ -231,6 +249,73 @@
         </div>
     </div>
 
+    @if($inboxAllowsCompanyActions)
+    {{-- Live Responder Status Banner --}}
+    <div 
+        id="inbox-live-responder-bar" 
+        data-inbox-responder-bar="{{ $activeConversation->id }}"
+        class="border-b px-3.5 py-2 sm:px-5 sm:py-2.5 text-xs transition-colors duration-200 {{ $activeResponder['status'] === 'ai_active' ? 'bg-emerald-50/80 border-emerald-200/70 text-emerald-950' : ($activeResponder['status'] === 'human_active' ? 'bg-blue-50/80 border-blue-200/70 text-blue-950' : ($activeResponder['status'] === 'human_needed' ? 'bg-amber-50/80 border-amber-200/70 text-amber-950' : 'bg-slate-100/80 border-slate-200/70 text-slate-800')) }}"
+    >
+        <div class="flex flex-wrap items-center justify-between gap-2.5">
+            <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                {{-- Icon / Avatar --}}
+                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl shadow-2xs {{ $activeResponder['status'] === 'ai_active' ? 'bg-emerald-600 text-white' : ($activeResponder['status'] === 'human_active' ? 'bg-blue-600 text-white font-bold' : ($activeResponder['status'] === 'human_needed' ? 'bg-amber-500 text-white font-bold' : 'bg-slate-400 text-white')) }}">
+                    @if($activeResponder['status'] === 'ai_active')
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    @elseif($activeResponder['status'] === 'human_active')
+                        <span class="text-xs">{{ $activeResponder['user_initials'] ?? 'م' }}</span>
+                    @elseif($activeResponder['status'] === 'human_needed')
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    @else
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                    @endif
+                </div>
+
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span class="font-bold text-xs sm:text-sm text-slate-900 truncate" data-responder-display-name>
+                            @if($activeResponder['status'] === 'ai_active')
+                                {{ $activeResponder['name'] }} يتولى الرد على هذه المحادثة
+                            @elseif($activeResponder['status'] === 'human_active')
+                                المسؤول الحالي: {{ $activeResponder['name'] }} – موظف خدمة العملاء
+                            @elseif($activeResponder['status'] === 'human_needed')
+                                المحادثة بانتظار استلام من أحد موظفي الفريق
+                            @elseif($activeResponder['status'] === 'waiting')
+                                المحادثة متوقفة مؤقتاً بانتظار الرد
+                            @else
+                                المحادثة غير متصلة أو مغلقة
+                            @endif
+                        </span>
+                        <span data-responder-pill class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shadow-2xs {{ $activeResponder['badge_class'] }}">
+                            <span class="h-1.5 w-1.5 rounded-full {{ $activeResponder['dot_class'] }}"></span>
+                            <span data-responder-label>{{ $activeResponder['label'] }}</span>
+                        </span>
+                    </div>
+                    <p data-responder-assigned class="text-[10px] sm:text-[11px] opacity-75 mt-0.5 {{ $activeResponder['assigned_at_human'] ? '' : 'hidden' }}">
+                        @if($activeResponder['assigned_at_human'])
+                            بدء المسؤولية: {{ $activeResponder['assigned_at_human'] }}
+                        @endif
+                    </p>
+                </div>
+            </div>
+
+            {{-- Audit Log Modal Trigger --}}
+            <div class="flex items-center gap-1.5 shrink-0">
+                <button
+                    type="button"
+                    @click="auditLogOpen = true; fetchAuditLogs()"
+                    class="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
+                    title="عرض سجل تاريخ المسؤولية والتحويلات"
+                >
+                    <svg class="h-3.5 w-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                    <span class="hidden sm:inline">سجل المسؤولية</span>
+                    <span class="sm:hidden">السجل</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    @endif
+
     {{-- Context Banner (Handoff or Catalog) --}}
     @if($handoffStatus !== 'none' || is_array($catalogCtx))
         <div class="border-b border-amber-200/60 bg-amber-50/70 px-4 py-2.5 text-xs text-amber-950">
@@ -414,5 +499,99 @@
                 إرسال الرسائل غير مشمول في الصلاحيات الممنوحة لهذا الارتباط.
             </p>
         @endif
+    </div>
+
+    {{-- Responsibility Audit Log Modal --}}
+    <div
+        x-show="auditLogOpen"
+        x-cloak
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs"
+        @keydown.escape.window="auditLogOpen = false"
+    >
+        <div 
+            class="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden text-right"
+            dir="rtl"
+            @click.outside="auditLogOpen = false"
+        >
+            <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4 bg-slate-50/70">
+                <div class="flex items-center gap-2.5">
+                    <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                    </span>
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-900">سجل المسؤولية والتحويلات</h3>
+                        <p class="text-[11px] text-slate-500">تتبع تاريخ انتقال المسؤولية بين الذكاء الاصطناعي والموظفين</p>
+                    </div>
+                </div>
+                <button 
+                    type="button" 
+                    @click="auditLogOpen = false" 
+                    class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
+                >
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <div class="p-5 max-h-[60vh] overflow-y-auto space-y-4 hs-scrollbar">
+                <template x-if="auditLoading">
+                    <div class="py-10 text-center text-xs text-slate-500">
+                        <svg class="mx-auto h-6 w-6 animate-spin text-slate-400 mb-2" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span>جاري تحميل سجل المسؤولية...</span>
+                    </div>
+                </template>
+
+                <template x-if="!auditLoading && auditLogs.length === 0">
+                    <div class="py-10 text-center text-xs text-slate-500">
+                        لا توجد تحويلات مسجلة لهذه المحادثة بعد.
+                    </div>
+                </template>
+
+                <template x-if="!auditLoading && auditLogs.length > 0">
+                    <div class="relative border-s-2 border-slate-200 ms-3 space-y-5">
+                        <template x-for="log in auditLogs" :key="log.id">
+                            <div class="relative ps-6">
+                                <div class="absolute -start-[7px] top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-600 shadow-2xs"></div>
+
+                                <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3 shadow-2xs">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="font-bold text-xs text-slate-900" x-text="log.action_label"></span>
+                                        <span class="text-[10px] text-slate-400" x-text="log.created_at_human || log.created_at"></span>
+                                    </div>
+                                    <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                                        <span class="text-slate-500">المسؤول:</span>
+                                        <span class="font-bold text-blue-700" x-text="log.new_name"></span>
+                                        <template x-if="log.previous_name && log.previous_name !== '—'">
+                                            <span class="text-slate-400 text-[11px]">(سابقاً: <span x-text="log.previous_name"></span>)</span>
+                                        </template>
+                                    </div>
+                                    <template x-if="log.reason">
+                                        <p class="mt-1 text-[11px] text-slate-600 bg-white rounded-lg p-2 border border-slate-100" x-text="'السبب: ' + log.reason"></p>
+                                    </template>
+                                    <div class="mt-2 text-[10px] text-slate-400 flex items-center gap-1">
+                                        <span>بواسطة:</span>
+                                        <span class="font-medium text-slate-600" x-text="log.actor_name"></span>
+                                        <span class="opacity-50">·</span>
+                                        <span x-text="log.created_at"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            <div class="border-t border-slate-100 bg-slate-50 px-5 py-3 text-left">
+                <button 
+                    type="button" 
+                    @click="auditLogOpen = false" 
+                    class="rounded-xl border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                    إغلاق
+                </button>
+            </div>
+        </div>
     </div>
 </section>

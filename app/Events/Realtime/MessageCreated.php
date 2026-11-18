@@ -3,6 +3,8 @@
 namespace App\Events\Realtime;
 
 use App\Models\Message;
+use App\Models\MessageAttachment;
+use App\Services\Mobile\MessageAttachmentService;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -50,6 +52,24 @@ class MessageCreated implements ShouldBroadcast
      */
     public function broadcastWith(): array
     {
+        $readyAttachments = $this->message->attachments ? $this->message->attachments->map(function ($attachment): array {
+            $ready = ($attachment->status ?? 'stored') === MessageAttachment::STATUS_STORED;
+
+            return [
+                'id' => $attachment->id,
+                'kind' => $attachment->kind,
+                'original_name' => $attachment->original_name,
+                'mime_type' => $attachment->mime_type,
+                'size_bytes' => $attachment->size_bytes,
+                'status' => $attachment->status,
+                'width' => $attachment->width,
+                'height' => $attachment->height,
+                'download_url' => $ready
+                    ? app(MessageAttachmentService::class)->workspaceDownloadUrl($attachment)
+                    : null,
+            ];
+        })->values()->all() : [];
+
         return [
             'id' => $this->message->id,
             'conversation_id' => $this->message->conversation_id,
@@ -58,6 +78,7 @@ class MessageCreated implements ShouldBroadcast
             'message_type' => $this->message->message_type,
             'content' => $this->message->content,
             'created_at' => optional($this->message->created_at)?->toIso8601String(),
+            'attachments' => $readyAttachments,
         ];
     }
 }

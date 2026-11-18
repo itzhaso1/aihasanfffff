@@ -47,6 +47,10 @@ class StoreMessageRequest extends FormRequest
             'external_message_id' => ['nullable', 'string', 'max:255'],
             'ai_generated' => ['nullable', 'boolean'],
             'metadata' => ['nullable', 'array'],
+            'attachments' => ['nullable', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:20480', 'mimes:jpg,jpeg,png,webp,gif,heic,heif,pdf,doc,docx,xls,xlsx,zip,txt,mp3,wav,ogg,mp4,mov,webm,m4a'],
+            'attachment' => ['nullable', 'file', 'max:20480', 'mimes:jpg,jpeg,png,webp,gif,heic,heif,pdf,doc,docx,xls,xlsx,zip,txt,mp3,wav,ogg,mp4,mov,webm,m4a'],
+            'file' => ['nullable', 'file', 'max:20480', 'mimes:jpg,jpeg,png,webp,gif,heic,heif,pdf,doc,docx,xls,xlsx,zip,txt,mp3,wav,ogg,mp4,mov,webm,m4a'],
         ];
     }
 }

@@ -7,6 +7,7 @@ use App\Enums\ConversationHandoffReason;
 use App\Enums\ConversationHandoffStatus;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Worker\WorkerEngagement;
+use App\Services\Conversation\ConversationResponderService;
 use Database\Factories\ConversationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -37,6 +38,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'assigned_user_id',
     'assigned_worker_engagement_id',
     'ai_employee_id',
+    'responder_type',
+    'responder_name',
+    'responder_assigned_at',
     'last_message_at',
     'metadata',
 ])]
@@ -54,6 +58,7 @@ class Conversation extends WorkspaceScopedModel
             'handoff_requested_at' => 'datetime',
             'handoff_assigned_at' => 'datetime',
             'handoff_resolved_at' => 'datetime',
+            'responder_assigned_at' => 'datetime',
             'classification_updated_at' => 'datetime',
             'last_message_at' => 'datetime',
             'metadata' => 'array',
@@ -88,6 +93,33 @@ class Conversation extends WorkspaceScopedModel
     public function lastMessage(): HasOne
     {
         return $this->hasOne(Message::class)->latestOfMany();
+    }
+
+    public function responderLogs(): HasMany
+    {
+        return $this->hasMany(ConversationResponderLog::class)->orderByDesc('id');
+    }
+
+    /**
+     * Get live responder payload for inbox and real-time monitoring.
+     *
+     * @return array{
+     *     status: string,
+     *     type: string,
+     *     name: string,
+     *     label: string,
+     *     badge_class: string,
+     *     dot_class: string,
+     *     is_ai_generating: bool,
+     *     user_id: int|null,
+     *     user_initials: string|null,
+     *     assigned_at: string|null,
+     *     reason: string|null
+     * }
+     */
+    public function currentResponder(): array
+    {
+        return app(ConversationResponderService::class)->determineResponder($this);
     }
 
     public function isOpen(): bool

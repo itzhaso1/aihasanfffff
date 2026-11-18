@@ -113,24 +113,144 @@ const bindConversationLinks = (workspaceId) => {
     });
 };
 
-const renderAttachmentHtml = (attachment) => {
-    if (!attachment?.download_url) {
-        return '<span class="text-xs text-slate-500">جاري تجهيز المرفق…</span>';
+const formatFileSize = (bytes) => {
+    if (!bytes || isNaN(bytes)) return '';
+    if (bytes >= 1048576) {
+        return `${(bytes / 1048576).toFixed(1)} MB`;
+    }
+    return `${Math.round(bytes / 1024)} KB`;
+};
+
+const renderAttachmentsGridHtml = (attachments, messagePayload = {}) => {
+    if (!Array.isArray(attachments) || attachments.length === 0) {
+        return '';
     }
 
-    if (attachment.kind === 'image') {
-        return `<img src="${attachment.download_url}" alt="${attachment.original_name || 'image'}" class="max-h-60 rounded-xl border border-slate-200/90 object-cover shadow-2xs" loading="lazy" />`;
+    const images = attachments.filter((a) => a.kind === 'image');
+    const others = attachments.filter((a) => a.kind !== 'image');
+    let html = '';
+
+    const sender = messagePayload.sender_name || (messagePayload.direction === 'outbound' ? 'أنت' : 'العميل');
+    const time = messagePayload.created_at_time || formatTimeNow();
+
+    if (images.length > 0) {
+        if (images.length === 1) {
+            const single = images[0];
+            html += `
+                <div class="relative group cursor-pointer overflow-hidden rounded-xl border border-slate-200/80 bg-slate-900/5 max-w-sm mb-1.5"
+                     data-media-viewer="true"
+                     data-media-url="${single.download_url}"
+                     data-media-name="${single.original_name || 'صورة'}"
+                     data-media-sender="${sender}"
+                     data-media-time="${time}">
+                    <img src="${single.download_url}" alt="${single.original_name || 'صورة'}" class="w-full max-h-80 object-cover rounded-xl transition duration-300 group-hover:scale-[1.01]" loading="lazy" />
+                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <span class="p-2 rounded-full bg-black/50 text-white backdrop-blur-xs">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/></svg>
+                        </span>
+                    </div>
+                </div>`;
+        } else if (images.length === 2) {
+            html += `<div class="grid grid-cols-2 gap-1.5 max-w-sm rounded-xl overflow-hidden mb-1.5">`;
+            images.forEach((img) => {
+                html += `
+                    <div class="relative group aspect-square cursor-pointer overflow-hidden rounded-lg bg-slate-100"
+                         data-media-viewer="true"
+                         data-media-url="${img.download_url}"
+                         data-media-name="${img.original_name || 'صورة'}"
+                         data-media-sender="${sender}"
+                         data-media-time="${time}">
+                        <img src="${img.download_url}" alt="${img.original_name || 'صورة'}" class="h-full w-full object-cover transition duration-300 group-hover:scale-105" loading="lazy" />
+                    </div>`;
+            });
+            html += `</div>`;
+        } else if (images.length === 3) {
+            html += `
+                <div class="grid grid-cols-2 gap-1.5 max-w-sm rounded-xl overflow-hidden mb-1.5">
+                    <div class="col-span-2 relative group h-44 cursor-pointer overflow-hidden rounded-lg bg-slate-100"
+                         data-media-viewer="true"
+                         data-media-url="${images[0].download_url}"
+                         data-media-name="${images[0].original_name || 'صورة'}"
+                         data-media-sender="${sender}"
+                         data-media-time="${time}">
+                        <img src="${images[0].download_url}" alt="${images[0].original_name || 'صورة'}" class="h-full w-full object-cover transition duration-300 group-hover:scale-105" loading="lazy" />
+                    </div>
+                    <div class="relative group h-28 cursor-pointer overflow-hidden rounded-lg bg-slate-100"
+                         data-media-viewer="true"
+                         data-media-url="${images[1].download_url}"
+                         data-media-name="${images[1].original_name || 'صورة'}"
+                         data-media-sender="${sender}"
+                         data-media-time="${time}">
+                        <img src="${images[1].download_url}" alt="${images[1].original_name || 'صورة'}" class="h-full w-full object-cover transition duration-300 group-hover:scale-105" loading="lazy" />
+                    </div>
+                    <div class="relative group h-28 cursor-pointer overflow-hidden rounded-lg bg-slate-100"
+                         data-media-viewer="true"
+                         data-media-url="${images[2].download_url}"
+                         data-media-name="${images[2].original_name || 'صورة'}"
+                         data-media-sender="${sender}"
+                         data-media-time="${time}">
+                        <img src="${images[2].download_url}" alt="${images[2].original_name || 'صورة'}" class="h-full w-full object-cover transition duration-300 group-hover:scale-105" loading="lazy" />
+                    </div>
+                </div>`;
+        } else {
+            html += `<div class="grid grid-cols-2 gap-1.5 max-w-sm rounded-xl overflow-hidden mb-1.5">`;
+            images.slice(0, 4).forEach((img, idx) => {
+                const isFourth = idx === 3 && images.length > 4;
+                html += `
+                    <div class="relative group aspect-square cursor-pointer overflow-hidden rounded-lg bg-slate-100"
+                         data-media-viewer="true"
+                         data-media-url="${img.download_url}"
+                         data-media-name="${img.original_name || 'صورة'}"
+                         data-media-sender="${sender}"
+                         data-media-time="${time}">
+                        <img src="${img.download_url}" alt="${img.original_name || 'صورة'}" class="h-full w-full object-cover transition duration-300 group-hover:scale-105" loading="lazy" />
+                        ${isFourth ? `<div class="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center text-white text-xl font-black">+${images.length - 3}</div>` : ''}
+                    </div>`;
+            });
+            html += `</div>`;
+        }
     }
 
-    if (attachment.kind === 'audio') {
-        return `<div class="rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-2xs"><audio controls preload="none" class="w-full max-w-xs"><source src="${attachment.download_url}" type="${attachment.mime_type || 'audio/mpeg'}"></audio></div>`;
+    if (others.length > 0) {
+        html += `<div class="space-y-1.5 mb-1.5">`;
+        others.forEach((other) => {
+            const ext = (other.original_name || '').split('.').pop()?.toUpperCase() || 'FILE';
+            const sizeStr = formatFileSize(other.size_bytes);
+            if (other.kind === 'audio') {
+                html += `
+                    <div class="rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-2xs">
+                        <audio controls preload="none" class="w-full max-w-xs">
+                            <source src="${other.download_url}" type="${other.mime_type || 'audio/mpeg'}">
+                        </audio>
+                    </div>`;
+            } else if (other.kind === 'video') {
+                html += `
+                    <video controls preload="metadata" class="max-h-64 w-full rounded-xl border border-slate-200 shadow-2xs">
+                        <source src="${other.download_url}" type="${other.mime_type || 'video/mp4'}">
+                    </video>`;
+            } else {
+                html += `
+                    <a href="${other.download_url}" download="${other.original_name || 'file'}" class="flex items-center gap-3 rounded-xl border border-slate-200/90 bg-white/90 p-2.5 shadow-2xs transition hover:bg-slate-50 group max-w-xs">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 font-bold text-[10px] uppercase border border-teal-200">
+                            ${ext.substring(0, 4)}
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="truncate text-xs font-bold text-slate-800 group-hover:text-teal-700 transition">${other.original_name || 'مستند'}</div>
+                            <div class="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
+                                <span>${ext}</span>
+                                ${sizeStr ? `<span>·</span><span>${sizeStr}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 group-hover:bg-teal-500 group-hover:text-white transition">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        </div>
+                    </a>`;
+            }
+        });
+        html += `</div>`;
     }
 
-    if (attachment.kind === 'video') {
-        return `<video controls preload="metadata" class="max-h-60 w-full rounded-xl border border-slate-200 shadow-2xs"><source src="${attachment.download_url}" type="${attachment.mime_type || 'video/mp4'}"></video>`;
-    }
-
-    return `<a href="${attachment.download_url}" class="inline-flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50"><svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span>${attachment.original_name || 'ملف مرفق'}</span></a>`;
+    return html;
 };
 
 const formatTimeNow = () => {
@@ -181,11 +301,11 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
 
     const bubble = document.createElement('div');
     if (isInternalNote) {
-        bubble.className = 'hs-inbox-message-bubble max-w-[85%] sm:max-w-[72%] rounded-2xl px-3.5 py-2 mx-auto border border-amber-300/80 bg-amber-50/90 text-amber-950 shadow-2xs';
+        bubble.className = 'hs-inbox-message-bubble max-w-[88%] sm:max-w-[75%] rounded-2xl px-3.5 py-2 mx-auto border border-amber-300/80 bg-amber-50/90 text-amber-950 shadow-2xs';
     } else if (outbound) {
-        bubble.className = 'hs-inbox-message-bubble max-w-[85%] sm:max-w-[72%] rounded-2xl px-3.5 py-2 rounded-bl-xs bg-[#E8FAF6] text-slate-900 border border-[#C9F0E8] shadow-2xs';
+        bubble.className = 'hs-inbox-message-bubble max-w-[88%] sm:max-w-[75%] rounded-2xl px-3.5 py-2 rounded-bl-xs bg-[#E8FAF6] text-slate-900 border border-[#C9F0E8] shadow-2xs';
     } else {
-        bubble.className = 'hs-inbox-message-bubble max-w-[85%] sm:max-w-[72%] rounded-2xl px-3.5 py-2 rounded-br-xs border border-slate-200/90 bg-white text-slate-800 shadow-2xs';
+        bubble.className = 'hs-inbox-message-bubble max-w-[88%] sm:max-w-[75%] rounded-2xl px-3.5 py-2 rounded-br-xs border border-slate-200/90 bg-white text-slate-800 shadow-2xs';
     }
 
     if (isInternalNote) {
@@ -197,17 +317,17 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
 
     if (Array.isArray(payload.attachments) && payload.attachments.length > 0) {
         const attachmentsWrap = document.createElement('div');
-        attachmentsWrap.className = 'mb-2 space-y-2';
-        payload.attachments.forEach((attachment) => {
-            attachmentsWrap.insertAdjacentHTML('beforeend', renderAttachmentHtml(attachment));
-        });
+        attachmentsWrap.className = 'mb-2';
+        attachmentsWrap.innerHTML = renderAttachmentsGridHtml(payload.attachments, payload);
         bubble.appendChild(attachmentsWrap);
     }
 
-    const text = document.createElement('div');
-    text.className = 'text-[12.5px] sm:text-[13px] leading-[1.6] whitespace-pre-wrap font-normal text-slate-800';
-    text.textContent = payload.content || '—';
-    bubble.appendChild(text);
+    if (payload.content) {
+        const text = document.createElement('div');
+        text.className = 'text-[12.5px] sm:text-[13px] leading-[1.6] whitespace-pre-wrap font-normal text-slate-800';
+        text.textContent = payload.content;
+        bubble.appendChild(text);
+    }
 
     // Message Metadata Footer
     const footer = document.createElement('div');
@@ -286,11 +406,97 @@ const updateConversationInSidebar = (conv, { moveToTop = false } = {}) => {
         }
     }
 
+    // Update live responder badge
+    if (conv.responder) {
+        const badge = link.querySelector(`[data-inbox-responder-badge="${conv.id}"]`);
+        if (badge) {
+            badge.className = `inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${conv.responder.badge_class || ''}`;
+            badge.setAttribute('title', `${conv.responder.label || ''}: ${conv.responder.name || ''}`);
+
+            const dot = badge.querySelector('.h-1\\.5') || badge.querySelector('span:first-child');
+            if (dot) {
+                dot.className = `h-1.5 w-1.5 rounded-full ${conv.responder.dot_class || ''}`;
+            }
+
+            const nameEl = badge.querySelector('.truncate');
+            if (nameEl) {
+                nameEl.textContent = conv.responder.name || '';
+            }
+
+            let genEl = badge.querySelector('.animate-pulse');
+            if (conv.responder.status === 'ai_active' && conv.responder.is_ai_generating) {
+                if (!genEl) {
+                    genEl = document.createElement('span');
+                    genEl.className = 'text-[9px] animate-pulse';
+                    genEl.textContent = 'يكتب...';
+                    badge.appendChild(genEl);
+                }
+            } else if (genEl) {
+                genEl.remove();
+            }
+        }
+    }
+
     // Move to top of conversations list ONLY if explicitly requested (e.g. new message arrived)
     if (moveToTop) {
         const container = document.querySelector('[data-inbox-conversation-list]');
         if (container && container.firstElementChild && container.firstElementChild !== row) {
             container.insertBefore(row, container.firstElementChild);
+        }
+    }
+};
+
+const updateTopResponderBar = (responder) => {
+    if (!responder) return;
+    const bar = document.getElementById('inbox-live-responder-bar');
+    if (!bar) return;
+
+    let bgClasses = 'bg-slate-100/80 border-slate-200/70 text-slate-800';
+    if (responder.status === 'ai_active') {
+        bgClasses = 'bg-emerald-50/80 border-emerald-200/70 text-emerald-950';
+    } else if (responder.status === 'human_active') {
+        bgClasses = 'bg-blue-50/80 border-blue-200/70 text-blue-950';
+    } else if (responder.status === 'human_needed') {
+        bgClasses = 'bg-amber-50/80 border-amber-200/70 text-amber-950';
+    }
+
+    bar.className = `border-b px-3.5 py-2 sm:px-5 sm:py-2.5 text-xs transition-colors duration-200 ${bgClasses}`;
+
+    const displayNameEl = bar.querySelector('[data-responder-display-name]');
+    if (displayNameEl) {
+        if (responder.status === 'ai_active') {
+            displayNameEl.textContent = `${responder.name} يتولى الرد على هذه المحادثة`;
+        } else if (responder.status === 'human_active') {
+            displayNameEl.textContent = `المسؤول الحالي: ${responder.name} – موظف خدمة العملاء`;
+        } else if (responder.status === 'human_needed') {
+            displayNameEl.textContent = 'المحادثة بانتظار استلام من أحد موظفي الفريق';
+        } else if (responder.status === 'waiting') {
+            displayNameEl.textContent = 'المحادثة متوقفة مؤقتاً بانتظار الرد';
+        } else {
+            displayNameEl.textContent = 'المحادثة غير متصلة أو مغلقة';
+        }
+    }
+
+    const pillEl = bar.querySelector('[data-responder-pill]');
+    if (pillEl) {
+        pillEl.className = `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shadow-2xs ${responder.badge_class || ''}`;
+        const dot = pillEl.querySelector('.h-1\\.5') || pillEl.querySelector('span:first-child');
+        if (dot) {
+            dot.className = `h-1.5 w-1.5 rounded-full ${responder.dot_class || ''}`;
+        }
+        const labelEl = pillEl.querySelector('[data-responder-label]');
+        if (labelEl) {
+            labelEl.textContent = responder.label || '';
+        }
+    }
+
+    const assignedEl = bar.querySelector('[data-responder-assigned]');
+    if (assignedEl) {
+        if (responder.assigned_at_human) {
+            assignedEl.textContent = `بدء المسؤولية: ${responder.assigned_at_human}`;
+            assignedEl.classList.remove('hidden');
+        } else {
+            assignedEl.classList.add('hidden');
         }
     }
 };
@@ -379,6 +585,9 @@ const bindComposeForm = () => {
                 appendInboxMessage(data.message);
                 if (data?.conversation) {
                     updateConversationInSidebar(data.conversation, { moveToTop: true });
+                    if (data.conversation.responder) {
+                        updateTopResponderBar(data.conversation.responder);
+                    }
                 }
             }
 
@@ -395,6 +604,657 @@ const bindComposeForm = () => {
         } finally {
             if (submitButton) {
                 submitButton.disabled = false;
+            }
+        }
+    });
+};
+
+/* ==========================================================================
+   HASIM AI — WHATSAPP-STYLE MEDIA SYSTEM (LIGHTBOX, PREVIEW, PROGRESS & UPLOAD)
+   ========================================================================== */
+
+let pendingMediaFiles = [];
+let activeMediaIndex = 0;
+
+const InboxMediaPreview = {
+    open(files) {
+        if (!files || files.length === 0) return;
+        const modal = document.getElementById('inbox-media-preview-modal');
+        if (!modal) return;
+
+        // Convert FileList or Array to array of File objects
+        const newFiles = Array.from(files);
+        pendingMediaFiles = [...pendingMediaFiles, ...newFiles];
+        activeMediaIndex = pendingMediaFiles.length - newFiles.length; // Focus on first newly added file
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        this.render();
+
+        const captionInput = document.getElementById('preview-caption-input');
+        if (captionInput) {
+            captionInput.focus();
+        }
+    },
+
+    close() {
+        const modal = document.getElementById('inbox-media-preview-modal');
+        if (!modal) return;
+
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        pendingMediaFiles = [];
+        activeMediaIndex = 0;
+
+        const captionInput = document.getElementById('preview-caption-input');
+        if (captionInput) {
+            captionInput.value = '';
+        }
+
+        const activeContainer = document.getElementById('preview-active-container');
+        if (activeContainer) {
+            activeContainer.innerHTML = '';
+        }
+        const tray = document.getElementById('preview-thumbnails-tray');
+        if (tray) {
+            tray.innerHTML = '';
+        }
+    },
+
+    setActive(index) {
+        if (index < 0 || index >= pendingMediaFiles.length) return;
+        activeMediaIndex = index;
+        this.render();
+    },
+
+    removeFile(index) {
+        pendingMediaFiles.splice(index, 1);
+        if (pendingMediaFiles.length === 0) {
+            this.close();
+            return;
+        }
+        if (activeMediaIndex >= pendingMediaFiles.length) {
+            activeMediaIndex = pendingMediaFiles.length - 1;
+        }
+        this.render();
+    },
+
+    render() {
+        const badge = document.getElementById('preview-file-count-badge');
+        if (badge) {
+            badge.textContent = String(pendingMediaFiles.length);
+        }
+
+        const activeContainer = document.getElementById('preview-active-container');
+        const file = pendingMediaFiles[activeMediaIndex];
+        if (!file || !activeContainer) return;
+
+        const isImg = file.type.startsWith('image/');
+        const isVideo = file.type.startsWith('video/');
+
+        if (isImg) {
+            const blobUrl = URL.createObjectURL(file);
+            activeContainer.innerHTML = `
+                <img src="${blobUrl}" alt="${file.name}" class="max-h-[50vh] sm:max-h-[58vh] max-w-full rounded-2xl object-contain shadow-2xl transition duration-200" />
+            `;
+        } else if (isVideo) {
+            const blobUrl = URL.createObjectURL(file);
+            activeContainer.innerHTML = `
+                <video src="${blobUrl}" controls class="max-h-[50vh] max-w-full rounded-2xl shadow-2xl"></video>
+            `;
+        } else {
+            const ext = file.name.split('.').pop()?.toUpperCase() || 'FILE';
+            activeContainer.innerHTML = `
+                <div class="flex flex-col items-center justify-center p-8 text-center">
+                    <div class="flex h-20 w-20 items-center justify-center rounded-2xl bg-teal-500/20 text-[#06C2A4] font-bold text-lg mb-3">
+                        ${ext.substring(0, 4)}
+                    </div>
+                    <div class="text-sm font-bold text-white max-w-md truncate">${file.name}</div>
+                    <div class="text-xs text-slate-400 mt-1">${formatFileSize(file.size)}</div>
+                </div>
+            `;
+        }
+
+        // Render Carousel Thumbnails
+        const tray = document.getElementById('preview-thumbnails-tray');
+        if (tray) {
+            tray.innerHTML = '';
+            pendingMediaFiles.forEach((f, idx) => {
+                const isSelected = idx === activeMediaIndex;
+                const thumb = document.createElement('div');
+                thumb.className = `relative shrink-0 w-14 h-14 rounded-xl overflow-hidden cursor-pointer border-2 transition ${isSelected ? 'border-[#06C2A4] ring-2 ring-[#06C2A4]/40 scale-105' : 'border-white/20 opacity-70 hover:opacity-100'}`;
+
+                if (f.type.startsWith('image/')) {
+                    const thumbUrl = URL.createObjectURL(f);
+                    thumb.innerHTML = `<img src="${thumbUrl}" alt="" class="h-full w-full object-cover" />`;
+                } else {
+                    const ext = f.name.split('.').pop()?.toUpperCase() || 'FILE';
+                    thumb.innerHTML = `<div class="h-full w-full bg-slate-800 flex items-center justify-center text-[10px] font-bold text-teal-400">${ext.substring(0, 4)}</div>`;
+                }
+
+                // Delete button on thumbnail
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'absolute top-0.5 end-0.5 h-4 w-4 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-rose-500 transition text-[10px]';
+                delBtn.innerHTML = '×';
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    InboxMediaPreview.removeFile(idx);
+                });
+                thumb.appendChild(delBtn);
+
+                thumb.addEventListener('click', () => {
+                    InboxMediaPreview.setActive(idx);
+                });
+
+                tray.appendChild(thumb);
+            });
+
+            // Add More Files Button
+            const addMoreBtn = document.createElement('button');
+            addMoreBtn.type = 'button';
+            addMoreBtn.className = 'shrink-0 w-14 h-14 rounded-xl border-2 border-dashed border-white/30 text-white/60 hover:text-white hover:border-white/60 flex flex-col items-center justify-center transition text-xs';
+            addMoreBtn.innerHTML = `
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                <span class="text-[9px] mt-0.5">إضافة</span>
+            `;
+            addMoreBtn.addEventListener('click', () => {
+                const input = document.getElementById('inbox-file-input-images');
+                if (input) input.click();
+            });
+            tray.appendChild(addMoreBtn);
+        }
+    },
+
+    send() {
+        if (pendingMediaFiles.length === 0) return;
+        const captionInput = document.getElementById('preview-caption-input');
+        const caption = captionInput ? captionInput.value.trim() : '';
+
+        const filesToSend = [...pendingMediaFiles];
+        this.close();
+
+        uploadMediaBatch(filesToSend, caption);
+    },
+};
+
+const uploadMediaBatch = (files, caption = '') => {
+    const form = document.getElementById('inbox-compose-form');
+    if (!form || files.length === 0) return;
+
+    const actionUrl = form.action;
+    const tempId = `temp-upload-${Date.now()}`;
+    const firstFile = files[0];
+    const isImage = firstFile.type.startsWith('image/');
+
+    // 1. Optimistic Bubble with real progress bar
+    const list = document.getElementById('inbox-message-list');
+    if (!list) return;
+
+    // Remove empty-state if present
+    const emptyState = list.querySelector('.flex.h-full.items-center.justify-center');
+    if (emptyState) emptyState.remove();
+
+    const wrap = document.createElement('div');
+    wrap.className = 'hs-inbox-message-row hs-inbox-message-row--sent';
+    wrap.dataset.tempId = tempId;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'hs-inbox-message-bubble max-w-[88%] sm:max-w-[75%] rounded-2xl px-3.5 py-2.5 rounded-bl-xs bg-[#E8FAF6] text-slate-900 border border-[#C9F0E8] shadow-2xs space-y-2';
+
+    // Preview thumbnail
+    if (isImage) {
+        const thumbUrl = URL.createObjectURL(firstFile);
+        bubble.innerHTML = `
+            <div class="relative overflow-hidden rounded-xl border border-slate-200/80 bg-slate-900/5 max-w-xs">
+                <img src="${thumbUrl}" alt="" class="max-h-52 w-full object-cover rounded-xl opacity-80" />
+                <div class="absolute inset-0 bg-black/20 flex items-center justify-center">
+                    <span class="rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-xs upload-status-label">
+                        جاري الرفع 0%
+                    </span>
+                </div>
+            </div>
+        `;
+    } else {
+        const ext = firstFile.name.split('.').pop()?.toUpperCase() || 'FILE';
+        bubble.innerHTML = `
+            <div class="flex items-center gap-3 rounded-xl border border-slate-200/90 bg-white/90 p-2.5 shadow-2xs max-w-xs">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 font-bold text-[10px] uppercase border border-teal-200">
+                    ${ext.substring(0, 4)}
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="truncate text-xs font-bold text-slate-800">${firstFile.name}</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5 upload-status-label">جاري الرفع 0%</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Progress bar
+    const progressTrack = document.createElement('div');
+    progressTrack.className = 'h-1.5 w-full bg-slate-200/90 rounded-full overflow-hidden';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'h-full bg-[#06C2A4] rounded-full transition-all duration-150 upload-progress-fill';
+    progressBar.style.width = '0%';
+    progressTrack.appendChild(progressBar);
+    bubble.appendChild(progressTrack);
+
+    if (caption) {
+        const capEl = document.createElement('div');
+        capEl.className = 'text-[12.5px] sm:text-[13px] leading-relaxed font-normal text-slate-800 pt-1';
+        capEl.textContent = caption;
+        bubble.appendChild(capEl);
+    }
+
+    wrap.appendChild(bubble);
+    list.appendChild(wrap);
+    scrollMessagesToBottom(true);
+
+    // 2. Perform upload via XMLHttpRequest for real upload progress
+    const formData = new FormData(form);
+    formData.delete('content');
+    formData.append('content', caption);
+    formData.set('message_type', files.some((f) => f.type.startsWith('image/')) ? 'image' : 'file');
+
+    files.forEach((f) => {
+        formData.append('attachments[]', f);
+    });
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', actionUrl, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    if (csrfToken) {
+        xhr.setRequestHeader('X-CSRF-TOKEN', csrfToken);
+    }
+
+    xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            progressBar.style.width = `${pct}%`;
+            const statusLabel = bubble.querySelector('.upload-status-label');
+            if (statusLabel) {
+                statusLabel.textContent = `جاري الرفع ${pct}%`;
+            }
+        }
+    };
+
+    xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+            let data = null;
+            try {
+                data = JSON.parse(xhr.responseText);
+            } catch (_) {}
+
+            wrap.remove();
+
+            if (data?.message) {
+                appendInboxMessage(data.message);
+                if (data?.conversation) {
+                    updateConversationInSidebar(data.conversation, { moveToTop: true });
+                    if (data.conversation.responder) {
+                        updateTopResponderBar(data.conversation.responder);
+                    }
+                }
+            }
+        } else {
+            handleUploadFailure(wrap, files, caption);
+        }
+    };
+
+    xhr.onerror = () => {
+        handleUploadFailure(wrap, files, caption);
+    };
+
+    xhr.send(formData);
+};
+
+const handleUploadFailure = (wrapNode, files, caption) => {
+    if (!wrapNode) return;
+    const bubble = wrapNode.querySelector('.hs-inbox-message-bubble');
+    if (!bubble) return;
+
+    bubble.classList.add('border-rose-300', 'bg-rose-50/70');
+    const statusLabel = bubble.querySelector('.upload-status-label');
+    if (statusLabel) {
+        statusLabel.textContent = 'فشل الرفع';
+    }
+
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'mt-2 inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-rose-700 transition';
+    retryBtn.innerHTML = `
+        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        <span>إعادة المحاولة</span>
+    `;
+    retryBtn.addEventListener('click', () => {
+        wrapNode.remove();
+        uploadMediaBatch(files, caption);
+    });
+
+    bubble.appendChild(retryBtn);
+};
+
+/* ==========================================================================
+   HASIM AI — LIGHTBOX CONTROLLER (ZOOM, PAN, PREV/NEXT & KEYBOARD SHORTCUTS)
+   ========================================================================== */
+
+const InboxLightbox = {
+    modal: null,
+    imgEl: null,
+    images: [],
+    currentIndex: 0,
+    zoomScale: 1.0,
+    panX: 0,
+    panY: 0,
+    isPanning: false,
+    startX: 0,
+    startY: 0,
+
+    init() {
+        this.modal = document.getElementById('inbox-media-lightbox');
+        this.imgEl = document.getElementById('lightbox-img');
+        if (!this.modal || !this.imgEl) return;
+
+        // Close button
+        const closeBtn = document.getElementById('lightbox-close-btn');
+        if (closeBtn) closeBtn.addEventListener('click', () => this.close());
+
+        // Prev / Next buttons
+        const prevBtn = document.getElementById('lightbox-prev-btn');
+        if (prevBtn) prevBtn.addEventListener('click', () => this.prev());
+        const nextBtn = document.getElementById('lightbox-next-btn');
+        if (nextBtn) nextBtn.addEventListener('click', () => this.next());
+
+        // Zoom controls
+        const zoomInBtn = document.getElementById('lightbox-zoom-in');
+        if (zoomInBtn) zoomInBtn.addEventListener('click', () => this.zoom(0.25));
+        const zoomOutBtn = document.getElementById('lightbox-zoom-out');
+        if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => this.zoom(-0.25));
+        const zoomResetBtn = document.getElementById('lightbox-zoom-reset');
+        if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => this.resetZoom());
+
+        // Pan and drag on stage
+        const stage = document.getElementById('lightbox-stage');
+        if (stage) {
+            stage.addEventListener('mousedown', (e) => {
+                if (this.zoomScale <= 1) return;
+                this.isPanning = true;
+                this.startX = e.clientX - this.panX;
+                this.startY = e.clientY - this.panY;
+            });
+            window.addEventListener('mousemove', (e) => {
+                if (!this.isPanning) return;
+                this.panX = e.clientX - this.startX;
+                this.panY = e.clientY - this.startY;
+                this.applyTransform();
+            });
+            window.addEventListener('mouseup', () => {
+                this.isPanning = false;
+            });
+
+            // Mouse wheel zoom
+            stage.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const delta = e.deltaY < 0 ? 0.2 : -0.2;
+                this.zoom(delta);
+            }, { passive: false });
+        }
+
+        // Global keydown
+        window.addEventListener('keydown', (e) => {
+            if (!this.modal || this.modal.classList.contains('hidden')) return;
+            if (e.key === 'Escape') {
+                this.close();
+            } else if (e.key === 'ArrowRight') {
+                this.prev();
+            } else if (e.key === 'ArrowLeft') {
+                this.next();
+            } else if (e.key === '+' || e.key === '=') {
+                this.zoom(0.25);
+            } else if (e.key === '-') {
+                this.zoom(-0.25);
+            }
+        });
+
+        // Delegate clicks on [data-media-viewer="true"]
+        document.addEventListener('click', (e) => {
+            const trigger = e.target.closest('[data-media-viewer="true"]');
+            if (trigger) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.openFromTrigger(trigger);
+            }
+        });
+    },
+
+    openFromTrigger(target) {
+        // Collect all media viewer elements on page
+        const nodes = Array.from(document.querySelectorAll('[data-media-viewer="true"]'));
+        this.images = nodes.map((node) => ({
+            url: node.getAttribute('data-media-url') || node.src,
+            name: node.getAttribute('data-media-name') || '',
+            sender: node.getAttribute('data-media-sender') || '',
+            time: node.getAttribute('data-media-time') || '',
+        })).filter((item) => Boolean(item.url));
+
+        const targetUrl = target.getAttribute('data-media-url') || target.src;
+        let foundIdx = this.images.findIndex((img) => img.url === targetUrl);
+        if (foundIdx === -1) foundIdx = 0;
+        this.currentIndex = foundIdx;
+
+        this.open();
+    },
+
+    open() {
+        if (!this.modal) return;
+        this.modal.classList.remove('hidden');
+        this.modal.classList.add('flex');
+        this.resetZoom();
+        this.render();
+    },
+
+    close() {
+        if (!this.modal) return;
+        this.modal.classList.add('hidden');
+        this.modal.classList.remove('flex');
+        this.resetZoom();
+    },
+
+    next() {
+        if (this.images.length <= 1) return;
+        this.currentIndex = (this.currentIndex + 1) % this.images.length;
+        this.resetZoom();
+        this.render();
+    },
+
+    prev() {
+        if (this.images.length <= 1) return;
+        this.currentIndex = (this.currentIndex - 1 + this.images.length) % this.images.length;
+        this.resetZoom();
+        this.render();
+    },
+
+    zoom(delta) {
+        this.zoomScale = Math.min(Math.max(this.zoomScale + delta, 0.5), 3.5);
+        if (this.zoomScale === 1.0) {
+            this.panX = 0;
+            this.panY = 0;
+        }
+        const pctEl = document.getElementById('lightbox-zoom-pct');
+        if (pctEl) {
+            pctEl.textContent = `${Math.round(this.zoomScale * 100)}%`;
+        }
+        this.applyTransform();
+    },
+
+    resetZoom() {
+        this.zoomScale = 1.0;
+        this.panX = 0;
+        this.panY = 0;
+        const pctEl = document.getElementById('lightbox-zoom-pct');
+        if (pctEl) {
+            pctEl.textContent = '100%';
+        }
+        this.applyTransform();
+    },
+
+    applyTransform() {
+        if (!this.imgEl) return;
+        this.imgEl.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomScale})`;
+    },
+
+    render() {
+        if (this.images.length === 0 || !this.imgEl) return;
+        const current = this.images[this.currentIndex];
+
+        this.imgEl.src = current.url;
+
+        const counter = document.getElementById('lightbox-counter');
+        if (counter) counter.textContent = `${this.currentIndex + 1} / ${this.images.length}`;
+
+        const senderEl = document.getElementById('lightbox-sender');
+        if (senderEl) senderEl.textContent = current.sender || 'المرسل';
+
+        const timeEl = document.getElementById('lightbox-time');
+        if (timeEl) timeEl.textContent = current.time ? `· ${current.time}` : '';
+
+        const dlLink = document.getElementById('lightbox-download-link');
+        if (dlLink) {
+            dlLink.href = current.url;
+            dlLink.download = current.name || 'image';
+        }
+
+        const prevBtn = document.getElementById('lightbox-prev-btn');
+        const nextBtn = document.getElementById('lightbox-next-btn');
+        if (this.images.length <= 1) {
+            if (prevBtn) prevBtn.classList.add('hidden');
+            if (nextBtn) nextBtn.classList.add('hidden');
+        } else {
+            if (prevBtn) prevBtn.classList.remove('hidden');
+            if (nextBtn) nextBtn.classList.remove('hidden');
+        }
+    },
+};
+
+/* ==========================================================================
+   DRAG & DROP, CLIPBOARD PASTE, FILE INPUTS & JUMP-TO-MESSAGE BINDINGS
+   ========================================================================== */
+
+const bindMediaInteractions = () => {
+    // 1. Initialize Lightbox
+    InboxLightbox.init();
+
+    // 2. Pre-send preview modal buttons
+    const previewCloseBtn = document.getElementById('preview-modal-close-btn');
+    if (previewCloseBtn) previewCloseBtn.addEventListener('click', () => InboxMediaPreview.close());
+
+    const previewCancelBtn = document.getElementById('preview-modal-cancel-btn');
+    if (previewCancelBtn) previewCancelBtn.addEventListener('click', () => InboxMediaPreview.close());
+
+    const previewSendBtn = document.getElementById('preview-modal-send-btn');
+    if (previewSendBtn) previewSendBtn.addEventListener('click', () => InboxMediaPreview.send());
+
+    const captionInput = document.getElementById('preview-caption-input');
+    if (captionInput) {
+        captionInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                InboxMediaPreview.send();
+            }
+        });
+    }
+
+    // 3. Hidden File Inputs change events
+    ['inbox-file-input-images', 'inbox-file-input-camera', 'inbox-file-input-docs', 'inbox-file-input-video'].forEach((id) => {
+        const input = document.getElementById(id);
+        if (input && input.dataset.hsBound !== 'mediaInput') {
+            input.dataset.hsBound = 'mediaInput';
+            input.addEventListener('change', () => {
+                if (input.files && input.files.length > 0) {
+                    InboxMediaPreview.open(input.files);
+                    input.value = ''; // Reset so the same file can be selected again
+                }
+            });
+        }
+    });
+
+    // 4. Drag & Drop on Chat List
+    const dropOverlay = document.getElementById('inbox-drag-drop-overlay');
+    const shell = document.getElementById('inbox-shell');
+
+    if (shell && shell.dataset.hsBound !== 'dragdrop') {
+        shell.dataset.hsBound = 'dragdrop';
+
+        let dragCounter = 0;
+
+        window.addEventListener('dragenter', (e) => {
+            if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+                dragCounter++;
+                if (dropOverlay) dropOverlay.classList.remove('hidden');
+                if (dropOverlay) dropOverlay.classList.add('flex');
+            }
+        });
+
+        window.addEventListener('dragleave', () => {
+            dragCounter--;
+            if (dragCounter <= 0) {
+                dragCounter = 0;
+                if (dropOverlay) dropOverlay.classList.add('hidden');
+                if (dropOverlay) dropOverlay.classList.remove('flex');
+            }
+        });
+
+        window.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            if (dropOverlay) dropOverlay.classList.add('hidden');
+            if (dropOverlay) dropOverlay.classList.remove('flex');
+
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                InboxMediaPreview.open(e.dataTransfer.files);
+            }
+        });
+    }
+
+    // 5. Clipboard Paste (Ctrl+V) for images
+    if (!window.__HASIM_PASTE_BOUND__) {
+        window.__HASIM_PASTE_BOUND__ = true;
+        window.addEventListener('paste', (e) => {
+            const clipboardData = e.clipboardData;
+            if (!clipboardData || !clipboardData.files || clipboardData.files.length === 0) return;
+
+            const files = Array.from(clipboardData.files);
+            const mediaFiles = files.filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/') || f.size > 0);
+            if (mediaFiles.length > 0) {
+                e.preventDefault();
+                InboxMediaPreview.open(mediaFiles);
+            }
+        });
+    }
+
+    // 6. Jump to Message scroll handler
+    document.addEventListener('click', (e) => {
+        const jumpBtn = e.target.closest('[data-jump-to-msg]');
+        if (jumpBtn) {
+            e.preventDefault();
+            const msgId = jumpBtn.getAttribute('data-jump-to-msg');
+            const targetRow = document.querySelector(`[data-message-id="${msgId}"]`);
+            if (targetRow) {
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const bubble = targetRow.querySelector('.hs-inbox-message-bubble');
+                if (bubble) {
+                    bubble.classList.add('ring-4', 'ring-[#06C2A4]', 'transition-all', 'duration-500');
+                    setTimeout(() => {
+                        bubble.classList.remove('ring-4', 'ring-[#06C2A4]');
+                    }, 2000);
+                }
             }
         }
     });
@@ -462,6 +1322,9 @@ const bindLivePolling = () => {
                 }
                 if (data?.conversation) {
                     updateConversationInSidebar(data.conversation, { moveToTop: anyAppended });
+                    if (data.conversation.responder) {
+                        updateTopResponderBar(data.conversation.responder);
+                    }
                 }
             } catch (_) {
                 // silent ignore
@@ -518,6 +1381,7 @@ const bootInbox = (event) => {
     bindConversationListScroll(workspaceId);
     bindConversationLinks(workspaceId);
     bindComposeForm();
+    bindMediaInteractions();
     bindLivePolling();
     scrollMessagesToBottom(true);
 

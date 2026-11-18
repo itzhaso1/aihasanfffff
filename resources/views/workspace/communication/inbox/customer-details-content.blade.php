@@ -162,6 +162,97 @@
             </div>
         </details>
 
+        {{-- Media & Documents Gallery (معرض الوسائط والمستندات) --}}
+        @php
+            $conversationAttachments = \App\Models\MessageAttachment::query()
+                ->where('workspace_id', $activeConversation->workspace_id)
+                ->whereHas('message', fn ($q) => $q->where('conversation_id', $activeConversation->id))
+                ->where('status', \App\Models\MessageAttachment::STATUS_STORED)
+                ->with('message')
+                ->latest()
+                ->limit(30)
+                ->get();
+            $imagesCount = $conversationAttachments->where('kind', 'image')->count();
+            $docsCount = $conversationAttachments->whereIn('kind', ['document', 'file', 'video', 'audio'])->count();
+        @endphp
+        <details class="group px-4 py-3.5" open id="inbox-media-gallery-section" x-data="{ mediaFilter: 'all' }">
+            <summary class="flex cursor-pointer items-center justify-between text-xs font-bold text-slate-800">
+                <span class="flex items-center gap-1.5">
+                    <svg class="h-3.5 w-3.5 text-[#06C2A4]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    <span>الوسائط والمستندات</span>
+                    <span class="rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] text-slate-500 font-mono">{{ $conversationAttachments->count() }}</span>
+                </span>
+                <svg class="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7"/></svg>
+            </summary>
+
+            <div class="mt-3 space-y-2.5">
+                {{-- Filter Chips --}}
+                <div class="flex items-center gap-1 text-[11px]">
+                    <button type="button" @click="mediaFilter = 'all'" :class="mediaFilter === 'all' ? 'bg-[#06C2A4] text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="rounded-full px-2.5 py-0.5 transition">الكل ({{ $conversationAttachments->count() }})</button>
+                    <button type="button" @click="mediaFilter = 'image'" :class="mediaFilter === 'image' ? 'bg-[#06C2A4] text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="rounded-full px-2.5 py-0.5 transition">الصور ({{ $imagesCount }})</button>
+                    <button type="button" @click="mediaFilter = 'doc'" :class="mediaFilter === 'doc' ? 'bg-[#06C2A4] text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="rounded-full px-2.5 py-0.5 transition">المستندات ({{ $docsCount }})</button>
+                </div>
+
+                {{-- Grid of attachments --}}
+                @if($conversationAttachments->isEmpty())
+                    <p class="text-xs text-slate-400 py-2 text-center">لا توجد وسائط أو ملفات في هذه المحادثة حتى الآن.</p>
+                @else
+                    <div class="grid grid-cols-3 gap-1.5 pt-1">
+                        @foreach($conversationAttachments as $att)
+                            @php
+                                $attUrl = route('workspace.message-attachments.download', $att);
+                                $isImg = $att->kind === 'image';
+                                $messageDate = $att->message?->created_at?->format('Y-m-d H:i') ?? '';
+                                $sender = $att->message?->direction === 'outbound' ? 'أنت' : ($customer?->name ?? 'العميل');
+                            @endphp
+                            <div
+                                x-show="mediaFilter === 'all' || (mediaFilter === 'image' && '{{ $att->kind }}' === 'image') || (mediaFilter === 'doc' && '{{ $att->kind }}' !== 'image')"
+                                class="group relative aspect-square overflow-hidden rounded-xl border border-slate-200/80 bg-slate-100 cursor-pointer shadow-2xs hover:shadow-sm transition"
+                            >
+                                @if($isImg)
+                                    <img
+                                        src="{{ $attUrl }}"
+                                        alt="{{ $att->original_name }}"
+                                        class="h-full w-full object-cover transition duration-300 group-hover:scale-110"
+                                        loading="lazy"
+                                        data-media-viewer="true"
+                                        data-media-url="{{ $attUrl }}"
+                                        data-media-name="{{ $att->original_name }}"
+                                        data-media-sender="{{ $sender }}"
+                                        data-media-time="{{ $messageDate }}"
+                                        data-media-msg-id="{{ $att->message_id }}"
+                                    />
+                                @else
+                                    <a
+                                        href="{{ $attUrl }}"
+                                        target="_blank"
+                                        download="{{ $att->original_name }}"
+                                        class="flex h-full w-full flex-col items-center justify-center p-1.5 text-center transition hover:bg-slate-200"
+                                        title="{{ $att->original_name }}"
+                                    >
+                                        <svg class="h-6 w-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                                        <span class="mt-1 line-clamp-1 w-full text-[9px] font-medium text-slate-700">{{ $att->original_name }}</span>
+                                    </a>
+                                @endif
+
+                                {{-- Jump to message action on hover --}}
+                                @if($att->message_id)
+                                    <button
+                                        type="button"
+                                        class="absolute bottom-1 end-1 z-10 hidden rounded-md bg-black/60 p-1 text-white opacity-0 transition group-hover:flex group-hover:opacity-100 hover:bg-[#06C2A4]"
+                                        data-jump-to-msg="{{ $att->message_id }}"
+                                        title="الانتقال إلى الرسالة الأصلية"
+                                    >
+                                        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                                    </button>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+        </details>
+
         {{-- Orders --}}
         <details class="group px-4 py-3.5">
             <summary class="flex cursor-pointer items-center justify-between text-xs font-bold text-slate-800">

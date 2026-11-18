@@ -46,6 +46,7 @@ final class ConversationHandoffService
         private readonly AuditLogService $auditLog,
         private readonly WorkerEngagementAuthorization $workerAuthorization,
         private readonly WorkerActivityEventService $workerActivity,
+        private readonly ConversationResponderService $responderService,
     ) {}
 
     public function requestFromCustomerPhrase(Conversation $conversation, Message $triggerMessage): bool
@@ -138,6 +139,15 @@ final class ConversationHandoffService
             $fresh->update(['ai_enabled' => false]);
             $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
 
+            $this->responderService->recordTransition(
+                $fresh,
+                ConversationResponderService::TYPE_NONE,
+                null,
+                'handoff_requested',
+                (string) ($context['requested_by'] ?? 'customer'),
+                reason: $reason->value,
+            );
+
             event(new ConversationHandoffRequested($fresh, $this->summaryBuilder->build($fresh)));
             $this->publishConversation($fresh);
 
@@ -190,6 +200,16 @@ final class ConversationHandoffService
                 'ai_enabled' => false,
             ]);
             $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
+
+            $this->responderService->recordTransition(
+                $fresh,
+                ConversationResponderService::TYPE_HUMAN,
+                $assignee,
+                'assigned_to_human',
+                'user',
+                $actor,
+                'إسناد المحادثة إلى موظف',
+            );
 
             event(new ConversationHandoffAssigned($fresh, $assignee));
 
@@ -280,6 +300,16 @@ final class ConversationHandoffService
             $fresh->update(['ai_enabled' => false]);
             $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
 
+            $this->responderService->recordTransition(
+                $fresh,
+                ConversationResponderService::TYPE_HUMAN,
+                $actor,
+                'takeover',
+                'user',
+                $actor,
+                'تولى الموظف الرد على المحادثة',
+            );
+
             event(new ConversationHandoffActivated($fresh, $actor));
 
             return $this->publishAndReturn($fresh);
@@ -307,6 +337,16 @@ final class ConversationHandoffService
             ]);
             $fresh = $this->appendHistory($fresh);
             $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
+
+            $this->responderService->recordTransition(
+                $fresh,
+                ConversationResponderService::TYPE_NONE,
+                null,
+                'resolved',
+                'user',
+                $actor,
+                'إنهاء متابعة الموظف',
+            );
 
             event(new ConversationHandoffResolved($fresh, $actor));
 
@@ -347,6 +387,17 @@ final class ConversationHandoffService
             ]);
 
             $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
+
+            $this->responderService->recordTransition(
+                $fresh,
+                ConversationResponderService::TYPE_AI,
+                null,
+                'returned_to_ai',
+                'user',
+                $actor,
+                'إعادة المحادثة إلى مشعل AI',
+            );
+
             event(new ConversationAiResumed($fresh, $actor));
 
             if ($previousWorkerEngagementId !== null) {
@@ -469,7 +520,7 @@ final class ConversationHandoffService
         return $conversation->fresh() ?? $conversation;
     }
 
-    private function currentStatus(Conversation $conversation): ConversationHandoffStatus
+    public function currentStatus(Conversation $conversation): ConversationHandoffStatus
     {
         $value = $conversation->handoff_status;
         if ($value instanceof ConversationHandoffStatus) {

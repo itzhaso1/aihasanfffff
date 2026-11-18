@@ -268,6 +268,7 @@
                 $customerName = $conversation->customer?->name ?? 'عميل غير معروف';
                 $initial = mb_substr($customerName, 0, 1);
                 $assignedType = \App\Services\Workforce\WorkforceInboxAttribution::typeForConversation($conversation);
+                $responder = $conversation->currentResponder();
             @endphp
             <div
                 x-data="{ menuOpen: false }"
@@ -300,20 +301,19 @@
                             <div class="mt-2 flex flex-wrap items-center justify-between gap-1.5">
                                 <div class="flex flex-wrap items-center gap-1">
                                     <span class="{{ $channelChip['badge'] }} rounded-full px-2 py-0.5 text-[10px] font-semibold">{{ $channelChip['label'] }}</span>
-                                    @if($conversation->isAiReplying())
-                                        <span class="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">
-                                            <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                                            <span>رد AI</span>
-                                        </span>
-                                    @elseif($assignedType === \App\Enums\WorkforceParticipantType::AiEmployee)
-                                        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-200/60">AI Employee</span>
-                                    @endif
-                                    @if($conversation->handoffStatusEnum()->blocksAi())
-                                        <span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
-                                            <svg class="h-2.5 w-2.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                                            <span>تحتاج مراجعة</span>
-                                        </span>
-                                    @endif
+
+                                    {{-- Live Responder Badge --}}
+                                    <span
+                                        data-inbox-responder-badge="{{ $conversation->id }}"
+                                        class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold {{ $responder['badge_class'] }}"
+                                        title="{{ $responder['label'] }}: {{ $responder['name'] }}"
+                                    >
+                                        <span class="h-1.5 w-1.5 rounded-full {{ $responder['dot_class'] }}"></span>
+                                        <span class="truncate max-w-[110px]">{{ $responder['name'] }}</span>
+                                        @if($responder['status'] === 'ai_active' && $responder['is_ai_generating'])
+                                            <span class="text-[9px] animate-pulse">يكتب...</span>
+                                        @endif
+                                    </span>
                                 </div>
                                 @if($unreadCount > 0)
                                     <span class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#00BFAE] px-1.5 text-[10px] font-bold text-white shadow-2xs">{{ $unreadCount }}</span>

@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Inbox\InboxRealtimePublisher;
+use App\Services\Mobile\MessageAttachmentService;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
 class ConversationService
@@ -32,13 +34,22 @@ class ConversationService
     /**
      * @param  array<string, mixed>  $data
      */
-    public function addMessage(Conversation $conversation, array $data, ?User $actor = null): Message
+    public function addMessage(Conversation $conversation, array $data, ?User $actor = null, array $uploadedFiles = []): Message
     {
-        $message = DB::transaction(function () use ($conversation, $data, $actor): Message {
+        $message = DB::transaction(function () use ($conversation, $data, $actor, $uploadedFiles): Message {
             $message = $conversation->messages()->create([
                 ...$data,
                 'user_id' => $data['user_id'] ?? $actor?->id,
             ]);
+
+            if (! empty($uploadedFiles) && $actor) {
+                $attachmentService = app(MessageAttachmentService::class);
+                foreach ($uploadedFiles as $file) {
+                    if ($file instanceof UploadedFile && $file->isValid()) {
+                        $attachmentService->upload($message, $file, $actor);
+                    }
+                }
+            }
 
             $metadata = is_array($conversation->metadata) ? $conversation->metadata : [];
             $metadata['channel_source'] = $metadata['channel_source'] ?? $this->resolveDisplayChannel($conversation);
@@ -58,7 +69,7 @@ class ConversationService
                 ]);
             }
 
-            return $message;
+            return $message->load('attachments');
         });
 
         if ($message->direction === 'outbound') {
