@@ -302,9 +302,15 @@
                 <main @class([
                     'min-w-0 flex-1',
                     'px-4 py-6 sm:px-6 lg:px-8' => ! ($flush ?? false),
-                    'p-0 overflow-hidden' => $flush ?? false,
+                    'p-0 overflow-hidden flex flex-row' => ($flush ?? false) && ($secondarySidebar ?? false),
+                    'p-0 overflow-hidden' => ($flush ?? false) && ! ($secondarySidebar ?? false),
                 ])>
-                    {{ $slot }}
+                    @if($secondarySidebar ?? false)
+                        @include('workspace.communication.partials.secondary-nav')
+                    @endif
+                    <div class="flex-1 min-w-0 overflow-hidden flex flex-col">
+                        {{ $slot }}
+                    </div>
                 </main>
 
                 @unless($flush ?? false)

@@ -41,6 +41,7 @@
     $responseLength = old('model.response_length', $model?->response_length?->value ?? 'short');
     $traits = old('persona.traits', $persona?->traits ?? []);
     $employeeName = $selected?->name ?? 'مشعل';
+    $workspaceName = $workspace?->name ?? 'حاسم AI';
 @endphp
 
 <x-app-layout>
@@ -64,7 +65,7 @@
         simulatedMessage: '',
         simulatedChat: [
             { sender: 'user', text: 'السلام عليكم، كم سعر الاشتراك الشهري عندكم؟', time: 'منذ دقيقة' },
-            { sender: 'ai', text: 'وعليكم السلام ورحمة الله وبركاته! أهلاً بك يا غالي في {{ $workspace->name }}. باقتنا الأساسية تبدأ بأسعار مميزة، وتفضل تطلع على كامل التفاصيل أو أساعدك باختيار الأنسب لك!', time: 'الآن' }
+            { sender: 'ai', text: 'وعليكم السلام ورحمة الله وبركاته! أهلاً بك يا غالي في {{ $workspaceName }}. باقتنا الأساسية تبدأ بأسعار مميزة، وتفضل تطلع على كامل التفاصيل أو أساعدك باختيار الأنسب لك!', time: 'الآن' }
         ],
         sendMessage() {
             if (!this.simulatedMessage.trim()) return;
@@ -101,7 +102,7 @@
                             <span class="hs-badge-success text-xs">مفعّل</span>
                         </div>
                         <p class="mt-1 text-xs text-slate-500">
-                            مساحة العمل: <strong class="text-slate-800">{{ $workspace->name }}</strong> · 
+                            مساحة العمل: <strong class="text-slate-800">{{ $workspaceName }}</strong> · 
                             اللهجة: <strong class="text-slate-800">{{ $label($selected?->persona?->dialect ?? 'saudi') }}</strong> · 
                             الأسلوب: <strong class="text-slate-800">{{ $label($selected?->persona?->tone ?? 'friendly') }}</strong>
                         </p>

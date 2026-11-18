@@ -50,6 +50,7 @@ class AiSettingController extends Controller
         }
 
         return view('workspace.ai-settings.edit', [
+            'workspace' => $workspace,
             'employees' => $employees,
             'selected' => $selected,
             'aiRoles' => ChatAiRole::all(),

@@ -176,7 +176,7 @@
                                             </p>
                                         @endif
                                     </div>
-                                    <a href="{{ route('workspace.conversations.show', $conv) }}" 
+                                    <a href="{{ route('workspace.conversations.index', ['conversation_id' => $conv->id]) }}" 
                                        class="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-300 transition shrink-0">
                                         فتح في صندوق المحادثات ↗
                                     </a>

@@ -138,7 +138,7 @@ class ChannelController extends Controller
                 'status_text' => $emailConnected ? 'Connected' : 'Not Connected',
                 'hint' => $emailConnected ? 'Email account configured and ready.' : 'No email account configured yet.',
                 'primary_action' => $emailConnected ? 'Manage Email' : 'Connect Email',
-                'manage_url' => route('workspace.emails.accounts.index'),
+                'manage_url' => route('workspace.channels.index'),
             ],
         ];
 

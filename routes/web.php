@@ -308,6 +308,11 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         });
         Route::get('conversations/poll-updates', [ConversationController::class, 'pollUpdates'])->name('conversations.updates.poll');
         Route::resource('conversations', ConversationController::class)->except(['show']);
+        Route::get('conversations/{conversation}', function ($conversation) {
+            $id = is_object($conversation) ? $conversation->id : $conversation;
+
+            return redirect()->route('workspace.conversations.index', ['conversation_id' => $id]);
+        })->name('conversations.show');
         Route::get('conversations/{conversation}/poll-messages', [ConversationController::class, 'pollMessages'])->name('conversations.messages.poll');
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');
         Route::post('conversations/bulk-messages', [ConversationBulkMessageController::class, 'store'])->name('conversations.bulk-messages.store');

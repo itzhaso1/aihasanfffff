@@ -8,7 +8,7 @@
             ],
         ],
         [
-            'title' => 'التواصل والمبيعات',
+            'title' => 'الشات والمبيعات',
             'links' => [
                 ['label' => 'المحادثات', 'route' => 'workspace.conversations.index', 'active' => ['workspace.conversations.*'], 'icon' => 'chat'],
                 ['label' => 'العملاء (CRM)', 'route' => 'workspace.customers.index', 'active' => ['workspace.customers.*'], 'icon' => 'users'],
@@ -17,9 +17,9 @@
             ],
         ],
         [
-            'title' => 'الكتالوج والتجارة',
+            'title' => 'المنتجات والمخزون',
             'links' => [
-                ['label' => 'المنتجات والمخزون', 'route' => 'workspace.chat-catalog.index', 'active' => ['workspace.chat-catalog.*'], 'icon' => 'cube'],
+                ['label' => 'المنتجات والكتالوج', 'route' => 'workspace.chat-catalog.index', 'active' => ['workspace.chat-catalog.*'], 'icon' => 'cube'],
             ],
         ],
         [
@@ -36,10 +36,11 @@
             ],
         ],
         [
-            'title' => 'الإدارة والنظام',
+            'title' => 'النظام والإدارة',
             'links' => [
                 ['label' => 'فريق العمل', 'route' => 'workspace.employees.index', 'active' => ['workspace.employees.*'], 'icon' => 'team'],
-                ['label' => 'الاشتراكات والفوترة', 'route' => 'workspace.subscriptions.index', 'active' => ['workspace.subscriptions.*', 'workspace.payments.*'], 'icon' => 'wallet'],
+                ['label' => 'المدفوعات', 'route' => 'workspace.payments.index', 'active' => ['workspace.payments.*'], 'icon' => 'wallet'],
+                ['label' => 'الاشتراكات والفوترة', 'route' => 'workspace.subscriptions.index', 'active' => ['workspace.subscriptions.*'], 'icon' => 'wallet'],
                 ['label' => 'مفاتيح API', 'route' => 'workspace.api-keys.index', 'active' => ['workspace.api-keys.*'], 'icon' => 'key'],
             ],
         ],
