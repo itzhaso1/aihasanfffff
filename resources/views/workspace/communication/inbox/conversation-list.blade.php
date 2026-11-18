@@ -139,67 +139,117 @@
         </form>
     </div>
 
-    <div class="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50/70 px-3 py-2 overflow-x-auto hs-scrollbar">
+    <div class="relative z-20 flex flex-wrap items-center justify-between gap-1.5 border-b border-slate-100 bg-slate-50/70 px-3.5 py-2 overflow-visible">
         @php
             $currentStatus = request('status');
-            $statusTabs = [
-                '' => 'الكل',
+            $statusOptions = [
+                '' => 'كل الحالات',
                 'new' => 'جديدة',
                 'open' => 'نشطة',
                 'needs_review' => 'مراجعة',
                 'closed' => 'مكتملة',
                 'archived' => 'مؤرشفة',
             ];
+            $statusLabelsShort = [
+                '' => 'الحالة',
+                'new' => 'جديدة',
+                'open' => 'نشطة',
+                'needs_review' => 'مراجعة',
+                'closed' => 'مكتملة',
+                'archived' => 'مؤرشفة',
+            ];
+            $isCustomStatus = in_array($currentStatus, ['new', 'needs_review', 'closed', 'archived'], true);
         @endphp
-        <span data-hs-filter-group class="inline-flex items-center gap-1">
-            @foreach($statusTabs as $tabKey => $tabLabel)
-                @php $isTabActive = (string) $currentStatus === (string) $tabKey; @endphp
-                <a
-                    href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['status' => $tabKey ?: null]) }}"
-                    class="{{ $isTabActive ? 'bg-[#06C2A4] text-white shadow-sm font-bold' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 font-semibold' }} shrink-0 rounded-full px-2.5 py-1 text-[11px] transition"
+
+        <div class="flex items-center gap-1 overflow-visible">
+            {{-- Quick Tabs --}}
+            <a
+                href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['status' => null]) }}"
+                class="{{ empty($currentStatus) ? 'bg-[#06C2A4] text-white shadow-2xs font-bold' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 font-semibold' }} shrink-0 rounded-full px-2.5 py-1 text-[11px] transition"
+            >
+                الكل
+            </a>
+
+            <a
+                href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['status' => 'open']) }}"
+                class="{{ $currentStatus === 'open' ? 'bg-[#06C2A4] text-white shadow-2xs font-bold' : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50 font-semibold' }} shrink-0 rounded-full px-2.5 py-1 text-[11px] transition"
+            >
+                نشطة
+            </a>
+
+            {{-- Status Dropdown Popup (نافذة منبثقة للحالات) --}}
+            <div class="relative" x-data="{ statusMenuOpen: false }" @keydown.escape.window="statusMenuOpen = false">
+                <button
+                    type="button"
+                    @click="statusMenuOpen = !statusMenuOpen"
+                    :aria-expanded="statusMenuOpen.toString()"
+                    class="{{ $isCustomStatus ? 'border-[#C9F0E8] bg-[#E8FAF6] text-[#067e6b] font-bold' : 'border-slate-200/90 bg-white text-slate-600 hover:bg-slate-50 font-semibold' }} inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition shadow-2xs focus:outline-none"
                 >
-                    {{ $tabLabel }}
-                </a>
-            @endforeach
-        </span>
-        <div class="ms-auto flex items-center gap-1 shrink-0">
+                    <span>{{ $statusLabelsShort[$currentStatus] ?? 'الحالة' }}</span>
+                    <svg class="h-3 w-3 text-slate-400 transition-transform duration-200" :class="statusMenuOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6" />
+                    </svg>
+                </button>
+                <div
+                    x-show="statusMenuOpen"
+                    x-cloak
+                    x-transition.origin.top
+                    @click.outside="statusMenuOpen = false"
+                    class="absolute start-0 top-full z-50 mt-1 min-w-[9.5rem] rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl"
+                >
+                    @foreach($statusOptions as $sKey => $sLabel)
+                        <a
+                            href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['status' => $sKey ?: null]) }}"
+                            class="{{ (string) $currentStatus === (string) $sKey ? 'bg-[#E8FAF6] text-[#067e6b] font-bold' : 'text-slate-600 hover:bg-slate-50' }} block rounded-xl px-3 py-1.5 text-xs font-semibold transition"
+                        >
+                            {{ $sLabel }}
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-1 overflow-visible">
+            {{-- Unread Filter --}}
             <a
                 href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['unread' => request()->boolean('unread') ? null : 1]) }}"
-                class="{{ request()->boolean('unread') ? 'bg-amber-500 text-white font-bold' : 'bg-white text-slate-500 border border-slate-200/80 hover:bg-slate-50' }} inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition"
+                class="{{ request()->boolean('unread') ? 'bg-amber-500 text-white font-bold' : 'bg-white text-slate-500 border border-slate-200/80 hover:bg-slate-50' }} inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition shadow-2xs"
                 title="غير مقروءة فقط"
             >
                 <span class="h-1.5 w-1.5 rounded-full {{ request()->boolean('unread') ? 'bg-white' : 'bg-amber-500' }}"></span>
                 <span>غير مقروءة</span>
             </a>
-        </div>
-        <div class="relative ms-auto" data-hs-menu x-data="{ open: false }" @keydown.escape.window="open = false">
-            <button
-                type="button"
-                @click="open = !open"
-                :aria-expanded="open.toString()"
-                aria-label="القنوات"
-                class="{{ $channelFilter ? 'border-[#C9F0E8] bg-[#E8FAF6] text-[#067e6b]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }} inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition"
-            >
-                <span>{{ $channelFilter ? ($availableChannels[$channelFilter] ?? $channelFilter) : 'القناة' }}</span>
-                <svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6" />
-                </svg>
-            </button>
-            <div
-                x-show="open"
-                x-cloak
-                x-transition.origin.top
-                @click.outside="open = false"
-                class="absolute end-0 top-full z-20 mt-1 min-w-[11rem] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-lg"
-            >
-                @foreach($availableChannels as $channelKey => $channelLabel)
-                    <a
-                        href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['channel' => $channelFilter === $channelKey ? null : $channelKey]) }}"
-                        class="{{ $channelFilter === $channelKey ? 'bg-[#E8FAF6] text-[#067e6b]' : 'text-slate-600 hover:bg-slate-50' }} block rounded-xl px-3 py-1.5 text-xs font-semibold"
-                    >
-                        {{ $channelLabel }}
-                    </a>
-                @endforeach
+
+            {{-- Channel Dropdown Popup (نافذة منبثقة للقنوات) --}}
+            <div class="relative" data-hs-menu x-data="{ open: false }" @keydown.escape.window="open = false">
+                <button
+                    type="button"
+                    @click="open = !open"
+                    :aria-expanded="open.toString()"
+                    aria-label="القنوات"
+                    class="{{ $channelFilter ? 'border-[#C9F0E8] bg-[#E8FAF6] text-[#067e6b] font-bold' : 'border-slate-200/90 bg-white text-slate-600 hover:bg-slate-50 font-semibold' }} inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition shadow-2xs focus:outline-none"
+                >
+                    <span>{{ $channelFilter ? ($availableChannels[$channelFilter] ?? $channelFilter) : 'القناة' }}</span>
+                    <svg class="h-3 w-3 text-slate-400 transition-transform duration-200" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 9 6 6 6-6" />
+                    </svg>
+                </button>
+                <div
+                    x-show="open"
+                    x-cloak
+                    x-transition.origin.top
+                    @click.outside="open = false"
+                    class="absolute end-0 top-full z-50 mt-1 min-w-[10.5rem] rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl"
+                >
+                    @foreach($availableChannels as $channelKey => $channelLabel)
+                        <a
+                            href="{{ $inboxUrl(request()->integer('conversation') ?: null, ['channel' => $channelFilter === $channelKey ? null : $channelKey]) }}"
+                            class="{{ $channelFilter === $channelKey ? 'bg-[#E8FAF6] text-[#067e6b] font-bold' : 'text-slate-600 hover:bg-slate-50' }} block rounded-xl px-3 py-1.5 text-xs font-semibold transition"
+                        >
+                            {{ $channelLabel }}
+                        </a>
+                    @endforeach
+                </div>
             </div>
         </div>
     </div>
