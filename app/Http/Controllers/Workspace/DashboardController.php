@@ -100,7 +100,7 @@ class DashboardController extends Controller
         $aiMessagesCount = Message::withoutGlobalScopes()
             ->where('workspace_id', $workspaceId)
             ->whereBetween('created_at', [$from, $to])
-            ->where('sender_type', 'ai')
+            ->where('ai_generated', true)
             ->count();
 
         $totalMessagesCount = Message::withoutGlobalScopes()

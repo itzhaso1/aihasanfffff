@@ -71,7 +71,7 @@ class WorkspaceAnalyticsService
 
         $aiResponsesCount = (int) Message::withoutGlobalScopes()
             ->where('workspace_id', $workspaceId)
-            ->where('sender_type', 'ai')
+            ->where('ai_generated', true)
             ->whereBetween('created_at', [$fromAt, $toAt])
             ->count();
 
