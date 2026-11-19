@@ -2506,9 +2506,15 @@ class _ResponderBadge extends StatelessWidget {
           const SizedBox(width: 4),
           Flexible(
             child: Text(
-              responder.name.isNotEmpty && responder.name != '—'
-                  ? '${responder.label}: ${responder.name}'
-                  : responder.label,
+              responder.isTyping
+                  ? '${responder.name} يكتب...'
+                  : (responder.status == 'ai_active'
+                      ? responder.name
+                      : (responder.status == 'human_needed'
+                          ? 'تحتاج تدخل بشري'
+                          : (responder.name.isNotEmpty && responder.name != '—'
+                              ? responder.name
+                              : responder.label))),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(

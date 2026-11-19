@@ -303,19 +303,24 @@
                                     <span class="{{ $channelChip['badge'] }} rounded-full px-2 py-0.5 text-[10px] font-semibold">{{ $channelChip['label'] }}</span>
 
                                     {{-- Live Responder Badge --}}
+                                    @php
+                                        $isWorkerAssigned = $conversation->assigned_worker_engagement_id !== null;
+                                    @endphp
                                     <span
                                         data-inbox-responder-badge="{{ $conversation->id }}"
                                         class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold {{ $responder['badge_class'] }}"
-                                        title="{{ $responder['label'] }}: {{ $responder['name'] }}"
+                                        title="{{ $isWorkerAssigned ? ($responder['label'] ?? 'فريق العمل') : ($responder['label'] . ': ' . $responder['name']) }}"
                                     >
                                         <span class="h-1.5 w-1.5 rounded-full {{ $responder['dot_class'] }}"></span>
                                         <span class="truncate max-w-[110px]">
                                             @if($responder['is_typing'] ?? false)
-                                                {{ $responder['name'] }} يكتب...
+                                                {{ $isWorkerAssigned ? 'يكتب...' : ($responder['name'] . ' يكتب...') }}
                                             @elseif($responder['status'] === 'ai_active')
                                                 {{ $responder['name'] }}
                                             @elseif($responder['status'] === 'human_needed')
                                                 تحتاج تدخل بشري
+                                            @elseif($isWorkerAssigned)
+                                                {{ $responder['label'] ?? 'فريق العمل' }}
                                             @elseif($conversation->assignedUser)
                                                 {{ $conversation->assignedUser->name }}
                                             @else

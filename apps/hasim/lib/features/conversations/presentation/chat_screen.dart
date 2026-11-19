@@ -499,6 +499,129 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  void _showPresentEmployeesSheet(
+    BuildContext context,
+    List<PresentEmployeeModel> employees,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: HasimTokens.cardBg(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'الموظفون داخل المحادثة',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      '${employees.length} متصل',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: HasimTokens.mutedColor(context),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                for (final emp in employees)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: HasimTokens.chatGreen.withValues(alpha: 0.15),
+                      child: Text(
+                        emp.initials,
+                        style: const TextStyle(
+                          color: HasimTokens.chatGreen,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Row(
+                      children: [
+                        Text(
+                          emp.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        if (emp.isAssigned) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'المسؤول المعين',
+                              style: TextStyle(
+                                color: Colors.blue.shade800,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: emp.state == 'typing'
+                                ? Colors.amber.shade600
+                                : (emp.state == 'sending'
+                                    ? Colors.blue.shade600
+                                    : HasimTokens.chatGreen),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          emp.state == 'typing'
+                              ? 'يكتب الآن'
+                              : (emp.state == 'sending' ? 'يرسل...' : 'يشاهد'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: emp.state == 'typing'
+                                ? Colors.amber.shade800
+                                : HasimTokens.chatGreen,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   PreferredSizeWidget _messageSelectionAppBar(Color headerBg) {
     return AppBar(
       key: const Key('chat-selection-appbar'),
@@ -1610,6 +1733,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       color: HasimTokens.mutedColor(context),
                     ),
                   ),
+                if (state.presentEmployees.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 4),
+                    child: InkWell(
+                      key: const Key('chat-present-employees-button'),
+                      onTap: () => _showPresentEmployeesSheet(
+                        context,
+                        state.presentEmployees,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        margin: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: HasimTokens.chatGreen.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: HasimTokens.chatGreen.withValues(
+                              alpha: 0.3,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: HasimTokens.chatGreen,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'الموظفون (${state.presentEmployees.length})',
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                color: HasimTokens.chatGreen,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 PopupMenuButton<String>(
                   key: _chatMenuKey,
                   enabled: !state.mutating,
@@ -1983,6 +2156,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     : splitQuotedReply(_messageText(replyTo)).body,
                 onCancelReply: () => setState(() => _replyTo = null),
               ),
+            )
+          else
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: HasimTokens.cardBg(context),
+                    border: Border(
+                      top: BorderSide(
+                        color: HasimTokens.lineColor(context),
+                        width: 0.8,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.lock_outline_rounded,
+                        size: 16,
+                        color: HasimTokens.mutedColor(context),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'لا تملك صلاحية الرد على هذه المحادثة',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: HasimTokens.mutedColor(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           if (!_stickToBottom &&
               rows.isNotEmpty &&
@@ -2181,16 +2394,23 @@ class _LiveResponderHeaderBar extends StatelessWidget {
         iconData = Icons.schedule_rounded;
     }
 
+    final assignedName = conversation.assignedUserName;
     final String titleText;
     switch (responder.status) {
       case 'ai_active':
         titleText = '${responder.name} يتولى الرد على هذه المحادثة';
       case 'human_active':
-        titleText = 'المسؤول الحالي: ${responder.name} – موظف خدمة العملاء';
+        titleText = responder.isTyping
+            ? '${responder.name} يكتب رداً الآن...'
+            : (assignedName != null && assignedName.isNotEmpty
+                ? 'المسؤول: $assignedName'
+                : 'المسؤول الحالي: ${responder.name}');
       case 'human_needed':
         titleText = 'المحادثة بانتظار استلام من أحد موظفي الفريق';
       case 'waiting':
-        titleText = 'المحادثة متوقفة مؤقتاً بانتظار الرد';
+        titleText = (assignedName != null && assignedName.isNotEmpty)
+            ? 'المسؤول: $assignedName'
+            : 'المحادثة متوقفة مؤقتاً بانتظار الرد';
       default:
         titleText = 'المحادثة مغلقة أو غير متصلة';
     }

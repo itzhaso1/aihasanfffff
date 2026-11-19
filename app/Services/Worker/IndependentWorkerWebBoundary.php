@@ -26,6 +26,9 @@ final class IndependentWorkerWebBoundary
         'worker.inbox.show',
         'worker.inbox.messages.store',
         'worker.inbox.typing',
+        'worker.inbox.presence',
+        'worker.inbox.presence.ping',
+        'worker.inbox.presence.leave',
         'logout',
         'verification.verify',
     ];

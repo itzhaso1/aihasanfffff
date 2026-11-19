@@ -229,6 +229,18 @@ Route::middleware(['auth'])->prefix('workers')->as('worker.')->group(function ()
         ->whereNumber('workspace')
         ->whereNumber('conversation')
         ->name('inbox.typing');
+    Route::get('/{workspace}/inbox/{conversation}/presence', [WorkerInboxController::class, 'presence'])
+        ->whereNumber('workspace')
+        ->whereNumber('conversation')
+        ->name('inbox.presence');
+    Route::post('/{workspace}/inbox/{conversation}/presence/ping', [WorkerInboxController::class, 'presencePing'])
+        ->whereNumber('workspace')
+        ->whereNumber('conversation')
+        ->name('inbox.presence.ping');
+    Route::post('/{workspace}/inbox/{conversation}/presence/leave', [WorkerInboxController::class, 'presenceLeave'])
+        ->whereNumber('workspace')
+        ->whereNumber('conversation')
+        ->name('inbox.presence.leave');
 });
 
 Route::get('/auth/{provider}/callback', [SocialLoginController::class, 'callback'])
@@ -324,6 +336,9 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');
         Route::get('conversations/{conversation}/media', [ConversationController::class, 'media'])->name('conversations.media');
         Route::post('conversations/{conversation}/typing', [ConversationController::class, 'typing'])->name('conversations.typing');
+        Route::get('conversations/{conversation}/presence', [ConversationController::class, 'presence'])->name('conversations.presence');
+        Route::post('conversations/{conversation}/presence/ping', [ConversationController::class, 'presencePing'])->name('conversations.presence.ping');
+        Route::post('conversations/{conversation}/presence/leave', [ConversationController::class, 'presenceLeave'])->name('conversations.presence.leave');
         Route::post('conversations/bulk-messages', [ConversationBulkMessageController::class, 'store'])->name('conversations.bulk-messages.store');
         Route::get('conversations/bulk-messages/{bulkSend}', [ConversationBulkMessageController::class, 'show'])
             ->whereUuid('bulkSend')

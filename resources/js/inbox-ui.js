@@ -1,6 +1,16 @@
 const SCROLL_STORAGE_PREFIX = 'hasem.inbox.listScroll.';
 const CONVERSATION_STORAGE_PREFIX = 'hasem.inbox.conversation.';
 
+const escapeHtml = (str) => {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+
 const isNearBottom = (element, threshold = 120) => {
     if (!element) {
         return true;
@@ -452,7 +462,7 @@ const prependNewConversationRow = (conv) => {
 
 let typingTimeout = null;
 
-const showTypingIndicator = (senderName = '', senderType = '') => {
+const showTypingIndicator = (senderName = '', senderType = '', typingSummary = '', typingUsers = []) => {
     const list = document.getElementById('inbox-message-list');
     if (!list) return;
 
@@ -476,7 +486,9 @@ const showTypingIndicator = (senderName = '', senderType = '') => {
 
     const textEl = el.querySelector('[data-typing-text]');
     if (textEl) {
-        if (senderType === 'ai' || (senderName && (senderName.includes('مشعل') || senderName.includes('AI')))) {
+        if (typingSummary && typingSummary.trim() !== '') {
+            textEl.textContent = typingSummary;
+        } else if (senderType === 'ai' || (senderName && (senderName.includes('مشعل') || senderName.includes('AI')))) {
             textEl.textContent = `${senderName || 'مشعل AI'} يجهز الرد...`;
         } else {
             textEl.textContent = `${senderName || 'الطرف الآخر'} يكتب الآن...`;
@@ -493,7 +505,79 @@ const showTypingIndicator = (senderName = '', senderType = '') => {
     if (typingTimeout) clearTimeout(typingTimeout);
     typingTimeout = setTimeout(() => {
         hideTypingIndicator();
-    }, 4500);
+    }, 5500);
+};
+
+const updatePresenceUI = (presenceData) => {
+    if (!presenceData) return;
+
+    const countEl = document.getElementById('inbox-presence-count');
+    const dropdownCountEl = document.getElementById('inbox-presence-dropdown-count');
+    const listEl = document.getElementById('inbox-presence-list');
+
+    const employees = Array.isArray(presenceData.present_employees)
+        ? presenceData.present_employees
+        : (Array.isArray(presenceData) ? presenceData : []);
+
+    const count = typeof presenceData.present_count === 'number'
+        ? presenceData.present_count
+        : employees.length;
+
+    if (countEl) countEl.textContent = String(count);
+    if (dropdownCountEl) dropdownCountEl.textContent = `${count} متصل`;
+
+    if (listEl) {
+        if (employees.length === 0) {
+            listEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-2">لا يوجد موظفون متصلون حالياً</p>';
+            return;
+        }
+
+        listEl.innerHTML = employees.map((emp) => {
+            const state = emp.state || 'viewing';
+            let stateLabel = 'يشاهد';
+            let stateBadgeClass = 'bg-emerald-100 text-emerald-800';
+            let stateDotClass = 'bg-emerald-500';
+
+            if (state === 'typing') {
+                stateLabel = 'يكتب الآن';
+                stateBadgeClass = 'bg-amber-100 text-amber-900';
+                stateDotClass = 'bg-amber-500 animate-pulse';
+            } else if (state === 'sending') {
+                stateLabel = 'يرسل...';
+                stateBadgeClass = 'bg-blue-100 text-blue-900';
+                stateDotClass = 'bg-blue-500 animate-pulse';
+            } else if (state === 'connected') {
+                stateLabel = 'متصل';
+                stateBadgeClass = 'bg-emerald-100 text-emerald-800';
+                stateDotClass = 'bg-emerald-500';
+            } else if (state === 'disconnected') {
+                stateLabel = 'انقطع';
+                stateBadgeClass = 'bg-slate-100 text-slate-600';
+                stateDotClass = 'bg-slate-400';
+            }
+
+            const isAssigned = Boolean(emp.is_assigned);
+            const initials = emp.initials || (emp.name ? emp.name.substring(0, 1) : 'م');
+
+            return `
+                <div class="flex items-center justify-between gap-2 rounded-xl bg-slate-50 p-2 text-xs">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white font-bold text-[11px]">
+                            ${escapeHtml(initials)}
+                        </div>
+                        <div class="min-w-0">
+                            <p class="font-bold text-slate-900 truncate text-[11.5px]">${escapeHtml(emp.name || 'موظف')}</p>
+                            ${isAssigned ? '<span class="text-[9.5px] font-semibold text-blue-700">المسؤول المعين</span>' : ''}
+                        </div>
+                    </div>
+                    <span class="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold rounded-full px-2 py-0.5 ${stateBadgeClass}">
+                        <span class="h-1.5 w-1.5 rounded-full ${stateDotClass}"></span>
+                        <span>${stateLabel}</span>
+                    </span>
+                </div>
+            `;
+        }).join('');
+    }
 };
 
 const hideTypingIndicator = () => {
@@ -630,7 +714,7 @@ const updateConversationInSidebar = (conv, { moveToTop = false } = {}) => {
     }
 };
 
-const updateTopResponderBar = (responder) => {
+const updateTopResponderBar = (responder, conv) => {
     if (!responder) return;
     const bar = document.getElementById('inbox-live-responder-bar');
     if (!bar) return;
@@ -650,12 +734,16 @@ const updateTopResponderBar = (responder) => {
     if (displayNameEl) {
         if (responder.status === 'ai_active') {
             displayNameEl.textContent = `${responder.name} يتولى الرد على هذه المحادثة`;
+        } else if (responder.is_typing) {
+            displayNameEl.textContent = `${responder.name} يكتب رداً الآن...`;
         } else if (responder.status === 'human_active') {
-            displayNameEl.textContent = `المسؤول الحالي: ${responder.name} – موظف خدمة العملاء`;
+            const assignedName = (conv && (conv.assigned_user_name || (conv.assigned_user && conv.assigned_user.name))) || responder.name;
+            displayNameEl.textContent = `المسؤول: ${assignedName}`;
         } else if (responder.status === 'human_needed') {
             displayNameEl.textContent = 'المحادثة بانتظار استلام من أحد موظفي الفريق';
         } else if (responder.status === 'waiting') {
-            displayNameEl.textContent = 'المحادثة متوقفة مؤقتاً بانتظار الرد';
+            const assignedName = (conv && (conv.assigned_user_name || (conv.assigned_user && conv.assigned_user.name))) || (responder.name !== '—' ? responder.name : '');
+            displayNameEl.textContent = assignedName ? `المسؤول: ${assignedName}` : 'المحادثة متوقفة مؤقتاً بانتظار الرد';
         } else {
             displayNameEl.textContent = 'المحادثة غير متصلة أو مغلقة';
         }
@@ -1610,6 +1698,7 @@ const bootInbox = (event) => {
         showTypingIndicator,
         hideTypingIndicator,
         setConnectionStatus,
+        updatePresenceUI,
     };
 };
 

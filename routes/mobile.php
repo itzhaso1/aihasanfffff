@@ -243,6 +243,9 @@ Route::middleware([
     Route::post('/conversations/{conversation}/resolve-handoff', [ConversationHandoffController::class, 'resolve']);
     Route::post('/conversations/{conversation}/resume-ai', [ConversationHandoffController::class, 'resumeAi']);
     Route::post('/conversations/{conversation}/typing', [ConversationController::class, 'typing']);
+    Route::get('/conversations/{conversation}/presence', [ConversationController::class, 'presence']);
+    Route::post('/conversations/{conversation}/presence/ping', [ConversationController::class, 'presencePing']);
+    Route::post('/conversations/{conversation}/presence/leave', [ConversationController::class, 'presenceLeave']);
 
     Route::post('/messages/{message}/attachments', [AttachmentController::class, 'store'])
         ->middleware('throttle:mobile-attachments');

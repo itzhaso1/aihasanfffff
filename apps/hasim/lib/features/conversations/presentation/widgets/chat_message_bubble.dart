@@ -297,6 +297,18 @@ class _BubbleBody extends StatelessWidget {
           ),
           const SizedBox(width: 3),
         ],
+        if (mine && (message.userName?.trim().isNotEmpty ?? false)) ...[
+          Text(
+            message.userName!.trim(),
+            style: TextStyle(
+              color: meta,
+              fontSize: 10,
+              height: 1.1,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
         Text(
           message.createdAt == null
               ? ''

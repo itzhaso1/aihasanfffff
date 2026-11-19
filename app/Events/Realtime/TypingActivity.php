@@ -11,12 +11,18 @@ class TypingActivity implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets;
 
+    /**
+     * @param  list<array<string, mixed>>  $typingUsers
+     */
     public function __construct(
         public int $workspaceId,
         public int $conversationId,
         public string $senderType,
         public string $senderName,
         public bool $isTyping = true,
+        public ?int $userId = null,
+        public array $typingUsers = [],
+        public string $typingSummary = '',
     ) {}
 
     public function broadcastConnection(): ?string
@@ -53,7 +59,10 @@ class TypingActivity implements ShouldBroadcastNow
             'conversation_id' => $this->conversationId,
             'sender_type' => $this->senderType,
             'sender_name' => $this->senderName,
+            'user_id' => $this->userId,
             'is_typing' => $this->isTyping,
+            'typing_users' => $this->typingUsers,
+            'typing_summary' => $this->typingSummary !== '' ? $this->typingSummary : ($this->isTyping ? "{$this->senderName} يكتب الآن..." : ''),
         ];
     }
 }

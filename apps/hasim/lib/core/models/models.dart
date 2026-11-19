@@ -400,9 +400,10 @@ class MessageModel extends Equatable {
       attachments: attachments,
       clientId: clientId,
       workerEngagementId: (payload['worker_engagement_id'] as num?)?.toInt(),
-      senderUserId: payload['user'] is Map && payload['user']['id'] is num
-          ? (payload['user']['id'] as num).toInt()
-          : null,
+      senderUserId: (payload['user_id'] as num?)?.toInt() ??
+          (payload['user'] is Map && payload['user']['id'] is num
+              ? (payload['user']['id'] as num).toInt()
+              : null),
       participantType: payload['participant_type']?.toString(),
     );
   }
@@ -481,6 +482,7 @@ class ConversationResponder extends Equatable {
     this.badgeClass = '',
     this.dotClass = '',
     this.isAiGenerating = false,
+    this.isTyping = false,
     this.userId,
     this.userInitials,
     this.assignedAtHuman,
@@ -494,6 +496,7 @@ class ConversationResponder extends Equatable {
   final String badgeClass;
   final String dotClass;
   final bool isAiGenerating;
+  final bool isTyping;
   final int? userId;
   final String? userInitials;
   final String? assignedAtHuman;
@@ -508,6 +511,7 @@ class ConversationResponder extends Equatable {
       badgeClass: json['badge_class']?.toString() ?? '',
       dotClass: json['dot_class']?.toString() ?? '',
       isAiGenerating: json['is_ai_generating'] == true,
+      isTyping: json['is_typing'] == true,
       userId: (json['user_id'] as num?)?.toInt(),
       userInitials: json['user_initials']?.toString(),
       assignedAtHuman: json['assigned_at_human']?.toString(),
@@ -523,6 +527,7 @@ class ConversationResponder extends Equatable {
     'badge_class': badgeClass,
     'dot_class': dotClass,
     'is_ai_generating': isAiGenerating,
+    'is_typing': isTyping,
     if (userId != null) 'user_id': userId,
     if (userInitials != null) 'user_initials': userInitials,
     if (assignedAtHuman != null) 'assigned_at_human': assignedAtHuman,
@@ -538,6 +543,7 @@ class ConversationResponder extends Equatable {
     badgeClass,
     dotClass,
     isAiGenerating,
+    isTyping,
     userId,
     userInitials,
     assignedAtHuman,
@@ -674,9 +680,10 @@ class ConversationModel extends Equatable {
           (json['assigned_user'] is Map
               ? ((json['assigned_user'] as Map)['id'] as num?)?.toInt()
               : null),
-      assignedUserName: json['assigned_user'] is Map
-          ? (json['assigned_user'] as Map)['name']?.toString()
-          : null,
+      assignedUserName: (json['assigned_user'] is Map
+              ? (json['assigned_user'] as Map)['name']?.toString()
+              : null) ??
+          json['assigned_user_name']?.toString(),
       assignedWorkerEngagementId:
           (json['assigned_worker_engagement_id'] as num?)?.toInt(),
       assignedParticipantType: json['assigned_participant_type']?.toString(),
@@ -1814,4 +1821,83 @@ class RecentRecipientModel extends Equatable {
 
   @override
   List<Object?> get props => [email, contactId];
+}
+
+class PresentEmployeeModel extends Equatable {
+  const PresentEmployeeModel({
+    required this.id,
+    required this.name,
+    this.email,
+    this.avatarUrl,
+    required this.initials,
+    this.role = 'participant',
+    this.state = 'viewing',
+    this.isAssigned = false,
+    this.lastSeenAt,
+  });
+
+  final int id;
+  final String name;
+  final String? email;
+  final String? avatarUrl;
+  final String initials;
+  final String role;
+  final String state;
+  final bool isAssigned;
+  final int? lastSeenAt;
+
+  factory PresentEmployeeModel.fromJson(Map<String, dynamic> json) =>
+      PresentEmployeeModel(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        name: json['name']?.toString() ?? 'موظف',
+        email: json['email']?.toString(),
+        avatarUrl: AppConfig.resolvePublicUrl(json['avatar_url']?.toString()),
+        initials: json['initials']?.toString() ??
+            (json['name'] != null && json['name'].toString().isNotEmpty
+                ? json['name'].toString().substring(0, 1)
+                : 'م'),
+        role: json['role']?.toString() ?? 'participant',
+        state: json['state']?.toString() ?? 'viewing',
+        isAssigned: json['is_assigned'] == true,
+        lastSeenAt: (json['last_seen_at'] as num?)?.toInt(),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'email': email,
+    'avatar_url': avatarUrl,
+    'initials': initials,
+    'role': role,
+    'state': state,
+    'is_assigned': isAssigned,
+    'last_seen_at': lastSeenAt,
+  };
+
+  PresentEmployeeModel copyWith({
+    int? id,
+    String? name,
+    String? email,
+    String? avatarUrl,
+    String? initials,
+    String? role,
+    String? state,
+    bool? isAssigned,
+    int? lastSeenAt,
+  }) {
+    return PresentEmployeeModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      initials: initials ?? this.initials,
+      role: role ?? this.role,
+      state: state ?? this.state,
+      isAssigned: isAssigned ?? this.isAssigned,
+      lastSeenAt: lastSeenAt ?? this.lastSeenAt,
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, name, state, isAssigned];
 }

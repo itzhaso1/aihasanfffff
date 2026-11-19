@@ -8,6 +8,7 @@ use App\Enums\ConversationHandoffStatus;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Worker\WorkerEngagement;
 use App\Services\Conversation\ConversationResponderService;
+use App\Support\Tenancy\WorkspaceContext;
 use Database\Factories\ConversationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -175,37 +176,39 @@ class Conversation extends WorkspaceScopedModel
      */
     public function lastMessageSender(): ?array
     {
-        $last = $this->relationLoaded('lastMessage')
-            ? $this->lastMessage
-            : ($this->relationLoaded('messages') ? $this->messages->last() : $this->lastMessage);
+        return app(WorkspaceContext::class)->runForId((int) $this->workspace_id, function (): ?array {
+            $last = $this->relationLoaded('lastMessage')
+                ? $this->lastMessage
+                : ($this->relationLoaded('messages') ? $this->messages->last() : $this->lastMessage);
 
-        if (! $last) {
-            return null;
-        }
+            if (! $last) {
+                return null;
+            }
 
-        $last->loadMissing(['user:id,name', 'customer:id,name']);
+            $last->loadMissing(['user:id,name', 'customer:id,name']);
 
-        if ($last->direction === 'inbound') {
+            if ($last->direction === 'inbound') {
+                return [
+                    'type' => 'customer',
+                    'id' => $last->customer_id,
+                    'name' => $last->customer?->name ?: ($this->customer?->name ?: 'العميل'),
+                ];
+            }
+
+            if ($last->ai_generated) {
+                return [
+                    'type' => 'ai',
+                    'id' => $this->ai_employee_id,
+                    'name' => ($this->aiEmployee?->name ?? 'مشعل').' AI',
+                ];
+            }
+
             return [
-                'type' => 'customer',
-                'id' => $last->customer_id,
-                'name' => $last->customer?->name ?: ($this->customer?->name ?: 'العميل'),
+                'type' => 'human',
+                'id' => $last->user_id,
+                'name' => $last->user?->name ?: 'موظف',
             ];
-        }
-
-        if ($last->ai_generated) {
-            return [
-                'type' => 'ai',
-                'id' => $this->ai_employee_id,
-                'name' => ($this->aiEmployee?->name ?? 'مشعل').' AI',
-            ];
-        }
-
-        return [
-            'type' => 'human',
-            'id' => $last->user_id,
-            'name' => $last->user?->name ?: 'موظف',
-        ];
+        });
     }
 
     public function isOpen(): bool

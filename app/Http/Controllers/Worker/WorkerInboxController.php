@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Worker;
 
 use App\Enums\ConversationHandoffStatus;
-use App\Events\Realtime\TypingActivity;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Worker\StoreWorkerInboxMessageRequest;
 use App\Models\Conversation;
@@ -13,6 +12,7 @@ use App\Models\Message;
 use App\Models\User;
 use App\Models\Worker\WorkerEngagement;
 use App\Models\Workspace;
+use App\Services\Conversation\ConversationPresenceService;
 use App\Services\Mobile\ConversationInboxService;
 use App\Services\Worker\WorkerEngagementAuthorization;
 use App\Services\Worker\WorkerInboxException;
@@ -439,18 +439,55 @@ final class WorkerInboxController extends Controller
         $workerProfile = $user->workerProfile;
         $senderName = $workerProfile?->display_name ?: $user->name ?: 'موظف مستقل';
 
-        try {
-            event(new TypingActivity(
-                workspaceId: (int) $workspace->id,
-                conversationId: (int) $conversation->id,
-                senderType: 'worker',
-                senderName: $senderName,
-                isTyping: $isTyping,
-            ));
-        } catch (\Throwable) {
-            // Best effort
+        $res = app(ConversationPresenceService::class)->setTyping(
+            $conversation,
+            $user,
+            $isTyping,
+            senderType: 'worker',
+            senderName: $senderName,
+        );
+
+        return response()->json([
+            'status' => 'ok',
+            'is_typing' => $isTyping,
+            'typing_users' => $res['typing_users'] ?? [],
+            'typing_summary' => $res['typing_summary'] ?? '',
+        ]);
+    }
+
+    public function presence(Request $request, Workspace $workspace, Conversation $conversation): JsonResponse
+    {
+        $state = app(ConversationPresenceService::class)->getConversationState($conversation);
+
+        return response()->json([
+            'status' => 'ok',
+            'data' => $state,
+        ]);
+    }
+
+    public function presencePing(Request $request, Workspace $workspace, Conversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user !== null, 401);
+
+        $stateInput = $request->string('state', ConversationPresenceService::STATE_VIEWING)->toString();
+        $state = app(ConversationPresenceService::class)->ping($conversation, $user, $stateInput);
+
+        return response()->json([
+            'status' => 'ok',
+            'data' => $state,
+        ]);
+    }
+
+    public function presenceLeave(Request $request, Workspace $workspace, Conversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        if ($user !== null) {
+            app(ConversationPresenceService::class)->leave($conversation, $user);
         }
 
-        return response()->json(['status' => 'ok']);
+        return response()->json([
+            'status' => 'ok',
+        ]);
     }
 }

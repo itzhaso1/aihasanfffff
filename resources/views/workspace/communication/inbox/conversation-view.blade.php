@@ -36,6 +36,9 @@
     $canTakeControlFromAi = $conversationIsOpen && $activeConversation->isAiReplying();
     $activeResponder = $activeConversation->currentResponder();
     $currentUserId = auth()->id();
+    $initialPresence = auth()->check()
+        ? app(\App\Services\Conversation\ConversationPresenceService::class)->join($activeConversation, auth()->user())
+        : app(\App\Services\Conversation\ConversationPresenceService::class)->getConversationState($activeConversation);
     $isAlreadyAssignedToMe = (int) $activeConversation->assigned_user_id === (int) $currentUserId && ! (bool) $activeConversation->ai_enabled;
     $isHumanNeeded = in_array($handoffEnum, [\App\Enums\ConversationHandoffStatus::Requested, \App\Enums\ConversationHandoffStatus::Queued], true);
     $canClaimConversation = $conversationIsOpen
@@ -248,6 +251,78 @@
                 </form>
             @endif
 
+            {{-- Multi-Employee Live Presence Section --}}
+            <div x-data="{ presenceOpen: false }" class="relative inline-block text-start">
+                <button
+                    type="button"
+                    @click="presenceOpen = !presenceOpen"
+                    @click.away="presenceOpen = false"
+                    id="inbox-presence-btn"
+                    class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50"
+                    title="الموظفون داخل المحادثة حالياً"
+                >
+                    <span class="relative flex h-2 w-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span class="hidden md:inline">الموظفون داخل المحادثة:</span>
+                    <span id="inbox-presence-count" class="rounded-full bg-emerald-100 px-1.5 py-0.2 text-[10px] font-extrabold text-emerald-800">{{ $initialPresence['present_count'] ?? 1 }}</span>
+                    <svg class="h-3.5 w-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7"/></svg>
+                </button>
+
+                {{-- Presence Dropdown Details --}}
+                <div
+                    x-show="presenceOpen"
+                    x-transition:enter="transition ease-out duration-150"
+                    x-transition:enter-start="opacity-0 scale-95"
+                    x-transition:enter-end="opacity-100 scale-100"
+                    x-transition:leave="transition ease-in duration-100"
+                    x-transition:leave-start="opacity-100 scale-100"
+                    x-transition:leave-end="opacity-0 scale-95"
+                    class="absolute left-0 mt-2 w-80 origin-top-left rounded-2xl border border-slate-200 bg-white p-3 shadow-xl z-50 hs-scrollbar"
+                    style="display: none;"
+                >
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2.5">
+                        <span class="text-xs font-bold text-slate-800">الموظفون المتواجدون بالمحادثة</span>
+                        <span id="inbox-presence-dropdown-count" class="text-[11px] font-semibold text-slate-400">{{ $initialPresence['present_count'] ?? 1 }} متصل</span>
+                    </div>
+
+                    <div id="inbox-presence-list" class="space-y-2 max-h-60 overflow-y-auto">
+                        @forelse($initialPresence['present_employees'] ?? [] as $emp)
+                            <div class="flex items-center justify-between gap-2 rounded-xl bg-slate-50 p-2 text-xs">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white font-bold text-[11px]">
+                                        {{ $emp['initials'] ?? 'م' }}
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="font-bold text-slate-900 truncate text-[11.5px]">
+                                            @if(! ($inboxAllowsCompanyActions ?? true) && $emp['id'] === auth()->id())
+                                                أنت
+                                            @else
+                                                {{ $emp['name'] }}
+                                            @endif
+                                        </p>
+                                        @if($emp['is_assigned'] ?? false)
+                                            <span class="text-[9.5px] font-semibold text-blue-700">المسؤول المعين</span>
+                                        @endif
+                                    </div>
+                                </div>
+                                <span class="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold rounded-full px-2 py-0.5 {{ ($emp['state'] ?? 'viewing') === 'typing' ? 'bg-amber-100 text-amber-900' : (($emp['state'] ?? 'viewing') === 'sending' ? 'bg-blue-100 text-blue-900' : 'bg-emerald-100 text-emerald-800') }}">
+                                    <span class="h-1.5 w-1.5 rounded-full {{ ($emp['state'] ?? 'viewing') === 'typing' ? 'bg-amber-500 animate-pulse' : (($emp['state'] ?? 'viewing') === 'sending' ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500') }}"></span>
+                                    <span>{{ ($emp['state'] ?? 'viewing') === 'typing' ? 'يكتب الآن' : (($emp['state'] ?? 'viewing') === 'sending' ? 'يرسل...' : 'يشاهد') }}</span>
+                                </span>
+                            </div>
+                        @empty
+                            <p class="text-xs text-slate-400 text-center py-2">لا يوجد موظفون متصلون حالياً</p>
+                        @endforelse
+                    </div>
+
+                    <div class="mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-slate-400 text-center">
+                        تحديث حي وتلقائي لنشاط وتواجد الموظفين
+                    </div>
+                </div>
+            </div>
+
             {{-- Desktop Details Drawer Button --}}
             <button
                 type="button"
@@ -288,9 +363,10 @@
                 </div>
 
                 @php
-                    $assignedEmployeeName = $activeConversation->assignedUser?->name
-                        ?: ($activeConversation->assignedWorkerEngagement?->workerProfile?->display_name
-                            ?: ($activeConversation->assignedWorkerEngagement?->workerProfile?->user?->name ?: null));
+                    $isAssignedWorker = $activeConversation->assigned_worker_engagement_id !== null;
+                    $assignedEmployeeName = (! $isAssignedWorker && $activeConversation->assignedUser)
+                        ? $activeConversation->assignedUser->name
+                        : null;
                     $lastMessageSender = $activeConversation->lastMessageSender();
                 @endphp
                 <div class="min-w-0 flex-1">

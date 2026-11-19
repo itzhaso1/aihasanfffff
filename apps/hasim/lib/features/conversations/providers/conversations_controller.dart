@@ -617,6 +617,7 @@ class ChatState {
     this.aiBusy = false,
     this.mutating = false,
     this.typingIndicator,
+    this.presentEmployees = const [],
   });
 
   final bool loading;
@@ -629,6 +630,7 @@ class ChatState {
   final bool aiBusy;
   final bool mutating;
   final String? typingIndicator;
+  final List<PresentEmployeeModel> presentEmployees;
 
   ChatState copyWith({
     bool? loading,
@@ -643,6 +645,7 @@ class ChatState {
     bool clearCursor = false,
     String? typingIndicator,
     bool clearTyping = false,
+    List<PresentEmployeeModel>? presentEmployees,
   }) {
     return ChatState(
       loading: loading ?? this.loading,
@@ -655,6 +658,7 @@ class ChatState {
       aiBusy: aiBusy ?? this.aiBusy,
       mutating: mutating ?? this.mutating,
       typingIndicator: clearTyping ? null : (typingIndicator ?? this.typingIndicator),
+      presentEmployees: presentEmployees ?? this.presentEmployees,
     );
   }
 }
@@ -679,9 +683,11 @@ class ChatController extends StateNotifier<ChatState> {
   late final RealtimeService _realtime;
   StreamSubscription? _sub;
   StreamSubscription? _typingSub;
+  StreamSubscription? _presenceSub;
   StreamSubscription<List<MessageModel>>? _messageSub;
   ProviderSubscription<int?>? _workspaceSub;
   Timer? _typingTimer;
+  Timer? _presenceTimer;
   int? _boundWorkspaceId;
   List<MessageModel> _olderMessages = const [];
 
@@ -690,8 +696,12 @@ class ChatController extends StateNotifier<ChatState> {
     _sub = null;
     await _typingSub?.cancel();
     _typingSub = null;
+    await _presenceSub?.cancel();
+    _presenceSub = null;
     _typingTimer?.cancel();
     _typingTimer = null;
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
     await _messageSub?.cancel();
     _messageSub = null;
     _olderMessages = const [];
@@ -711,6 +721,7 @@ class ChatController extends StateNotifier<ChatState> {
       final isTyping = data['is_typing'] == true || data['is_typing'] == 1;
       final senderName = data['sender_name']?.toString() ?? '';
       final senderType = data['sender_type']?.toString() ?? '';
+      final typingSummary = data['typing_summary']?.toString() ?? '';
 
       if (!isTyping) {
         _typingTimer?.cancel();
@@ -719,7 +730,9 @@ class ChatController extends StateNotifier<ChatState> {
       }
 
       String text;
-      if (senderType == 'ai' || senderName.contains('مشعل') || senderName.contains('AI')) {
+      if (typingSummary.trim().isNotEmpty) {
+        text = typingSummary.trim();
+      } else if (senderType == 'ai' || senderName.contains('مشعل') || senderName.contains('AI')) {
         text = '${senderName.isNotEmpty ? senderName : 'مشعل AI'} يجهز الرد...';
       } else {
         text = '${senderName.isNotEmpty ? senderName : 'الطرف الآخر'} يكتب الآن...';
@@ -729,10 +742,19 @@ class ChatController extends StateNotifier<ChatState> {
         state = state.copyWith(typingIndicator: text);
       }
       _typingTimer?.cancel();
-      _typingTimer = Timer(const Duration(seconds: 4), () {
+      _typingTimer = Timer(const Duration(seconds: 5), () {
         if (mounted) state = state.copyWith(clearTyping: true);
       });
     });
+    _presenceSub = _realtime.presenceActivity.listen((data) {
+      final convId = (data['conversation_id'] as num?)?.toInt();
+      if (convId != conversationId) return;
+      _applyPresenceData(data);
+    });
+    _presenceTimer = Timer.periodic(const Duration(seconds: 18), (_) {
+      pingPresence();
+    });
+    pingPresence();
     final repo = _ref.read(conversationRepositoryProvider);
     if (workspaceId != null) {
       // 1. FAST INITIAL RENDER: Load SQLite cache immediately (< 20ms)
@@ -878,6 +900,11 @@ class ChatController extends StateNotifier<ChatState> {
 
   @override
   void dispose() {
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+    _presenceSub?.cancel();
+    _presenceSub = null;
+    leavePresence();
     _sub?.cancel();
     _typingSub?.cancel();
     _typingTimer?.cancel();
@@ -885,6 +912,45 @@ class ChatController extends StateNotifier<ChatState> {
     _workspaceSub?.close();
     _realtime.watchConversation(null);
     super.dispose();
+  }
+
+  Future<void> pingPresence({String state = 'viewing'}) async {
+    if (conversationId <= 0) return;
+    try {
+      final res = await _ref.read(apiClientProvider).post(
+        'conversations/$conversationId/presence/ping',
+        body: {'state': state},
+      );
+      if (res.data is Map<String, dynamic>) {
+        _applyPresenceData(res.data as Map<String, dynamic>);
+      }
+    } catch (_) {
+      // Best effort
+    }
+  }
+
+  Future<void> leavePresence() async {
+    if (conversationId <= 0) return;
+    try {
+      await _ref.read(apiClientProvider).post(
+        'conversations/$conversationId/presence/leave',
+      );
+    } catch (_) {
+      // Best effort
+    }
+  }
+
+  void _applyPresenceData(Map<String, dynamic> data) {
+    final rawList = data['present_employees'];
+    if (rawList is List) {
+      final list = rawList
+          .whereType<Map<String, dynamic>>()
+          .map((m) => PresentEmployeeModel.fromJson(m))
+          .toList();
+      if (mounted) {
+        state = state.copyWith(presentEmployees: list);
+      }
+    }
   }
 
   Future<void> sendTyping(bool isTyping) async {
@@ -1075,32 +1141,18 @@ class ChatController extends StateNotifier<ChatState> {
     }
 
     if (!_canCommit(scope)) return true;
-    final currentUser = _ref.read(authControllerProvider).user;
-    final currentConv = state.conversation;
-    final updatedConv = (currentUser != null && _companyInboxWriteAllowed() && currentConv != null)
-        ? currentConv.copyWith(
-            aiEnabled: false,
-            handoffStatus: 'active',
-            assignedUserId: currentUser.id,
-            assignedUserName: currentUser.name,
-            responder: ConversationResponder(
-              status: 'human_active',
-              type: 'human',
-              name: currentUser.name,
-              label: 'الموظف يرد الآن',
-              userId: currentUser.id,
-              userInitials: currentUser.name.trim().isNotEmpty
-                  ? currentUser.name.trim().substring(0, 1)
-                  : null,
-            ),
-          )
-        : currentConv;
+    final updatedConv = _deriveEmployeeActiveConversation();
 
     state = state.copyWith(
       sending: false,
       error: null,
       conversation: updatedConv,
     );
+    if (updatedConv != null) {
+      _ref
+          .read(conversationsControllerProvider.notifier)
+          .applyRemoteConversation(updatedConv);
+    }
     _clearUnreadAfterSend();
     unawaited(_persistReadAfterSend(workspaceId));
     unawaited(
@@ -1111,6 +1163,32 @@ class ChatController extends StateNotifier<ChatState> {
       ),
     );
     return true;
+  }
+
+  ConversationModel? _deriveEmployeeActiveConversation() {
+    final currentUser = _ref.read(authControllerProvider).user;
+    final currentConv = state.conversation;
+    if (currentUser == null || !_companyInboxWriteAllowed() || currentConv == null) {
+      return currentConv;
+    }
+    final assignedId = currentConv.assignedUserId ?? currentUser.id;
+    final assignedName = currentConv.assignedUserName ?? currentUser.name;
+    return currentConv.copyWith(
+      aiEnabled: false,
+      handoffStatus: 'active',
+      assignedUserId: assignedId,
+      assignedUserName: assignedName,
+      responder: ConversationResponder(
+        status: 'human_active',
+        type: 'human',
+        name: assignedName,
+        label: 'الموظف يرد الآن',
+        userId: assignedId,
+        userInitials: assignedName.trim().isNotEmpty
+            ? assignedName.trim().substring(0, 1)
+            : null,
+      ),
+    );
   }
 
   void _clearUnreadAfterSend() {
@@ -1275,7 +1353,13 @@ class ChatController extends StateNotifier<ChatState> {
         attachments: [...saved.attachments, ...uploaded],
       );
       _replaceLocalMessage(key, withAttach);
-      state = state.copyWith(sending: false);
+      final updatedConv = _deriveEmployeeActiveConversation();
+      state = state.copyWith(sending: false, conversation: updatedConv);
+      if (updatedConv != null) {
+        _ref
+            .read(conversationsControllerProvider.notifier)
+            .applyRemoteConversation(updatedConv);
+      }
       final workspaceId = scope.workspaceId;
       if (workspaceId != null) {
         await repo.persistMessages(workspaceId, conversationId, state.messages);
@@ -1377,7 +1461,13 @@ class ChatController extends StateNotifier<ChatState> {
         attachments: [...saved.attachments, attachment],
       );
       _replaceLocalMessage(key, withAttach);
-      state = state.copyWith(sending: false);
+      final updatedConv = _deriveEmployeeActiveConversation();
+      state = state.copyWith(sending: false, conversation: updatedConv);
+      if (updatedConv != null) {
+        _ref
+            .read(conversationsControllerProvider.notifier)
+            .applyRemoteConversation(updatedConv);
+      }
       final workspaceId = scope.workspaceId;
       if (workspaceId != null) {
         await repo.persistMessages(workspaceId, conversationId, state.messages);
@@ -1460,7 +1550,13 @@ class ChatController extends StateNotifier<ChatState> {
         attachments: [...saved.attachments, attachment],
       );
       _replaceLocalMessage(key, withAttach);
-      state = state.copyWith(sending: false);
+      final updatedConv = _deriveEmployeeActiveConversation();
+      state = state.copyWith(sending: false, conversation: updatedConv);
+      if (updatedConv != null) {
+        _ref
+            .read(conversationsControllerProvider.notifier)
+            .applyRemoteConversation(updatedConv);
+      }
       final workspaceId = scope.workspaceId;
       if (workspaceId != null) {
         await repo.persistMessages(workspaceId, conversationId, state.messages);

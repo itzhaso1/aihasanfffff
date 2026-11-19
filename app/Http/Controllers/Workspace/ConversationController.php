@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Workspace;
 
 use App\Enums\ConversationHandoffStatus;
-use App\Events\Realtime\TypingActivity;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Workspace\Concerns\InteractsWithWorkspace;
 use App\Http\Requests\Conversation\StoreConversationRequest;
@@ -15,6 +14,7 @@ use App\Models\Customer;
 use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Services\Conversation\ConversationAiEligibilityService;
+use App\Services\Conversation\ConversationPresenceService;
 use App\Services\Conversation\ConversationResponderService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
@@ -27,7 +27,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 use InvalidArgumentException;
 
@@ -362,7 +361,8 @@ class ConversationController extends Controller
 
         if ($sentMessage->direction === 'outbound' && $request->user()) {
             $actor = $request->user();
-            Cache::forget("conversation:{$conversation->id}:active_typing");
+            app(ConversationPresenceService::class)->setTyping($conversation, $actor, false);
+            app(ConversationPresenceService::class)->ping($conversation, $actor, ConversationPresenceService::STATE_VIEWING);
             if ($conversation->assigned_user_id === null && $conversation->assigned_worker_engagement_id === null) {
                 $conversation->update([
                     'assigned_user_id' => $actor->id,
@@ -679,34 +679,59 @@ class ConversationController extends Controller
         $isTyping = $request->boolean('is_typing', true);
         $senderName = $user?->name ?? 'موظف';
 
-        $cacheKey = "conversation:{$conversation->id}:active_typing";
-        if ($isTyping && $user) {
-            Cache::put($cacheKey, [
-                'user_id' => $user->id,
-                'name' => $senderName,
-                'sender_type' => 'user',
-                'typed_at' => now()->toIso8601String(),
-            ], now()->addSeconds(6));
-        } else {
-            Cache::forget($cacheKey);
-        }
-
-        try {
-            event(new TypingActivity(
-                workspaceId: (int) $conversation->workspace_id,
-                conversationId: (int) $conversation->id,
-                senderType: 'user',
-                senderName: $senderName,
-                isTyping: $isTyping,
-            ));
-        } catch (\Throwable) {
-            // Best effort
-        }
+        $res = app(ConversationPresenceService::class)->setTyping(
+            $conversation,
+            $user ?? 'guest',
+            $isTyping,
+            senderType: 'user',
+            senderName: $senderName,
+        );
 
         return response()->json([
             'status' => 'ok',
             'is_typing' => $isTyping,
+            'typing_users' => $res['typing_users'] ?? [],
+            'typing_summary' => $res['typing_summary'] ?? '',
             'active_responder' => $conversation->currentResponder(),
+        ]);
+    }
+
+    public function presence(Conversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+        $state = app(ConversationPresenceService::class)->getConversationState($conversation);
+
+        return response()->json([
+            'status' => 'ok',
+            'data' => $state,
+        ]);
+    }
+
+    public function presencePing(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+        $user = $request->user();
+        abort_unless($user !== null, 401);
+
+        $stateInput = $request->string('state', ConversationPresenceService::STATE_VIEWING)->toString();
+        $state = app(ConversationPresenceService::class)->ping($conversation, $user, $stateInput);
+
+        return response()->json([
+            'status' => 'ok',
+            'data' => $state,
+        ]);
+    }
+
+    public function presenceLeave(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+        $user = $request->user();
+        if ($user !== null) {
+            app(ConversationPresenceService::class)->leave($conversation, $user);
+        }
+
+        return response()->json([
+            'status' => 'ok',
         ]);
     }
 }

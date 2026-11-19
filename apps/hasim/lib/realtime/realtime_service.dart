@@ -7,6 +7,7 @@ abstract class RealtimeService {
   Stream<MessageModel> get messageCreated;
   Stream<void> get conversationsChanged;
   Stream<Map<String, dynamic>> get typingActivity;
+  Stream<Map<String, dynamic>> get presenceActivity;
   Future<void> start();
   Future<void> stop();
   void watchConversation(int? conversationId);
@@ -24,6 +25,7 @@ class PollingRealtimeService implements RealtimeService {
   final _messageController = StreamController<MessageModel>.broadcast();
   final _listController = StreamController<void>.broadcast();
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
+  final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
   Timer? _listTimer;
   Timer? _chatTimer;
   int? _watchingConversationId;
@@ -43,6 +45,9 @@ class PollingRealtimeService implements RealtimeService {
 
   @override
   Stream<Map<String, dynamic>> get typingActivity => _typingController.stream;
+
+  @override
+  Stream<Map<String, dynamic>> get presenceActivity => _presenceController.stream;
 
   @override
   Future<void> start() async {
@@ -73,7 +78,7 @@ class PollingRealtimeService implements RealtimeService {
       return;
     }
     _chatTimer = Timer.periodic(
-      const Duration(milliseconds: 4500),
+      const Duration(milliseconds: 3500),
       (_) {
         if (!paused) _pollChat();
       },
@@ -131,6 +136,7 @@ class NoopRealtimeService implements RealtimeService {
   final _messageController = StreamController<MessageModel>.broadcast();
   final _listController = StreamController<void>.broadcast();
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
+  final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
 
   @override
   Stream<MessageModel> get messageCreated => _messageController.stream;
@@ -139,6 +145,8 @@ class NoopRealtimeService implements RealtimeService {
 
   @override
   Stream<Map<String, dynamic>> get typingActivity => _typingController.stream;
+  @override
+  Stream<Map<String, dynamic>> get presenceActivity => _presenceController.stream;
   @override
   Future<void> start() async {}
   @override

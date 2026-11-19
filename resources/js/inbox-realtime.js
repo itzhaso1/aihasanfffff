@@ -186,10 +186,23 @@ const bindRealtime = () => {
         const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
         if (currentId && Number(payload.conversation_id) === Number(currentId)) {
             if (payload.is_typing) {
-                window.__INBOX_UI__?.showTypingIndicator?.(payload.sender_name, payload.sender_type);
+                window.__INBOX_UI__?.showTypingIndicator?.(
+                    payload.sender_name,
+                    payload.sender_type,
+                    payload.typing_summary,
+                    payload.typing_users
+                );
             } else {
                 window.__INBOX_UI__?.hideTypingIndicator?.();
             }
+        }
+    };
+
+    const handlePresenceUpdated = (payload) => {
+        if (!payload?.conversation_id) return;
+        const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        if (currentId && Number(payload.conversation_id) === Number(currentId)) {
+            window.__INBOX_UI__?.updatePresenceUI?.(payload);
         }
     };
 
@@ -205,8 +218,55 @@ const bindRealtime = () => {
         echo.private(conversationChannel)
             .listen('.message.created', handleIncomingMessage)
             .listen('.conversation.updated', handleConversationUpdated)
-            .listen('.typing.activity', handleTypingActivity);
+            .listen('.typing.activity', handleTypingActivity)
+            .listen('.employee.joined', handlePresenceUpdated)
+            .listen('.employee.left', handlePresenceUpdated)
+            .listen('.employee.presence_updated', handlePresenceUpdated);
         joined.push(conversationChannel);
+
+        // Presence Heartbeat Loop (every 20 seconds)
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const pingPresence = (state = 'viewing') => {
+            fetch(`/workspace/conversations/${activeConversationId}/presence/ping`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                body: JSON.stringify({ state }),
+            })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data?.data) {
+                    window.__INBOX_UI__?.updatePresenceUI?.(data.data);
+                }
+            })
+            .catch(() => {});
+        };
+
+        const leavePresence = () => {
+            if (navigator.sendBeacon) {
+                const formData = new FormData();
+                formData.append('_token', csrfToken);
+                navigator.sendBeacon(`/workspace/conversations/${activeConversationId}/presence/leave`, formData);
+            } else {
+                fetch(`/workspace/conversations/${activeConversationId}/presence/leave`, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken },
+                    keepalive: true,
+                }).catch(() => {});
+            }
+        };
+
+        pingPresence('viewing');
+        const presenceInterval = setInterval(() => pingPresence('viewing'), 20000);
+
+        window.addEventListener('beforeunload', leavePresence, { once: true });
+        window.addEventListener('hs:before-navigate', () => {
+            clearInterval(presenceInterval);
+            leavePresence();
+        }, { once: true });
     }
 };
 

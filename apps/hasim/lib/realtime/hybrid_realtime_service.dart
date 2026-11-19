@@ -63,6 +63,10 @@ class HybridRealtimeService implements RealtimeService {
       _wsClient?.typingActivity ?? _polling.typingActivity;
 
   @override
+  Stream<Map<String, dynamic>> get presenceActivity =>
+      _wsClient?.presenceActivity ?? _polling.presenceActivity;
+
+  @override
   Future<void> start() async {
     _listenToPolling();
     final config = await _loadRemoteConfig();

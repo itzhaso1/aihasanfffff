@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\AI\Models\ModelGatewayException;
-use App\Events\Realtime\TypingActivity;
 use App\Exceptions\FeatureNotAvailableException;
 use App\Exceptions\UsageLimitExceededException;
 use App\Models\Conversation;
@@ -16,6 +15,7 @@ use App\Services\AI\AIService;
 use App\Services\AI\Inbox\AiReplyEligibility;
 use App\Services\AI\Inbox\InboxHonestReplyFallback;
 use App\Services\Channel\Outbound\ChannelOutboundService;
+use App\Services\Conversation\ConversationPresenceService;
 use App\Services\Inbox\InboundMessageDeduplicationService;
 use App\Services\Inbox\InboxHumanHandoffDetector;
 use App\Services\Inbox\InboxHumanHandoffService;
@@ -295,13 +295,13 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         Cache::put("conversation:{$conversation->id}:ai_generating", true, 30);
 
         try {
-            event(new TypingActivity(
-                workspaceId: (int) $conversation->workspace_id,
-                conversationId: (int) $conversation->id,
+            app(ConversationPresenceService::class)->setTyping(
+                $conversation,
+                'ai',
+                true,
                 senderType: 'ai',
                 senderName: 'مشعل AI',
-                isTyping: true,
-            ));
+            );
         } catch (Throwable) {
             // Best effort
         }
@@ -320,13 +320,13 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         } finally {
             Cache::forget("conversation:{$conversation->id}:ai_generating");
             try {
-                event(new TypingActivity(
-                    workspaceId: (int) $conversation->workspace_id,
-                    conversationId: (int) $conversation->id,
+                app(ConversationPresenceService::class)->setTyping(
+                    $conversation,
+                    'ai',
+                    false,
                     senderType: 'ai',
                     senderName: 'مشعل AI',
-                    isTyping: false,
-                ));
+                );
             } catch (Throwable) {
                 // Best effort
             }

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\Mobile\V1;
 
-use App\Events\Realtime\TypingActivity;
 use App\Http\Controllers\Api\Mobile\Concerns\ResolvesMobileWorkspace;
 use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Http\Resources\Mobile\ConversationResource;
@@ -10,6 +9,7 @@ use App\Http\Resources\Mobile\MessageResource;
 use App\Models\Conversation;
 use App\Models\ConversationUserState;
 use App\Services\Conversation\ConversationClassificationService;
+use App\Services\Conversation\ConversationPresenceService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use App\Services\Inbox\InboxHumanHandoffService;
@@ -374,34 +374,53 @@ class ConversationController extends MobileController
             $senderName = $profile->display_name ?: $user->name ?: 'موظف مستقل';
         }
 
-        $cacheKey = "conversation:{$conversation->id}:active_typing";
-        if ($isTyping) {
-            Cache::put($cacheKey, [
-                'user_id' => $user->id,
-                'name' => $senderName,
-                'sender_type' => $senderType,
-                'typed_at' => now()->toIso8601String(),
-            ], now()->addSeconds(6));
-        } else {
-            Cache::forget($cacheKey);
-        }
-
-        try {
-            event(new TypingActivity(
-                workspaceId: (int) $conversation->workspace_id,
-                conversationId: (int) $conversation->id,
-                senderType: $senderType,
-                senderName: $senderName,
-                isTyping: $isTyping,
-            ));
-        } catch (\Throwable) {
-            // Best effort
-        }
+        $res = app(ConversationPresenceService::class)->setTyping(
+            $conversation,
+            $user,
+            $isTyping,
+            senderType: $senderType,
+            senderName: $senderName,
+        );
 
         return $this->ok([
             'status' => 'ok',
             'is_typing' => $isTyping,
+            'typing_users' => $res['typing_users'] ?? [],
+            'typing_summary' => $res['typing_summary'] ?? '',
             'active_responder' => $conversation->currentResponder(),
         ]);
+    }
+
+    public function presence(Conversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+        $state = app(ConversationPresenceService::class)->getConversationState($conversation);
+
+        return $this->ok($state);
+    }
+
+    public function presencePing(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+        $user = $request->user();
+        if ($user === null) {
+            return $this->fail('غير مصرح.', 401);
+        }
+
+        $stateInput = $request->string('state', ConversationPresenceService::STATE_VIEWING)->toString();
+        $state = app(ConversationPresenceService::class)->ping($conversation, $user, $stateInput);
+
+        return $this->ok($state);
+    }
+
+    public function presenceLeave(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+        $user = $request->user();
+        if ($user !== null) {
+            app(ConversationPresenceService::class)->leave($conversation, $user);
+        }
+
+        return $this->ok(['status' => 'ok']);
     }
 }

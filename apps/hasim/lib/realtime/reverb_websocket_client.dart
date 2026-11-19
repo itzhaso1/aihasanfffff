@@ -58,6 +58,7 @@ class ReverbWebSocketClient {
   final _messageController = StreamController<MessageModel>.broadcast();
   final _conversationUpdateController = StreamController<void>.broadcast();
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
+  final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectionStateController =
       StreamController<RealtimeConnectionState>.broadcast();
 
@@ -70,6 +71,7 @@ class ReverbWebSocketClient {
   Stream<MessageModel> get messageCreated => _messageController.stream;
   Stream<void> get conversationsChanged => _conversationUpdateController.stream;
   Stream<Map<String, dynamic>> get typingActivity => _typingController.stream;
+  Stream<Map<String, dynamic>> get presenceActivity => _presenceController.stream;
   Stream<RealtimeConnectionState> get connectionState =>
       _connectionStateController.stream;
 
@@ -240,6 +242,17 @@ class ReverbWebSocketClient {
           final data = _parseDataMap(rawData);
           if (data.isNotEmpty) {
             _typingController.add(data);
+          }
+
+        case 'employee.joined':
+        case 'App\\Events\\Realtime\\EmployeeJoinedConversation':
+        case 'employee.left':
+        case 'App\\Events\\Realtime\\EmployeeLeftConversation':
+        case 'employee.presence_updated':
+        case 'App\\Events\\Realtime\\EmployeePresenceUpdated':
+          final data = _parseDataMap(rawData);
+          if (data.isNotEmpty) {
+            _presenceController.add(data);
           }
 
         default:

@@ -37,7 +37,7 @@ Broadcast::channel('workspace.{workspaceId}.conversation.{conversationId}', func
     User $user,
     int $workspaceId,
     int $conversationId,
-): bool {
+): array|bool {
     $workspace = Workspace::withoutGlobalScopes()->find($workspaceId);
     if (! $workspace) {
         return false;
@@ -62,7 +62,7 @@ Broadcast::channel('workspace.{workspaceId}.conversation.{conversationId}', func
 
     $conversation = Conversation::withoutGlobalScopes()
         ->whereKey($conversationId)
-        ->first(['id', 'workspace_id', 'status']);
+        ->first(['id', 'workspace_id', 'status', 'assigned_user_id']);
 
     if ($conversation === null || (int) $conversation->workspace_id !== (int) $workspaceId) {
         return false;
@@ -72,5 +72,12 @@ Broadcast::channel('workspace.{workspaceId}.conversation.{conversationId}', func
         return false;
     }
 
-    return true;
+    return [
+        'id' => (int) $user->id,
+        'name' => $user->name,
+        'email' => $user->email,
+        'avatar_url' => $user->avatar_url ?? null,
+        'is_worker' => $isWorker,
+        'is_assigned' => ((int) $conversation->assigned_user_id === (int) $user->id),
+    ];
 }, ['guards' => ['web', 'sanctum']]);
