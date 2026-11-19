@@ -334,6 +334,42 @@ class MessageModel extends Equatable {
   bool get isInternalNote =>
       direction == 'internal_note' || messageType == 'system';
 
+  bool get isFromEmployee =>
+      isOutbound && !aiGenerated && workerEngagementId == null;
+
+  bool get isFromAi => aiGenerated || participantType == 'ai_employee';
+
+  bool get isFromWorker =>
+      workerEngagementId != null || participantType == 'independent_worker';
+
+  bool get isFromCustomer => !isOutbound && !isInternalNote;
+
+  String get senderDisplayName {
+    if (isFromAi) {
+      final name = userName?.trim();
+      return (name != null && name.isNotEmpty) ? name : 'مشعل AI';
+    }
+    if (isFromWorker) {
+      final name = userName?.trim();
+      return (name != null && name.isNotEmpty) ? name : 'موظف مستقل';
+    }
+    if (isFromEmployee) {
+      final name = userName?.trim();
+      return (name != null && name.isNotEmpty) ? name : 'الموظف';
+    }
+    final name = (customerName?.trim().isNotEmpty == true)
+        ? customerName!.trim()
+        : (userName?.trim().isNotEmpty == true ? userName!.trim() : 'العميل');
+    return name;
+  }
+
+  String get senderRoleBadge {
+    if (isFromAi) return 'ذكاء اصطناعي';
+    if (isFromWorker) return 'موظف مستقل';
+    if (isFromEmployee) return 'موظف';
+    return 'عميل';
+  }
+
   static Map<String, dynamic> _unwrapMessageJson(Map<String, dynamic> json) {
     final nested = json['data'];
     if (json['id'] == null && nested is Map) {

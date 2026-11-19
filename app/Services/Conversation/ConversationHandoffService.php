@@ -371,12 +371,8 @@ final class ConversationHandoffService
             $this->assertOpen($fresh);
             $this->assertWorkspaceMember($fresh, $actor);
 
-            if ($this->currentStatus($fresh) !== ConversationHandoffStatus::Resolved
-                && $this->currentStatus($fresh)->blocksAi()) {
-                throw new InvalidHandoffTransitionException('Handoff must be resolved before resuming AI.');
-            }
-
-            if ($this->currentStatus($fresh) === ConversationHandoffStatus::Resolved) {
+            $currentStatus = $this->currentStatus($fresh);
+            if ($currentStatus !== ConversationHandoffStatus::None) {
                 $fresh = $this->transition($fresh, ConversationHandoffStatus::None);
             }
 

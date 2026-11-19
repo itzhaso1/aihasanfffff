@@ -18,11 +18,18 @@ class MessageResource extends JsonResource
         $metadata = is_array($this->metadata) ? $this->metadata : [];
         $clientId = $metadata['client_id'] ?? $metadata['idempotency_key'] ?? null;
 
-        $senderName = $this->user?->name;
+        $senderName = null;
         if ($this->ai_generated) {
             $senderName = 'مشعل AI';
+        } elseif ($this->worker_engagement_id !== null) {
+            $profile = $this->relationLoaded('workerEngagement') ? $this->workerEngagement?->workerProfile : null;
+            $senderName = $profile?->display_name ?? $profile?->user?->name ?? $this->user?->name ?? 'موظف مستقل';
+        } elseif ($this->user_id !== null || $this->direction === 'outbound') {
+            $senderName = $this->user?->name ?? 'الموظف';
         } elseif ($this->customer) {
             $senderName = $this->customer->name;
+        } else {
+            $senderName = 'العميل';
         }
 
         return [
@@ -30,6 +37,7 @@ class MessageResource extends JsonResource
             'conversation_id' => $this->conversation_id,
             'user_id' => $this->user_id,
             'user_name' => $this->user?->name,
+            'customer_name' => $this->customer?->name,
             'sender_name' => $senderName,
             'direction' => $this->direction,
             'message_type' => $this->message_type,

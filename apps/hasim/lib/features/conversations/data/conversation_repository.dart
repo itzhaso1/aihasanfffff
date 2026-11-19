@@ -454,6 +454,36 @@ class ConversationRepository {
     }
   }
 
+  Future<void> closeConversation(
+    int conversationId, {
+    int? workspaceId,
+  }) async {
+    await _api.post('/conversations/$conversationId/close');
+    if (workspaceId != null) {
+      final existing = await cachedConversation(workspaceId, conversationId);
+      if (existing != null) {
+        await _local?.upsertConversations(workspaceId, [
+          existing.copyWith(status: 'closed'),
+        ]);
+      }
+    }
+  }
+
+  Future<void> reopenConversation(
+    int conversationId, {
+    int? workspaceId,
+  }) async {
+    await _api.post('/conversations/$conversationId/reopen');
+    if (workspaceId != null) {
+      final existing = await cachedConversation(workspaceId, conversationId);
+      if (existing != null) {
+        await _local?.upsertConversations(workspaceId, [
+          existing.copyWith(status: 'open'),
+        ]);
+      }
+    }
+  }
+
   Future<void> mute(
     int conversationId, {
     bool muted = true,

@@ -297,18 +297,6 @@ class _BubbleBody extends StatelessWidget {
           ),
           const SizedBox(width: 3),
         ],
-        if (mine && (message.userName?.trim().isNotEmpty ?? false)) ...[
-          Text(
-            message.userName!.trim(),
-            style: TextStyle(
-              color: meta,
-              fontSize: 10,
-              height: 1.1,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
         Text(
           message.createdAt == null
               ? ''
@@ -371,6 +359,8 @@ class _BubbleBody extends StatelessWidget {
     final hasAttachments = message.attachments.isNotEmpty;
     final textOnly = showCaption && !hasAttachments && !pendingUpload;
 
+    final header = _SenderHeader(message: message, mine: mine);
+
     if (textOnly) {
       final quoted = splitQuotedReply(message.content);
       final textRow = Wrap(
@@ -383,15 +373,15 @@ class _BubbleBody extends StatelessWidget {
           _metaRow(),
         ],
       );
-      if (quoted.quote == null) {
-        return textRow;
-      }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _QuotedReplyBlock(text: quoted.quote!, mine: mine),
-          const SizedBox(height: 4),
+          header,
+          if (quoted.quote != null) ...[
+            _QuotedReplyBlock(text: quoted.quote!, mine: mine),
+            const SizedBox(height: 4),
+          ],
           textRow,
         ],
       );
@@ -408,6 +398,7 @@ class _BubbleBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        header,
         if (imageAttachments.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
@@ -483,6 +474,102 @@ class _BubbleBody extends StatelessWidget {
           child: _metaRow(),
         ),
       ],
+    );
+  }
+}
+
+/// شريط تعريفي واضح بأعلى كل رسالة يحدد بدقة من أرسلها (موظف، ذكاء اصطناعي، عميل، موظف مستقل)
+class _SenderHeader extends StatelessWidget {
+  const _SenderHeader({
+    required this.message,
+    required this.mine,
+  });
+
+  final MessageModel message;
+  final bool mine;
+
+  @override
+  Widget build(BuildContext context) {
+    if (message.isInternalNote) {
+      return const SizedBox.shrink();
+    }
+
+    final isEmployee = message.isFromEmployee;
+    final isAi = message.isFromAi;
+    final isWorker = message.isFromWorker;
+
+    final IconData icon;
+    final Color color;
+    final Color badgeBg;
+    final String roleLabel;
+    final String name;
+
+    if (isAi) {
+      icon = Icons.smart_toy_outlined;
+      color = const Color(0xFF6366F1);
+      badgeBg = const Color(0x1F6366F1);
+      roleLabel = 'ذكاء اصطناعي';
+      name = message.senderDisplayName;
+    } else if (isWorker) {
+      icon = Icons.work_outline;
+      color = Colors.amber.shade900;
+      badgeBg = Colors.amber.shade100;
+      roleLabel = 'موظف مستقل';
+      name = message.senderDisplayName;
+    } else if (isEmployee) {
+      icon = Icons.badge_outlined;
+      color = HasimTokens.accentDark;
+      badgeBg = HasimTokens.mintSoft;
+      roleLabel = 'موظف';
+      name = message.senderDisplayName;
+    } else {
+      icon = Icons.person_outline;
+      color = HasimTokens.mutedColor(context);
+      badgeBg = HasimTokens.lineColor(context);
+      roleLabel = 'عميل';
+      name = message.senderDisplayName;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: color,
+                height: 1.1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: badgeBg,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: color.withValues(alpha: 0.25), width: 0.5),
+            ),
+            child: Text(
+              roleLabel,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                color: color,
+                height: 1.1,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

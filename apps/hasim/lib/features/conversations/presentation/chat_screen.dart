@@ -995,6 +995,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               'تصنيف المحادثة · ${ConversationClassificationValues.priorityLabel(conversation.customerPriority)}',
             ),
           ),
+        if (conversation != null)
+          PopupMenuItem(
+            key: const Key('chat-action-toggle-status'),
+            value: conversation.status == 'closed' ? 'reopen' : 'close',
+            child: Text(
+              conversation.status == 'closed'
+                  ? 'إعادة فتح المحادثة'
+                  : 'إغلاق المحادثة',
+            ),
+          ),
         if (conversation != null &&
             isCompanyUser &&
             ConversationHandoffValues.canMoveToTeamReview(conversation))
@@ -1061,6 +1071,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     if (selected == 'classify' && conversation != null) {
       await _openClassification(conversation);
+    }
+    if (selected == 'close' || selected == 'reopen') {
+      final notifier = ref.read(
+        chatControllerProvider(widget.conversationId).notifier,
+      );
+      final error = selected == 'close'
+          ? await notifier.closeConversation()
+          : await notifier.reopenConversation();
+      if (!mounted) return;
+      if (error == null) {
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          SnackBar(
+            content: Text(selected == 'close'
+                ? 'تم إغلاق المحادثة.'
+                : 'تمت إعادة فتح المحادثة.'),
+            backgroundColor: selected == 'close'
+                ? Colors.grey.shade700
+                : HasimTokens.chatGreen,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
     }
     if (selected == 'end_handoff' ||
         selected == 'move_to_team' ||

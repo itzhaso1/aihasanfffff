@@ -428,6 +428,10 @@ class CustomerRepository {
     );
     return asMapList(res.data).map(ConversationModel.fromJson).toList();
   }
+
+  Future<void> delete(int id) async {
+    await _api.delete('/customers/$id');
+  }
 }
 
 class AiRepository {

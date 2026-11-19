@@ -197,6 +197,9 @@ class ConversationService
         );
 
         if ($message->direction === 'outbound' && $actor instanceof User && ! (bool) ($data['ai_generated'] ?? false)) {
+            // Track last time a human employee replied (used for idle-handoff auto-resume)
+            $conversation->updateQuietly(['employee_last_replied_at' => $message->created_at ?? now()]);
+
             app(ConversationResponderService::class)->recordTransition(
                 $conversation->fresh() ?? $conversation,
                 ConversationResponderService::TYPE_HUMAN,

@@ -43,6 +43,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'responder_name',
     'responder_assigned_at',
     'last_message_at',
+    'employee_last_replied_at',
     'metadata',
 ])]
 class Conversation extends WorkspaceScopedModel
@@ -62,6 +63,7 @@ class Conversation extends WorkspaceScopedModel
             'responder_assigned_at' => 'datetime',
             'classification_updated_at' => 'datetime',
             'last_message_at' => 'datetime',
+            'employee_last_replied_at' => 'datetime',
             'metadata' => 'array',
         ];
     }

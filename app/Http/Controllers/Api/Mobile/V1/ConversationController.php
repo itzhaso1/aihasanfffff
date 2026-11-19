@@ -13,6 +13,7 @@ use App\Services\Conversation\ConversationPresenceService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use App\Services\Inbox\InboxHumanHandoffService;
+use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Mobile\ConversationInboxService;
 use App\Services\Mobile\MobileInboxActor;
 use App\Services\Worker\WorkerInboxException;
@@ -236,6 +237,24 @@ class ConversationController extends MobileController
         $this->conversationInboxService->archive($conversation, $request->user(), $archived);
 
         return $this->ok(message: $archived ? 'تم أرشفة المحادثة.' : 'تم إلغاء أرشفة المحادثة.');
+    }
+
+    public function close(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('update', $conversation);
+        $conversation->update(['status' => 'closed']);
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
+
+        return $this->ok(new ConversationResource($conversation->fresh(['customer', 'assignedUser'])), message: 'تم إغلاق المحادثة بنجاح.');
+    }
+
+    public function reopen(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('update', $conversation);
+        $conversation->update(['status' => 'open']);
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
+
+        return $this->ok(new ConversationResource($conversation->fresh(['customer', 'assignedUser'])), message: 'تمت إعادة فتح المحادثة بنجاح.');
     }
 
     public function mute(Request $request, Conversation $conversation): JsonResponse

@@ -167,6 +167,11 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
       const PopupMenuItem(value: 'copy_email', child: Text('نسخ البريد')),
     if (id != null && !widget.asPage)
       const PopupMenuItem(value: 'profile', child: Text('ملف العميل الكامل')),
+    if (id != null)
+      const PopupMenuItem(
+        value: 'delete',
+        child: Text('حذف العميل', style: TextStyle(color: Colors.red)),
+      ),
   ];
 
   void _onMore(String value, CustomerModel? customer, int? id) {
@@ -175,6 +180,39 @@ class _CustomerInfoDrawerState extends ConsumerState<CustomerInfoDrawer> {
     if (value == 'copy_email') _copy(customer?.email, 'تم نسخ البريد');
     if (value == 'profile' && id != null) {
       context.push('/customers/$id', extra: customer);
+    }
+    if (value == 'delete' && id != null) {
+      _confirmDeleteCustomer(id, customer?.name ?? 'العميل');
+    }
+  }
+
+  Future<void> _confirmDeleteCustomer(int id, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف العميل'),
+        content: Text('هل أنت متأكد من رغبتك في حذف "$name"؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('نعم، حذف'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(customerRepositoryProvider).delete(id);
+      if (!mounted) return;
+      _toast('تم حذف العميل بنجاح.');
+      widget.onClose();
+    } catch (_) {
+      _toast('تعذر حذف العميل.');
     }
   }
 

@@ -179,4 +179,12 @@ class CustomerController extends MobileController
             ),
         );
     }
+
+    public function destroy(Customer $customer): JsonResponse
+    {
+        $this->authorize('delete', $customer);
+        $customer->delete();
+
+        return $this->ok(message: 'تم حذف العميل بنجاح.');
+    }
 }

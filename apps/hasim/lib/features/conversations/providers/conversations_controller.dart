@@ -486,6 +486,24 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     );
   }
 
+  Future<String?> closeConversation(int conversationId) {
+    return _mutateConversation(
+      conversationId,
+      apply: (repo, workspaceId) =>
+          repo.closeConversation(conversationId, workspaceId: workspaceId),
+      update: (conversation) => conversation.copyWith(status: 'closed'),
+    );
+  }
+
+  Future<String?> reopenConversation(int conversationId) {
+    return _mutateConversation(
+      conversationId,
+      apply: (repo, workspaceId) =>
+          repo.reopenConversation(conversationId, workspaceId: workspaceId),
+      update: (conversation) => conversation.copyWith(status: 'open'),
+    );
+  }
+
   Future<String?> setMuted(int conversationId, {required bool muted}) {
     return _mutateConversation(
       conversationId,
@@ -1091,6 +1109,7 @@ class ChatController extends StateNotifier<ChatState> {
     final text = content.trim();
     if (text.isEmpty) return false;
     final clientId = newIdempotencyKey();
+    final currentUserName = _ref.read(authControllerProvider).user?.name ?? 'الموظف';
     final optimistic = MessageModel(
       id: -DateTime.now().millisecondsSinceEpoch,
       conversationId: conversationId,
@@ -1098,6 +1117,8 @@ class ChatController extends StateNotifier<ChatState> {
       messageType: 'text',
       content: text,
       createdAt: DateTime.now(),
+      userName: currentUserName,
+      participantType: 'company_staff',
       localPending: true,
       clientId: clientId,
     );
@@ -1300,6 +1321,7 @@ class ChatController extends StateNotifier<ChatState> {
     final text = caption.trim().isEmpty ? '📎' : caption.trim();
     final key = newIdempotencyKey();
     final firstPath = files.first.path;
+    final currentUserName = _ref.read(authControllerProvider).user?.name ?? 'الموظف';
     final optimistic = MessageModel(
       id: -DateTime.now().millisecondsSinceEpoch,
       conversationId: conversationId,
@@ -1307,6 +1329,8 @@ class ChatController extends StateNotifier<ChatState> {
       messageType: 'text',
       content: text,
       createdAt: DateTime.now(),
+      userName: currentUserName,
+      participantType: 'company_staff',
       localPending: true,
       localUploading: false,
       localAttachmentPath: firstPath,
@@ -1416,6 +1440,7 @@ class ChatController extends StateNotifier<ChatState> {
   }) async {
     final text = caption.trim().isEmpty ? '🎤' : caption.trim();
     final key = newIdempotencyKey();
+    final currentUserName = _ref.read(authControllerProvider).user?.name ?? 'الموظف';
     final optimistic = MessageModel(
       id: -DateTime.now().millisecondsSinceEpoch,
       conversationId: conversationId,
@@ -1423,6 +1448,8 @@ class ChatController extends StateNotifier<ChatState> {
       messageType: 'text',
       content: text,
       createdAt: DateTime.now(),
+      userName: currentUserName,
+      participantType: 'company_staff',
       localPending: true,
       localUploading: false,
       clientId: key,
@@ -1502,6 +1529,7 @@ class ChatController extends StateNotifier<ChatState> {
     final text = caption.trim().isEmpty ? '📎' : caption.trim();
     final key = clientId ?? newIdempotencyKey();
     final path = file.path;
+    final currentUserName = _ref.read(authControllerProvider).user?.name ?? 'الموظف';
     final optimistic = MessageModel(
       id: -DateTime.now().millisecondsSinceEpoch,
       conversationId: conversationId,
@@ -1509,6 +1537,8 @@ class ChatController extends StateNotifier<ChatState> {
       messageType: 'text',
       content: text,
       createdAt: DateTime.now(),
+      userName: currentUserName,
+      participantType: 'company_staff',
       localPending: true,
       localUploading: false,
       localAttachmentPath: path,
@@ -1719,6 +1749,22 @@ class ChatController extends StateNotifier<ChatState> {
         archived: archived,
         status: archived ? 'archived' : 'open',
       ),
+    );
+  }
+
+  Future<String?> closeConversation() {
+    return _mutateConversation(
+      apply: (repo, workspaceId) =>
+          repo.closeConversation(conversationId, workspaceId: workspaceId),
+      update: (conversation) => conversation.copyWith(status: 'closed'),
+    );
+  }
+
+  Future<String?> reopenConversation() {
+    return _mutateConversation(
+      apply: (repo, workspaceId) =>
+          repo.reopenConversation(conversationId, workspaceId: workspaceId),
+      update: (conversation) => conversation.copyWith(status: 'open'),
     );
   }
 

@@ -509,7 +509,19 @@ void main() {
       ConversationHandoffValues.canResumeAi(
         _conv(handoff: 'queued', aiEnabled: false),
       ),
-      isFalse,
+      isTrue,
+    );
+    expect(
+      ConversationHandoffValues.canResumeAi(
+        _conv(handoff: 'active', aiEnabled: false),
+      ),
+      isTrue,
+    );
+    expect(
+      ConversationHandoffValues.canResumeAi(
+        _conv(handoff: 'assigned', aiEnabled: false),
+      ),
+      isTrue,
     );
     expect(
       ConversationHandoffValues.canEndHandoff(_conv(handoff: 'queued')),
@@ -1581,7 +1593,7 @@ void main() {
     expect(find.text('تحتاج مراجعة من الفريق'), findsOneWidget);
     await openMore(tester);
     expect(find.text('إنهاء التحويل'), findsOneWidget);
-    expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
+    expect(find.byKey(const Key('chat-action-resume-ai')), findsOneWidget);
     expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
     expect(find.text('تعيين عامل مستقل'), findsNothing);
     await tester.tap(find.byKey(const Key('chat-action-end-handoff')));

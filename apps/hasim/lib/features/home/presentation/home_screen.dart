@@ -64,6 +64,12 @@ class HomeScreen extends ConsumerWidget {
                         onTap: () => context.go('/conversations'),
                       ),
                       _StatChip(
+                        title: 'البريد',
+                        value: '${snap?.unreadEmail ?? 0}',
+                        icon: Icons.mail_outline,
+                        onTap: () => context.push('/emails'),
+                      ),
+                      _StatChip(
                         title: 'إشعارات',
                         value: '${snap?.unreadNotifications ?? 0}',
                         icon: Icons.notifications_active_outlined,
@@ -87,6 +93,21 @@ class HomeScreen extends ConsumerWidget {
                           label: 'محادثات',
                           icon: Icons.forum_outlined,
                           onTap: () => context.go('/conversations'),
+                        ),
+                        _QuickAction(
+                          label: 'البريد',
+                          icon: Icons.mail_outline,
+                          onTap: () => context.push('/emails'),
+                        ),
+                        _QuickAction(
+                          label: 'التحليلات',
+                          icon: Icons.analytics_outlined,
+                          onTap: () => context.push('/analytics'),
+                        ),
+                        _QuickAction(
+                          label: 'فريق العمل',
+                          icon: Icons.badge_outlined,
+                          onTap: () => context.push('/employees'),
                         ),
                         _QuickAction(
                           label: 'جهات الاتصال',

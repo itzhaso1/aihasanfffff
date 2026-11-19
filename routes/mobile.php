@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Mobile\V1\AiController;
 use App\Http\Controllers\Api\Mobile\V1\AiEmployeeController;
 use App\Http\Controllers\Api\Mobile\V1\AiSettingsController;
+use App\Http\Controllers\Api\Mobile\V1\AnalyticsController;
 use App\Http\Controllers\Api\Mobile\V1\AttachmentController;
 use App\Http\Controllers\Api\Mobile\V1\AuthController;
 use App\Http\Controllers\Api\Mobile\V1\BrandingController;
@@ -27,6 +28,7 @@ use App\Http\Controllers\Api\Mobile\V1\EmailCampaignController;
 use App\Http\Controllers\Api\Mobile\V1\EmailContactController;
 use App\Http\Controllers\Api\Mobile\V1\EmailContactGroupController;
 use App\Http\Controllers\Api\Mobile\V1\EmailController;
+use App\Http\Controllers\Api\Mobile\V1\EmployeeController;
 use App\Http\Controllers\Api\Mobile\V1\HomeController;
 use App\Http\Controllers\Api\Mobile\V1\NotificationController;
 use App\Http\Controllers\Api\Mobile\V1\PlanController;
@@ -228,12 +230,15 @@ Route::middleware([
     Route::get('/realtime/config', [RealtimeController::class, 'config']);
 
     Route::get('/home', [HomeController::class, 'index']);
+    Route::get('/analytics', [AnalyticsController::class, 'summary']);
     Route::get('/unread', [UnreadController::class, 'index']);
     Route::get('/search', [SearchController::class, 'search'])->middleware('throttle:mobile-search');
 
     Route::post('/conversations', [ConversationController::class, 'store'])->middleware('throttle:mobile-write');
     Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy'])->middleware('throttle:mobile-write');
     Route::post('/conversations/{conversation}/archive', [ConversationController::class, 'archive']);
+    Route::post('/conversations/{conversation}/close', [ConversationController::class, 'close'])->middleware('throttle:mobile-write');
+    Route::post('/conversations/{conversation}/reopen', [ConversationController::class, 'reopen'])->middleware('throttle:mobile-write');
     Route::post('/conversations/{conversation}/mute', [ConversationController::class, 'mute']);
     Route::patch('/conversations/{conversation}/ai', [ConversationController::class, 'updateAi']);
     Route::patch('/conversations/{conversation}/classification', [ConversationController::class, 'updateClassification']);
@@ -359,8 +364,15 @@ Route::middleware([
     Route::post('/customers', [CustomerController::class, 'store'])->middleware('throttle:mobile-write');
     Route::get('/customers/{customer}', [CustomerController::class, 'show']);
     Route::patch('/customers/{customer}', [CustomerController::class, 'update'])->middleware('throttle:mobile-write');
+    Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])->middleware('throttle:mobile-write');
     Route::post('/customers/{customer}/notes', [CustomerController::class, 'storeNote'])->middleware('throttle:mobile-write');
     Route::get('/customers/{customer}/conversations', [CustomerController::class, 'conversations']);
+
+    Route::get('/employees', [EmployeeController::class, 'index']);
+    Route::post('/employees/invite', [EmployeeController::class, 'invite'])->middleware('throttle:mobile-write');
+    Route::patch('/employees/{membership}', [EmployeeController::class, 'update'])->middleware('throttle:mobile-write');
+    Route::delete('/employees/{membership}', [EmployeeController::class, 'destroy'])->middleware('throttle:mobile-write');
+    Route::get('/employees/roles', [EmployeeController::class, 'roles']);
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead']);

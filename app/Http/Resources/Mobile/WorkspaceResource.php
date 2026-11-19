@@ -35,10 +35,14 @@ class WorkspaceResource extends JsonResource
                 || $this->pivot?->membership_role === WorkspaceAccess::ROLE_OWNER
             );
 
+        $role = $this->pivot?->membership_role ?? ($isOwner ? WorkspaceAccess::ROLE_OWNER : null);
+
         $data = [
             'id' => $this->id,
             'name' => $this->name,
             'type' => $this->type,
+            'role' => $role,
+            'membership_role' => $role,
             'is_owner' => $isOwner,
         ];
 

@@ -17,7 +17,6 @@ use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Conversation\ConversationAiEligibilityService;
 use App\Services\Conversation\ConversationHandoffService;
 use App\Services\Conversation\ConversationService;
-use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Mobile\ConversationInboxService;
 use Database\Seeders\FoundationSeeder;
@@ -636,7 +635,7 @@ class ConversationHandoffV2Test extends TestCase
         $this->assertTrue(app(ConversationAiEligibilityService::class)->mayRespond($conversation, $inbound));
     }
 
-    public function test_mobile_patch_ai_enable_rejected_during_active_handoff(): void
+    public function test_mobile_patch_ai_enable_succeeds_directly_during_active_handoff(): void
     {
         [$owner, $workspace, $conversation] = $this->seedConversation();
         $conversation->update([
@@ -649,12 +648,12 @@ class ConversationHandoffV2Test extends TestCase
             ->patchJson("/api/mobile/v1/conversations/{$conversation->id}/ai", [
                 'ai_enabled' => true,
             ])
-            ->assertStatus(422);
+            ->assertOk();
 
         $conversation->refresh();
-        $this->assertFalse((bool) $conversation->ai_enabled);
-        $this->assertSame(ConversationHandoffStatus::Queued, $conversation->handoff_status);
-        $this->assertFalse($conversation->isAiReplying());
+        $this->assertTrue((bool) $conversation->ai_enabled);
+        $this->assertSame(ConversationHandoffStatus::None, $conversation->handoff_status);
+        $this->assertTrue($conversation->isAiReplying());
     }
 
     public function test_mobile_patch_ai_enable_rejected_when_closed_or_archived(): void
@@ -727,7 +726,7 @@ class ConversationHandoffV2Test extends TestCase
         $this->assertFalse(app(AiReplyEligibility::class)->mayGenerate($fresh, $inbound));
     }
 
-    public function test_legacy_api_cannot_enable_ai_during_active_handoff(): void
+    public function test_legacy_api_can_enable_ai_during_active_handoff(): void
     {
         [$owner, $workspace, $conversation] = $this->seedConversation();
         $conversation->update([
@@ -740,12 +739,12 @@ class ConversationHandoffV2Test extends TestCase
             ->putJson("/api/conversations/{$conversation->id}", [
                 'ai_enabled' => true,
             ])
-            ->assertStatus(422);
+            ->assertOk();
 
         $conversation->refresh();
-        $this->assertFalse((bool) $conversation->ai_enabled);
-        $this->assertSame(ConversationHandoffStatus::Queued, $conversation->handoff_status);
-        $this->assertFalse($conversation->isAiReplying());
+        $this->assertTrue((bool) $conversation->ai_enabled);
+        $this->assertSame(ConversationHandoffStatus::None, $conversation->handoff_status);
+        $this->assertTrue($conversation->isAiReplying());
     }
 
     public function test_legacy_api_enable_uses_resume_ai_policy_and_normalizes_resolved(): void
@@ -780,7 +779,7 @@ class ConversationHandoffV2Test extends TestCase
         $this->assertTrue($conversation->isAiReplying());
     }
 
-    public function test_conversation_service_toggle_ai_cannot_enable_during_handoff(): void
+    public function test_conversation_service_toggle_ai_can_enable_during_handoff(): void
     {
         [$owner, $workspace, $conversation] = $this->seedConversation();
         $conversation->update([
@@ -788,21 +787,17 @@ class ConversationHandoffV2Test extends TestCase
             'handoff_status' => ConversationHandoffStatus::Active->value,
         ]);
 
-        try {
-            $this->inWorkspace($workspace, function () use ($conversation, $owner): void {
-                app(ConversationService::class)->toggleAi($conversation, $owner, true);
-            });
-            $this->fail('Expected InvalidHandoffTransitionException');
-        } catch (InvalidHandoffTransitionException) {
-        }
+        $this->inWorkspace($workspace, function () use ($conversation, $owner): void {
+            app(ConversationService::class)->toggleAi($conversation, $owner, true);
+        });
 
         $conversation->refresh();
-        $this->assertFalse((bool) $conversation->ai_enabled);
-        $this->assertSame(ConversationHandoffStatus::Active, $conversation->handoff_status);
-        $this->assertFalse($conversation->isAiReplying());
+        $this->assertTrue((bool) $conversation->ai_enabled);
+        $this->assertSame(ConversationHandoffStatus::None, $conversation->handoff_status);
+        $this->assertTrue($conversation->isAiReplying());
     }
 
-    public function test_web_checkbox_cannot_enable_ai_during_active_handoff(): void
+    public function test_web_checkbox_can_enable_ai_during_active_handoff(): void
     {
         [$user, $workspace, $conversation] = $this->seedConversation();
         $conversation->update([
@@ -822,8 +817,8 @@ class ConversationHandoffV2Test extends TestCase
             ->assertRedirect();
 
         $conversation->refresh();
-        $this->assertFalse((bool) $conversation->ai_enabled);
-        $this->assertSame(ConversationHandoffStatus::Queued, $conversation->handoff_status);
+        $this->assertTrue((bool) $conversation->ai_enabled);
+        $this->assertSame(ConversationHandoffStatus::None, $conversation->handoff_status);
     }
 
     public function test_inbox_handoff_filter(): void

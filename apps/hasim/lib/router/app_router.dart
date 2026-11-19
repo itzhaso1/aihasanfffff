@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hasim/core/models/models.dart';
+import 'package:hasim/core/models/models.dart' hide EmailMessageModel, EmailAccountModel;
 import 'package:hasim/features/catalog/data/chat_catalog_models.dart';
 import 'package:hasim/features/catalog/presentation/catalog_categories_screen.dart';
 import 'package:hasim/features/catalog/presentation/catalog_category_form_screen.dart';
@@ -27,6 +27,12 @@ import 'package:hasim/features/customers/presentation/customer_form_screen.dart'
 import 'package:hasim/features/commerce/presentation/orders_list_screen.dart';
 import 'package:hasim/features/commerce/presentation/order_detail_screen.dart';
 import 'package:hasim/features/commerce/data/commerce_order_models.dart';
+import 'package:hasim/features/analytics/presentation/analytics_screen.dart';
+import 'package:hasim/features/email/data/email_models.dart';
+import 'package:hasim/features/email/presentation/email_compose_screen.dart';
+import 'package:hasim/features/email/presentation/email_detail_screen.dart';
+import 'package:hasim/features/email/presentation/email_inbox_screen.dart';
+import 'package:hasim/features/employees/presentation/employees_list_screen.dart';
 import 'package:hasim/features/home/presentation/home_screen.dart';
 import 'package:hasim/features/more/presentation/security_sessions_screen.dart';
 import 'package:hasim/features/notifications/presentation/notifications_screen.dart';
@@ -234,6 +240,40 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                       ? state.extra as CompanyWorkerOpenEngagement
                       : null,
                 ),
+              );
+            },
+          ),
+          GoRoute(
+            path: '/employees',
+            builder: (context, state) => const EmployeesListScreen(),
+          ),
+          GoRoute(
+            path: '/analytics',
+            builder: (context, state) => const AnalyticsScreen(),
+          ),
+          GoRoute(
+            path: '/emails',
+            builder: (context, state) => const EmailInboxScreen(),
+          ),
+          GoRoute(
+            path: '/emails/compose',
+            builder: (context, state) {
+              final extra = state.extra is Map ? state.extra as Map : null;
+              return EmailComposeScreen(
+                initialTo: extra?['to']?.toString(),
+                initialSubject: extra?['subject']?.toString(),
+                replyToId: (extra?['replyToId'] as num?)?.toInt(),
+              );
+            },
+          ),
+          GoRoute(
+            path: '/emails/:id',
+            builder: (context, state) {
+              final id = int.parse(state.pathParameters['id']!);
+              final extra = state.extra;
+              return EmailDetailScreen(
+                messageId: id,
+                initialMessage: extra is EmailMessageModel ? extra : null,
               );
             },
           ),
