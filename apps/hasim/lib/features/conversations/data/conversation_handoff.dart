@@ -47,12 +47,14 @@ abstract final class ConversationHandoffValues {
       ].contains(conversation.handoffStatus);
 
   static bool canResumeAi(ConversationModel conversation) =>
-      isOpen(conversation) && !conversation.isAiReplying;
+      isOpen(conversation) &&
+      !conversation.isAiReplying &&
+      !conversation.isHumanHandoffActive;
 
   static bool canMoveToTeamReview(ConversationModel conversation) =>
       isOpen(conversation) &&
-      conversation.handoffStatus != 'requested' &&
-      conversation.handoffStatus != 'queued';
+      conversation.isAiReplying &&
+      conversation.handoffStatus == 'none';
 
   static bool canEndHandoff(ConversationModel conversation) =>
       canResolve(conversation);

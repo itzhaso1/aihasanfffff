@@ -49,13 +49,17 @@ class ConversationResource extends JsonResource
             'handoff_assigned_at' => optional($this->handoff_assigned_at)?->toIso8601String(),
             'handoff_resolved_at' => optional($this->handoff_resolved_at)?->toIso8601String(),
             'assigned_user_id' => $this->assigned_user_id,
+            'assigned_user_name' => $this->assignedUser?->name,
             'assigned_worker_engagement_id' => $this->assigned_worker_engagement_id,
             'assigned_participant_type' => $this->resource instanceof Conversation
                 ? WorkforceInboxAttribution::typeForConversation($this->resource)?->value
                 : null,
-            'assigned_user' => $this->whenLoaded('assignedUser', fn () => $this->assignedUser ? [
+            'assigned_user' => $this->assignedUser ? [
                 'id' => $this->assignedUser->id,
                 'name' => $this->assignedUser->name,
+            ] : ($this->assigned_user_id ? [
+                'id' => $this->assigned_user_id,
+                'name' => null,
             ] : null),
             'handoff_summary' => $this->resource instanceof Conversation
                 ? app(ConversationHandoffSummaryBuilder::class)->build($this->resource)
@@ -76,6 +80,12 @@ class ConversationResource extends JsonResource
             'can_reply' => $this->when(isset($this->can_reply), fn () => (bool) $this->can_reply),
             'responder' => $this->resource instanceof Conversation
                 ? $this->resource->currentResponder()
+                : null,
+            'active_responder' => $this->resource instanceof Conversation
+                ? $this->resource->activeResponder()
+                : null,
+            'last_message_sender' => $this->resource instanceof Conversation
+                ? $this->resource->lastMessageSender()
                 : null,
         ];
     }

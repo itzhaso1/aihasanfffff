@@ -40,6 +40,7 @@ class ConversationResponderService
      *     badge_class: string,
      *     dot_class: string,
      *     is_ai_generating: bool,
+     *     is_typing: bool,
      *     user_id: int|null,
      *     user_initials: string|null,
      *     assigned_at: string|null,
@@ -58,6 +59,7 @@ class ConversationResponderService
                 'badge_class' => 'border-slate-200 bg-slate-50 text-slate-500',
                 'dot_class' => 'bg-slate-300',
                 'is_ai_generating' => false,
+                'is_typing' => false,
                 'user_id' => null,
                 'user_initials' => null,
                 'assigned_at' => null,
@@ -66,10 +68,33 @@ class ConversationResponderService
             ];
         }
 
+        // 1. Live Typing Activity (An employee is actively typing right now)
+        $activeTyping = Cache::get("conversation:{$conversation->id}:active_typing");
+        if (is_array($activeTyping) && ! empty($activeTyping['name'])) {
+            $typingName = (string) $activeTyping['name'];
+            $typingUserId = isset($activeTyping['user_id']) ? (int) $activeTyping['user_id'] : null;
+
+            return [
+                'status' => self::STATUS_HUMAN_ACTIVE,
+                'type' => self::TYPE_HUMAN,
+                'name' => $typingName,
+                'label' => 'الموظف يكتب الآن...',
+                'badge_class' => 'border-blue-200/90 bg-blue-50 text-blue-800',
+                'dot_class' => 'bg-blue-500 animate-pulse',
+                'is_ai_generating' => false,
+                'is_typing' => true,
+                'user_id' => $typingUserId,
+                'user_initials' => mb_substr($typingName, 0, 1),
+                'assigned_at' => $conversation->responder_assigned_at?->toIso8601String(),
+                'assigned_at_human' => $conversation->responder_assigned_at?->diffForHumans(),
+                'reason' => 'الموظف يكتب رداً الآن',
+            ];
+        }
+
         $handoffStatus = $conversation->handoffStatusEnum();
         $isAiGenerating = (bool) Cache::get("conversation:{$conversation->id}:ai_generating", false);
 
-        // 1. Human Needed (Handed off from AI, awaiting human pickup)
+        // 2. Human Needed (Handed off from AI, awaiting human pickup)
         if (in_array($handoffStatus, [ConversationHandoffStatus::Requested, ConversationHandoffStatus::Queued], true)) {
             return [
                 'status' => self::STATUS_HUMAN_NEEDED,
@@ -79,6 +104,7 @@ class ConversationResponderService
                 'badge_class' => 'border-amber-300 bg-amber-50 text-amber-900',
                 'dot_class' => 'bg-amber-500 animate-pulse',
                 'is_ai_generating' => false,
+                'is_typing' => false,
                 'user_id' => null,
                 'user_initials' => '!',
                 'assigned_at' => $conversation->handoff_requested_at?->toIso8601String(),
@@ -87,7 +113,7 @@ class ConversationResponderService
             ];
         }
 
-        // 2. Human Active (Assigned to employee or staff member)
+        // 3. Human Active (Assigned to employee or staff member)
         if (
             in_array($handoffStatus, [ConversationHandoffStatus::Assigned, ConversationHandoffStatus::Active], true)
             || ($conversation->assigned_user_id !== null && ! (bool) $conversation->ai_enabled)
@@ -95,26 +121,14 @@ class ConversationResponderService
         ) {
             $isWorkerAssigned = $conversation->assigned_worker_engagement_id !== null;
             if ($isWorkerAssigned) {
-                if ($handoffStatus === ConversationHandoffStatus::Assigned) {
-                    $name = 'فريق العمل';
-                    $user = null;
-                } else {
-                    $workerEngagement = $conversation->relationLoaded('assignedWorkerEngagement')
-                        ? $conversation->assignedWorkerEngagement
-                        : $conversation->assignedWorkerEngagement()->with('workerProfile.user')->first();
-                    $workerProfile = $workerEngagement?->workerProfile;
-                    $user = $workerProfile?->user ?? $conversation->assignedUser;
-                    $name = $workerProfile?->display_name
-                        ?: $workerProfile?->user?->name
-                        ?: $conversation->responder_name
-                        ?: $user?->name
-                        ?: 'موظف مستقل';
-                }
+                $name = 'فريق العمل';
+                $user = null;
             } else {
                 $user = $conversation->relationLoaded('assignedUser')
                     ? $conversation->assignedUser
                     : $conversation->assignedUser()->first();
-                $name = $conversation->responder_name ?? $user?->name ?? 'موظف خدمة العملاء';
+                // IMPORTANT: Always use the assigned user's name if assigned! Never let stale responder_name override!
+                $name = $user?->name ?? $conversation->responder_name ?? 'موظف خدمة العملاء';
             }
             $assignedAt = $conversation->responder_assigned_at ?? $conversation->handoff_assigned_at ?? $conversation->updated_at;
 
@@ -126,6 +140,7 @@ class ConversationResponderService
                 'badge_class' => 'border-blue-200/90 bg-blue-50 text-blue-800',
                 'dot_class' => 'bg-blue-500',
                 'is_ai_generating' => false,
+                'is_typing' => false,
                 'user_id' => $user?->id ?? $conversation->assigned_user_id,
                 'user_initials' => mb_substr($name, 0, 1),
                 'assigned_at' => $assignedAt?->toIso8601String(),
@@ -146,6 +161,7 @@ class ConversationResponderService
                 'badge_class' => 'border-emerald-200/90 bg-emerald-50 text-emerald-800',
                 'dot_class' => $isAiGenerating ? 'bg-emerald-500 animate-ping' : 'bg-emerald-500',
                 'is_ai_generating' => $isAiGenerating,
+                'is_typing' => false,
                 'user_id' => null,
                 'user_initials' => 'AI',
                 'assigned_at' => $conversation->created_at?->toIso8601String(),
@@ -163,6 +179,7 @@ class ConversationResponderService
             'badge_class' => 'border-slate-200 bg-slate-100 text-slate-700',
             'dot_class' => 'bg-slate-400',
             'is_ai_generating' => false,
+            'is_typing' => false,
             'user_id' => null,
             'user_initials' => '—',
             'assigned_at' => null,

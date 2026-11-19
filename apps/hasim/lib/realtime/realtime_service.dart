@@ -6,6 +6,7 @@ import 'package:hasim/features/conversations/data/conversation_repository.dart';
 abstract class RealtimeService {
   Stream<MessageModel> get messageCreated;
   Stream<void> get conversationsChanged;
+  Stream<Map<String, dynamic>> get typingActivity;
   Future<void> start();
   Future<void> stop();
   void watchConversation(int? conversationId);
@@ -22,6 +23,7 @@ class PollingRealtimeService implements RealtimeService {
   final int? Function()? _workspaceIdOf;
   final _messageController = StreamController<MessageModel>.broadcast();
   final _listController = StreamController<void>.broadcast();
+  final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   Timer? _listTimer;
   Timer? _chatTimer;
   int? _watchingConversationId;
@@ -38,6 +40,9 @@ class PollingRealtimeService implements RealtimeService {
 
   @override
   Stream<void> get conversationsChanged => _listController.stream;
+
+  @override
+  Stream<Map<String, dynamic>> get typingActivity => _typingController.stream;
 
   @override
   Future<void> start() async {
@@ -125,11 +130,15 @@ class PollingRealtimeService implements RealtimeService {
 class NoopRealtimeService implements RealtimeService {
   final _messageController = StreamController<MessageModel>.broadcast();
   final _listController = StreamController<void>.broadcast();
+  final _typingController = StreamController<Map<String, dynamic>>.broadcast();
 
   @override
   Stream<MessageModel> get messageCreated => _messageController.stream;
   @override
   Stream<void> get conversationsChanged => _listController.stream;
+
+  @override
+  Stream<Map<String, dynamic>> get typingActivity => _typingController.stream;
   @override
   Future<void> start() async {}
   @override

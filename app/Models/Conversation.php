@@ -122,6 +122,92 @@ class Conversation extends WorkspaceScopedModel
         return app(ConversationResponderService::class)->determineResponder($this);
     }
 
+    /**
+     * Live active responder info (who is typing or generating right now, or current responder).
+     *
+     * @return array<string, mixed>
+     */
+    public function activeResponder(): array
+    {
+        return $this->currentResponder();
+    }
+
+    /**
+     * Resolved assigned employee information (concept A: assigned employee).
+     *
+     * @return array{id: int|null, name: string|null, type: string}|null
+     */
+    public function assignedEmployee(): ?array
+    {
+        if ($this->assigned_worker_engagement_id !== null) {
+            $workerEngagement = $this->relationLoaded('assignedWorkerEngagement')
+                ? $this->assignedWorkerEngagement
+                : $this->assignedWorkerEngagement()->with('workerProfile.user')->first();
+            $workerProfile = $workerEngagement?->workerProfile;
+            $name = $workerProfile?->display_name ?: ($workerProfile?->user?->name ?: 'موظف مستقل');
+
+            return [
+                'type' => 'worker',
+                'id' => $workerProfile?->user_id ?? $this->assigned_user_id,
+                'name' => $name,
+            ];
+        }
+
+        if ($this->assigned_user_id !== null) {
+            $user = $this->relationLoaded('assignedUser')
+                ? $this->assignedUser
+                : $this->assignedUser()->first();
+
+            return [
+                'type' => 'user',
+                'id' => $this->assigned_user_id,
+                'name' => $user?->name ?: ($this->responder_name ?: 'موظف خدمة العملاء'),
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolved last message sender information (concept C: last message sender).
+     *
+     * @return array{type: string, id: int|null, name: string}|null
+     */
+    public function lastMessageSender(): ?array
+    {
+        $last = $this->relationLoaded('lastMessage')
+            ? $this->lastMessage
+            : ($this->relationLoaded('messages') ? $this->messages->last() : $this->lastMessage);
+
+        if (! $last) {
+            return null;
+        }
+
+        $last->loadMissing(['user:id,name', 'customer:id,name']);
+
+        if ($last->direction === 'inbound') {
+            return [
+                'type' => 'customer',
+                'id' => $last->customer_id,
+                'name' => $last->customer?->name ?: ($this->customer?->name ?: 'العميل'),
+            ];
+        }
+
+        if ($last->ai_generated) {
+            return [
+                'type' => 'ai',
+                'id' => $this->ai_employee_id,
+                'name' => ($this->aiEmployee?->name ?? 'مشعل').' AI',
+            ];
+        }
+
+        return [
+            'type' => 'human',
+            'id' => $last->user_id,
+            'name' => $last->user?->name ?: 'موظف',
+        ];
+    }
+
     public function isOpen(): bool
     {
         return (string) $this->status === 'open';

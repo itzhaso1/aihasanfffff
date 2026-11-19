@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Workspace;
 
 use App\Enums\ConversationHandoffStatus;
+use App\Events\Realtime\TypingActivity;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Workspace\Concerns\InteractsWithWorkspace;
 use App\Http\Requests\Conversation\StoreConversationRequest;
@@ -18,6 +19,7 @@ use App\Services\Conversation\ConversationResponderService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use App\Services\Inbox\InboxHumanHandoffService;
+use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Mobile\ConversationInboxService;
 use App\Services\Mobile\MessageAttachmentService;
 use App\Services\Workforce\WorkforceInboxAttribution;
@@ -25,6 +27,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 use InvalidArgumentException;
 
@@ -298,6 +301,8 @@ class ConversationController extends Controller
             'metadata' => $this->parseJsonField($request, 'metadata_json', $conversation->metadata ?? []),
         ]);
 
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
+
         return redirect()->route('workspace.conversations.index', [
             'conversation' => $conversation->id,
         ])->with('success', 'تم تحديث المحادثة.');
@@ -306,7 +311,10 @@ class ConversationController extends Controller
     public function destroy(Conversation $conversation): RedirectResponse
     {
         $this->authorize('delete', $conversation);
+        $convClone = clone $conversation;
         $conversation->delete();
+
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($convClone);
 
         return redirect()->route('workspace.conversations.index')->with('success', 'تم حذف المحادثة.');
     }
@@ -354,12 +362,15 @@ class ConversationController extends Controller
 
         if ($sentMessage->direction === 'outbound' && $request->user()) {
             $actor = $request->user();
-            if ((int) $conversation->assigned_user_id !== (int) $actor->id || (bool) $conversation->ai_enabled) {
+            Cache::forget("conversation:{$conversation->id}:active_typing");
+            if ($conversation->assigned_user_id === null && $conversation->assigned_worker_engagement_id === null) {
                 $conversation->update([
                     'assigned_user_id' => $actor->id,
                     'ai_enabled' => false,
                     'handoff_status' => ConversationHandoffStatus::Active,
                     'handoff_assigned_at' => $conversation->handoff_assigned_at ?? now(),
+                    'responder_type' => ConversationResponderService::TYPE_HUMAN,
+                    'responder_name' => $actor->name,
                 ]);
                 app(ConversationResponderService::class)->recordTransition(
                     $conversation,
@@ -371,10 +382,15 @@ class ConversationController extends Controller
                     'قام الموظف بإرسال رد وتولي المحادثة',
                 );
             } else {
+                $conversation->update([
+                    'ai_enabled' => false,
+                    'handoff_status' => ConversationHandoffStatus::Active,
+                    'responder_type' => ConversationResponderService::TYPE_HUMAN,
+                ]);
                 app(ConversationResponderService::class)->recordTransition(
                     $conversation,
                     ConversationResponderService::TYPE_HUMAN,
-                    $actor,
+                    $conversation->assignedUser ?? $actor,
                     'human_message_sent',
                     'user',
                     $actor,
@@ -400,7 +416,11 @@ class ConversationController extends Controller
                     'handoff_status' => $conversation->handoff_status instanceof ConversationHandoffStatus
                         ? $conversation->handoff_status->value
                         : ($conversation->handoff_status ?? 'none'),
+                    'assigned_user_id' => $conversation->assigned_user_id,
+                    'assigned_user_name' => $conversation->assignedUser?->name,
                     'responder' => $conversation->currentResponder(),
+                    'active_responder' => $conversation->activeResponder(),
+                    'last_message_sender' => $conversation->lastMessageSender(),
                 ],
             ]);
         }
@@ -528,6 +548,8 @@ class ConversationController extends Controller
         return [
             'id' => $message->id,
             'conversation_id' => $message->conversation_id,
+            'user_id' => $message->user_id,
+            'user_name' => $message->user?->name,
             'direction' => $message->direction,
             'message_type' => $message->message_type,
             'content' => $message->content,
@@ -648,5 +670,43 @@ class ConversationController extends Controller
             'ig' => 'instagram',
             default => $normalized !== '' ? $normalized : 'manual',
         };
+    }
+
+    public function typing(Request $request, Conversation $conversation): JsonResponse
+    {
+        $this->authorize('view', $conversation);
+        $user = $request->user();
+        $isTyping = $request->boolean('is_typing', true);
+        $senderName = $user?->name ?? 'موظف';
+
+        $cacheKey = "conversation:{$conversation->id}:active_typing";
+        if ($isTyping && $user) {
+            Cache::put($cacheKey, [
+                'user_id' => $user->id,
+                'name' => $senderName,
+                'sender_type' => 'user',
+                'typed_at' => now()->toIso8601String(),
+            ], now()->addSeconds(6));
+        } else {
+            Cache::forget($cacheKey);
+        }
+
+        try {
+            event(new TypingActivity(
+                workspaceId: (int) $conversation->workspace_id,
+                conversationId: (int) $conversation->id,
+                senderType: 'user',
+                senderName: $senderName,
+                isTyping: $isTyping,
+            ));
+        } catch (\Throwable) {
+            // Best effort
+        }
+
+        return response()->json([
+            'status' => 'ok',
+            'is_typing' => $isTyping,
+            'active_responder' => $conversation->currentResponder(),
+        ]);
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Worker;
 
 use App\Enums\ConversationHandoffStatus;
+use App\Events\Realtime\TypingActivity;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Worker\StoreWorkerInboxMessageRequest;
 use App\Models\Conversation;
@@ -235,7 +236,7 @@ final class WorkerInboxController extends Controller
             'inboxMessageAction' => $activeConversation instanceof Conversation && $workspace instanceof Workspace
                 ? route('worker.inbox.messages.store', [$workspace, $activeConversation->id])
                 : null,
-            'inboxRealtimeEnabled' => false,
+            'inboxRealtimeEnabled' => true,
         ]);
     }
 
@@ -427,5 +428,29 @@ final class WorkerInboxController extends Controller
             $workspace,
             WorkerInboxService::SEND_CAPABILITY,
         );
+    }
+
+    public function typing(Request $request, Workspace $workspace, Conversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user !== null, 403);
+        $isTyping = $request->boolean('is_typing', true);
+
+        $workerProfile = $user->workerProfile;
+        $senderName = $workerProfile?->display_name ?: $user->name ?: 'موظف مستقل';
+
+        try {
+            event(new TypingActivity(
+                workspaceId: (int) $workspace->id,
+                conversationId: (int) $conversation->id,
+                senderType: 'worker',
+                senderName: $senderName,
+                isTyping: $isTyping,
+            ));
+        } catch (\Throwable) {
+            // Best effort
+        }
+
+        return response()->json(['status' => 'ok']);
     }
 }

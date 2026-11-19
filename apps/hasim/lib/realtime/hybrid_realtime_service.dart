@@ -59,6 +59,10 @@ class HybridRealtimeService implements RealtimeService {
   Stream<void> get conversationsChanged => _listController.stream;
 
   @override
+  Stream<Map<String, dynamic>> get typingActivity =>
+      _wsClient?.typingActivity ?? _polling.typingActivity;
+
+  @override
   Future<void> start() async {
     _listenToPolling();
     final config = await _loadRemoteConfig();
@@ -110,6 +114,8 @@ class HybridRealtimeService implements RealtimeService {
           debugPrint('[HYBRID_REALTIME] WebSocket connected. Pausing polling.');
         }
         _polling.paused = true;
+        _listController.add(null);
+        _polling.triggerPoll();
       } else {
         if (kDebugMode) {
           debugPrint(

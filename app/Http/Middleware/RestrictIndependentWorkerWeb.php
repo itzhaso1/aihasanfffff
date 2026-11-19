@@ -29,6 +29,10 @@ final class RestrictIndependentWorkerWeb
             return $next($request);
         }
 
+        if ($request->is('broadcasting/auth')) {
+            return $next($request);
+        }
+
         if ($this->boundary->allows($request->route()?->getName())) {
             return $next($request);
         }

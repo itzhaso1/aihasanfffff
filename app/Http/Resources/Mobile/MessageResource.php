@@ -18,9 +18,19 @@ class MessageResource extends JsonResource
         $metadata = is_array($this->metadata) ? $this->metadata : [];
         $clientId = $metadata['client_id'] ?? $metadata['idempotency_key'] ?? null;
 
+        $senderName = $this->user?->name;
+        if ($this->ai_generated) {
+            $senderName = 'مشعل AI';
+        } elseif ($this->customer) {
+            $senderName = $this->customer->name;
+        }
+
         return [
             'id' => $this->id,
             'conversation_id' => $this->conversation_id,
+            'user_id' => $this->user_id,
+            'user_name' => $this->user?->name,
+            'sender_name' => $senderName,
             'direction' => $this->direction,
             'message_type' => $this->message_type,
             'content' => $this->content,

@@ -309,7 +309,19 @@
                                         title="{{ $responder['label'] }}: {{ $responder['name'] }}"
                                     >
                                         <span class="h-1.5 w-1.5 rounded-full {{ $responder['dot_class'] }}"></span>
-                                        <span class="truncate max-w-[110px]">{{ $responder['name'] }}</span>
+                                        <span class="truncate max-w-[110px]">
+                                            @if($responder['is_typing'] ?? false)
+                                                {{ $responder['name'] }} يكتب...
+                                            @elseif($responder['status'] === 'ai_active')
+                                                {{ $responder['name'] }}
+                                            @elseif($responder['status'] === 'human_needed')
+                                                تحتاج تدخل بشري
+                                            @elseif($conversation->assignedUser)
+                                                {{ $conversation->assignedUser->name }}
+                                            @else
+                                                {{ $responder['name'] }}
+                                            @endif
+                                        </span>
                                         @if($responder['status'] === 'ai_active' && $responder['is_ai_generating'])
                                             <span class="text-[9px] animate-pulse">يكتب...</span>
                                         @endif

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\AI\Models\ModelGatewayException;
+use App\Events\Realtime\TypingActivity;
 use App\Exceptions\FeatureNotAvailableException;
 use App\Exceptions\UsageLimitExceededException;
 use App\Models\Conversation;
@@ -294,6 +295,18 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         Cache::put("conversation:{$conversation->id}:ai_generating", true, 30);
 
         try {
+            event(new TypingActivity(
+                workspaceId: (int) $conversation->workspace_id,
+                conversationId: (int) $conversation->id,
+                senderType: 'ai',
+                senderName: 'مشعل AI',
+                isTyping: true,
+            ));
+        } catch (Throwable) {
+            // Best effort
+        }
+
+        try {
             $this->performReplyGeneration(
                 $aiService,
                 $channelOutbound,
@@ -306,6 +319,17 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             );
         } finally {
             Cache::forget("conversation:{$conversation->id}:ai_generating");
+            try {
+                event(new TypingActivity(
+                    workspaceId: (int) $conversation->workspace_id,
+                    conversationId: (int) $conversation->id,
+                    senderType: 'ai',
+                    senderName: 'مشعل AI',
+                    isTyping: false,
+                ));
+            } catch (Throwable) {
+                // Best effort
+            }
         }
     }
 

@@ -142,6 +142,7 @@
 
         {{-- Actions in Header --}}
         <div class="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 overflow-visible pt-1.5 sm:pt-0 border-t border-slate-100 sm:border-t-0">
+            <span id="inbox-connection-badge" class="hidden"></span>
             @if($inboxAllowsCompanyActions && $conversationIsOpen)
                 @can('manageHandoff', $activeConversation)
                     @if($canEndActiveHandoff)
@@ -286,13 +287,21 @@
                     @endif
                 </div>
 
+                @php
+                    $assignedEmployeeName = $activeConversation->assignedUser?->name
+                        ?: ($activeConversation->assignedWorkerEngagement?->workerProfile?->display_name
+                            ?: ($activeConversation->assignedWorkerEngagement?->workerProfile?->user?->name ?: null));
+                    $lastMessageSender = $activeConversation->lastMessageSender();
+                @endphp
                 <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         <span class="font-bold text-xs sm:text-sm text-slate-900 truncate" data-responder-display-name>
                             @if($activeResponder['status'] === 'ai_active')
                                 {{ $activeResponder['name'] }} يتولى الرد على هذه المحادثة
-                            @elseif($activeResponder['status'] === 'human_active')
-                                المسؤول الحالي: {{ $activeResponder['name'] }} – موظف خدمة العملاء
+                            @elseif($activeResponder['is_typing'] ?? false)
+                                {{ $activeResponder['name'] }} يكتب رداً الآن...
+                            @elseif($assignedEmployeeName)
+                                المسؤول: {{ $assignedEmployeeName }}
                             @elseif($activeResponder['status'] === 'human_needed')
                                 المحادثة بانتظار استلام من أحد موظفي الفريق
                             @elseif($activeResponder['status'] === 'waiting')
@@ -303,14 +312,21 @@
                         </span>
                         <span data-responder-pill class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shadow-2xs {{ $activeResponder['badge_class'] }}">
                             <span class="h-1.5 w-1.5 rounded-full {{ $activeResponder['dot_class'] }}"></span>
-                            <span data-responder-label>{{ $activeResponder['label'] }}</span>
+                            <span data-responder-label>{{ ($activeResponder['is_typing'] ?? false) ? 'يكتب الآن...' : $activeResponder['label'] }}</span>
                         </span>
                     </div>
-                    <p data-responder-assigned class="text-[10px] sm:text-[11px] opacity-75 mt-0.5 {{ $activeResponder['assigned_at_human'] ? '' : 'hidden' }}">
-                        @if($activeResponder['assigned_at_human'])
-                            بدء المسؤولية: {{ $activeResponder['assigned_at_human'] }}
+                    <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] sm:text-[11px] opacity-75 mt-0.5">
+                        @if($assignedEmployeeName && ($activeResponder['is_typing'] ?? false))
+                            <span class="text-slate-600">المسؤول: <strong>{{ $assignedEmployeeName }}</strong></span>
+                            <span>•</span>
                         @endif
-                    </p>
+                        @if($lastMessageSender)
+                            <span class="text-slate-500">آخر رسالة من: <strong>{{ $lastMessageSender['name'] }}</strong></span>
+                        @endif
+                        @if($activeResponder['assigned_at_human'])
+                            <span class="text-slate-400">• منذ {{ $activeResponder['assigned_at_human'] }}</span>
+                        @endif
+                    </div>
                 </div>
             </div>
 

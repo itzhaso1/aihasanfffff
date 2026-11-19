@@ -1,6 +1,6 @@
 {
   "resources/css/app.css": {
-    "file": "assets/app-D4W6uDiq.css",
+    "file": "assets/app-BqJiSeMl.css",
     "name": "app",
     "names": [
       "app.css"
@@ -9,7 +9,7 @@
     "isEntry": true
   },
   "resources/js/app.js": {
-    "file": "assets/app-5835TFlz.js",
+    "file": "assets/app-CfpfVJ8v.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -19,13 +19,13 @@
     ]
   },
   "resources/js/inbox-realtime.js": {
-    "file": "assets/inbox-realtime-P6vTGXhZ.js",
+    "file": "assets/inbox-realtime-CtiPxZbm.js",
     "name": "inbox-realtime",
     "src": "resources/js/inbox-realtime.js",
     "isEntry": true
   },
   "resources/js/inbox-ui.js": {
-    "file": "assets/inbox-ui-CV5Oi1Ub.js",
+    "file": "assets/inbox-ui-ClfhjQAR.js",
     "name": "inbox-ui",
     "src": "resources/js/inbox-ui.js",
     "isEntry": true

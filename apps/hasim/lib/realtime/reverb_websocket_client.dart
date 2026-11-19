@@ -57,6 +57,7 @@ class ReverbWebSocketClient {
 
   final _messageController = StreamController<MessageModel>.broadcast();
   final _conversationUpdateController = StreamController<void>.broadcast();
+  final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectionStateController =
       StreamController<RealtimeConnectionState>.broadcast();
 
@@ -68,6 +69,7 @@ class ReverbWebSocketClient {
 
   Stream<MessageModel> get messageCreated => _messageController.stream;
   Stream<void> get conversationsChanged => _conversationUpdateController.stream;
+  Stream<Map<String, dynamic>> get typingActivity => _typingController.stream;
   Stream<RealtimeConnectionState> get connectionState =>
       _connectionStateController.stream;
 
@@ -177,6 +179,7 @@ class ReverbWebSocketClient {
     disconnect();
     _messageController.close();
     _conversationUpdateController.close();
+    _typingController.close();
     _connectionStateController.close();
   }
 
@@ -231,6 +234,13 @@ class ReverbWebSocketClient {
         case 'conversation.updated':
         case 'App\\Events\\Realtime\\ConversationUpdated':
           _conversationUpdateController.add(null);
+
+        case 'typing.activity':
+        case 'App\\Events\\Realtime\\TypingActivity':
+          final data = _parseDataMap(rawData);
+          if (data.isNotEmpty) {
+            _typingController.add(data);
+          }
 
         default:
           if (event.startsWith('pusher_internal:')) {
@@ -340,10 +350,11 @@ class ReverbWebSocketClient {
     if (sId == null) return null;
 
     try {
-      // Use relative endpoint if authEndpoint is relative or full URL
-      final path = _authEndpoint.startsWith('http')
-          ? _authEndpoint.replaceFirst(RegExp(r'^https?://[^/]+/?'), '')
-          : _authEndpoint;
+      final path = _authEndpoint.contains('broadcasting/auth')
+          ? 'broadcasting/auth'
+          : (_authEndpoint.startsWith('http')
+              ? _authEndpoint
+              : _authEndpoint.replaceFirst(RegExp(r'^/?(api/mobile/v1/)?'), ''));
 
       final res = await _apiClient.post<Map<String, dynamic>>(
         path,

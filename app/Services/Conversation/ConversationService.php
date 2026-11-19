@@ -13,6 +13,7 @@ use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Mobile\MessageAttachmentService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ConversationService
@@ -125,30 +126,35 @@ class ConversationService
             if ($message->direction === 'inbound') {
                 $conversationAttributes = $conversation->attributesForInboundCustomerMessage($conversationAttributes);
             } elseif ($actor instanceof User && ! (bool) ($data['ai_generated'] ?? false)) {
-                $conversationAttributes['assigned_user_id'] = $actor->id;
-                $conversationAttributes['responder_type'] = ConversationResponderService::TYPE_HUMAN;
+                // If conversation was not assigned to any human yet, auto-assign to the replying actor
+                if ($conversation->assigned_user_id === null && $conversation->assigned_worker_engagement_id === null) {
+                    $conversationAttributes['assigned_user_id'] = $actor->id;
+                    $conversationAttributes['handoff_assigned_at'] = $conversation->handoff_assigned_at ?? now();
 
-                $workerEngagementId = $data['worker_engagement_id'] ?? null;
-                if ($workerEngagementId !== null) {
-                    $conversationAttributes['assigned_worker_engagement_id'] = $workerEngagementId;
-                    $workerEngagement = WorkerEngagement::withoutGlobalScopes()
-                        ->with('workerProfile.user')
-                        ->find($workerEngagementId);
-                    $workerProfile = $workerEngagement?->workerProfile;
-                    $conversationAttributes['responder_name'] = $workerProfile?->display_name
-                        ?: $workerProfile?->user?->name
-                        ?: $actor->name;
-                } else {
-                    $conversationAttributes['responder_name'] = $actor->name;
+                    $workerEngagementId = $data['worker_engagement_id'] ?? null;
+                    if ($workerEngagementId !== null) {
+                        $conversationAttributes['assigned_worker_engagement_id'] = $workerEngagementId;
+                        $workerEngagement = WorkerEngagement::withoutGlobalScopes()
+                            ->with('workerProfile.user')
+                            ->find($workerEngagementId);
+                        $workerProfile = $workerEngagement?->workerProfile;
+                        $conversationAttributes['responder_name'] = $workerProfile?->display_name
+                            ?: $workerProfile?->user?->name
+                            ?: $actor->name;
+                    } else {
+                        $conversationAttributes['responder_name'] = $actor->name;
+                    }
                 }
 
-                $conversationAttributes['responder_assigned_at'] = now();
+                $conversationAttributes['responder_type'] = ConversationResponderService::TYPE_HUMAN;
+                $conversationAttributes['responder_assigned_at'] = $conversation->responder_assigned_at ?? now();
                 $conversationAttributes['handoff_status'] = ConversationHandoffStatus::Active->value;
-                $conversationAttributes['handoff_assigned_at'] = $conversation->handoff_assigned_at ?? now();
                 $conversationAttributes['ai_enabled'] = false;
                 $metadata['human_handoff'] = true;
                 $metadata['human_handoff_status'] = 'active';
                 $conversationAttributes['metadata'] = $metadata;
+
+                Cache::forget("conversation:{$conversation->id}:active_typing");
             }
             $conversation->update($conversationAttributes);
 

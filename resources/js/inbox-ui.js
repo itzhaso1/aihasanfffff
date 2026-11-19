@@ -407,10 +407,144 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
 
 const inArray = (val, arr) => arr.indexOf(val) !== -1;
 
+const prependNewConversationRow = (conv) => {
+    const container = document.querySelector('[data-inbox-conversation-list]');
+    if (!container || !conv?.id) return null;
+
+    const row = document.createElement('div');
+    row.className = 'group relative border-b border-slate-100 last:border-b-0 transition-colors duration-150';
+    const currentWorkspaceId = document.getElementById('inbox-shell')?.dataset?.workspaceId || '';
+    const isWorker = window.location.pathname.includes('/workers/');
+    const href = isWorker
+        ? `/workers/${currentWorkspaceId}/inbox?conversation=${conv.id}`
+        : `/workspace/conversations?conversation=${conv.id}`;
+
+    const customerName = conv.customer?.name || 'عميل جديد';
+    const preview = conv.last_message || conv.last_message_preview || 'محادثة جديدة';
+    const time = conv.last_message_at_human || conv.last_message_at || 'الآن';
+    const responderName = conv.responder?.name || 'فريق العمل';
+    const badgeClass = conv.responder?.badge_class || 'border-slate-200 bg-slate-50 text-slate-700';
+    const dotClass = conv.responder?.dot_class || 'bg-slate-400';
+
+    row.innerHTML = `
+        <a href="${href}"
+           data-conversation-id="${conv.id}"
+           class="flex flex-col gap-1.5 p-3 sm:px-4 sm:py-3.5 hover:bg-slate-50/80 transition-colors bg-[#E8FAF6]">
+            <div class="flex items-center justify-between gap-2">
+                <span class="font-bold text-xs sm:text-sm text-slate-800 truncate">${customerName}</span>
+                <span class="shrink-0 text-[11px] text-slate-400 font-medium">${time}</span>
+            </div>
+            <p class="truncate text-xs text-slate-600 font-medium">${preview}</p>
+            <div class="mt-2 flex items-center justify-between">
+                <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeClass}">
+                    <span class="h-1.5 w-1.5 rounded-full ${dotClass}"></span>
+                    <span class="truncate">${responderName}</span>
+                </span>
+                <span class="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#06C2A4] px-1.5 text-[10px] font-bold text-white shadow-2xs">1</span>
+            </div>
+        </a>
+    `;
+
+    container.insertBefore(row, container.firstElementChild);
+    bindConversationLinks(currentWorkspaceId);
+    return row.querySelector('a');
+};
+
+let typingTimeout = null;
+
+const showTypingIndicator = (senderName = '', senderType = '') => {
+    const list = document.getElementById('inbox-message-list');
+    if (!list) return;
+
+    let el = document.getElementById('inbox-typing-indicator');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'inbox-typing-indicator';
+        el.className = 'hs-inbox-message-row hs-inbox-message-row--received py-1';
+        el.innerHTML = `
+            <div class="hs-inbox-message-bubble inline-flex items-center gap-2 rounded-2xl rounded-br-xs border border-slate-200/90 bg-white px-3.5 py-1.5 shadow-2xs text-[11px] font-medium text-slate-500">
+                <span class="flex items-center gap-1">
+                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-bounce"></span>
+                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.2s]"></span>
+                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.4s]"></span>
+                </span>
+                <span data-typing-text></span>
+            </div>
+        `;
+        list.appendChild(el);
+    }
+
+    const textEl = el.querySelector('[data-typing-text]');
+    if (textEl) {
+        if (senderType === 'ai' || (senderName && (senderName.includes('مشعل') || senderName.includes('AI')))) {
+            textEl.textContent = `${senderName || 'مشعل AI'} يجهز الرد...`;
+        } else {
+            textEl.textContent = `${senderName || 'الطرف الآخر'} يكتب الآن...`;
+        }
+    }
+
+    el.classList.remove('hidden');
+    el.classList.add('flex');
+
+    if (isNearBottom(list)) {
+        list.scrollTop = list.scrollHeight;
+    }
+
+    if (typingTimeout) clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        hideTypingIndicator();
+    }, 4500);
+};
+
+const hideTypingIndicator = () => {
+    if (typingTimeout) {
+        clearTimeout(typingTimeout);
+        typingTimeout = null;
+    }
+    const el = document.getElementById('inbox-typing-indicator');
+    if (el) {
+        el.classList.add('hidden');
+        el.classList.remove('flex');
+    }
+};
+
+const setConnectionStatus = (status) => {
+    const badge = document.getElementById('inbox-connection-badge');
+    if (!badge) return;
+
+    badge.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all duration-300';
+    if (status === 'connected') {
+        badge.dataset.status = 'connected';
+        badge.classList.add('bg-emerald-50', 'text-emerald-700', 'border', 'border-emerald-200');
+        badge.innerHTML = `<span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span><span>متصل</span>`;
+        setTimeout(() => {
+            if (badge.dataset.status === 'connected') {
+                badge.classList.add('opacity-0', 'pointer-events-none');
+            }
+        }, 3000);
+    } else if (status === 'reconnecting') {
+        badge.dataset.status = 'reconnecting';
+        badge.classList.remove('opacity-0', 'pointer-events-none');
+        badge.classList.add('bg-amber-50', 'text-amber-700', 'border', 'border-amber-200');
+        badge.innerHTML = `<span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span><span>جاري إعادة الاتصال...</span>`;
+    } else {
+        badge.dataset.status = 'offline';
+        badge.classList.remove('opacity-0', 'pointer-events-none');
+        badge.classList.add('bg-rose-50', 'text-rose-700', 'border', 'border-rose-200');
+        badge.innerHTML = `<span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span><span>غير متصل</span>`;
+    }
+};
+
 const updateConversationInSidebar = (conv, { moveToTop = false } = {}) => {
     if (!conv?.id) return;
-    const link = document.querySelector(`[data-conversation-id="${conv.id}"]`);
-    if (!link) return;
+    let link = document.querySelector(`[data-conversation-id="${conv.id}"]`);
+    if (!link) {
+        if (conv.id && (conv.customer || conv.last_message || conv.last_message_preview)) {
+            link = prependNewConversationRow(conv);
+            if (link) return;
+        }
+        return;
+    }
 
     const row = link.closest('.group') || link;
 
@@ -461,7 +595,16 @@ const updateConversationInSidebar = (conv, { moveToTop = false } = {}) => {
 
             const nameEl = badge.querySelector('.truncate');
             if (nameEl) {
-                nameEl.textContent = conv.responder.name || '';
+                if (conv.responder.is_typing) {
+                    nameEl.textContent = `${conv.responder.name} يكتب...`;
+                } else if (conv.responder.status === 'ai_active') {
+                    nameEl.textContent = conv.responder.name || 'مشعل AI';
+                } else if (conv.responder.status === 'human_needed') {
+                    nameEl.textContent = 'تحتاج تدخل بشري';
+                } else {
+                    const assignedName = conv.assigned_user_name || (conv.assigned_user && conv.assigned_user.name) || conv.responder.name;
+                    nameEl.textContent = assignedName || 'الموظف';
+                }
             }
 
             let genEl = badge.querySelector('.animate-pulse');
@@ -558,7 +701,39 @@ const bindComposeForm = () => {
             textarea.style.height = `${nextHeight}px`;
         };
 
-        textarea.addEventListener('input', resizeTextarea);
+        let lastTypingSent = 0;
+        const sendTypingNotification = (isTyping = true) => {
+            const now = Date.now();
+            if (isTyping && now - lastTypingSent < 2500) return;
+            lastTypingSent = now;
+
+            const root = document.getElementById('inbox-shell');
+            const conversationId = root?.dataset?.activeConversationId || new URLSearchParams(window.location.search).get('conversation');
+            if (!conversationId) return;
+
+            const isWorker = window.location.pathname.includes('/workers/');
+            const workspaceId = root?.dataset?.workspaceId;
+            const url = isWorker
+                ? `/workers/${workspaceId}/inbox/${conversationId}/typing`
+                : `/workspace/conversations/${conversationId}/typing`;
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ is_typing: isTyping }),
+            }).catch(() => {});
+        };
+
+        textarea.addEventListener('input', () => {
+            resizeTextarea();
+            if (textarea.value.trim().length > 0) {
+                sendTypingNotification(true);
+            }
+        });
 
         // Enter submits form, Shift+Enter creates a new line
         textarea.addEventListener('keydown', (event) => {
@@ -1430,6 +1605,11 @@ const bootInbox = (event) => {
         appendInboxMessage,
         scrollMessagesToBottom,
         isNearBottom,
+        updateConversationInSidebar,
+        updateTopResponderBar,
+        showTypingIndicator,
+        hideTypingIndicator,
+        setConnectionStatus,
     };
 };
 

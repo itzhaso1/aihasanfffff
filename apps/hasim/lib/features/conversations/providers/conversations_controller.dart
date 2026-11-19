@@ -616,6 +616,7 @@ class ChatState {
     this.error,
     this.aiBusy = false,
     this.mutating = false,
+    this.typingIndicator,
   });
 
   final bool loading;
@@ -627,6 +628,7 @@ class ChatState {
   final String? error;
   final bool aiBusy;
   final bool mutating;
+  final String? typingIndicator;
 
   ChatState copyWith({
     bool? loading,
@@ -639,6 +641,8 @@ class ChatState {
     bool? aiBusy,
     bool? mutating,
     bool clearCursor = false,
+    String? typingIndicator,
+    bool clearTyping = false,
   }) {
     return ChatState(
       loading: loading ?? this.loading,
@@ -650,6 +654,7 @@ class ChatState {
       error: error,
       aiBusy: aiBusy ?? this.aiBusy,
       mutating: mutating ?? this.mutating,
+      typingIndicator: clearTyping ? null : (typingIndicator ?? this.typingIndicator),
     );
   }
 }
@@ -673,14 +678,20 @@ class ChatController extends StateNotifier<ChatState> {
   final int conversationId;
   late final RealtimeService _realtime;
   StreamSubscription? _sub;
+  StreamSubscription? _typingSub;
   StreamSubscription<List<MessageModel>>? _messageSub;
   ProviderSubscription<int?>? _workspaceSub;
+  Timer? _typingTimer;
   int? _boundWorkspaceId;
   List<MessageModel> _olderMessages = const [];
 
   Future<void> _init() async {
     await _sub?.cancel();
     _sub = null;
+    await _typingSub?.cancel();
+    _typingSub = null;
+    _typingTimer?.cancel();
+    _typingTimer = null;
     await _messageSub?.cancel();
     _messageSub = null;
     _olderMessages = const [];
@@ -693,6 +704,34 @@ class ChatController extends StateNotifier<ChatState> {
     _sub = _realtime.messageCreated.listen((m) {
       if (m.conversationId != conversationId) return;
       unawaited(_ingestPolledMessage(m));
+    });
+    _typingSub = _realtime.typingActivity.listen((data) {
+      final convId = (data['conversation_id'] as num?)?.toInt();
+      if (convId != conversationId) return;
+      final isTyping = data['is_typing'] == true || data['is_typing'] == 1;
+      final senderName = data['sender_name']?.toString() ?? '';
+      final senderType = data['sender_type']?.toString() ?? '';
+
+      if (!isTyping) {
+        _typingTimer?.cancel();
+        if (mounted) state = state.copyWith(clearTyping: true);
+        return;
+      }
+
+      String text;
+      if (senderType == 'ai' || senderName.contains('مشعل') || senderName.contains('AI')) {
+        text = '${senderName.isNotEmpty ? senderName : 'مشعل AI'} يجهز الرد...';
+      } else {
+        text = '${senderName.isNotEmpty ? senderName : 'الطرف الآخر'} يكتب الآن...';
+      }
+
+      if (mounted) {
+        state = state.copyWith(typingIndicator: text);
+      }
+      _typingTimer?.cancel();
+      _typingTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) state = state.copyWith(clearTyping: true);
+      });
     });
     final repo = _ref.read(conversationRepositoryProvider);
     if (workspaceId != null) {
@@ -840,10 +879,24 @@ class ChatController extends StateNotifier<ChatState> {
   @override
   void dispose() {
     _sub?.cancel();
+    _typingSub?.cancel();
+    _typingTimer?.cancel();
     _messageSub?.cancel();
     _workspaceSub?.close();
     _realtime.watchConversation(null);
     super.dispose();
+  }
+
+  Future<void> sendTyping(bool isTyping) async {
+    if (conversationId <= 0) return;
+    try {
+      await _ref.read(apiClientProvider).post(
+        'conversations/$conversationId/typing',
+        body: {'is_typing': isTyping},
+      );
+    } catch (_) {
+      // Best effort
+    }
   }
 
   Future<void> refresh({bool silent = false}) async {
@@ -1834,6 +1887,7 @@ class ChatController extends StateNotifier<ChatState> {
     // Immediately update state so UI renders instantly!
     state = state.copyWith(
       messages: _mergeMessages(state.messages, [incoming]),
+      clearTyping: true,
     );
 
     if (!incoming.isOutbound) {

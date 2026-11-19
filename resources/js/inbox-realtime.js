@@ -32,6 +32,8 @@ const bindRealtime = () => {
         return;
     }
 
+    const authEndpoint = config.authEndpoint || config.auth_endpoint || '/broadcasting/auth';
+
     echo = echo || new Echo({
         broadcaster: config.driver === 'reverb' ? 'reverb' : 'pusher',
         key: config.key,
@@ -40,7 +42,7 @@ const bindRealtime = () => {
         wssPort: config.port ?? 443,
         forceTLS: (config.scheme ?? 'https') === 'https',
         enabledTransports: ['ws', 'wss'],
-        authEndpoint: config.authEndpoint,
+        authEndpoint: authEndpoint,
         auth: {
             headers: {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
@@ -95,30 +97,115 @@ const bindRealtime = () => {
         }
     };
 
-    const touchConversationList = (payload) => {
-        if (!payload?.id) {
-            return;
-        }
-        const row = document.querySelector(`[data-conversation-id="${payload.id}"]`);
-        if (row) {
-            row.classList.add('bg-[#E8FAF6]');
+    const syncMissedState = async () => {
+        const activeId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        if (activeId) {
+            const messageList = document.getElementById('inbox-message-list');
+            const ids = [...(messageList?.querySelectorAll('[data-message-id]') || [])]
+                .map((el) => Number(el.dataset.messageId))
+                .filter((id) => !isNaN(id) && id > 0);
+            const afterId = ids.length > 0 ? Math.max(...ids) : 0;
+            try {
+                const res = await fetch(`/workspace/conversations/${activeId}/poll-messages?after_id=${afterId}`, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data?.messages)) {
+                        data.messages.forEach((msg) => appendMessage(msg));
+                    }
+                    if (data?.conversation) {
+                        window.__INBOX_UI__?.updateConversationInSidebar?.(data.conversation, { moveToTop: true });
+                        if (data.conversation.responder) {
+                            window.__INBOX_UI__?.updateTopResponderBar?.(data.conversation.responder);
+                        }
+                    }
+                }
+            } catch (_) {}
         }
     };
 
+    // Connection state listeners
+    if (echo?.connector?.pusher?.connection) {
+        echo.connector.pusher.connection.bind('state_change', (states) => {
+            const current = states.current;
+            if (current === 'connected') {
+                window.__INBOX_UI__?.setConnectionStatus?.('connected');
+                syncMissedState();
+            } else if (current === 'connecting') {
+                window.__INBOX_UI__?.setConnectionStatus?.('reconnecting');
+            } else if (current === 'unavailable' || current === 'failed' || current === 'disconnected') {
+                window.__INBOX_UI__?.setConnectionStatus?.('offline');
+            }
+        });
+    }
+
+    const handleIncomingMessage = (payload) => {
+        if (!payload?.conversation_id) return;
+
+        const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        if (currentId && Number(payload.conversation_id) === Number(currentId)) {
+            appendMessage(payload);
+            window.__INBOX_UI__?.hideTypingIndicator?.();
+        }
+
+        const convUpdate = {
+            id: payload.conversation_id,
+            last_message: payload.content,
+            last_message_at: payload.created_at_time || 'الآن',
+            last_message_at_human: 'الآن',
+            customer: payload.customer,
+        };
+
+        if (payload.direction === 'inbound' && Number(payload.conversation_id) !== Number(currentId)) {
+            const link = document.querySelector(`[data-conversation-id="${payload.conversation_id}"]`);
+            const badge = link?.querySelector('.bg-\\[\\#00BFAE\\].text-white') || link?.querySelector('.bg-\\[\\#06C2A4\\].text-white');
+            const currentCount = badge ? (Number(badge.textContent) || 0) : 0;
+            convUpdate.unread_count = currentCount + 1;
+        }
+
+        if (window.__INBOX_UI__?.updateConversationInSidebar) {
+            window.__INBOX_UI__.updateConversationInSidebar(convUpdate, { moveToTop: true });
+        }
+    };
+
+    const handleConversationUpdated = (payload) => {
+        if (!payload?.id) return;
+        if (window.__INBOX_UI__?.updateConversationInSidebar) {
+            window.__INBOX_UI__.updateConversationInSidebar(payload, { moveToTop: false });
+        }
+        const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        if (currentId && Number(payload.id) === Number(currentId) && payload.responder) {
+            window.__INBOX_UI__?.updateTopResponderBar?.(payload.responder);
+        }
+    };
+
+    const handleTypingActivity = (payload) => {
+        if (!payload?.conversation_id) return;
+        const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        if (currentId && Number(payload.conversation_id) === Number(currentId)) {
+            if (payload.is_typing) {
+                window.__INBOX_UI__?.showTypingIndicator?.(payload.sender_name, payload.sender_type);
+            } else {
+                window.__INBOX_UI__?.hideTypingIndicator?.();
+            }
+        }
+    };
+
+    // Subscriptions
     const workspaceChannel = `workspace.${workspaceId}.conversations`;
     echo.private(workspaceChannel)
-        .listen('.message.created', (payload) => {
-            const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
-            if (currentId && payload.conversation_id === currentId) {
-                appendMessage(payload);
-            }
-        })
-        .listen('.conversation.updated', touchConversationList);
+        .listen('.message.created', handleIncomingMessage)
+        .listen('.conversation.updated', handleConversationUpdated);
     joined.push(workspaceChannel);
 
     if (activeConversationId) {
         const conversationChannel = `workspace.${workspaceId}.conversation.${activeConversationId}`;
-        echo.private(conversationChannel).listen('.message.created', appendMessage);
+        echo.private(conversationChannel)
+            .listen('.message.created', handleIncomingMessage)
+            .listen('.conversation.updated', handleConversationUpdated)
+            .listen('.typing.activity', handleTypingActivity);
         joined.push(conversationChannel);
     }
 };

@@ -388,12 +388,15 @@ class MessageModel extends Equatable {
       aiGenerated:
           payload['ai_generated'] == true || payload['ai_generated'] == 1,
       createdAt: DateTime.tryParse(payload['created_at']?.toString() ?? ''),
-      userName: payload['user'] is Map
-          ? payload['user']['name']?.toString()
-          : null,
-      customerName: payload['customer'] is Map
-          ? payload['customer']['name']?.toString()
-          : null,
+      userName: payload['sender_name']?.toString() ??
+          payload['user_name']?.toString() ??
+          (payload['user'] is Map
+              ? payload['user']['name']?.toString()
+              : null),
+      customerName: payload['customer_name']?.toString() ??
+          (payload['customer'] is Map
+              ? payload['customer']['name']?.toString()
+              : null),
       attachments: attachments,
       clientId: clientId,
       workerEngagementId: (payload['worker_engagement_id'] as num?)?.toInt(),

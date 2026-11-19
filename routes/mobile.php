@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\Mobile\V1\StoryController;
 use App\Http\Controllers\Api\Mobile\V1\UnreadController;
 use App\Http\Controllers\Api\Mobile\V1\Worker\WorkerAccountController;
 use App\Http\Controllers\Api\Mobile\V1\WorkspaceController;
+use Illuminate\Broadcasting\BroadcastController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function (): void {
@@ -47,6 +48,7 @@ Route::prefix('auth')->group(function (): void {
 });
 
 Route::middleware(['auth:sanctum', 'throttle:mobile-api'])->group(function (): void {
+    Route::match(['get', 'post'], '/broadcasting/auth', [BroadcastController::class, 'authenticate']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::patch('/auth/profile', [AuthController::class, 'updateProfile']);
@@ -240,6 +242,7 @@ Route::middleware([
     Route::post('/conversations/{conversation}/takeover', [ConversationHandoffController::class, 'takeover']);
     Route::post('/conversations/{conversation}/resolve-handoff', [ConversationHandoffController::class, 'resolve']);
     Route::post('/conversations/{conversation}/resume-ai', [ConversationHandoffController::class, 'resumeAi']);
+    Route::post('/conversations/{conversation}/typing', [ConversationController::class, 'typing']);
 
     Route::post('/messages/{message}/attachments', [AttachmentController::class, 'store'])
         ->middleware('throttle:mobile-attachments');

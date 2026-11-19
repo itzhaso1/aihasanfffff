@@ -91,6 +91,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    _controller.addListener(_onComposerTextChanged);
     final initial = widget.initialConversation;
     if (initial != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -100,6 +101,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             .seedConversation(initial);
       });
     }
+  }
+
+  DateTime? _lastTypingSent;
+  void _onComposerTextChanged() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    final now = DateTime.now();
+    if (_lastTypingSent != null &&
+        now.difference(_lastTypingSent!).inMilliseconds < 2500) {
+      return;
+    }
+    _lastTypingSent = now;
+    ref
+        .read(chatControllerProvider(widget.conversationId).notifier)
+        .sendTyping(true);
   }
 
   @override
@@ -142,6 +158,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     unawaited(_voiceRecorder?.cancel());
     unawaited(_voiceRecorder?.dispose());
     _scroll.removeListener(_onScroll);
+    _controller.removeListener(_onComposerTextChanged);
     _controller.dispose();
     _messageSearch.dispose();
     _composerFocus.dispose();
@@ -189,6 +206,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     final text = _controller.text;
     if (text.trim().isEmpty) return;
+    unawaited(
+      ref
+          .read(chatControllerProvider(widget.conversationId).notifier)
+          .sendTyping(false),
+    );
     final now = DateTime.now();
     if (_lastSendText == text &&
         _lastSendAt != null &&
@@ -927,16 +949,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .read(chatControllerProvider(widget.conversationId))
           .mutating;
       final Future<String?> request;
-      final String successMessage;
       if (selected == 'resume_ai') {
         request = notifier.resumeAi();
-        successMessage = 'تم إعادة تفعيل الرد الآلي بواسطة AI';
-      } else if (selected == 'move_to_team') {
-        request = notifier.requestHandoff();
-        successMessage = 'تم تحويل المحادثة إلى الفريق';
       } else {
         request = notifier.endHandoff();
-        successMessage = 'تم إنهاء التسليم البشري';
       }
       final error = await request;
       if (!mounted) return;
@@ -949,7 +965,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (wasMutating) return;
       ScaffoldMessenger.of(
         this.context,
-      ).showSnackBar(SnackBar(content: Text(successMessage)));
+      ).showSnackBar(const SnackBar(content: Text('تم تحديث حالة التحويل')));
     }
   }
 
@@ -1882,6 +1898,53 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ],
           ),
+          if (state.typingIndicator != null)
+            Positioned(
+              left: 16,
+              bottom: _composerHeight +
+                  12 +
+                  (HasimLayout.isCompact(context) && _attachMenuOpen
+                      ? ChatAttachmentGridPanel.heightFor(context)
+                      : 0) +
+                  _phoneEmojiDock(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x0F000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF06C2A4)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      state.typingIndicator!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (conversation?.canReply != false)
             Positioned(
               left: 0,
@@ -2312,7 +2375,7 @@ class _LiveResponderHeaderBar extends StatelessWidget {
                   ),
                 ),
                 child: const Text(
-                  'تولي المحادثة',
+                  'تولي الرد',
                   style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
                 ),
               ),

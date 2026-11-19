@@ -225,6 +225,10 @@ Route::middleware(['auth'])->prefix('workers')->as('worker.')->group(function ()
         ->whereNumber('conversation')
         ->middleware('throttle:mobile-messages')
         ->name('inbox.messages.store');
+    Route::post('/{workspace}/inbox/{conversation}/typing', [WorkerInboxController::class, 'typing'])
+        ->whereNumber('workspace')
+        ->whereNumber('conversation')
+        ->name('inbox.typing');
 });
 
 Route::get('/auth/{provider}/callback', [SocialLoginController::class, 'callback'])
@@ -319,6 +323,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         Route::get('conversations/{conversation}/poll-messages', [ConversationController::class, 'pollMessages'])->name('conversations.messages.poll');
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');
         Route::get('conversations/{conversation}/media', [ConversationController::class, 'media'])->name('conversations.media');
+        Route::post('conversations/{conversation}/typing', [ConversationController::class, 'typing'])->name('conversations.typing');
         Route::post('conversations/bulk-messages', [ConversationBulkMessageController::class, 'store'])->name('conversations.bulk-messages.store');
         Route::get('conversations/bulk-messages/{bulkSend}', [ConversationBulkMessageController::class, 'show'])
             ->whereUuid('bulkSend')

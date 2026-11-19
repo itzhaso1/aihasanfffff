@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Mobile\V1;
 
+use App\Events\Realtime\TypingActivity;
 use App\Http\Controllers\Api\Mobile\Concerns\ResolvesMobileWorkspace;
 use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Http\Resources\Mobile\ConversationResource;
@@ -20,6 +21,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
@@ -143,6 +145,8 @@ class ConversationController extends MobileController
 
     public function storeMessage(Request $request, Conversation $conversation): JsonResponse
     {
+        Cache::forget("conversation:{$conversation->id}:active_typing");
+
         Log::info('chat.send_message', [
             'received' => true,
             'workspace_id' => $conversation->workspace_id,
@@ -181,6 +185,8 @@ class ConversationController extends MobileController
         } catch (AuthorizationException) {
             return $this->fail('لا تملك صلاحية تنفيذ هذا الإجراء.', 403);
         }
+
+        Cache::forget("conversation:{$conversation->id}:active_typing");
 
         Log::info('chat.send_message', [
             'created' => true,
@@ -349,5 +355,53 @@ class ConversationController extends MobileController
         $conversation->delete();
 
         return $this->ok(message: 'تم حذف المحادثة.');
+    }
+
+    public function typing(Request $request, Conversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            return $this->unauthorized();
+        }
+
+        $isTyping = $request->boolean('is_typing', true);
+        $senderName = $user->name ?? 'موظف';
+        $senderType = 'user';
+
+        $profile = $user->relationLoaded('workerProfile') ? $user->workerProfile : $user->workerProfile()->first();
+        if ($profile !== null) {
+            $senderType = 'worker';
+            $senderName = $profile->display_name ?: $user->name ?: 'موظف مستقل';
+        }
+
+        $cacheKey = "conversation:{$conversation->id}:active_typing";
+        if ($isTyping) {
+            Cache::put($cacheKey, [
+                'user_id' => $user->id,
+                'name' => $senderName,
+                'sender_type' => $senderType,
+                'typed_at' => now()->toIso8601String(),
+            ], now()->addSeconds(6));
+        } else {
+            Cache::forget($cacheKey);
+        }
+
+        try {
+            event(new TypingActivity(
+                workspaceId: (int) $conversation->workspace_id,
+                conversationId: (int) $conversation->id,
+                senderType: $senderType,
+                senderName: $senderName,
+                isTyping: $isTyping,
+            ));
+        } catch (\Throwable) {
+            // Best effort
+        }
+
+        return $this->ok([
+            'status' => 'ok',
+            'is_typing' => $isTyping,
+            'active_responder' => $conversation->currentResponder(),
+        ]);
     }
 }

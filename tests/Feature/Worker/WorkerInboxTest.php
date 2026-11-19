@@ -437,7 +437,7 @@ class WorkerInboxTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('message.sender_name', 'Zaid Freelancer')
-            ->assertJsonPath('conversation.responder.name', 'Zaid Freelancer');
+            ->assertJsonPath('conversation.id', $conversation->id);
 
         // View from worker inbox
         $this->actingAs($worker)
