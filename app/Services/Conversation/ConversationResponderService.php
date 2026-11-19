@@ -95,13 +95,26 @@ class ConversationResponderService
         ) {
             $isWorkerAssigned = $conversation->assigned_worker_engagement_id !== null;
             if ($isWorkerAssigned) {
-                $name = 'فريق العمل';
-                $user = null;
+                if ($handoffStatus === ConversationHandoffStatus::Assigned) {
+                    $name = 'فريق العمل';
+                    $user = null;
+                } else {
+                    $workerEngagement = $conversation->relationLoaded('assignedWorkerEngagement')
+                        ? $conversation->assignedWorkerEngagement
+                        : $conversation->assignedWorkerEngagement()->with('workerProfile.user')->first();
+                    $workerProfile = $workerEngagement?->workerProfile;
+                    $user = $workerProfile?->user ?? $conversation->assignedUser;
+                    $name = $workerProfile?->display_name
+                        ?: $workerProfile?->user?->name
+                        ?: $conversation->responder_name
+                        ?: $user?->name
+                        ?: 'موظف مستقل';
+                }
             } else {
                 $user = $conversation->relationLoaded('assignedUser')
                     ? $conversation->assignedUser
                     : $conversation->assignedUser()->first();
-                $name = $user?->name ?? $conversation->responder_name ?? 'موظف خدمة العملاء';
+                $name = $conversation->responder_name ?? $user?->name ?? 'موظف خدمة العملاء';
             }
             $assignedAt = $conversation->responder_assigned_at ?? $conversation->handoff_assigned_at ?? $conversation->updated_at;
 
@@ -189,9 +202,18 @@ class ConversationResponderService
             $previousUserId = $fresh->assigned_user_id;
             $previousName = $fresh->responder_name ?? ($previousType === self::TYPE_AI ? 'مشعل AI' : ($fresh->assignedUser?->name ?? '—'));
 
+            $workerName = null;
+            if ($fresh->assigned_worker_engagement_id !== null) {
+                $workerEngagement = $fresh->relationLoaded('assignedWorkerEngagement')
+                    ? $fresh->assignedWorkerEngagement
+                    : $fresh->assignedWorkerEngagement()->with('workerProfile.user')->first();
+                $workerProfile = $workerEngagement?->workerProfile;
+                $workerName = $workerProfile?->display_name ?: $workerProfile?->user?->name;
+            }
+
             $newName = match ($newType) {
                 self::TYPE_AI => ($fresh->aiEmployee?->name ?? 'مشعل').' AI',
-                self::TYPE_HUMAN => $newUser?->name ?? 'موظف خدمة العملاء',
+                self::TYPE_HUMAN => $workerName ?: ($newUser?->name ?? 'موظف خدمة العملاء'),
                 default => '—',
             };
 

@@ -462,7 +462,13 @@
                                 <span>AI</span>
                             </span>
                         @elseif($messageType === \App\Enums\WorkforceParticipantType::IndependentWorker)
-                            <span class="text-slate-600 font-medium">عامل مستقل{{ $message->workerEngagement?->workerProfile?->display_name ? ': '.$message->workerEngagement->workerProfile->display_name : '' }}</span>
+                            @php
+                                $workerDisplayName = $message->workerEngagement?->workerProfile?->display_name
+                                    ?: $message->workerEngagement?->workerProfile?->user?->name
+                                    ?: $message->user?->name
+                                    ?: 'موظف مستقل';
+                            @endphp
+                            <span class="text-slate-600 font-medium">{{ $workerDisplayName }} (موظف مستقل)</span>
                         @elseif($messageType === \App\Enums\WorkforceParticipantType::CompanyStaff && $message->user)
                             <span class="text-slate-600 font-medium">{{ $message->user->name }}</span>
                         @endif

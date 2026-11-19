@@ -119,7 +119,8 @@ final class WorkerInboxService
                 if ($existing instanceof Message) {
                     return $existing->load([
                         'user:id,name',
-                        'workerEngagement.workerProfile:id,display_name',
+                        'workerEngagement.workerProfile:id,user_id,display_name',
+                        'workerEngagement.workerProfile.user:id,name',
                     ]);
                 }
             }
@@ -175,7 +176,8 @@ final class WorkerInboxService
 
             return $message->load([
                 'user:id,name',
-                'workerEngagement.workerProfile:id,display_name',
+                'workerEngagement.workerProfile:id,user_id,display_name',
+                'workerEngagement.workerProfile.user:id,name',
             ]);
         });
     }
@@ -272,7 +274,8 @@ final class WorkerInboxService
             'customer:id,name',
             'assignedUser:id,name',
             'assignedWorkerEngagement:id,workspace_id,worker_profile_id,status',
-            'assignedWorkerEngagement.workerProfile:id,display_name',
+            'assignedWorkerEngagement.workerProfile:id,user_id,display_name',
+            'assignedWorkerEngagement.workerProfile.user:id,name',
             'aiEmployee:id,workspace_id,name,avatar_path,status',
             'messages' => function ($query): void {
                 $query
@@ -291,7 +294,8 @@ final class WorkerInboxService
                     ])
                     ->with([
                         'user:id,name',
-                        'workerEngagement.workerProfile:id,display_name',
+                        'workerEngagement.workerProfile:id,user_id,display_name',
+                        'workerEngagement.workerProfile.user:id,name',
                     ])
                     ->latest('id')
                     ->limit(80);

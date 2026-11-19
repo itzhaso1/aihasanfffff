@@ -6,6 +6,7 @@ use App\Enums\ConversationHandoffStatus;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
+use App\Models\Worker\WorkerEngagement;
 use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Inbox\InboxRealtimePublisher;
@@ -75,6 +76,18 @@ class ConversationService
 
         $message = DB::transaction(function () use ($conversation, $data, $actor, $uploadedFiles, $workspaceId, $externalMessageId): Message {
             try {
+                if (! isset($data['worker_engagement_id']) && $actor instanceof User && ! (bool) ($data['ai_generated'] ?? false)) {
+                    $candidateEngagementId = $conversation->assigned_worker_engagement_id
+                        ?: WorkerEngagement::withoutGlobalScopes()
+                            ->where('workspace_id', $workspaceId)
+                            ->where('status', 'active')
+                            ->whereHas('workerProfile', fn ($q) => $q->where('user_id', $actor->id))
+                            ->value('id');
+                    if ($candidateEngagementId) {
+                        $data['worker_engagement_id'] = $candidateEngagementId;
+                    }
+                }
+
                 $message = $conversation->messages()->create([
                     ...$data,
                     'workspace_id' => $workspaceId,
@@ -114,7 +127,21 @@ class ConversationService
             } elseif ($actor instanceof User && ! (bool) ($data['ai_generated'] ?? false)) {
                 $conversationAttributes['assigned_user_id'] = $actor->id;
                 $conversationAttributes['responder_type'] = ConversationResponderService::TYPE_HUMAN;
-                $conversationAttributes['responder_name'] = $actor->name;
+
+                $workerEngagementId = $data['worker_engagement_id'] ?? null;
+                if ($workerEngagementId !== null) {
+                    $conversationAttributes['assigned_worker_engagement_id'] = $workerEngagementId;
+                    $workerEngagement = WorkerEngagement::withoutGlobalScopes()
+                        ->with('workerProfile.user')
+                        ->find($workerEngagementId);
+                    $workerProfile = $workerEngagement?->workerProfile;
+                    $conversationAttributes['responder_name'] = $workerProfile?->display_name
+                        ?: $workerProfile?->user?->name
+                        ?: $actor->name;
+                } else {
+                    $conversationAttributes['responder_name'] = $actor->name;
+                }
+
                 $conversationAttributes['responder_assigned_at'] = now();
                 $conversationAttributes['handoff_status'] = ConversationHandoffStatus::Active->value;
                 $conversationAttributes['handoff_assigned_at'] = $conversation->handoff_assigned_at ?? now();

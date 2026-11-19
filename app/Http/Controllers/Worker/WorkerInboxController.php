@@ -8,6 +8,7 @@ use App\Enums\ConversationHandoffStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Worker\StoreWorkerInboxMessageRequest;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Models\User;
 use App\Models\Worker\WorkerEngagement;
 use App\Models\Workspace;
@@ -15,10 +16,12 @@ use App\Services\Mobile\ConversationInboxService;
 use App\Services\Worker\WorkerEngagementAuthorization;
 use App\Services\Worker\WorkerInboxException;
 use App\Services\Worker\WorkerInboxService;
+use App\Services\Workforce\WorkforceInboxAttribution;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -99,9 +102,11 @@ final class WorkerInboxController extends Controller
         StoreWorkerInboxMessageRequest $request,
         Workspace $workspace,
         int $conversation,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
+        app(WorkspaceContext::class)->set($workspace);
+
         try {
-            $this->inbox->sendMessage(
+            $sentMessage = $this->inbox->sendMessage(
                 $request->user(),
                 $workspace,
                 $conversation,
@@ -109,12 +114,86 @@ final class WorkerInboxController extends Controller
                 $request,
             );
         } catch (WorkerInboxException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $exception->getMessage()], 422);
+            }
+
             return back()->withErrors(['message' => $exception->getMessage()]);
+        }
+
+        if ($request->expectsJson()) {
+            $conversationModel = Conversation::query()
+                ->withoutGlobalScopes()
+                ->where('workspace_id', $workspace->id)
+                ->with([
+                    'assignedUser:id,name',
+                    'assignedWorkerEngagement.workerProfile:id,user_id,display_name',
+                    'assignedWorkerEngagement.workerProfile.user:id,name',
+                    'aiEmployee:id,workspace_id,name,avatar_path,status',
+                ])
+                ->find($conversation);
+
+            return response()->json([
+                'message' => $this->serializeMessageForInbox($sentMessage),
+                'conversation' => $conversationModel ? [
+                    'id' => $conversationModel->id,
+                    'ai_enabled' => (bool) $conversationModel->ai_enabled,
+                    'ai_replying' => $conversationModel->isAiReplying(),
+                    'handoff_status' => $conversationModel->handoff_status instanceof ConversationHandoffStatus
+                        ? $conversationModel->handoff_status->value
+                        : ($conversationModel->handoff_status ?? 'none'),
+                    'responder' => $conversationModel->currentResponder(),
+                ] : null,
+            ]);
         }
 
         return redirect()
             ->route('worker.inbox.show', [$workspace, $conversation])
             ->with('success', 'تم إرسال الرسالة.');
+    }
+
+    private function serializeMessageForInbox(Message $message): array
+    {
+        $message->loadMissing([
+            'attachments',
+            'user:id,name',
+            'workerEngagement.workerProfile:id,user_id,display_name',
+            'workerEngagement.workerProfile.user:id,name',
+        ]);
+
+        $isInternalNote = $message->direction === 'internal_note'
+            || $message->message_type === 'system'
+            || (bool) data_get($message->metadata, 'handoff_acknowledgement');
+
+        $participantType = WorkforceInboxAttribution::typeForMessage($message)?->value;
+
+        $senderName = null;
+        if ($participantType === 'ai_employee' || $message->ai_generated) {
+            $senderName = 'AI';
+        } elseif ($participantType === 'independent_worker') {
+            $senderName = $message->workerEngagement?->workerProfile?->display_name
+                ?: $message->workerEngagement?->workerProfile?->user?->name
+                ?: $message->user?->name
+                ?: 'موظف مستقل';
+        } elseif ($message->user) {
+            $senderName = $message->user->name;
+        }
+
+        return [
+            'id' => $message->id,
+            'conversation_id' => $message->conversation_id,
+            'direction' => $message->direction,
+            'message_type' => $message->message_type,
+            'content' => $message->content,
+            'ai_generated' => (bool) $message->ai_generated,
+            'is_internal_note' => $isInternalNote,
+            'sender_name' => $senderName,
+            'created_at_time' => optional($message->created_at)?->format('h:i A'),
+            'participant_type' => $participantType,
+            'worker_engagement_id' => $message->worker_engagement_id,
+            'created_at' => optional($message->created_at)?->toIso8601String(),
+            'attachments' => [],
+        ];
     }
 
     /**

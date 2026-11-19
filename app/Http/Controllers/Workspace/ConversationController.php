@@ -55,7 +55,8 @@ class ConversationController extends Controller
                 'customer',
                 'assignedUser:id,name',
                 'assignedWorkerEngagement:id,workspace_id,worker_profile_id,status',
-                'assignedWorkerEngagement.workerProfile:id,display_name',
+                'assignedWorkerEngagement.workerProfile:id,user_id,display_name',
+                'assignedWorkerEngagement.workerProfile.user:id,name',
                 'aiEmployee:id,workspace_id,name,avatar_path,status',
                 'messages' => fn ($query) => $query->latest()->limit(1),
             ])
@@ -184,11 +185,13 @@ class ConversationController extends Controller
                     'customer.orders' => fn ($query) => $query->latest()->limit(8),
                     'assignedUser:id,name',
                     'assignedWorkerEngagement:id,workspace_id,worker_profile_id,status',
-                    'assignedWorkerEngagement.workerProfile:id,display_name',
+                    'assignedWorkerEngagement.workerProfile:id,user_id,display_name',
+                    'assignedWorkerEngagement.workerProfile.user:id,name',
                     'aiEmployee:id,workspace_id,name,avatar_path,status',
                     'messages' => fn ($query) => $query->with([
-                        'user',
-                        'workerEngagement.workerProfile:id,display_name',
+                        'user:id,name',
+                        'workerEngagement.workerProfile:id,user_id,display_name',
+                        'workerEngagement.workerProfile.user:id,name',
                         'attachments',
                     ])->latest('id')->limit(80),
                 ])
@@ -497,7 +500,12 @@ class ConversationController extends Controller
      */
     private function serializeMessageForInbox(Message $message): array
     {
-        $message->loadMissing(['attachments', 'user:id,name', 'workerEngagement.workerProfile:id,display_name']);
+        $message->loadMissing([
+            'attachments',
+            'user:id,name',
+            'workerEngagement.workerProfile:id,user_id,display_name',
+            'workerEngagement.workerProfile.user:id,name',
+        ]);
 
         $isInternalNote = $message->direction === 'internal_note'
             || $message->message_type === 'system'
@@ -509,7 +517,10 @@ class ConversationController extends Controller
         if ($participantType === 'ai_employee' || $message->ai_generated) {
             $senderName = 'AI';
         } elseif ($participantType === 'independent_worker') {
-            $senderName = $message->workerEngagement?->workerProfile?->display_name ?? 'عامل مستقل';
+            $senderName = $message->workerEngagement?->workerProfile?->display_name
+                ?: $message->workerEngagement?->workerProfile?->user?->name
+                ?: $message->user?->name
+                ?: 'موظف مستقل';
         } elseif ($message->user) {
             $senderName = $message->user->name;
         }
@@ -586,9 +597,10 @@ class ConversationController extends Controller
                 $msg = $att->message;
                 $senderName = 'العميل';
                 if ($msg?->direction === 'outbound') {
-                    $senderName = $msg->user?->name
-                        ?? $msg->workerEngagement?->workerProfile?->display_name
-                        ?? 'فريق العمل';
+                    $isWorker = $msg->worker_engagement_id !== null;
+                    $senderName = $isWorker
+                        ? ($msg->workerEngagement?->workerProfile?->display_name ?: $msg->workerEngagement?->workerProfile?->user?->name ?: $msg->user?->name ?: 'موظف مستقل')
+                        : ($msg->user?->name ?? 'فريق العمل');
                 }
 
                 return [

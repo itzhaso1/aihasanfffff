@@ -414,6 +414,51 @@ class WorkerInboxTest extends TestCase
         $this->assertNotSame($hidden->id, $conversation->id);
     }
 
+    public function test_independent_worker_message_displays_worker_name_in_view_and_json(): void
+    {
+        [$owner, $workspace] = $this->createCompany();
+        [$worker, $profile] = $this->createWorker('Zaid Freelancer');
+        $engagement = $this->createEngagement($workspace, $owner, $profile, [
+            'inbox.messages.read',
+            'inbox.messages.send',
+        ]);
+        $conversation = $this->assignedConversation($workspace, $owner, $worker, $engagement);
+
+        // Send message via AJAX / JSON
+        $response = $this->actingAs($worker)->postJson(
+            route('worker.inbox.messages.store', [
+                'workspace' => $workspace->id,
+                'conversation' => $conversation->id,
+            ]),
+            [
+                'content' => 'Message from independent worker Zaid',
+            ],
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('message.sender_name', 'Zaid Freelancer')
+            ->assertJsonPath('conversation.responder.name', 'Zaid Freelancer');
+
+        // View from worker inbox
+        $this->actingAs($worker)
+            ->get(route('worker.inbox.show', [
+                'workspace' => $workspace->id,
+                'conversation' => $conversation->id,
+            ]))
+            ->assertOk()
+            ->assertSee('Zaid Freelancer')
+            ->assertSee('Message from independent worker Zaid');
+
+        // View from company workspace inbox
+        $this->companyRequest($owner, $workspace)
+            ->get(route('workspace.conversations.index', [
+                'conversation' => $conversation->id,
+            ]))
+            ->assertOk()
+            ->assertSee('Zaid Freelancer')
+            ->assertSee('Message from independent worker Zaid');
+    }
+
     /**
      * @return array{0: User, 1: Workspace}
      */
