@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Services\Conversation;
 
 use App\Enums\ConversationHandoffStatus;
+use App\Jobs\ProcessAIResponse;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
+use App\Models\Workspace;
 use App\Services\Inbox\InboxRealtimePublisher;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -71,8 +74,9 @@ final class IdleHandoffResumeService
                         continue;
                     }
 
-                    $this->performAutoResume($conversation);
-                    $resumed++;
+                    if ($this->performAutoResume($conversation)) {
+                        $resumed++;
+                    }
                 }
             });
 
@@ -132,26 +136,75 @@ final class IdleHandoffResumeService
     /**
      * Perform the actual AI resume and write an internal note to the conversation.
      */
-    private function performAutoResume(Conversation $conversation): void
+    private function performAutoResume(Conversation $conversation): bool
+    {
+        return (bool) app(WorkspaceContext::class)->runForId((int) $conversation->workspace_id, function () use ($conversation): bool {
+            try {
+                // Use a system actor: assigned user, workspace owner, or any active member
+                $actor = $this->resolveSystemActor($conversation);
+
+                app(ConversationHandoffService::class)->resumeAi($conversation, $actor);
+
+                // Write an internal note visible only to staff
+                $minutes = $this->idleThresholdMinutes();
+                $this->writeInternalNote($conversation, $minutes);
+
+                // If customer sent an inbound message that went unanswered, dispatch AI response
+                $this->maybeDispatchPendingAiResponse($conversation);
+
+                Log::info('[IdleHandoffResume] Auto-resumed AI', [
+                    'conversation_id' => $conversation->id,
+                    'workspace_id' => $conversation->workspace_id,
+                    'previous_handoff_status' => $conversation->handoff_status,
+                    'idle_minutes' => $minutes,
+                ]);
+
+                return true;
+            } catch (\Throwable $e) {
+                Log::warning('[IdleHandoffResume] Failed to auto-resume AI', [
+                    'conversation_id' => $conversation->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return false;
+            }
+        });
+    }
+
+    /**
+     * If the customer has an unanswered inbound message, trigger AI generation.
+     */
+    private function maybeDispatchPendingAiResponse(Conversation $conversation): void
     {
         try {
-            // Use a system actor: the workspace owner or a synthetic system user (id=1 fallback)
-            $actor = $this->resolveSystemActor($conversation);
+            $lastInbound = Message::withoutGlobalScopes()
+                ->where('workspace_id', $conversation->workspace_id)
+                ->where('conversation_id', $conversation->id)
+                ->where('direction', 'inbound')
+                ->latest('id')
+                ->first();
 
-            app(ConversationHandoffService::class)->resumeAi($conversation, $actor);
+            if (! $lastInbound) {
+                return;
+            }
 
-            // Write an internal note visible only to staff
-            $minutes = $this->idleThresholdMinutes();
-            $this->writeInternalNote($conversation, $minutes);
+            $hasLaterOutbound = Message::withoutGlobalScopes()
+                ->where('workspace_id', $conversation->workspace_id)
+                ->where('conversation_id', $conversation->id)
+                ->where('id', '>', $lastInbound->id)
+                ->where('direction', 'outbound')
+                ->exists();
 
-            Log::info('[IdleHandoffResume] Auto-resumed AI', [
-                'conversation_id' => $conversation->id,
-                'workspace_id' => $conversation->workspace_id,
-                'previous_handoff_status' => $conversation->handoff_status,
-                'idle_minutes' => $minutes,
-            ]);
+            if ($hasLaterOutbound) {
+                return;
+            }
+
+            $fresh = $conversation->fresh() ?? $conversation;
+            if (app(ConversationAiEligibilityService::class)->shouldDispatchAiJob($fresh, $lastInbound)) {
+                ProcessAIResponse::dispatch($fresh->id, $lastInbound->id, (int) $fresh->workspace_id);
+            }
         } catch (\Throwable $e) {
-            Log::warning('[IdleHandoffResume] Failed to auto-resume AI', [
+            Log::warning('[IdleHandoffResume] Failed to dispatch pending AI response', [
                 'conversation_id' => $conversation->id,
                 'error' => $e->getMessage(),
             ]);
@@ -160,7 +213,7 @@ final class IdleHandoffResumeService
 
     /**
      * Find the workspace owner to act as the system actor for the resume transition.
-     * Falls back to the previously assigned user if owner is unavailable.
+     * Falls back to the previously assigned user or any active member.
      */
     private function resolveSystemActor(Conversation $conversation): User
     {
@@ -173,28 +226,22 @@ final class IdleHandoffResumeService
         }
 
         // Fall back to workspace owner
-        $owner = User::query()
-            ->join('workspace_user', 'users.id', '=', 'workspace_user.user_id')
-            ->where('workspace_user.workspace_id', $conversation->workspace_id)
-            ->where('workspace_user.membership_role', 'owner')
-            ->where('workspace_user.status', 'active')
-            ->select('users.*')
-            ->first();
-
-        if ($owner) {
-            return $owner;
+        $workspace = Workspace::query()->find($conversation->workspace_id);
+        if ($workspace?->owner_user_id) {
+            $owner = User::query()->find($workspace->owner_user_id);
+            if ($owner) {
+                return $owner;
+            }
         }
 
-        // Last resort: any active member
-        $member = User::query()
-            ->join('workspace_user', 'users.id', '=', 'workspace_user.user_id')
-            ->where('workspace_user.workspace_id', $conversation->workspace_id)
-            ->where('workspace_user.status', 'active')
-            ->select('users.*')
-            ->first();
-
-        if ($member) {
-            return $member;
+        // Last resort: any active member in workspace_users
+        if ($workspace) {
+            $member = $workspace->users()
+                ->wherePivot('status', 'active')
+                ->first();
+            if ($member) {
+                return $member;
+            }
         }
 
         throw new \RuntimeException("No active workspace member found for workspace {$conversation->workspace_id}");

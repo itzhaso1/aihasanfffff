@@ -3,14 +3,17 @@
 namespace Tests\Feature\Feature\Conversation;
 
 use App\Enums\ConversationHandoffStatus;
+use App\Jobs\ProcessAIResponse;
 use App\Models\Conversation;
 use App\Models\Customer;
+use App\Models\Message;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Conversation\IdleHandoffResumeService;
 use Database\Seeders\FoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class IdleHandoffResumeTest extends TestCase
@@ -225,6 +228,38 @@ class IdleHandoffResumeTest extends TestCase
         $resumed = app(IdleHandoffResumeService::class)->resumeIdleConversations();
 
         $this->assertSame(2, $resumed);
+    }
+
+    public function test_auto_resume_dispatches_ai_response_if_unanswered_inbound_exists(): void
+    {
+        Queue::fake([ProcessAIResponse::class]);
+
+        [$owner, $workspace, $conversation] = $this->seedConversation();
+
+        $inbound = Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'customer_id' => $conversation->customer_id,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'content' => 'أحتاج مساعدة سريعة من فضلك',
+        ]);
+
+        $conversation->update([
+            'ai_enabled' => false,
+            'handoff_status' => ConversationHandoffStatus::Active->value,
+            'handoff_assigned_at' => now()->subMinutes(10),
+            'employee_last_replied_at' => now()->subMinutes(10),
+        ]);
+
+        $resumed = app(IdleHandoffResumeService::class)->resumeIdleConversations();
+
+        $this->assertSame(1, $resumed);
+
+        Queue::assertPushed(ProcessAIResponse::class, function ($job) use ($conversation, $inbound) {
+            return $job->conversationId === $conversation->id
+                && $job->messageId === $inbound->id;
+        });
     }
 
     // ─── Seed helpers ────────────────────────────────────────────────────────
