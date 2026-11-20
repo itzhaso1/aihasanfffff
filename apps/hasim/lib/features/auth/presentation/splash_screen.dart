@@ -96,7 +96,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               .read(authControllerProvider.notifier)
               .abortBootstrapAsGuest();
         }
-        if (mounted) _scheduleNavigationCheck();
+        if (mounted) {
+          if (_intro.value < 1.0) {
+            _intro.value = 1.0;
+          }
+          _scheduleNavigationCheck();
+        }
       });
     }
   }
@@ -118,9 +123,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       ]).timeout(const Duration(milliseconds: 1500));
     } catch (_) {}
     if (!mounted) return;
-    await _intro.forward();
+    try {
+      await _intro.forward();
+    } catch (_) {
+      _intro.value = 1.0;
+    }
     if (!mounted) return;
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
     if (!mounted) return;
     _scheduleNavigationCheck();
   }
@@ -143,13 +152,22 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   Future<void> _maybeNavigate() async {
     if (_navigated || !mounted) return;
-    if (_intro.status != AnimationStatus.completed) return;
+    if (_intro.status != AnimationStatus.completed && _intro.value < 1.0) {
+      final elapsed = DateTime.now().difference(_openedAt);
+      if (elapsed.inMilliseconds >= 2700) {
+        _intro.value = 1.0;
+      } else {
+        return;
+      }
+    }
     final auth = ref.read(authControllerProvider);
     if (auth.bootstrapping) {
-      _retryTimer?.cancel();
-      _retryTimer = Timer(const Duration(milliseconds: 150), () {
-        if (mounted) _scheduleNavigationCheck();
-      });
+      if (!_isFlutterTest) {
+        _retryTimer?.cancel();
+        _retryTimer = Timer(const Duration(milliseconds: 150), () {
+          if (mounted) _scheduleNavigationCheck();
+        });
+      }
       return;
     }
     _retryTimer?.cancel();
@@ -168,8 +186,34 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     final target = !auth.isAuthenticated ? '/login' : auth.authenticatedHome;
 
-    // Caller schedules via [_scheduleNavigationCheck] so this runs after the current frame.
-    context.go(target);
+    try {
+      context.go(target);
+    } catch (_) {
+      _navigated = false;
+      if (!_isFlutterTest) {
+        _retryTimer?.cancel();
+        _retryTimer = Timer(const Duration(milliseconds: 200), () {
+          if (mounted) _scheduleNavigationCheck();
+        });
+      }
+      return;
+    }
+
+    if (!_isFlutterTest) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        try {
+          final current = GoRouterState.of(context).uri.path;
+          if (current == '/splash') {
+            _navigated = false;
+            _retryTimer?.cancel();
+            _retryTimer = Timer(const Duration(milliseconds: 200), () {
+              if (mounted) _scheduleNavigationCheck();
+            });
+          }
+        } catch (_) {}
+      });
+    }
   }
 
   @override

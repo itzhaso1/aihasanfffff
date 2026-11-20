@@ -338,6 +338,12 @@ class _BubbleBody extends StatelessWidget {
                 size: 12,
                 color: meta,
               ),
+          ] else if (message.id <= 0) ...[
+            Icon(
+              Icons.done_rounded,
+              size: 14,
+              color: meta,
+            ),
           ] else ...[
             const Icon(
               Icons.done_all_rounded,

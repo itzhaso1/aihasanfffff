@@ -678,6 +678,25 @@ class ConversationModel extends Equatable {
       last = MessageModel.fromJson(
         lm is Map<String, dynamic> ? lm : Map<String, dynamic>.from(lm),
       );
+    } else if (lm is String && lm.trim().isNotEmpty) {
+      last = MessageModel(
+        id: -1,
+        conversationId: (json['id'] as num).toInt(),
+        content: lm.trim(),
+        direction: json['last_message_direction']?.toString() ?? 'inbound',
+        messageType: 'text',
+        createdAt: DateTime.tryParse(json['last_message_at']?.toString() ?? ''),
+      );
+    } else if (json['last_message_preview'] is String &&
+        (json['last_message_preview'] as String).trim().isNotEmpty) {
+      last = MessageModel(
+        id: -1,
+        conversationId: (json['id'] as num).toInt(),
+        content: (json['last_message_preview'] as String).trim(),
+        direction: json['last_message_direction']?.toString() ?? 'inbound',
+        messageType: 'text',
+        createdAt: DateTime.tryParse(json['last_message_at']?.toString() ?? ''),
+      );
     }
     final customerRaw = json['customer'];
 
@@ -884,7 +903,7 @@ class ConversationModel extends Equatable {
     );
   }
 
-  /// Keep list/chat fields that classification/handoff responses omit.
+  /// Keep list/chat fields that classification/handoff responses omit, while accepting server updates.
   ConversationModel applyingServerWrites(ConversationModel remote) {
     return ConversationModel(
       id: remote.id,
@@ -892,13 +911,13 @@ class ConversationModel extends Equatable {
       status: remote.status,
       externalId: remote.externalId ?? externalId,
       aiEnabled: remote.aiEnabled,
-      aiReplying: remote.aiReplying,
+      aiReplying: remote.aiReplying ?? aiReplying,
       lastMessageAt: remote.lastMessageAt ?? lastMessageAt,
       customer: remote.customer ?? customer,
-      unreadCount: unreadCount,
+      unreadCount: remote.unreadCount,
       lastMessage: remote.lastMessage ?? lastMessage,
-      muted: muted,
-      archived: archived,
+      muted: remote.muted,
+      archived: remote.archived,
       customerPriority: remote.customerPriority,
       paymentStatus: remote.paymentStatus,
       reviewStatus: remote.reviewStatus,
@@ -911,7 +930,7 @@ class ConversationModel extends Equatable {
           remote.assignedWorkerEngagementId ?? assignedWorkerEngagementId,
       assignedParticipantType:
           remote.assignedParticipantType ?? assignedParticipantType,
-      canReply: canReply,
+      canReply: remote.canReply,
       responder: remote.responder ?? responder,
     );
   }

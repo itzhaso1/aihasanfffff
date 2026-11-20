@@ -171,6 +171,13 @@ class HybridRealtimeService implements RealtimeService {
   }
 
   @override
+  void unwatchConversation(int conversationId) {
+    _wsClient?.updateWorkspace(_workspaceIdOf?.call());
+    _wsClient?.unwatchConversation(conversationId);
+    _polling.unwatchConversation(conversationId);
+  }
+
+  @override
   void triggerPoll() {
     _wsClient?.updateWorkspace(_workspaceIdOf?.call());
     _polling.triggerPoll();

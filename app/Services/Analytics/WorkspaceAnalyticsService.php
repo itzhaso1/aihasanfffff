@@ -161,6 +161,32 @@ class WorkspaceAnalyticsService
         $pointsCount = min(max((int) $diffDays, 7), 14);
         $step = max((int) floor($diffDays / $pointsCount), 1);
 
+        $dateExpression = DB::connection()->getDriverName() === 'sqlite'
+            ? 'date(created_at)'
+            : 'DATE(created_at)';
+
+        $ordersByDate = Order::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->whereBetween('created_at', [$fromAt->copy()->startOfDay(), $toAt->copy()->endOfDay()])
+            ->whereNull('deleted_at')
+            ->selectRaw("{$dateExpression} as o_date, COUNT(*) as count")
+            ->groupBy('o_date')
+            ->pluck('count', 'o_date')
+            ->all();
+
+        $payDateExpression = DB::connection()->getDriverName() === 'sqlite'
+            ? 'date(paid_at)'
+            : 'DATE(paid_at)';
+
+        $revenueByDate = Payment::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->where('status', 'paid')
+            ->whereBetween('paid_at', [$fromAt->copy()->startOfDay(), $toAt->copy()->endOfDay()])
+            ->selectRaw("{$payDateExpression} as p_date, SUM(amount) as total")
+            ->groupBy('p_date')
+            ->pluck('total', 'p_date')
+            ->all();
+
         $points = [];
         $cursor = $fromAt->copy();
 
@@ -171,17 +197,16 @@ class WorkspaceAnalyticsService
                 $pointEnd = $toAt->copy();
             }
 
-            $ordersCount = Order::withoutGlobalScopes()
-                ->where('workspace_id', $workspaceId)
-                ->whereBetween('created_at', [$pointStart, $pointEnd])
-                ->whereNull('deleted_at')
-                ->count();
+            $ordersCount = 0;
+            $revenue = 0.0;
 
-            $revenue = (float) Payment::withoutGlobalScopes()
-                ->where('workspace_id', $workspaceId)
-                ->where('status', 'paid')
-                ->whereBetween('paid_at', [$pointStart, $pointEnd])
-                ->sum('amount');
+            $dayCursor = $pointStart->copy();
+            while ($dayCursor->lessThanOrEqualTo($pointEnd)) {
+                $dKey = $dayCursor->format('Y-m-d');
+                $ordersCount += (int) ($ordersByDate[$dKey] ?? 0);
+                $revenue += (float) ($revenueByDate[$dKey] ?? 0.0);
+                $dayCursor->addDay();
+            }
 
             $points[] = [
                 'label' => $pointStart->format('m/d'),
@@ -203,27 +228,36 @@ class WorkspaceAnalyticsService
      */
     private function buildPeakHours(int $workspaceId, CarbonInterface $fromAt, CarbonInterface $toAt): array
     {
-        $messages = Message::withoutGlobalScopes()
+        $hourExpression = match (DB::connection()->getDriverName()) {
+            'sqlite' => "CAST(strftime('%H', created_at) AS INTEGER)",
+            'pgsql' => 'EXTRACT(HOUR FROM created_at)::INTEGER',
+            default => 'HOUR(created_at)',
+        };
+
+        $hourCounts = Message::withoutGlobalScopes()
             ->where('workspace_id', $workspaceId)
             ->whereBetween('created_at', [$fromAt, $toAt])
-            ->limit(2000)
-            ->get(['created_at']);
+            ->selectRaw("{$hourExpression} as msg_hour, COUNT(*) as total")
+            ->groupBy('msg_hour')
+            ->pluck('total', 'msg_hour')
+            ->all();
 
         $morning = 0;
         $afternoon = 0;
         $evening = 0;
         $night = 0;
 
-        foreach ($messages as $msg) {
-            $hour = (int) $msg->created_at?->hour;
-            if ($hour >= 6 && $hour < 12) {
-                $morning++;
-            } elseif ($hour >= 12 && $hour < 18) {
-                $afternoon++;
-            } elseif ($hour >= 18 && $hour <= 23) {
-                $evening++;
+        foreach ($hourCounts as $hour => $count) {
+            $h = (int) $hour;
+            $c = (int) $count;
+            if ($h >= 6 && $h < 12) {
+                $morning += $c;
+            } elseif ($h >= 12 && $h < 18) {
+                $afternoon += $c;
+            } elseif ($h >= 18 && $h <= 23) {
+                $evening += $c;
             } else {
-                $night++;
+                $night += $c;
             }
         }
 

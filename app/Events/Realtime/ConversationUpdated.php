@@ -2,6 +2,7 @@
 
 namespace App\Events\Realtime;
 
+use App\Http\Resources\Mobile\MessageResource;
 use App\Models\Conversation;
 use App\Services\Conversation\ConversationResponderService;
 use App\Support\Tenancy\WorkspaceContext;
@@ -77,6 +78,8 @@ class ConversationUpdated implements ShouldBroadcast
                 'channel' => (string) $this->conversation->channel,
                 'last_message' => $preview,
                 'last_message_preview' => $preview,
+                'last_message_direction' => $latest ? (string) $latest->direction : 'inbound',
+                'last_message_data' => $latest ? (new MessageResource($latest))->resolve() : null,
                 'last_message_at' => optional($this->conversation->last_message_at)?->toIso8601String(),
                 'last_message_at_human' => optional($this->conversation->last_message_at)?->diffForHumans() ?? '',
                 'handoff_status' => $this->conversation->handoff_status instanceof \BackedEnum

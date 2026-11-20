@@ -17,10 +17,15 @@ class ApiResponse<T> {
     Map<String, dynamic> json,
     T Function(dynamic raw)? mapData,
   ) {
-    final raw = json['data'];
+    final hasData = json.containsKey('data');
+    final hasSuccess = json.containsKey('success');
+    // If standard envelope: use json['data']. If raw payload (e.g. broadcast auth {"auth": "..."}): use json.
+    final raw = hasData ? json['data'] : (hasSuccess ? null : json);
+    final isSuccess = json['success'] == true ||
+        (json['success'] == null && (raw != null || json.containsKey('auth')));
+
     return ApiResponse<T>(
-      success:
-          json['success'] == true || (json['success'] == null && raw != null),
+      success: isSuccess,
       data: raw == null || mapData == null ? raw as T? : mapData(raw),
       meta: json['meta'] is Map<String, dynamic>
           ? json['meta'] as Map<String, dynamic>

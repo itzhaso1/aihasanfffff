@@ -905,13 +905,16 @@ class ChatController extends StateNotifier<ChatState> {
     if (aServer != bServer) {
       return aServer ? -1 : 1;
     }
-    if (aServer && bServer && a.id != b.id) {
-      return a.id.compareTo(b.id);
-    }
     final at = a.createdAt;
     final bt = b.createdAt;
     if (at != null && bt != null && !at.isAtSameMomentAs(bt)) {
-      return at.compareTo(bt);
+      final diff = at.difference(bt).inSeconds;
+      if (diff != 0) {
+        return at.compareTo(bt);
+      }
+    }
+    if (aServer && bServer && a.id != b.id) {
+      return a.id.compareTo(b.id);
     }
     return a.id.compareTo(b.id);
   }
@@ -928,7 +931,7 @@ class ChatController extends StateNotifier<ChatState> {
     _typingTimer?.cancel();
     _messageSub?.cancel();
     _workspaceSub?.close();
-    _realtime.watchConversation(null);
+    _realtime.unwatchConversation(conversationId);
     super.dispose();
   }
 
@@ -1194,6 +1197,10 @@ class ChatController extends StateNotifier<ChatState> {
     }
     final assignedId = currentConv.assignedUserId ?? currentUser.id;
     final assignedName = currentConv.assignedUserName ?? currentUser.name;
+    final responderName = currentUser.name.trim().isNotEmpty
+        ? currentUser.name
+        : assignedName;
+    final responderId = currentUser.id > 0 ? currentUser.id : assignedId;
     return currentConv.copyWith(
       aiEnabled: false,
       handoffStatus: 'active',
@@ -1202,11 +1209,11 @@ class ChatController extends StateNotifier<ChatState> {
       responder: ConversationResponder(
         status: 'human_active',
         type: 'human',
-        name: assignedName,
+        name: responderName,
         label: 'الموظف يرد الآن',
-        userId: assignedId,
-        userInitials: assignedName.trim().isNotEmpty
-            ? assignedName.trim().substring(0, 1)
+        userId: responderId,
+        userInitials: responderName.trim().isNotEmpty
+            ? responderName.trim().substring(0, 1)
             : null,
       ),
     );

@@ -28,11 +28,18 @@ class SendWhatsAppMessage implements ShouldQueue
         public readonly string $message,
         public readonly ?int $outboundMessageId = null,
         public readonly ?int $workspaceId = null,
-    ) {}
+    ) {
+        $this->afterCommit();
+    }
 
     public function handle(): void
     {
         $outbound = $this->outboundMessage();
+
+        if ($this->outboundMessageId !== null && ! $outbound) {
+            throw new \RuntimeException("Outbound WhatsApp message [{$this->outboundMessageId}] is not yet visible in database.");
+        }
+
         if ($outbound && $outbound->status === WhatsAppOutboundMessage::STATUS_SENT) {
             return;
         }
@@ -52,6 +59,15 @@ class SendWhatsAppMessage implements ShouldQueue
             return;
         }
 
+        if ($this->workspaceId) {
+            app(WorkspaceContext::class)->runForId((int) $this->workspaceId, function (): void {
+                $this->send(null);
+            });
+
+            return;
+        }
+
+        $this->send(null);
     }
 
     private function send(?WhatsAppOutboundMessage $outbound): void

@@ -11,6 +11,7 @@ abstract class RealtimeService {
   Future<void> start();
   Future<void> stop();
   void watchConversation(int? conversationId);
+  void unwatchConversation(int conversationId);
   void triggerPoll();
 }
 
@@ -89,6 +90,13 @@ class PollingRealtimeService implements RealtimeService {
   }
 
   @override
+  void unwatchConversation(int conversationId) {
+    if (_watchingConversationId == conversationId) {
+      watchConversation(null);
+    }
+  }
+
+  @override
   void triggerPoll() {
     _pollChat();
     _listController.add(null);
@@ -153,6 +161,8 @@ class NoopRealtimeService implements RealtimeService {
   Future<void> stop() async {}
   @override
   void watchConversation(int? conversationId) {}
+  @override
+  void unwatchConversation(int conversationId) {}
   @override
   void triggerPoll() {}
 }

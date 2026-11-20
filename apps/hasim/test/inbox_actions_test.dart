@@ -216,6 +216,7 @@ class _RecordingRepo extends ConversationRepository {
       id: item.id,
       channel: item.channel,
       status: item.status,
+      unreadCount: item.unreadCount,
       customerPriority: customerPriority,
       paymentStatus: paymentStatus,
       reviewStatus: reviewStatus,
@@ -1589,8 +1590,8 @@ void main() {
       chatApp(repo: repo, prefs: prefs, auth: companyAuth),
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('chat-team-review')), findsOneWidget);
-    expect(find.text('تحتاج مراجعة من الفريق'), findsOneWidget);
+    expect(find.byKey(const Key('chat-team-review')), findsNothing);
+    expect(find.text('تحتاج مراجعة من الفريق'), findsNothing);
     await openMore(tester);
     expect(find.text('إنهاء التحويل'), findsOneWidget);
     expect(find.byKey(const Key('chat-action-resume-ai')), findsOneWidget);
@@ -1639,7 +1640,7 @@ void main() {
     expect(repo.takeoverCalls, 1);
     expect(repo.resolveCalls, 0);
     expect(find.text('تم تحديث حالة التحويل'), findsOneWidget);
-    expect(find.byKey(const Key('chat-team-review')), findsOneWidget);
+    expect(find.byKey(const Key('chat-team-review')), findsNothing);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ChatScreen)),
     );

@@ -144,6 +144,8 @@ class ConversationService
                     } else {
                         $conversationAttributes['responder_name'] = $actor->name;
                     }
+                } else {
+                    $conversationAttributes['responder_name'] = $actor->name;
                 }
 
                 $conversationAttributes['responder_type'] = ConversationResponderService::TYPE_HUMAN;

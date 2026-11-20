@@ -1881,7 +1881,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 const LinearProgressIndicator(minHeight: 2),
               if (state.aiBusy || state.mutating)
                 const LinearProgressIndicator(minHeight: 2),
-              if (conversation?.isHumanHandoffActive == true)
+              if (!HasimLayout.isCompact(context) &&
+                  conversation?.isHumanHandoffActive == true)
                 const Material(
                   color: Color(0xFFFFF7ED),
                   child: SizedBox(

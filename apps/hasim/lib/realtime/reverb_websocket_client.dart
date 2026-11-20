@@ -104,6 +104,12 @@ class ReverbWebSocketClient {
     }
   }
 
+  void unwatchConversation(int conversationId) {
+    if (_watchingConversationId == conversationId) {
+      watchConversation(null);
+    }
+  }
+
   Future<void> connect() async {
     if (_disposed) return;
     if (_state == RealtimeConnectionState.connecting ||
@@ -331,7 +337,12 @@ class ReverbWebSocketClient {
 
     try {
       final authData = await _authorizeChannel(channel);
-      if (authData == null || !isConnected) return;
+      if (authData == null || authData['auth'] == null || !isConnected) {
+        if (kDebugMode && authData != null && authData['auth'] == null) {
+          debugPrint('[REALTIME_WS] Authorization succeeded but missing auth key for $channel');
+        }
+        return;
+      }
 
       _send('pusher:subscribe', {
         'channel': channel,
@@ -378,7 +389,16 @@ class ReverbWebSocketClient {
         mapData: (raw) =>
             raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{},
       );
-      return res.data;
+      final data = res.data;
+      if (data != null) {
+        if (data.containsKey('auth')) {
+          return data;
+        }
+        if (data['data'] is Map && (data['data'] as Map).containsKey('auth')) {
+          return Map<String, dynamic>.from(data['data'] as Map);
+        }
+      }
+      return data;
     } on ApiException catch (e) {
       if (kDebugMode) {
         debugPrint('[REALTIME_WS] Auth channel error: ${e.message}');

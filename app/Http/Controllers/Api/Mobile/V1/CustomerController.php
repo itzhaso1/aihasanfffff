@@ -163,8 +163,11 @@ class CustomerController extends MobileController
             ->orderByDesc('id')
             ->cursorPaginate($perPage);
 
-        $items = collect($paginator->items())->map(function ($conversation) use ($user) {
-            $conversation->unread_count = $this->conversationInboxService->unreadCountForConversation($conversation, $user);
+        $paginatorItems = $paginator->items();
+        $unreadCounts = $this->conversationInboxService->unreadCountsForConversations($paginatorItems, $user);
+
+        $items = collect($paginatorItems)->map(function ($conversation) use ($unreadCounts) {
+            $conversation->unread_count = $unreadCounts[$conversation->id] ?? 0;
             $conversation->last_message = $conversation->messages->first();
 
             return $conversation;

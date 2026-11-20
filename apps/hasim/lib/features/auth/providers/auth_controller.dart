@@ -113,9 +113,23 @@ class AuthController extends StateNotifier<AuthState> {
     super.dispose();
   }
 
-  /// Ends a hung bootstrap (secure storage / network) so splash can reach login.
+  /// Ends a hung bootstrap (secure storage / network) so splash can reach login or home.
   Future<void> abortBootstrapAsGuest() async {
     if (!state.bootstrapping) return;
+    final token = state.token ?? await _ref.read(secureStoreProvider).readToken();
+    if (token != null && token.isNotEmpty) {
+      final prefs = _ref.read(prefsStoreProvider);
+      final wsId = prefs.workspaceId;
+      state = state.copyWith(
+        bootstrapping: false,
+        token: token,
+        workspace: state.workspace ??
+            (wsId != null ? WorkspaceModel(id: wsId, name: '') : null),
+      );
+      _syncWorkerProfileId();
+      _startInboxServices();
+      return;
+    }
     state = const AuthState(bootstrapping: false);
     _syncWorkerProfileId();
     await _wipeLocalSession();
@@ -155,7 +169,20 @@ class AuthController extends StateNotifier<AuthState> {
       ).timeout(const Duration(seconds: 3));
       _startInboxServices();
     } catch (_) {
-      await _wipeLocalSession();
+      // Network timeout / connection error during bootstrap:
+      // If we have token, keep user logged in offline instead of wiping everything!
+      if (token.isNotEmpty) {
+        state = state.copyWith(
+          bootstrapping: false,
+          token: token,
+          workspace: lastWorkspaceId != null
+              ? WorkspaceModel(id: lastWorkspaceId, name: '')
+              : null,
+        );
+        _startInboxServices();
+      } else {
+        await _wipeLocalSession();
+      }
     }
   }
 

@@ -127,8 +127,7 @@ class ConversationResponderService
                 $user = $conversation->relationLoaded('assignedUser')
                     ? $conversation->assignedUser
                     : $conversation->assignedUser()->first();
-                // IMPORTANT: Always use the assigned user's name if assigned! Never let stale responder_name override!
-                $name = $user?->name ?? $conversation->responder_name ?? 'موظف خدمة العملاء';
+                $name = $conversation->responder_name ?? $user?->name ?? 'موظف خدمة العملاء';
             }
             $assignedAt = $conversation->responder_assigned_at ?? $conversation->handoff_assigned_at ?? $conversation->updated_at;
 

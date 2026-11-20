@@ -390,6 +390,47 @@ class ConversationInboxService
         return (int) $query->count();
     }
 
+    /**
+     * @param  iterable<Conversation>  $conversations
+     * @return array<int, int>
+     */
+    public function unreadCountsForConversations(iterable $conversations, User $user): array
+    {
+        $convList = collect($conversations)->filter(fn ($c) => $c instanceof Conversation);
+        if ($convList->isEmpty()) {
+            return [];
+        }
+
+        $ids = $convList->pluck('id')->all();
+        $workspaceId = $convList->first()->workspace_id;
+
+        $counts = Message::withoutGlobalScopes()
+            ->from('messages as m')
+            ->leftJoin('conversation_user_states as cus', function ($join) use ($user, $workspaceId): void {
+                $join->on('cus.conversation_id', '=', 'm.conversation_id')
+                    ->where('cus.workspace_id', '=', $workspaceId)
+                    ->where('cus.user_id', '=', $user->id);
+            })
+            ->where('m.workspace_id', $workspaceId)
+            ->whereIn('m.conversation_id', $ids)
+            ->where('m.direction', 'inbound')
+            ->where(function ($q): void {
+                $q->whereNull('cus.last_read_message_id')
+                    ->orWhereRaw('m.id > cus.last_read_message_id');
+            })
+            ->selectRaw('m.conversation_id, COUNT(*) as unread_total')
+            ->groupBy('m.conversation_id')
+            ->pluck('unread_total', 'm.conversation_id')
+            ->all();
+
+        $result = [];
+        foreach ($ids as $id) {
+            $result[$id] = (int) ($counts[$id] ?? 0);
+        }
+
+        return $result;
+    }
+
     private function queryHasUserStateJoin(Builder $query): bool
     {
         $joins = $query->getQuery()->joins ?? [];

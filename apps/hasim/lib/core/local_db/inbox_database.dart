@@ -89,6 +89,7 @@ class InboxDatabase implements QueryExecutorUser {
         customer_email TEXT,
         last_message_preview TEXT,
         last_message_server_id INTEGER,
+        last_message_direction TEXT NOT NULL DEFAULT 'inbound',
         customer_priority TEXT NOT NULL DEFAULT 'normal',
         payment_status TEXT NOT NULL DEFAULT 'unpaid',
         review_status TEXT NOT NULL DEFAULT 'no_review_needed',
@@ -279,6 +280,12 @@ class InboxDatabase implements QueryExecutorUser {
       'inbox_conversations',
       'deleted_at',
       'deleted_at INTEGER',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'last_message_direction',
+      "last_message_direction TEXT NOT NULL DEFAULT 'inbound'",
     );
     await _ensureColumn(
       e,

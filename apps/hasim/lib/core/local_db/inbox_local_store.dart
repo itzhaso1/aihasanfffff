@@ -262,6 +262,10 @@ class InboxLocalStore {
     final preview =
         item.lastMessage?.content ??
         existing?['last_message_preview']?.toString();
+    final lastDirection =
+        item.lastMessage?.direction ??
+        existing?['last_message_direction']?.toString() ??
+        'inbound';
     final lastServerId = (incomingLastId != null && incomingLastId > 0)
         ? incomingLastId
         : existing?['last_message_server_id'];
@@ -277,11 +281,11 @@ class InboxLocalStore {
         last_message_at, unread_count, server_unread_count, local_read_at,
         local_read_last_message_at, muted, archived, customer_id, customer_name,
         customer_phone, customer_email, last_message_preview, last_message_server_id,
-        customer_priority, payment_status, review_status, classification_source,
-        handoff_status, handoff_reason, assigned_user_id, assigned_user_name,
-        assigned_worker_engagement_id, assigned_participant_type, can_reply,
-        sync_state, deleted_at, updated_at, cached_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        last_message_direction, customer_priority, payment_status, review_status,
+        classification_source, handoff_status, handoff_reason, assigned_user_id,
+        assigned_user_name, assigned_worker_engagement_id, assigned_participant_type,
+        can_reply, sync_state, deleted_at, updated_at, cached_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(workspace_id, server_id) DO UPDATE SET
         channel = excluded.channel,
         status = excluded.status,
@@ -300,6 +304,7 @@ class InboxLocalStore {
         customer_email = excluded.customer_email,
         last_message_preview = excluded.last_message_preview,
         last_message_server_id = excluded.last_message_server_id,
+        last_message_direction = excluded.last_message_direction,
         customer_priority = excluded.customer_priority,
         payment_status = excluded.payment_status,
         review_status = excluded.review_status,
@@ -335,6 +340,7 @@ class InboxLocalStore {
         customerEmail,
         preview,
         lastServerId,
+        lastDirection,
         item.customerPriority,
         item.paymentStatus,
         item.reviewStatus,
@@ -1070,7 +1076,7 @@ class InboxLocalStore {
           : MessageModel(
               id: (row['last_message_server_id'] as num?)?.toInt() ?? 0,
               conversationId: (row['server_id'] as num).toInt(),
-              direction: 'inbound',
+              direction: row['last_message_direction']?.toString() ?? 'inbound',
               messageType: 'text',
               content: preview,
             ),

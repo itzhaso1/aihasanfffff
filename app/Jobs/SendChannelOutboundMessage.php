@@ -31,6 +31,7 @@ class SendChannelOutboundMessage implements ShouldBeUnique, ShouldQueue
         public readonly int $workspaceId,
     ) {
         $this->onQueue((string) config('inbox.queues.outbound', 'outbound'));
+        $this->afterCommit();
     }
 
     public function uniqueId(): string
@@ -48,7 +49,11 @@ class SendChannelOutboundMessage implements ShouldBeUnique, ShouldQueue
                 ->where('workspace_id', $this->workspaceId)
                 ->first();
 
-            if (! $delivery || $delivery->status === ChannelOutboundDelivery::STATUS_SENT) {
+            if (! $delivery) {
+                throw new \RuntimeException("Channel outbound delivery [{$this->deliveryId}] not found in database yet.");
+            }
+
+            if ($delivery->status === ChannelOutboundDelivery::STATUS_SENT) {
                 return;
             }
 
