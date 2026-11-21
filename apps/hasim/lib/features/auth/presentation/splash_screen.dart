@@ -88,7 +88,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     });
 
     if (!_isFlutterTest) {
-      _bootstrapGuard = Timer(const Duration(milliseconds: 3200), () async {
+      _bootstrapGuard = Timer(const Duration(milliseconds: 8000), () async {
         if (!mounted || _navigated) return;
         final auth = ref.read(authControllerProvider);
         if (auth.bootstrapping) {
@@ -197,22 +197,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         });
       }
       return;
-    }
-
-    if (!_isFlutterTest) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        try {
-          final current = GoRouterState.of(context).uri.path;
-          if (current == '/splash') {
-            _navigated = false;
-            _retryTimer?.cancel();
-            _retryTimer = Timer(const Duration(milliseconds: 200), () {
-              if (mounted) _scheduleNavigationCheck();
-            });
-          }
-        } catch (_) {}
-      });
     }
   }
 

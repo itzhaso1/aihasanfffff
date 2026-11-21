@@ -19,6 +19,15 @@ Future<void> main() async {
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
   };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    if (kDebugMode) {
+      debugPrint('[Hasim] Uncaught async error: $error\n$stack');
+    }
+    return true;
+  };
+  // Prevent out-of-memory spikes from large chat media lists
+  PaintingBinding.instance.imageCache.maximumSize = 250;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 80 << 20; // 80 MB
   if (hasimUsesDesktopTitleBar) {
     await windowManager.ensureInitialized();
     const options = WindowOptions(

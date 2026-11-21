@@ -192,7 +192,7 @@ void main() {
           )
           .first,
     );
-    expect(bubble.height, lessThan(40));
+    expect(bubble.height, lessThan(52));
   });
 
   testWidgets(

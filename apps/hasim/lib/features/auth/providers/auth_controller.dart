@@ -149,6 +149,7 @@ class AuthController extends StateNotifier<AuthState> {
       state = state.copyWith(bootstrapping: false, clearSession: true);
       return;
     }
+    state = state.copyWith(token: token);
     final prefs = _ref.read(prefsStoreProvider);
     final snapshot = await _ref
         .read(inboxLocalStoreProvider)

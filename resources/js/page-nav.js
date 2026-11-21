@@ -332,6 +332,8 @@ async function visit(url, { fromPop = false, form = null, button = null, rollbac
     const previous = window.location.href;
     const restore = armLocalWait(region, url, isMutation ? 'POST' : 'GET', source || form);
 
+    document.dispatchEvent(new CustomEvent('hs:before-navigate', { detail: { url, isMutation } }));
+
     if (!fromPop && !isMutation) {
         history.pushState({ hs: 1 }, '', url);
     }

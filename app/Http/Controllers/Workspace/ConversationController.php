@@ -327,6 +327,11 @@ class ConversationController extends Controller
         $payload['customer_id'] = $payload['customer_id'] ?? $conversation->customer_id;
         $payload['message_type'] = $payload['message_type'] ?? 'text';
         $payload['metadata'] = $this->parseJsonField($request, 'metadata_json');
+        if ($request->filled('client_id')) {
+            $clientId = $request->string('client_id')->toString();
+            $payload['metadata']['client_id'] = $clientId;
+            $payload['metadata']['idempotency_key'] = $clientId;
+        }
 
         $uploadedFiles = [];
         if ($request->hasFile('attachments')) {
@@ -559,6 +564,8 @@ class ConversationController extends Controller
             'created_at_time' => optional($message->created_at)?->format('h:i A'),
             'participant_type' => $participantType,
             'worker_engagement_id' => $message->worker_engagement_id,
+            'client_id' => $message->metadata['client_id'] ?? $message->metadata['idempotency_key'] ?? null,
+            'idempotency_key' => $message->metadata['idempotency_key'] ?? $message->metadata['client_id'] ?? null,
             'created_at' => optional($message->created_at)?->toIso8601String(),
             'attachments' => $message->attachments->map(function ($attachment): array {
                 $ready = ($attachment->status ?? 'stored') === MessageAttachment::STATUS_STORED;

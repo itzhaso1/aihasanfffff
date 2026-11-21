@@ -64,10 +64,14 @@ class NativeDevicePushTokenSource implements PushTokenSource {
   Future<String?> currentToken() async {
     if (!supported) return null;
     try {
-      await _gateway.initialize();
-      final allowed = await _gateway.requestPermission();
+      await _gateway.initialize().timeout(const Duration(seconds: 4));
+      final allowed = await _gateway.requestPermission().timeout(
+        const Duration(seconds: 4),
+      );
       if (!allowed) return null;
-      final token = (await _gateway.token())?.trim();
+      final token = (await _gateway.token().timeout(
+        const Duration(seconds: 4),
+      ))?.trim();
       if (token == null || token.isEmpty) return null;
       return token;
     } catch (_) {

@@ -39,6 +39,7 @@
             [
                 'workspaceId' => $workspaceId,
                 'activeConversationId' => $activeConversation?->id,
+                'userId' => auth()->id(),
             ],
         );
     @endphp

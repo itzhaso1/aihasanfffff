@@ -158,15 +158,27 @@ class ApiClient {
     Map<String, dynamic>? query,
     T Function(dynamic raw)? mapData,
   }) async {
-    try {
-      final res = await _dio.get<dynamic>(_rel(path), queryParameters: query);
-      final map = _asStringKeyedMap(res.data, context: 'GET $path');
-      return ApiResponse.fromJson(map, mapData);
-    } on ApiException {
-      rethrow;
-    } on DioException catch (e) {
-      throw _mapDio(e);
+    DioException? lastDioError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final res = await _dio.get<dynamic>(_rel(path), queryParameters: query);
+        final map = _asStringKeyedMap(res.data, context: 'GET $path');
+        return ApiResponse.fromJson(map, mapData);
+      } on ApiException {
+        rethrow;
+      } on DioException catch (e) {
+        lastDioError = e;
+        final isTransientNetwork =
+            e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.connectionError;
+        if (attempt == 0 && isTransientNetwork) {
+          await Future<void>.delayed(const Duration(milliseconds: 600));
+          continue;
+        }
+        throw _mapDio(e);
+      }
     }
+    throw _mapDio(lastDioError!);
   }
 
   Future<ApiResponse<T>> post<T>(
@@ -377,6 +389,24 @@ class ApiClient {
     }
     if (status == 429) {
       return ApiException('محاولات كثيرة. حاول لاحقاً.', statusCode: status);
+    }
+    if (status == 500) {
+      return ApiException(
+        'حدث خطأ في الخادم (500). يرجى المحاولة لاحقاً.',
+        statusCode: status,
+      );
+    }
+    if (status == 502 || status == 503) {
+      return ApiException(
+        'الخادم غير متاح مؤقتاً أو تحت الصيانة ($status). يرجى المحاولة بعد قليل.',
+        statusCode: status,
+      );
+    }
+    if (status == 504) {
+      return ApiException(
+        'استغرق الخادم وقتاً طويلاً للاستجابة (504). تحقق من اتصالك بالشبكة.',
+        statusCode: status,
+      );
     }
 
     if (kDebugMode) {

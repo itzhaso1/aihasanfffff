@@ -5,11 +5,42 @@ window.Pusher = Pusher;
 
 let echo = null;
 let joined = [];
+let presenceInterval = null;
+let currentTrackingConversationId = null;
+
+const leavePresence = (conversationId, csrfToken) => {
+    const targetId = conversationId || currentTrackingConversationId;
+    if (!targetId) return;
+
+    const token = csrfToken || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    if (navigator.sendBeacon) {
+        const formData = new FormData();
+        formData.append('_token', token);
+        navigator.sendBeacon(`/workspace/conversations/${targetId}/presence/leave`, formData);
+    } else {
+        fetch(`/workspace/conversations/${targetId}/presence/leave`, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': token },
+            keepalive: true,
+        }).catch(() => {});
+    }
+};
 
 const leaveAll = () => {
+    if (presenceInterval) {
+        clearInterval(presenceInterval);
+        presenceInterval = null;
+    }
+
+    if (currentTrackingConversationId) {
+        leavePresence(currentTrackingConversationId);
+        currentTrackingConversationId = null;
+    }
+
     if (!echo) {
         return;
     }
+
     joined.forEach((name) => {
         try {
             echo.leave(name);
@@ -34,21 +65,23 @@ const bindRealtime = () => {
 
     const authEndpoint = config.authEndpoint || config.auth_endpoint || '/broadcasting/auth';
 
-    echo = echo || new Echo({
-        broadcaster: config.driver === 'reverb' ? 'reverb' : 'pusher',
-        key: config.key,
-        wsHost: config.host,
-        wsPort: config.port ?? 80,
-        wssPort: config.port ?? 443,
-        forceTLS: (config.scheme ?? 'https') === 'https',
-        enabledTransports: ['ws', 'wss'],
-        authEndpoint: authEndpoint,
-        auth: {
-            headers: {
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+    if (!echo) {
+        echo = new Echo({
+            broadcaster: config.driver === 'reverb' ? 'reverb' : 'pusher',
+            key: config.key,
+            wsHost: config.host,
+            wsPort: config.port ?? 80,
+            wssPort: config.port ?? 443,
+            forceTLS: (config.scheme ?? 'https') === 'https',
+            enabledTransports: ['ws', 'wss'],
+            authEndpoint: authEndpoint,
+            auth: {
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                },
             },
-        },
-    });
+        });
+    }
 
     const workspaceId = config.workspaceId;
     const activeConversationId = config.activeConversationId ?? null;
@@ -124,10 +157,27 @@ const bindRealtime = () => {
                 }
             } catch (_) {}
         }
+
+        // Catch up on sidebar unread counters and latest snippet
+        try {
+            const updatesRes = await fetch(`/workspace/conversations/poll-updates`, {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            });
+            if (updatesRes.ok) {
+                const updatesData = await updatesRes.json();
+                if (Array.isArray(updatesData?.conversations)) {
+                    updatesData.conversations.forEach((conv) => {
+                        window.__INBOX_UI__?.updateConversationInSidebar?.(conv, { moveToTop: false });
+                    });
+                }
+            }
+        } catch (_) {}
     };
 
-    // Connection state listeners
-    if (echo?.connector?.pusher?.connection) {
+    // Connection state listeners (guarded against duplicate bindings)
+    if (echo?.connector?.pusher?.connection && !echo.__stateChangeBound) {
+        echo.__stateChangeBound = true;
         echo.connector.pusher.connection.bind('state_change', (states) => {
             const current = states.current;
             if (current === 'connected') {
@@ -176,8 +226,13 @@ const bindRealtime = () => {
             window.__INBOX_UI__.updateConversationInSidebar(payload, { moveToTop: false });
         }
         const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
-        if (currentId && Number(payload.id) === Number(currentId) && payload.responder) {
-            window.__INBOX_UI__?.updateTopResponderBar?.(payload.responder);
+        if (currentId && Number(payload.id) === Number(currentId)) {
+            if (payload.responder) {
+                window.__INBOX_UI__?.updateTopResponderBar?.(payload.responder, payload);
+            }
+            if (payload.status) {
+                window.__INBOX_UI__?.updateActiveConversationStatus?.(payload.status);
+            }
         }
     };
 
@@ -185,6 +240,10 @@ const bindRealtime = () => {
         if (!payload?.conversation_id) return;
         const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
         if (currentId && Number(payload.conversation_id) === Number(currentId)) {
+            const currentUserId = window.__INBOX_REALTIME__?.userId;
+            if (currentUserId && payload.user_id && Number(payload.user_id) === Number(currentUserId)) {
+                return;
+            }
             if (payload.is_typing) {
                 window.__INBOX_UI__?.showTypingIndicator?.(
                     payload.sender_name,
@@ -214,6 +273,7 @@ const bindRealtime = () => {
     joined.push(workspaceChannel);
 
     if (activeConversationId) {
+        currentTrackingConversationId = activeConversationId;
         const conversationChannel = `workspace.${workspaceId}.conversation.${activeConversationId}`;
         echo.private(conversationChannel)
             .listen('.message.created', handleIncomingMessage)
@@ -245,30 +305,18 @@ const bindRealtime = () => {
             .catch(() => {});
         };
 
-        const leavePresence = () => {
-            if (navigator.sendBeacon) {
-                const formData = new FormData();
-                formData.append('_token', csrfToken);
-                navigator.sendBeacon(`/workspace/conversations/${activeConversationId}/presence/leave`, formData);
-            } else {
-                fetch(`/workspace/conversations/${activeConversationId}/presence/leave`, {
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': csrfToken },
-                    keepalive: true,
-                }).catch(() => {});
-            }
-        };
-
         pingPresence('viewing');
-        const presenceInterval = setInterval(() => pingPresence('viewing'), 20000);
-
-        window.addEventListener('beforeunload', leavePresence, { once: true });
-        window.addEventListener('hs:before-navigate', () => {
-            clearInterval(presenceInterval);
-            leavePresence();
-        }, { once: true });
+        presenceInterval = setInterval(() => pingPresence('viewing'), 20000);
     }
 };
+
+window.addEventListener('beforeunload', () => {
+    leaveAll();
+});
+
+document.addEventListener('hs:before-navigate', () => {
+    leaveAll();
+});
 
 document.addEventListener('hs:navigated', bindRealtime);
 if (document.readyState === 'loading') {

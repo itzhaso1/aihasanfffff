@@ -13,6 +13,7 @@ abstract class RealtimeService {
   void watchConversation(int? conversationId);
   void unwatchConversation(int conversationId);
   void triggerPoll();
+  void dispose();
 }
 
 /// Practical realtime when Laravel broadcast driver is not live (log/local)
@@ -138,6 +139,14 @@ class PollingRealtimeService implements RealtimeService {
       // ignore transient poll errors
     }
   }
+  @override
+  void dispose() {
+    stop();
+    _messageController.close();
+    _listController.close();
+    _typingController.close();
+    _presenceController.close();
+  }
 }
 
 class NoopRealtimeService implements RealtimeService {
@@ -165,4 +174,11 @@ class NoopRealtimeService implements RealtimeService {
   void unwatchConversation(int conversationId) {}
   @override
   void triggerPoll() {}
+  @override
+  void dispose() {
+    _messageController.close();
+    _listController.close();
+    _typingController.close();
+    _presenceController.close();
+  }
 }

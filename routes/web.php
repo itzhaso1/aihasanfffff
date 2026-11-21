@@ -266,9 +266,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 });
 
-Route::middleware(['web', 'auth'])->group(function (): void {
-    Broadcast::routes();
-});
+Broadcast::routes(['middleware' => ['web', 'auth']]);
 
 Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
     ->prefix('workspace')

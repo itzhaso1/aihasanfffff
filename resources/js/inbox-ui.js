@@ -593,6 +593,7 @@ const hideTypingIndicator = () => {
 };
 
 const setConnectionStatus = (status) => {
+    window.__WS_CONNECTED__ = (status === 'connected');
     const badge = document.getElementById('inbox-connection-badge');
     if (!badge) return;
 
@@ -773,6 +774,21 @@ const updateTopResponderBar = (responder, conv) => {
     }
 };
 
+const updateActiveConversationStatus = (newStatus) => {
+    if (!newStatus) return;
+    const btn = document.querySelector('[data-hs-region] button[title="تغيير حالة المحادثة"]');
+    if (!btn) return;
+    const dot = btn.querySelector('span.rounded-full');
+    const label = btn.querySelector('span:not(.rounded-full)');
+    if (dot) {
+        dot.className = `h-2 w-2 rounded-full ${newStatus === 'open' ? 'bg-emerald-500' : (newStatus === 'archived' ? 'bg-amber-500' : 'bg-slate-400')}`;
+    }
+    if (label) {
+        const labels = { open: 'مفتوحة', closed: 'مغلقة', archived: 'مؤرشفة' };
+        label.textContent = labels[newStatus] || newStatus;
+    }
+};
+
 const bindComposeForm = () => {
     const form = document.getElementById('inbox-compose-form');
     if (!form || form.dataset.hsBound === 'compose') {
@@ -851,10 +867,15 @@ const bindComposeForm = () => {
         const direction = formData.get('direction') || 'outbound';
         const content = String(formData.get('content') || '').trim();
 
+        formData.append('client_id', tempId);
+        formData.append('metadata_json', JSON.stringify({ client_id: tempId, idempotency_key: tempId }));
+
         if (content !== '') {
             appendInboxMessage(
                 {
                     temp_id: tempId,
+                    client_id: tempId,
+                    idempotency_key: tempId,
                     direction,
                     content,
                     attachments: [],
@@ -862,6 +883,8 @@ const bindComposeForm = () => {
                 { optimistic: true },
             );
         }
+
+        sendTypingNotification(false);
 
         try {
             const response = await fetch(form.action, {
@@ -880,18 +903,19 @@ const bindComposeForm = () => {
             }
 
             const data = await response.json();
-            const node = document.querySelector(`[data-temp-id="${tempId}"]`);
-            if (node) {
-                node.remove();
-            }
 
             if (data?.message) {
                 appendInboxMessage(data.message);
                 if (data?.conversation) {
                     updateConversationInSidebar(data.conversation, { moveToTop: true });
                     if (data.conversation.responder) {
-                        updateTopResponderBar(data.conversation.responder);
+                        updateTopResponderBar(data.conversation.responder, data.conversation);
                     }
+                }
+            } else {
+                const node = document.querySelector(`[data-temp-id="${tempId}"]`);
+                if (node) {
+                    node.remove();
                 }
             }
 
@@ -902,9 +926,21 @@ const bindComposeForm = () => {
         } catch (_) {
             const node = document.querySelector(`[data-temp-id="${tempId}"]`);
             if (node) {
-                node.remove();
+                node.classList.add('opacity-80');
+                const bubble = node.querySelector('.hs-inbox-message-bubble');
+                if (bubble && !bubble.querySelector('.hs-send-error')) {
+                    const errEl = document.createElement('div');
+                    errEl.className = 'hs-send-error mt-1 text-[10px] text-rose-600 font-semibold flex items-center gap-1 cursor-pointer';
+                    errEl.innerHTML = `<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>تعذر الإرسال. انقر للمحاولة مرة أخرى.</span>`;
+                    errEl.onclick = () => {
+                        errEl.remove();
+                        node.remove();
+                        if (textarea) textarea.value = content;
+                        form.requestSubmit();
+                    };
+                    bubble.appendChild(errEl);
+                }
             }
-            window.alert('تعذر إرسال الرسالة. حاول مرة أخرى.');
         } finally {
             if (submitButton) {
                 submitButton.disabled = false;
@@ -1584,10 +1620,16 @@ const bindLivePolling = () => {
 
     const conversationId = root.dataset.activeConversationId || new URLSearchParams(window.location.search).get('conversation');
 
-    // 1. High-frequency active chat polling (every 1.2s)
+    // 1. Adaptive active chat polling (light safety net when WebSocket is connected, fallback when offline)
     if (conversationId) {
         let isPolling = false;
         pollTimer = setInterval(async () => {
+            // When real-time WebSocket is connected, incoming messages arrive immediately via WebSocket.
+            // In that case, we skip aggressive HTTP polling.
+            if (window.__INBOX_REALTIME__?.enabled && window.__WS_CONNECTED__) {
+                return;
+            }
+
             if (isPolling) return;
             const currentList = document.getElementById('inbox-message-list');
             if (!currentList) {
@@ -1627,7 +1669,7 @@ const bindLivePolling = () => {
                 if (data?.conversation) {
                     updateConversationInSidebar(data.conversation, { moveToTop: anyAppended });
                     if (data.conversation.responder) {
-                        updateTopResponderBar(data.conversation.responder);
+                        updateTopResponderBar(data.conversation.responder, data.conversation);
                     }
                 }
             } catch (_) {
@@ -1635,12 +1677,17 @@ const bindLivePolling = () => {
             } finally {
                 isPolling = false;
             }
-        }, 1200);
+        }, 1500);
     }
 
-    // 2. Sidebar conversations live update polling (every 2.5s)
+    // 2. Adaptive sidebar conversations live update polling
     let isSidebarPolling = false;
     sidebarPollTimer = setInterval(async () => {
+        // Skip frequent polling when WebSocket delivers conversation updates live
+        if (window.__INBOX_REALTIME__?.enabled && window.__WS_CONNECTED__) {
+            return;
+        }
+
         if (isSidebarPolling) return;
         try {
             isSidebarPolling = true;
@@ -1663,8 +1710,19 @@ const bindLivePolling = () => {
         } finally {
             isSidebarPolling = false;
         }
-    }, 2500);
+    }, 3000);
 };
+
+document.addEventListener('hs:before-navigate', () => {
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+    if (sidebarPollTimer) {
+        clearInterval(sidebarPollTimer);
+        sidebarPollTimer = null;
+    }
+});
 
 let inboxBooted = false;
 
@@ -1695,6 +1753,7 @@ const bootInbox = (event) => {
         isNearBottom,
         updateConversationInSidebar,
         updateTopResponderBar,
+        updateActiveConversationStatus,
         showTypingIndicator,
         hideTypingIndicator,
         setConnectionStatus,

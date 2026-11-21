@@ -178,13 +178,13 @@ class ConversationsController extends StateNotifier<ConversationsState> {
           );
       if (!_canCommit(scope)) return;
       if (local.isNotEmpty) {
-        _publishLocal(local);
+        _publishLocal(local, loading: false);
         return;
       }
     }
     if (!_canCommit(scope)) return;
     if (!append) {
-      _publishLocal(fetched);
+      _publishLocal(fetched, loading: false);
       return;
     }
     final seen = <int>{};
@@ -192,16 +192,16 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     for (final item in [...state.items, ...fetched]) {
       if (seen.add(item.id)) merged.add(item);
     }
-    _publishLocal(merged);
+    _publishLocal(merged, loading: false);
   }
 
-  void _publishLocal(List<ConversationModel> rows) {
+  void _publishLocal(List<ConversationModel> rows, {bool? loading}) {
     final visible = fixedFilter == null
         ? _applyChatLock(rows)
         : _applyChatLock(rows).where(_matchesCurrentFilter).toList();
     state = state.copyWith(
       items: visible,
-      loading: visible.isEmpty && state.loading,
+      loading: loading ?? (visible.isEmpty && state.loading),
     );
   }
 
@@ -370,7 +370,14 @@ class ConversationsController extends StateNotifier<ConversationsState> {
         reviewStatus: state.reviewStatus,
         workspaceId: scope.workspaceId,
       );
-      if (!_canCommit(scope)) return;
+      if (!_canCommit(scope)) {
+        if (mounted &&
+            _boundWorkspaceId != null &&
+            _boundWorkspaceId == _ref.read(activeWorkspaceIdProvider)) {
+          unawaited(refresh(silent: true));
+        }
+        return;
+      }
       state = state.copyWith(
         loading: false,
         nextCursor: silent ? null : page.nextCursor,
@@ -385,7 +392,14 @@ class ConversationsController extends StateNotifier<ConversationsState> {
         _prefetchOpenThreads(state.items);
       }
     } on ApiException catch (e) {
-      if (!_canCommit(scope)) return;
+      if (!_canCommit(scope)) {
+        if (mounted &&
+            _boundWorkspaceId != null &&
+            _boundWorkspaceId == _ref.read(activeWorkspaceIdProvider)) {
+          unawaited(refresh(silent: true));
+        }
+        return;
+      }
       state = state.copyWith(
         loading: false,
         error: state.items.isEmpty
@@ -393,7 +407,14 @@ class ConversationsController extends StateNotifier<ConversationsState> {
             : 'تعذر التحديث. تُعرض البيانات المحفوظة على الجهاز.',
       );
     } catch (_) {
-      if (!_canCommit(scope)) return;
+      if (!_canCommit(scope)) {
+        if (mounted &&
+            _boundWorkspaceId != null &&
+            _boundWorkspaceId == _ref.read(activeWorkspaceIdProvider)) {
+          unawaited(refresh(silent: true));
+        }
+        return;
+      }
       state = state.copyWith(
         loading: false,
         error: state.items.isEmpty

@@ -30,7 +30,6 @@ class InboxDatabase implements QueryExecutorUser {
 
   @override
   Future<void> beforeOpen(QueryExecutor e, OpeningDetails details) async {
-    await e.ensureOpen(this);
     await e.runCustom('PRAGMA foreign_keys = ON');
     if (details.wasCreated) {
       await _createCurrentSchema(e);

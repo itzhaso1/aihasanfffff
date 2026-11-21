@@ -45,6 +45,8 @@ class StoreMessageRequest extends FormRequest
             'message_type' => ['nullable', 'in:text,image,file,system'],
             'content' => ['nullable', 'string'],
             'external_message_id' => ['nullable', 'string', 'max:255'],
+            'client_id' => ['nullable', 'string', 'max:255'],
+            'idempotency_key' => ['nullable', 'string', 'max:255'],
             'ai_generated' => ['nullable', 'boolean'],
             'metadata' => ['nullable', 'array'],
             'attachments' => ['nullable', 'array', 'max:10'],

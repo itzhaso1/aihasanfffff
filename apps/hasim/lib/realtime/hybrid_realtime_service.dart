@@ -185,11 +185,15 @@ class HybridRealtimeService implements RealtimeService {
 
   Future<Map<String, dynamic>?> _loadRemoteConfig() async {
     try {
-      final response = await _apiClient.get<Map<String, dynamic>>(
-        'realtime/config',
-        mapData: (raw) =>
-            raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{},
-      );
+      final response = await _apiClient
+          .get<Map<String, dynamic>>(
+            'realtime/config',
+            mapData: (raw) =>
+                raw is Map
+                    ? Map<String, dynamic>.from(raw)
+                    : <String, dynamic>{},
+          )
+          .timeout(const Duration(seconds: 3));
       final data = response.data;
       if (data == null || data.isEmpty) {
         return null;
@@ -204,4 +208,13 @@ class HybridRealtimeService implements RealtimeService {
 
   bool get websocketConfigured => _websocketConfigured;
   bool get isWebSocketConnected => _wsClient?.isConnected ?? false;
+
+  @override
+  void dispose() {
+    unawaited(stop());
+    _wsClient?.dispose();
+    _polling.dispose();
+    _messageController.close();
+    _listController.close();
+  }
 }

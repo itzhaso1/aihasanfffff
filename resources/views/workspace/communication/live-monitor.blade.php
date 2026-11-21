@@ -457,9 +457,32 @@
                 currentLogs: [],
 
                 init() {
+                    let debounceTimer = null;
+                    const debouncedRefresh = () => {
+                        clearTimeout(debounceTimer);
+                        debounceTimer = setTimeout(() => this.refreshData(), 400);
+                    };
+
+                    const workspaceId = {{ $workspace->id ?? 'null' }};
+                    if (window.Echo && workspaceId) {
+                        try {
+                            window.Echo.private(`workspace.${workspaceId}.conversations`)
+                                .listen('.conversation.updated', debouncedRefresh)
+                                .listen('.message.created', debouncedRefresh);
+                        } catch (_) {}
+                    }
+
+                    // Gentle background poll (every 15s instead of aggressive 3s)
                     this.pollInterval = setInterval(() => {
                         this.refreshData();
-                    }, 3000);
+                    }, 15000);
+
+                    document.addEventListener('hs:before-navigate', () => {
+                        if (this.pollInterval) {
+                            clearInterval(this.pollInterval);
+                            this.pollInterval = null;
+                        }
+                    }, { once: true });
                 },
 
                 async refreshData() {

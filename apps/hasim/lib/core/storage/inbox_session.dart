@@ -7,6 +7,7 @@ class InboxSession {
   int? get workspaceId => _workspaceId;
 
   void beginWorkspace(int workspaceId) {
+    if (_workspaceId == workspaceId) return;
     _generation++;
     _workspaceId = workspaceId;
   }

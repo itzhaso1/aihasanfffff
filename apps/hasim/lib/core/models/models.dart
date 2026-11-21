@@ -914,10 +914,10 @@ class ConversationModel extends Equatable {
       aiReplying: remote.aiReplying ?? aiReplying,
       lastMessageAt: remote.lastMessageAt ?? lastMessageAt,
       customer: remote.customer ?? customer,
-      unreadCount: remote.unreadCount,
+      unreadCount: unreadCount,
       lastMessage: remote.lastMessage ?? lastMessage,
-      muted: remote.muted,
-      archived: remote.archived,
+      muted: muted,
+      archived: archived,
       customerPriority: remote.customerPriority,
       paymentStatus: remote.paymentStatus,
       reviewStatus: remote.reviewStatus,
@@ -930,7 +930,7 @@ class ConversationModel extends Equatable {
           remote.assignedWorkerEngagementId ?? assignedWorkerEngagementId,
       assignedParticipantType:
           remote.assignedParticipantType ?? assignedParticipantType,
-      canReply: remote.canReply,
+      canReply: canReply,
       responder: remote.responder ?? responder,
     );
   }

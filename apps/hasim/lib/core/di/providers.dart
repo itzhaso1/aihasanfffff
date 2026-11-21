@@ -208,11 +208,13 @@ final realtimeServiceProvider = Provider<RealtimeService>((ref) {
     workspaceIdOf: getWorkspaceId,
   );
 
-  return HybridRealtimeService(
+  final service = HybridRealtimeService(
     polling,
     apiClient: ref.watch(apiClientProvider),
     workspaceIdOf: getWorkspaceId,
   );
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 final outboxWorkerProvider = Provider<OutboxWorker>((ref) {

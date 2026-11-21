@@ -63,6 +63,7 @@ class ReverbWebSocketClient {
       StreamController<RealtimeConnectionState>.broadcast();
 
   Timer? _pingTimer;
+  Timer? _pingTimeoutTimer;
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
   bool _disposed = false;
@@ -169,6 +170,8 @@ class ReverbWebSocketClient {
     _reconnectTimer = null;
     _pingTimer?.cancel();
     _pingTimer = null;
+    _pingTimeoutTimer?.cancel();
+    _pingTimeoutTimer = null;
     _subscribedChannels.clear();
     _socketId = null;
 
@@ -188,11 +191,14 @@ class ReverbWebSocketClient {
     _messageController.close();
     _conversationUpdateController.close();
     _typingController.close();
+    _presenceController.close();
     _connectionStateController.close();
   }
 
   void _onMessage(dynamic raw) {
     if (raw == null) return;
+    _pingTimeoutTimer?.cancel();
+    _pingTimeoutTimer = null;
     try {
       final str = raw is String ? raw : utf8.decode(raw as List<int>);
       final map = jsonDecode(str);
@@ -292,6 +298,8 @@ class ReverbWebSocketClient {
     _socketId = null;
     _pingTimer?.cancel();
     _pingTimer = null;
+    _pingTimeoutTimer?.cancel();
+    _pingTimeoutTimer = null;
     _subscribedChannels.clear();
     _setState(RealtimeConnectionState.reconnecting);
 
@@ -429,6 +437,20 @@ class ReverbWebSocketClient {
     _pingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (isConnected) {
         _send('pusher:ping', {});
+        _pingTimeoutTimer?.cancel();
+        _pingTimeoutTimer = Timer(const Duration(seconds: 15), () {
+          if (isConnected && !_disposed) {
+            if (kDebugMode) {
+              debugPrint('[REALTIME_WS] Heartbeat timeout (15s). Reconnecting...');
+            }
+            final s = _socket;
+            _socket = null;
+            try {
+              s?.close();
+            } catch (_) {}
+            _scheduleReconnect();
+          }
+        });
       }
     });
   }
