@@ -140,39 +140,53 @@ class ConversationRepository {
           'per_page': 20,
         },
       );
-      final items = asMapList(
-        res.data,
-      ).map(ConversationModel.fromJson).toList();
+      final items = <ConversationModel>[];
+      for (final raw in asMapList(res.data)) {
+        try {
+          items.add(ConversationModel.fromJson(raw));
+        } catch (e, st) {
+          debugPrint('[Hasim] Skipping malformed conversation: $e\n$st');
+        }
+      }
       if (workspaceId != null) {
-        await _local?.upsertConversations(workspaceId, items);
-        if (cursor == null || cursor.isEmpty) {
-          await _local?.setSyncCursor(
-            workspaceId,
-            ConversationReconciler.syncResource(
-              filter: filter,
-              channel: channel,
-              search: search,
-              handoff: handoff,
-            ),
-            res.nextCursor,
-          );
+        try {
+          await _local?.upsertConversations(workspaceId, items);
+          if (cursor == null || cursor.isEmpty) {
+            await _local?.setSyncCursor(
+              workspaceId,
+              ConversationReconciler.syncResource(
+                filter: filter,
+                channel: channel,
+                search: search,
+                handoff: handoff,
+              ),
+              res.nextCursor,
+            );
+          }
+        } catch (e, st) {
+          debugPrint('[Hasim] SQLite cache write failed in list(): $e\n$st');
         }
       }
       return (items: items, nextCursor: res.nextCursor);
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[Hasim] ConversationRepository.list failed: $e\n$st');
       if (workspaceId != null && (cursor == null || cursor.isEmpty)) {
-        final cached = await cachedConversations(
-          workspaceId,
-          filter: filter,
-          channel: channel,
-          search: search,
-          customerPriority: customerPriority,
-          paymentStatus: paymentStatus,
-          reviewStatus: reviewStatus,
-        );
-        if (cached.isNotEmpty) {
-          lastReadFromCache = true;
-          return (items: cached, nextCursor: null);
+        try {
+          final cached = await cachedConversations(
+            workspaceId,
+            filter: filter,
+            channel: channel,
+            search: search,
+            customerPriority: customerPriority,
+            paymentStatus: paymentStatus,
+            reviewStatus: reviewStatus,
+          );
+          if (cached.isNotEmpty) {
+            lastReadFromCache = true;
+            return (items: cached, nextCursor: null);
+          }
+        } catch (cacheErr, cacheSt) {
+          debugPrint('[Hasim] cachedConversations fallback failed: $cacheErr\n$cacheSt');
         }
       }
       rethrow;
@@ -188,13 +202,19 @@ class ConversationRepository {
       }
       final conversation = ConversationModel.fromJson(map);
       if (workspaceId != null) {
-        await _local?.upsertConversations(workspaceId, [conversation]);
+        try {
+          await _local?.upsertConversations(workspaceId, [conversation]);
+        } catch (e) {
+          debugPrint('[Hasim] getById local upsert error: $e');
+        }
       }
       return conversation;
     } catch (e) {
       if (workspaceId != null) {
-        final cached = await cachedConversation(workspaceId, id);
-        if (cached != null) return cached;
+        try {
+          final cached = await cachedConversation(workspaceId, id);
+          if (cached != null) return cached;
+        } catch (_) {}
       }
       rethrow;
     }
@@ -228,17 +248,21 @@ class ConversationRepository {
         final chronological = (afterId != null && afterId > 0)
             ? items
             : items.reversed.toList();
-        await _local?.upsertMessages(
-          workspaceId,
-          conversationId,
-          chronological,
-        );
-        if (cursor == null || cursor.isEmpty) {
-          await _local?.setSyncCursor(
+        try {
+          await _local?.upsertMessages(
             workspaceId,
-            ConversationReconciler.messagesResource(conversationId),
-            res.nextCursor,
+            conversationId,
+            chronological,
           );
+          if (cursor == null || cursor.isEmpty) {
+            await _local?.setSyncCursor(
+              workspaceId,
+              ConversationReconciler.messagesResource(conversationId),
+              res.nextCursor,
+            );
+          }
+        } catch (e, st) {
+          debugPrint('[Hasim] SQLite cache write failed in messages(): $e\n$st');
         }
       }
       return (items: items, nextCursor: res.nextCursor);
@@ -262,23 +286,27 @@ class ConversationRepository {
     int conversationId,
     String content, {
     String? idempotencyKey,
+    String direction = 'outbound',
   }) {
     return sendMessageWithKey(
       conversationId,
       content,
       idempotencyKey ?? newIdempotencyKey(),
+      direction: direction,
     );
   }
 
   Future<MessageModel> sendMessageWithKey(
     int conversationId,
     String content,
-    String key,
-  ) async {
+    String key, {
+    String direction = 'outbound',
+  }) async {
     final res = await _api.post(
       'conversations/$conversationId/messages',
       body: {
         'content': content,
+        'direction': direction,
         'message_type': 'text',
         'idempotency_key': key,
       },

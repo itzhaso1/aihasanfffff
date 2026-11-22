@@ -22,7 +22,11 @@ class ConversationPolicy
      */
     public function view(User $user, Conversation $conversation): bool
     {
-        return $this->hasMembership($user, $conversation->workspace);
+        if ($this->hasMembership($user, $conversation->workspace)) {
+            return true;
+        }
+
+        return app(MobileInboxActor::class)->canAccessInbox($user, $conversation->workspace);
     }
 
     /**
@@ -47,15 +51,15 @@ class ConversationPolicy
      */
     public function update(User $user, Conversation $conversation): bool
     {
-        if (! $this->hasMembership($user, $conversation->workspace)) {
-            return false;
+        if ($this->hasMembership($user, $conversation->workspace)) {
+            if ($user->can('conversations.manage') || $user->can('workspace.manage')) {
+                return true;
+            }
+
+            return $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['owner', 'admin', 'manager', 'agent', 'staff', 'member']);
         }
 
-        if ($user->can('conversations.manage') || $user->can('workspace.manage')) {
-            return true;
-        }
-
-        return $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['owner', 'admin', 'manager', 'agent', 'staff', 'member']);
+        return app(MobileInboxActor::class)->canAccessInbox($user, $conversation->workspace);
     }
 
     /**
@@ -64,22 +68,25 @@ class ConversationPolicy
      */
     public function reply(User $user, Conversation $conversation): bool
     {
-        return $this->view($user, $conversation);
+        if ($this->hasMembership($user, $conversation->workspace)) {
+            return true;
+        }
+
+        return app(MobileInboxActor::class)->canReply($user, $conversation);
     }
 
     public function manageHandoff(User $user, Conversation $conversation): bool
     {
-        if (! $this->hasMembership($user, $conversation->workspace)) {
-            return false;
+        if ($this->hasMembership($user, $conversation->workspace)) {
+            if ($user->can('conversations.manage') || $user->can('workspace.manage')) {
+                return true;
+            }
+
+            return $this->update($user, $conversation)
+                || $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['member', 'staff']);
         }
 
-        if ($user->can('conversations.manage') || $user->can('workspace.manage')) {
-            return true;
-        }
-
-        return $this->update($user, $conversation)
-            || $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['member', 'staff'])
-            || app(MobileInboxActor::class)->canAccessInbox($user, $conversation->workspace);
+        return app(MobileInboxActor::class)->canAccessInbox($user, $conversation->workspace);
     }
 
     public function resumeAi(User $user, Conversation $conversation): bool

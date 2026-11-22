@@ -166,6 +166,7 @@ class ConversationController extends MobileController
 
         $validated = $request->validate([
             'content' => ['required', 'string'],
+            'direction' => ['nullable', 'string', 'in:outbound,internal_note'],
             'message_type' => ['nullable', 'string', 'max:32'],
             'idempotency_key' => ['nullable', 'string', 'max:128'],
         ]);
@@ -174,7 +175,7 @@ class ConversationController extends MobileController
 
         try {
             $message = $this->conversationInboxService->sendMessage($conversation, $request->user(), [
-                'direction' => 'outbound',
+                'direction' => $validated['direction'] ?? 'outbound',
                 'content' => $validated['content'],
                 'message_type' => $validated['message_type'] ?? 'text',
                 'idempotency_key' => $validated['idempotency_key'] ?? ($headerKey !== '' ? $headerKey : null),
@@ -307,6 +308,7 @@ class ConversationController extends MobileController
         ]);
 
         $conversation = $this->classification->applyManual($conversation, $request->user(), $validated);
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
 
         return $this->ok(new ConversationResource($conversation), message: 'تم تحديث تصنيف المحادثة.');
     }

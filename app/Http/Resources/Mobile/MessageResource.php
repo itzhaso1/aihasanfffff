@@ -4,6 +4,7 @@ namespace App\Http\Resources\Mobile;
 
 use App\Models\Message;
 use App\Services\Workforce\WorkforceInboxAttribution;
+use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -15,8 +16,23 @@ class MessageResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        if (! $this->resource) {
+            return [];
+        }
+
         $metadata = is_array($this->metadata) ? $this->metadata : [];
         $clientId = $metadata['client_id'] ?? $metadata['idempotency_key'] ?? null;
+
+        $customerName = null;
+        if ($this->relationLoaded('customer')) {
+            $customerName = $this->customer?->name;
+        } elseif ($this->customer_id && $this->workspace_id) {
+            try {
+                $customerName = app(WorkspaceContext::class)->runForId((int) $this->workspace_id, fn () => $this->customer?->name);
+            } catch (\Throwable) {
+                $customerName = null;
+            }
+        }
 
         $senderName = null;
         if ($this->ai_generated) {
@@ -26,8 +42,8 @@ class MessageResource extends JsonResource
             $senderName = $profile?->display_name ?? $profile?->user?->name ?? $this->user?->name ?? 'موظف مستقل';
         } elseif ($this->user_id !== null || $this->direction === 'outbound') {
             $senderName = $this->user?->name ?? 'الموظف';
-        } elseif ($this->customer) {
-            $senderName = $this->customer->name;
+        } elseif ($customerName) {
+            $senderName = $customerName;
         } else {
             $senderName = 'العميل';
         }
@@ -37,7 +53,7 @@ class MessageResource extends JsonResource
             'conversation_id' => $this->conversation_id,
             'user_id' => $this->user_id,
             'user_name' => $this->user?->name,
-            'customer_name' => $this->customer?->name,
+            'customer_name' => $customerName,
             'sender_name' => $senderName,
             'direction' => $this->direction,
             'message_type' => $this->message_type,

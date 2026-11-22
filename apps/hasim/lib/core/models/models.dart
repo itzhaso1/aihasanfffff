@@ -163,7 +163,7 @@ class CustomerModel extends Equatable {
       };
 
   factory CustomerModel.fromJson(Map<String, dynamic> json) => CustomerModel(
-    id: (json['id'] as num).toInt(),
+    id: asInt(json['id']),
     name: json['name']?.toString() ?? '',
     phone: json['phone']?.toString(),
     status: json['status']?.toString() ?? 'needs_review',
@@ -171,7 +171,7 @@ class CustomerModel extends Equatable {
     email: json['email']?.toString(),
     whatsapp: json['whatsapp']?.toString(),
     city: json['city']?.toString(),
-    ordersCount: (json['orders_count'] as num?)?.toInt() ?? 0,
+    ordersCount: asInt(json['orders_count'], 0),
     totalPurchases: json['total_purchases']?.toString() ?? '0.00',
     lastOrderAt: json['last_order_at']?.toString(),
     lastConversationAt: json['last_conversation_at']?.toString(),
@@ -415,8 +415,8 @@ class MessageModel extends Equatable {
     final clientId = _messageClientId(payload);
 
     return MessageModel(
-      id: (payload['id'] as num?)?.toInt() ?? 0,
-      conversationId: (payload['conversation_id'] as num?)?.toInt() ?? 0,
+      id: asInt(payload['id']),
+      conversationId: asInt(payload['conversation_id']),
       direction:
           payload['direction']?.toString().trim().toLowerCase() ?? 'inbound',
       messageType: payload['message_type']?.toString() ?? 'text',
@@ -435,10 +435,10 @@ class MessageModel extends Equatable {
               : null),
       attachments: attachments,
       clientId: clientId,
-      workerEngagementId: (payload['worker_engagement_id'] as num?)?.toInt(),
-      senderUserId: (payload['user_id'] as num?)?.toInt() ??
-          (payload['user'] is Map && payload['user']['id'] is num
-              ? (payload['user']['id'] as num).toInt()
+      workerEngagementId: asNullableInt(payload['worker_engagement_id']),
+      senderUserId: asNullableInt(payload['user_id']) ??
+          (payload['user'] is Map
+              ? asNullableInt(payload['user']['id'])
               : null),
       participantType: payload['participant_type']?.toString(),
     );
@@ -548,7 +548,7 @@ class ConversationResponder extends Equatable {
       dotClass: json['dot_class']?.toString() ?? '',
       isAiGenerating: json['is_ai_generating'] == true,
       isTyping: json['is_typing'] == true,
-      userId: (json['user_id'] as num?)?.toInt(),
+      userId: asNullableInt(json['user_id']),
       userInitials: json['user_initials']?.toString(),
       assignedAtHuman: json['assigned_at_human']?.toString(),
       reason: json['reason']?.toString(),
@@ -672,16 +672,19 @@ class ConversationModel extends Equatable {
   }
 
   factory ConversationModel.fromJson(Map<String, dynamic> json) {
+    final convId = asInt(json['id']);
     MessageModel? last;
     final lm = json['last_message'];
     if (lm is Map) {
-      last = MessageModel.fromJson(
-        lm is Map<String, dynamic> ? lm : Map<String, dynamic>.from(lm),
-      );
+      try {
+        last = MessageModel.fromJson(
+          lm is Map<String, dynamic> ? lm : Map<String, dynamic>.from(lm),
+        );
+      } catch (_) {}
     } else if (lm is String && lm.trim().isNotEmpty) {
       last = MessageModel(
         id: -1,
-        conversationId: (json['id'] as num).toInt(),
+        conversationId: convId,
         content: lm.trim(),
         direction: json['last_message_direction']?.toString() ?? 'inbound',
         messageType: 'text',
@@ -691,7 +694,7 @@ class ConversationModel extends Equatable {
         (json['last_message_preview'] as String).trim().isNotEmpty) {
       last = MessageModel(
         id: -1,
-        conversationId: (json['id'] as num).toInt(),
+        conversationId: convId,
         content: (json['last_message_preview'] as String).trim(),
         direction: json['last_message_direction']?.toString() ?? 'inbound',
         messageType: 'text',
@@ -699,9 +702,35 @@ class ConversationModel extends Equatable {
       );
     }
     final customerRaw = json['customer'];
+    CustomerModel? customer;
+    if (customerRaw is Map) {
+      try {
+        customer = CustomerModel.fromJson(
+          customerRaw is Map<String, dynamic>
+              ? customerRaw
+              : Map<String, dynamic>.from(customerRaw),
+        );
+      } catch (_) {}
+    }
+
+    ConversationResponder? responder;
+    if (json['responder'] is Map) {
+      try {
+        responder = ConversationResponder.fromJson(
+          json['responder'] is Map<String, dynamic>
+              ? json['responder']
+              : Map<String, dynamic>.from(json['responder']),
+        );
+      } catch (_) {}
+    }
+
+    final assignedUserId = asNullableInt(json['assigned_user_id']) ??
+        (json['assigned_user'] is Map
+            ? asNullableInt((json['assigned_user'] as Map)['id'])
+            : null);
 
     return ConversationModel(
-      id: (json['id'] as num).toInt(),
+      id: convId,
       channel: json['channel']?.toString() ?? 'web',
       status: json['status']?.toString() ?? 'open',
       externalId: json['external_id']?.toString(),
@@ -712,14 +741,8 @@ class ConversationModel extends Equatable {
       lastMessageAt: DateTime.tryParse(
         json['last_message_at']?.toString() ?? '',
       ),
-      customer: customerRaw is Map
-          ? CustomerModel.fromJson(
-              customerRaw is Map<String, dynamic>
-                  ? customerRaw
-                  : Map<String, dynamic>.from(customerRaw),
-            )
-          : null,
-      unreadCount: (json['unread_count'] as num?)?.toInt() ?? 0,
+      customer: customer,
+      unreadCount: asInt(json['unread_count'], 0),
       lastMessage: last,
       muted: json['muted'] == true,
       archived: json['archived'] == true,
@@ -730,26 +753,16 @@ class ConversationModel extends Equatable {
           json['classification_source']?.toString() ?? 'system',
       handoffStatus: json['handoff_status']?.toString() ?? 'none',
       handoffReason: json['handoff_reason']?.toString(),
-      assignedUserId:
-          (json['assigned_user_id'] as num?)?.toInt() ??
-          (json['assigned_user'] is Map
-              ? ((json['assigned_user'] as Map)['id'] as num?)?.toInt()
-              : null),
+      assignedUserId: assignedUserId,
       assignedUserName: (json['assigned_user'] is Map
               ? (json['assigned_user'] as Map)['name']?.toString()
               : null) ??
           json['assigned_user_name']?.toString(),
       assignedWorkerEngagementId:
-          (json['assigned_worker_engagement_id'] as num?)?.toInt(),
+          asNullableInt(json['assigned_worker_engagement_id']),
       assignedParticipantType: json['assigned_participant_type']?.toString(),
       canReply: json['can_reply'] == null ? true : json['can_reply'] == true,
-      responder: json['responder'] is Map
-          ? ConversationResponder.fromJson(
-              json['responder'] is Map<String, dynamic>
-                  ? json['responder']
-                  : Map<String, dynamic>.from(json['responder']),
-            )
-          : null,
+      responder: responder,
     );
   }
 
@@ -1252,6 +1265,19 @@ Map<String, dynamic>? asMap(dynamic raw) {
         : Map<String, dynamic>.from(nested);
   }
   return map;
+}
+
+int asInt(dynamic raw, [int fallback = 0]) {
+  if (raw is num) return raw.toInt();
+  if (raw is String) return int.tryParse(raw.trim()) ?? fallback;
+  return fallback;
+}
+
+int? asNullableInt(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is num) return raw.toInt();
+  if (raw is String) return int.tryParse(raw.trim());
+  return null;
 }
 
 class EmailAccountModel extends Equatable {

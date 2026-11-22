@@ -391,13 +391,14 @@ class _SendCounter extends ConversationRepository {
   Future<MessageModel> sendMessageWithKey(
     int conversationId,
     String content,
-    String key,
-  ) async {
+    String key, {
+    String direction = 'outbound',
+  }) async {
     calls++;
     return MessageModel(
       id: 1,
       conversationId: conversationId,
-      direction: 'outbound',
+      direction: direction,
       messageType: 'text',
       content: content,
       createdAt: DateTime.now(),

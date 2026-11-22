@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/local_db/inbox_local_store.dart';
@@ -136,53 +137,71 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> bootstrap() async {
-    String? token;
     try {
-      token = await _ref
-          .read(secureStoreProvider)
-          .readToken()
-          .timeout(const Duration(seconds: 2));
-    } catch (_) {
-      token = null;
-    }
-    if (token == null || token.isEmpty) {
-      state = state.copyWith(bootstrapping: false, clearSession: true);
-      return;
-    }
-    state = state.copyWith(token: token);
-    final prefs = _ref.read(prefsStoreProvider);
-    final snapshot = await _ref
-        .read(inboxLocalStoreProvider)
-        .loadAccountSnapshot();
-    if (snapshot != null) {
-      await _restoreSnapshot(token, snapshot);
-      _startInboxServices();
-      unawaited(_refreshAccount(allowWorkspaceReset: false));
-      return;
-    }
-    final lastWorkspaceId = prefs.workspaceId;
-    if (lastWorkspaceId != null) {
-      _ref.read(inboxSessionProvider).beginWorkspace(lastWorkspaceId);
-    }
-    try {
-      await _refreshAccount(
-        allowWorkspaceReset: true,
-      ).timeout(const Duration(seconds: 3));
-      _startInboxServices();
-    } catch (_) {
-      // Network timeout / connection error during bootstrap:
-      // If we have token, keep user logged in offline instead of wiping everything!
-      if (token.isNotEmpty) {
-        state = state.copyWith(
-          bootstrapping: false,
-          token: token,
-          workspace: lastWorkspaceId != null
-              ? WorkspaceModel(id: lastWorkspaceId, name: '')
-              : null,
-        );
+      String? token;
+      try {
+        token = await _ref
+            .read(secureStoreProvider)
+            .readToken()
+            .timeout(const Duration(seconds: 2));
+      } catch (_) {
+        token = null;
+      }
+      if (token == null || token.isEmpty) {
+        state = state.copyWith(bootstrapping: false, clearSession: true);
+        return;
+      }
+      state = state.copyWith(token: token);
+      final prefs = _ref.read(prefsStoreProvider);
+      LocalAccountSnapshot? snapshot;
+      try {
+        snapshot = await _ref
+            .read(inboxLocalStoreProvider)
+            .loadAccountSnapshot()
+            .timeout(const Duration(milliseconds: 1000));
+      } catch (_) {
+        snapshot = null;
+      }
+      if (snapshot != null) {
+        try {
+          await _restoreSnapshot(token, snapshot);
+          _startInboxServices();
+          unawaited(_refreshAccount(allowWorkspaceReset: false));
+          return;
+        } catch (e) {
+          debugPrint('[Hasim] restoreSnapshot failed: $e');
+        }
+      }
+      final lastWorkspaceId = prefs.workspaceId;
+      if (lastWorkspaceId != null) {
+        _ref.read(inboxSessionProvider).beginWorkspace(lastWorkspaceId);
+      }
+      try {
+        await _refreshAccount(
+          allowWorkspaceReset: true,
+        ).timeout(const Duration(seconds: 3));
         _startInboxServices();
-      } else {
-        await _wipeLocalSession();
+      } catch (_) {
+        // Network timeout / connection error during bootstrap:
+        // If we have token, keep user logged in offline instead of wiping everything!
+        if (token.isNotEmpty) {
+          state = state.copyWith(
+            bootstrapping: false,
+            token: token,
+            workspace: lastWorkspaceId != null
+                ? WorkspaceModel(id: lastWorkspaceId, name: '')
+                : null,
+          );
+          _startInboxServices();
+        } else {
+          await _wipeLocalSession();
+        }
+      }
+    } catch (e, st) {
+      debugPrint('[Hasim] bootstrap uncaught error: $e\n$st');
+    } finally {
+      if (state.bootstrapping) {
+        state = state.copyWith(bootstrapping: false);
       }
     }
   }

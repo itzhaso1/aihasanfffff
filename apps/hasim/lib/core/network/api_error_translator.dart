@@ -66,36 +66,52 @@ class ApiErrorTranslator {
     String? errorCode,
     Map<String, dynamic>? errors,
   }) {
-    if (statusCode == 402 || errorCode == 'feature_not_available') {
-      return message.isNotEmpty
-          ? message
-          : 'هذه الميزة غير متاحة في الباقة الحالية.';
-    }
-    if (statusCode == 429) {
-      return message.isNotEmpty && _looksArabic(message)
-          ? message.trim()
-          : 'محاولات كثيرة. حاول لاحقاً.';
-    }
-    if (statusCode == 403) {
-      return message.isNotEmpty ? message : 'لا تملك صلاحية تنفيذ هذا الإجراء.';
-    }
-
     if (errors != null && errors.isNotEmpty) {
       final lines = _linesFromErrorsMap(errors);
       if (lines.isNotEmpty) return lines.join('\n');
     }
 
+    if (_looksArabic(message) && message.trim().isNotEmpty) {
+      return message.trim();
+    }
+
     final fromMessage = translateValidationMessage(message);
     if (fromMessage != null) return fromMessage;
 
-    if (_looksArabic(message) && message.trim().isNotEmpty) {
-      return message.trim();
+    if (statusCode == 401 || message.trim() == 'Unauthenticated.') {
+      return 'انتهت جلسة تسجيل الدخول، يرجى إعادة تسجيل الدخول.';
+    }
+    if (statusCode == 402 || errorCode == 'feature_not_available') {
+      return 'هذه الميزة غير متاحة في الباقة الحالية.';
+    }
+    if (statusCode == 403 || message.trim() == 'This action is unauthorized.') {
+      return 'لا تملك صلاحية تنفيذ هذا الإجراء.';
+    }
+    if (statusCode == 404 ||
+        message.trim().toLowerCase().contains('no query results for model') ||
+        message.trim() == 'Not Found.') {
+      return 'العنصر المطلوب غير موجود أو تم حذفه.';
+    }
+    if (statusCode == 405) {
+      return 'الإجراء المطلوب غير مدعوم في هذا المسار.';
+    }
+    if (statusCode == 413 || message.toLowerCase().contains('too large')) {
+      return 'حجم الملف المرفق كبير جداً ويتجاوز الحد المسموح به.';
+    }
+    if (statusCode == 419) {
+      return 'انتهت صلاحية الجلسة، يرجى إعادة المحاولة.';
+    }
+    if (statusCode == 429) {
+      return 'محاولات كثيرة. حاول لاحقاً.';
+    }
+    if (statusCode != null && statusCode >= 500) {
+      return 'حدث خطأ في الخادم ($statusCode). يرجى المحاولة لاحقاً.';
     }
 
     if (message.trim().isNotEmpty) {
       _logUnknown(message, errors);
     }
-    return message.trim().isNotEmpty ? genericFailure : genericFailure;
+    return genericFailure;
   }
 
   static List<String> _linesFromErrorsMap(Map<String, dynamic> errors) {
@@ -203,6 +219,36 @@ class ApiErrorTranslator {
     if (lower == 'the given data was invalid.' ||
         lower == 'validation failed.') {
       return 'بيانات غير صالحة.';
+    }
+    if (lower == 'unauthenticated.') {
+      return 'انتهت جلسة تسجيل الدخول، يرجى إعادة تسجيل الدخول.';
+    }
+    if (lower == 'this action is unauthorized.' || lower == 'unauthorized.') {
+      return 'لا تملك صلاحية تنفيذ هذا الإجراء.';
+    }
+    if (lower == 'worker engagement is not valid for this conversation.') {
+      return 'ارتباط الموظف غير صالح لهذه المحادثة.';
+    }
+    if (lower == 'user is not a member of this workspace.') {
+      return 'المستخدم ليس عضواً في مساحة العمل هذه.';
+    }
+    if (lower == 'only open conversations can receive worker replies.') {
+      return 'يمكن الرد فقط على المحادثات المفتوحة.';
+    }
+    if (lower == 'cannot assign closed conversation.') {
+      return 'لا يمكن إسناد محادثة مغلقة.';
+    }
+    if (lower == 'workspace not found.') {
+      return 'مساحة العمل غير موجودة.';
+    }
+    if (lower == 'conversation is already closed.') {
+      return 'المحادثة مغلقة بالفعل.';
+    }
+    if (lower == 'conversation not found.' || lower == 'not found.') {
+      return 'المحادثة غير موجودة أو تم حذفها.';
+    }
+    if (lower == 'invalid credentials.') {
+      return 'بيانات تسجيل الدخول غير صحيحة.';
     }
     if (lower == 'handoff is only allowed on open conversations.') {
       return 'التحويل مسموح فقط في المحادثات المفتوحة.';

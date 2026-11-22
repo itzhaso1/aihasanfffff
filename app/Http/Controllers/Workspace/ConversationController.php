@@ -391,11 +391,12 @@ class ConversationController extends Controller
                     'ai_enabled' => false,
                     'handoff_status' => ConversationHandoffStatus::Active,
                     'responder_type' => ConversationResponderService::TYPE_HUMAN,
+                    'responder_name' => $actor->name,
                 ]);
                 app(ConversationResponderService::class)->recordTransition(
                     $conversation,
                     ConversationResponderService::TYPE_HUMAN,
-                    $conversation->assignedUser ?? $actor,
+                    $actor,
                     'human_message_sent',
                     'user',
                     $actor,

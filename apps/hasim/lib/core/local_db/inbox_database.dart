@@ -10,6 +10,10 @@ class InboxDatabase implements QueryExecutorUser {
 
   final QueryExecutor executor;
   bool _opened = false;
+  bool _closed = false;
+  Future<void>? _openingFuture;
+
+  bool get isClosed => _closed;
 
   /// v1: core tables. v2: `inbox_messages.updated_at`.
   /// v3: conversation local-read / server unread columns.
@@ -23,13 +27,25 @@ class InboxDatabase implements QueryExecutorUser {
   int get schemaVersion => 9;
 
   Future<void> ensureReady() async {
-    if (_opened) return;
-    await executor.ensureOpen(this);
-    _opened = true;
+    if (_closed || _opened) return;
+    if (_openingFuture != null) {
+      await _openingFuture;
+      return;
+    }
+    final future = executor.ensureOpen(this);
+    _openingFuture = future;
+    try {
+      await future;
+      _opened = true;
+    } catch (_) {
+      _openingFuture = null;
+      rethrow;
+    }
   }
 
   @override
   Future<void> beforeOpen(QueryExecutor e, OpeningDetails details) async {
+    await e.ensureOpen(this);
     await e.runCustom('PRAGMA foreign_keys = ON');
     if (details.wasCreated) {
       await _createCurrentSchema(e);
@@ -775,31 +791,46 @@ class InboxDatabase implements QueryExecutorUser {
     String sql, [
     List<Object?> args = const [],
   ]) async {
+    if (_closed) return const [];
     await ensureReady();
+    if (_closed) return const [];
     return executor.runSelect(sql, args);
   }
 
   Future<int> insert(String sql, [List<Object?> args = const []]) async {
+    if (_closed) return 0;
     await ensureReady();
+    if (_closed) return 0;
     return executor.runInsert(sql, args);
   }
 
   Future<int> update(String sql, [List<Object?> args = const []]) async {
+    if (_closed) return 0;
     await ensureReady();
+    if (_closed) return 0;
     return executor.runUpdate(sql, args);
   }
 
   Future<int> delete(String sql, [List<Object?> args = const []]) async {
+    if (_closed) return 0;
     await ensureReady();
+    if (_closed) return 0;
     return executor.runDelete(sql, args);
   }
 
   Future<void> custom(String sql, [List<Object?> args = const []]) async {
+    if (_closed) return;
     await ensureReady();
+    if (_closed) return;
     await executor.runCustom(sql, args);
   }
 
-  Future<void> close() => executor.close();
+  Future<void> close() async {
+    _closed = true;
+    _opened = false;
+    _openingFuture = null;
+    await executor.close();
+  }
 
   /// Application-support directory. Never assets, git, or public storage.
   static InboxDatabase open() => InboxDatabase(platform.openExecutor());

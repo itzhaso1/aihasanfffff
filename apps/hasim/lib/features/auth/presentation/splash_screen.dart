@@ -88,7 +88,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     });
 
     if (!_isFlutterTest) {
-      _bootstrapGuard = Timer(const Duration(milliseconds: 8000), () async {
+      _bootstrapGuard = Timer(const Duration(milliseconds: 2800), () async {
         if (!mounted || _navigated) return;
         final auth = ref.read(authControllerProvider);
         if (auth.bootstrapping) {
@@ -162,13 +162,21 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     }
     final auth = ref.read(authControllerProvider);
     if (auth.bootstrapping) {
-      if (!_isFlutterTest) {
-        _retryTimer?.cancel();
-        _retryTimer = Timer(const Duration(milliseconds: 150), () {
-          if (mounted) _scheduleNavigationCheck();
-        });
+      final elapsed = DateTime.now().difference(_openedAt);
+      if (elapsed.inMilliseconds >= 2750) {
+        await ref
+            .read(authControllerProvider.notifier)
+            .abortBootstrapAsGuest();
+        if (!mounted) return;
+      } else {
+        if (!_isFlutterTest) {
+          _retryTimer?.cancel();
+          _retryTimer = Timer(const Duration(milliseconds: 100), () {
+            if (mounted) _scheduleNavigationCheck();
+          });
+        }
+        return;
       }
-      return;
     }
     _retryTimer?.cancel();
     if (!_isFlutterTest) {

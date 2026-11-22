@@ -120,15 +120,10 @@ class ConversationResponderService
             || ($conversation->responder_type === self::TYPE_HUMAN)
         ) {
             $isWorkerAssigned = $conversation->assigned_worker_engagement_id !== null;
-            if ($isWorkerAssigned) {
-                $name = 'فريق العمل';
-                $user = null;
-            } else {
-                $user = $conversation->relationLoaded('assignedUser')
-                    ? $conversation->assignedUser
-                    : $conversation->assignedUser()->first();
-                $name = $conversation->responder_name ?? $user?->name ?? 'موظف خدمة العملاء';
-            }
+            $user = $conversation->relationLoaded('assignedUser')
+                ? $conversation->assignedUser
+                : $conversation->assignedUser()->first();
+            $name = $conversation->responder_name ?? $user?->name ?? ($isWorkerAssigned ? 'فريق العمل' : 'موظف خدمة العملاء');
             $assignedAt = $conversation->responder_assigned_at ?? $conversation->handoff_assigned_at ?? $conversation->updated_at;
 
             return [
@@ -224,7 +219,9 @@ class ConversationResponderService
                     ? $fresh->assignedWorkerEngagement
                     : $fresh->assignedWorkerEngagement()->with('workerProfile.user')->first();
                 $workerProfile = $workerEngagement?->workerProfile;
-                $workerName = $workerProfile?->display_name ?: $workerProfile?->user?->name;
+                if (! $newUser || $workerProfile?->user_id === $newUser->id) {
+                    $workerName = $workerProfile?->display_name ?: $workerProfile?->user?->name;
+                }
             }
 
             $newName = match ($newType) {

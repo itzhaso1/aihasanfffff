@@ -147,7 +147,7 @@ class OutboxWorker {
             'status=${e.statusCode} conversation=${op.conversationServerId} error=${e.message}',
           );
         }
-        await _handleFailure(op, e.message, e.statusCode);
+        await _handleFailure(op, e.userMessage, e.statusCode);
       } catch (e) {
         if (kDebugMode) {
           debugPrint(

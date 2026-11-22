@@ -133,6 +133,7 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   ProviderSubscription<Set<int>>? _lockSub;
   Timer? _realtimeRefreshTimer;
   Timer? _searchDebounce;
+  Timer? _prefetchTimer;
   int? _boundWorkspaceId;
   final Set<int> _prefetchedIds = <int>{};
 
@@ -151,11 +152,16 @@ class ConversationsController extends StateNotifier<ConversationsState> {
           paymentStatus: state.paymentStatus,
           reviewStatus: state.reviewStatus,
         )
-        .listen((rows) {
-          if (!mounted || _boundWorkspaceId != workspaceId) return;
-          _publishLocal(rows);
-          if (rows.isNotEmpty) _prefetchOpenThreads(rows);
-        });
+        .listen(
+          (rows) {
+            if (!mounted || _boundWorkspaceId != workspaceId) return;
+            _publishLocal(rows);
+            if (rows.isNotEmpty) _prefetchOpenThreads(rows);
+          },
+          onError: (Object e, StackTrace st) {
+            debugPrint('[Hasim] watchConversations error: $e\n$st');
+          },
+        );
   }
 
   Future<void> _publishFetchedPage(
@@ -165,21 +171,25 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   }) async {
     final workspaceId = scope.workspaceId;
     if (workspaceId != null) {
-      final local = await _ref
-          .read(conversationRepositoryProvider)
-          .cachedConversations(
-            workspaceId,
-            filter: _localFilter,
-            channel: state.channel,
-            search: state.search,
-            customerPriority: state.customerPriority,
-            paymentStatus: state.paymentStatus,
-            reviewStatus: state.reviewStatus,
-          );
-      if (!_canCommit(scope)) return;
-      if (local.isNotEmpty) {
-        _publishLocal(local, loading: false);
-        return;
+      try {
+        final local = await _ref
+            .read(conversationRepositoryProvider)
+            .cachedConversations(
+              workspaceId,
+              filter: _localFilter,
+              channel: state.channel,
+              search: state.search,
+              customerPriority: state.customerPriority,
+              paymentStatus: state.paymentStatus,
+              reviewStatus: state.reviewStatus,
+            );
+        if (!_canCommit(scope)) return;
+        if (local.isNotEmpty) {
+          _publishLocal(local, loading: false);
+          return;
+        }
+      } catch (e, st) {
+        debugPrint('[Hasim] _publishFetchedPage cachedConversations error: $e\n$st');
       }
     }
     if (!_canCommit(scope)) return;
@@ -211,22 +221,28 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     _localSub?.cancel();
     _realtimeRefreshTimer?.cancel();
     _searchDebounce?.cancel();
+    _prefetchTimer?.cancel();
     _workspaceSub?.close();
     _lockSub?.close();
     super.dispose();
   }
 
   void _prefetchOpenThreads(List<ConversationModel> items) {
-    final workspaceId = _boundWorkspaceId;
-    if (workspaceId == null || items.isEmpty) return;
-    final repo = _ref.read(conversationRepositoryProvider);
-    var started = 0;
-    for (final item in items) {
-      if (started >= 4) break;
-      if (!_prefetchedIds.add(item.id)) continue;
-      started++;
-      unawaited(_warmMessageCache(repo, workspaceId, item.id));
-    }
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) return;
+    _prefetchTimer?.cancel();
+    _prefetchTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (!mounted) return;
+      final workspaceId = _boundWorkspaceId;
+      if (workspaceId == null || items.isEmpty) return;
+      final repo = _ref.read(conversationRepositoryProvider);
+      var started = 0;
+      for (final item in items) {
+        if (started >= 3) break;
+        if (!_prefetchedIds.add(item.id)) continue;
+        started++;
+        unawaited(_warmMessageCache(repo, workspaceId, item.id));
+      }
+    });
   }
 
   Future<void> _warmMessageCache(
@@ -392,6 +408,7 @@ class ConversationsController extends StateNotifier<ConversationsState> {
         _prefetchOpenThreads(state.items);
       }
     } on ApiException catch (e) {
+      debugPrint('[Hasim] refresh ApiException: ${e.message} (status: ${e.statusCode})');
       if (!_canCommit(scope)) {
         if (mounted &&
             _boundWorkspaceId != null &&
@@ -406,7 +423,8 @@ class ConversationsController extends StateNotifier<ConversationsState> {
             ? e.userMessage
             : 'تعذر التحديث. تُعرض البيانات المحفوظة على الجهاز.',
       );
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[Hasim] refresh unexpected error: $e\n$st');
       if (!_canCommit(scope)) {
         if (mounted &&
             _boundWorkspaceId != null &&
@@ -570,7 +588,10 @@ class ConversationsController extends StateNotifier<ConversationsState> {
       if (!_canCommit(scope)) return e.message;
       state = state.copyWith(clearMutating: true);
       return e.message;
-    } catch (_) {
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[CONVERSATION_MUTATE_ERROR] $e\n$st');
+      }
       if (!_canCommit(scope)) return 'تعذر تحديث المحادثة.';
       state = state.copyWith(clearMutating: true);
       return 'تعذر تحديث المحادثة.';
@@ -791,9 +812,9 @@ class ChatController extends StateNotifier<ChatState> {
       _applyPresenceData(data);
     });
     _presenceTimer = Timer.periodic(const Duration(seconds: 18), (_) {
-      pingPresence();
+      unawaited(pingPresence());
     });
-    pingPresence();
+    unawaited(pingPresence());
     final repo = _ref.read(conversationRepositoryProvider);
     if (workspaceId != null) {
       // 1. FAST INITIAL RENDER: Load SQLite cache immediately (< 20ms)
@@ -835,19 +856,11 @@ class ChatController extends StateNotifier<ChatState> {
             );
           });
     }
-    final seeded = workspaceId == null
-        ? null
-        : await repo.cachedConversation(workspaceId, conversationId);
     if (!mounted || _boundWorkspaceId != workspaceId) return;
-    if (seeded != null) {
-      state = state.copyWith(
-        conversation: seeded,
-        loading: state.messages.isEmpty,
-      );
-    } else if (state.messages.isEmpty) {
+    if (state.messages.isEmpty && state.conversation == null) {
       state = state.copyWith(loading: true);
     }
-    await refresh(silent: state.messages.isNotEmpty || seeded != null);
+    await refresh(silent: state.messages.isNotEmpty || state.conversation != null);
   }
 
   void seedConversation(ConversationModel conversation) {
@@ -959,10 +972,13 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> pingPresence({String state = 'viewing'}) async {
     if (conversationId <= 0) return;
     try {
-      final res = await _ref.read(apiClientProvider).post(
-        'conversations/$conversationId/presence/ping',
-        body: {'state': state},
-      );
+      final res = await _ref
+          .read(apiClientProvider)
+          .post(
+            'conversations/$conversationId/presence/ping',
+            body: {'state': state},
+          )
+          .timeout(const Duration(seconds: 3));
       if (res.data is Map<String, dynamic>) {
         _applyPresenceData(res.data as Map<String, dynamic>);
       }
@@ -974,9 +990,10 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> leavePresence() async {
     if (conversationId <= 0) return;
     try {
-      await _ref.read(apiClientProvider).post(
-        'conversations/$conversationId/presence/leave',
-      );
+      await _ref
+          .read(apiClientProvider)
+          .post('conversations/$conversationId/presence/leave')
+          .timeout(const Duration(seconds: 2));
     } catch (_) {
       // Best effort
     }
@@ -1028,8 +1045,12 @@ class ChatController extends StateNotifier<ChatState> {
         conversationId,
         workspaceId: scope.workspaceId,
       );
-      final conversation = await conversationFuture;
-      final page = await messagesFuture;
+      final conversation = await conversationFuture.timeout(
+        const Duration(seconds: 6),
+      );
+      final page = await messagesFuture.timeout(
+        const Duration(seconds: 6),
+      );
       if (!_canCommit(scope)) return;
       final workspaceId = scope.workspaceId;
       final fetched = page.items.reversed.toList();
@@ -1059,10 +1080,16 @@ class ChatController extends StateNotifier<ChatState> {
       unawaited(_persistOpenedRead(scope, workspaceId, conversation));
     } on ApiException catch (e) {
       if (!_canCommit(scope)) return;
-      state = state.copyWith(loading: false, error: e.userMessage);
+      state = state.copyWith(
+        loading: false,
+        error: state.messages.isEmpty ? e.userMessage : null,
+      );
     } catch (_) {
       if (!_canCommit(scope)) return;
-      state = state.copyWith(loading: false, error: 'تعذر فتح المحادثة.');
+      state = state.copyWith(
+        loading: false,
+        error: state.messages.isEmpty ? 'تعذر فتح المحادثة.' : null,
+      );
     }
   }
 
@@ -1435,6 +1462,9 @@ class ChatController extends StateNotifier<ChatState> {
         );
       }).toList();
       state = state.copyWith(messages: failed, sending: false);
+      if (e is ApiException) {
+        return e.userMessage;
+      }
       return 'uploadFailed';
     }
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hasim/core/local_db/inbox_database.dart';
 import 'package:hasim/core/local_db/message_reconciler.dart';
 import 'package:hasim/core/models/models.dart';
@@ -1213,41 +1214,48 @@ class InboxLocalStore {
   }
 
   Future<LocalAccountSnapshot?> loadAccountSnapshot() async {
-    final rows = await _db.select(
-      'SELECT * FROM local_account WHERE id = 1 LIMIT 1',
-    );
-    if (rows.isEmpty) return null;
-    final row = rows.first;
-    final workspaceRows = await _db.select(
-      'SELECT * FROM local_workspaces ORDER BY name, server_id',
-    );
-    return LocalAccountSnapshot(
-      user: UserModel(
-        id: (row['server_user_id'] as num).toInt(),
-        name: row['name']?.toString() ?? '',
-        email: row['email']?.toString(),
-        phone: row['phone']?.toString(),
-        locale: row['locale']?.toString(),
-        timezone: row['timezone']?.toString(),
-        avatarUrl: row['avatar_url']?.toString(),
-      ),
-      participant: MobileParticipant(
-        type: row['participant_type']?.toString() ?? 'company_staff',
-        workerProfileId: (row['worker_profile_id'] as num?)?.toInt(),
-      ),
-      currentWorkspaceId: (row['current_workspace_server_id'] as num?)?.toInt(),
-      workspaces: [
-        for (final workspace in workspaceRows)
-          WorkspaceModel(
-            id: (workspace['server_id'] as num).toInt(),
-            name: workspace['name']?.toString() ?? '',
-            type: workspace['type']?.toString(),
-            slug: workspace['slug']?.toString(),
-            role: workspace['role']?.toString(),
-            isOwner: _asBool(workspace['is_owner']),
-          ),
-      ],
-    );
+    try {
+      final rows = await _db.select(
+        'SELECT * FROM local_account WHERE id = 1 LIMIT 1',
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.first;
+      final serverUserId = (row['server_user_id'] as num?)?.toInt() ?? 0;
+      if (serverUserId <= 0) return null;
+      final workspaceRows = await _db.select(
+        'SELECT * FROM local_workspaces ORDER BY name, server_id',
+      );
+      return LocalAccountSnapshot(
+        user: UserModel(
+          id: serverUserId,
+          name: row['name']?.toString() ?? '',
+          email: row['email']?.toString(),
+          phone: row['phone']?.toString(),
+          locale: row['locale']?.toString(),
+          timezone: row['timezone']?.toString(),
+          avatarUrl: row['avatar_url']?.toString(),
+        ),
+        participant: MobileParticipant(
+          type: row['participant_type']?.toString() ?? 'company_staff',
+          workerProfileId: (row['worker_profile_id'] as num?)?.toInt(),
+        ),
+        currentWorkspaceId: (row['current_workspace_server_id'] as num?)?.toInt(),
+        workspaces: [
+          for (final workspace in workspaceRows)
+            WorkspaceModel(
+              id: (workspace['server_id'] as num?)?.toInt() ?? 0,
+              name: workspace['name']?.toString() ?? '',
+              type: workspace['type']?.toString(),
+              slug: workspace['slug']?.toString(),
+              role: workspace['role']?.toString(),
+              isOwner: _asBool(workspace['is_owner']),
+            ),
+        ],
+      );
+    } catch (e, st) {
+      debugPrint('[Hasim] loadAccountSnapshot error: $e\n$st');
+      return null;
+    }
   }
 
   Stream<LocalAccountSnapshot?> watchAccount() {

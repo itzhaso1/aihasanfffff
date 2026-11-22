@@ -178,7 +178,7 @@ class Conversation extends WorkspaceScopedModel
      */
     public function lastMessageSender(): ?array
     {
-        return app(WorkspaceContext::class)->runForId((int) $this->workspace_id, function (): ?array {
+        $resolver = function (): ?array {
             $last = $this->relationLoaded('lastMessage')
                 ? $this->lastMessage
                 : ($this->relationLoaded('messages') ? $this->messages->last() : $this->lastMessage);
@@ -187,7 +187,9 @@ class Conversation extends WorkspaceScopedModel
                 return null;
             }
 
-            $last->loadMissing(['user:id,name', 'customer:id,name']);
+            if (! $last->relationLoaded('user') && ! $last->relationLoaded('customer') && $this->exists && $last->exists) {
+                $last->loadMissing(['user:id,name', 'customer:id,name']);
+            }
 
             if ($last->direction === 'inbound') {
                 return [
@@ -205,12 +207,38 @@ class Conversation extends WorkspaceScopedModel
                 ];
             }
 
+            if ($last->worker_engagement_id !== null) {
+                $engagement = $last->relationLoaded('workerEngagement')
+                    ? $last->workerEngagement
+                    : $last->workerEngagement()->with('workerProfile.user')->first();
+                $profile = $engagement?->workerProfile;
+                $workerName = $profile?->display_name ?: ($profile?->user?->name ?: ($last->user?->name ?: 'موظف مستقل'));
+
+                return [
+                    'type' => 'worker',
+                    'id' => $last->worker_engagement_id,
+                    'name' => $workerName,
+                ];
+            }
+
             return [
                 'type' => 'human',
                 'id' => $last->user_id,
                 'name' => $last->user?->name ?: 'موظف',
             ];
-        });
+        };
+
+        if ($this->workspace_id && app(WorkspaceContext::class)->workspaceId() === (int) $this->workspace_id) {
+            return $resolver();
+        }
+
+        try {
+            return $this->workspace_id
+                ? app(WorkspaceContext::class)->runForId((int) $this->workspace_id, $resolver)
+                : $resolver();
+        } catch (\Throwable) {
+            return $resolver();
+        }
     }
 
     public function isOpen(): bool

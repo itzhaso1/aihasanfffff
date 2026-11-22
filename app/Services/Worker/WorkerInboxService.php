@@ -133,7 +133,7 @@ final class WorkerInboxService
                 $conversation,
                 [
                     'customer_id' => $conversation->customer_id,
-                    'direction' => 'outbound',
+                    'direction' => $data['direction'] ?? 'outbound',
                     'message_type' => $data['message_type'] ?? 'text',
                     'content' => $data['content'],
                     'ai_generated' => false,

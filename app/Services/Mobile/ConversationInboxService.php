@@ -309,6 +309,8 @@ class ConversationInboxService
         $state->muted_at = $muted ? now() : null;
         $state->save();
 
+        event(new ConversationUpdated($conversation->fresh()));
+
         return $state;
     }
 

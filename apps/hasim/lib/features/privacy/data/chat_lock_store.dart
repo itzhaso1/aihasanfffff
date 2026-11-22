@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ChatLockRecord {
@@ -119,10 +121,16 @@ class SecureChatLockStore implements ChatLockStore {
   static const _key = 'hasim_chat_lock_v1';
   final FlutterSecureStorage _storage;
 
+  static bool get _isFlutterTest =>
+      !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+
   @override
   Future<ChatLockRecord> read() async {
     try {
-      final raw = await _storage.read(key: _key);
+      final readFuture = _storage.read(key: _key);
+      final raw = _isFlutterTest
+          ? await readFuture
+          : await readFuture.timeout(const Duration(milliseconds: 1500));
       if (raw == null || raw.isEmpty) return ChatLockRecord.empty;
       return ChatLockRecord.fromJson(jsonDecode(raw));
     } catch (_) {

@@ -5,6 +5,7 @@ namespace App\Http\Resources\Mobile;
 use App\Enums\ConversationHandoffReason;
 use App\Enums\ConversationHandoffStatus;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Services\Conversation\ConversationHandoffSummaryBuilder;
 use App\Services\Workforce\WorkforceInboxAttribution;
 use Illuminate\Http\Request;
@@ -18,12 +19,8 @@ class ConversationResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $lastMessage = $this->when(
-            isset($this->last_message) || $this->relationLoaded('messages'),
-            fn () => new MessageResource(
-                $this->last_message ?? $this->messages->first(),
-            ),
-        );
+        $lastMessageModel = $this->last_message ?? ($this->relationLoaded('messages') ? $this->messages->first() : null);
+        $lastMessage = $lastMessageModel instanceof Message ? new MessageResource($lastMessageModel) : null;
 
         return [
             'id' => $this->id,

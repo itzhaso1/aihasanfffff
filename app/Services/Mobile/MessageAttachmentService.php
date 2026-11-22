@@ -22,8 +22,6 @@ class MessageAttachmentService
         'image/png',
         'image/webp',
         'image/gif',
-        'image/heic',
-        'image/heif',
         'application/pdf',
         'audio/mpeg',
         'audio/mp3',
@@ -60,7 +58,7 @@ class MessageAttachmentService
         }
 
         $allowedExtensions = [
-            'jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif',
+            'jpg', 'jpeg', 'png', 'webp', 'gif',
             'pdf', 'mp3', 'mpeg', 'mp4', 'wav', 'webm', 'mov', 'm4a', 'aac',
             'txt', 'doc', 'docx', 'xls', 'xlsx', 'zip',
         ];

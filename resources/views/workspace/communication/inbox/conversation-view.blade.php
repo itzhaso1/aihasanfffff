@@ -376,8 +376,12 @@
                                 {{ $activeResponder['name'] }} يتولى الرد على هذه المحادثة
                             @elseif($activeResponder['is_typing'] ?? false)
                                 {{ $activeResponder['name'] }} يكتب رداً الآن...
+                            @elseif($assignedEmployeeName && $activeResponder['name'] && $assignedEmployeeName !== $activeResponder['name'])
+                                {{ $activeResponder['name'] }} يتولى الرد (المسؤول: {{ $assignedEmployeeName }})
                             @elseif($assignedEmployeeName)
                                 المسؤول: {{ $assignedEmployeeName }}
+                            @elseif($activeResponder['status'] === 'human_active')
+                                {{ $activeResponder['name'] }} يتولى الرد حالياً
                             @elseif($activeResponder['status'] === 'human_needed')
                                 المحادثة بانتظار استلام من أحد موظفي الفريق
                             @elseif($activeResponder['status'] === 'waiting')
@@ -392,7 +396,7 @@
                         </span>
                     </div>
                     <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] sm:text-[11px] opacity-75 mt-0.5">
-                        @if($assignedEmployeeName && ($activeResponder['is_typing'] ?? false))
+                        @if($assignedEmployeeName && $activeResponder['name'] && $assignedEmployeeName !== $activeResponder['name'])
                             <span class="text-slate-600">المسؤول: <strong>{{ $assignedEmployeeName }}</strong></span>
                             <span>•</span>
                         @endif

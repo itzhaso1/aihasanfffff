@@ -33,14 +33,19 @@ class _SlowSendRepository extends ConversationRepository {
   int calls = 0;
 
   @override
-  Future<MessageModel> sendMessageWithKey(int conversationId, String content, String key) async {
+  Future<MessageModel> sendMessageWithKey(
+    int conversationId,
+    String content,
+    String key, {
+    String direction = 'outbound',
+  }) async {
     calls++;
     if (!started.isCompleted) started.complete();
     await release.future;
     return MessageModel(
       id: 700,
       conversationId: conversationId,
-      direction: 'outbound',
+      direction: direction,
       messageType: 'text',
       content: content,
       createdAt: DateTime.now(),
@@ -57,14 +62,19 @@ class _RecordingSendRepository extends ConversationRepository {
   int calls = 0;
 
   @override
-  Future<MessageModel> sendMessageWithKey(int conversationId, String content, String key) async {
+  Future<MessageModel> sendMessageWithKey(
+    int conversationId,
+    String content,
+    String key, {
+    String direction = 'outbound',
+  }) async {
     calls++;
     keys.add(key);
     if (error != null) throw error!;
     return MessageModel(
       id: 500,
       conversationId: conversationId,
-      direction: 'outbound',
+      direction: direction,
       messageType: 'text',
       content: content,
       createdAt: DateTime.now(),

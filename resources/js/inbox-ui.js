@@ -738,8 +738,12 @@ const updateTopResponderBar = (responder, conv) => {
         } else if (responder.is_typing) {
             displayNameEl.textContent = `${responder.name} يكتب رداً الآن...`;
         } else if (responder.status === 'human_active') {
-            const assignedName = (conv && (conv.assigned_user_name || (conv.assigned_user && conv.assigned_user.name))) || responder.name;
-            displayNameEl.textContent = `المسؤول: ${assignedName}`;
+            const assignedName = (conv && (conv.assigned_user_name || (conv.assigned_user && conv.assigned_user.name))) || '';
+            if (assignedName && responder.name && assignedName !== responder.name) {
+                displayNameEl.textContent = `${responder.name} يتولى الرد (المسؤول: ${assignedName})`;
+            } else {
+                displayNameEl.textContent = `المسؤول: ${assignedName || responder.name || 'موظف'}`;
+            }
         } else if (responder.status === 'human_needed') {
             displayNameEl.textContent = 'المحادثة بانتظار استلام من أحد موظفي الفريق';
         } else if (responder.status === 'waiting') {

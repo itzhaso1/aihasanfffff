@@ -118,6 +118,7 @@ class CompanyWorkerDiscoveryApiTest extends TestCase
 
     public function test_company_api_refreshes_the_current_engagement_status_after_worker_acceptance(): void
     {
+        $this->travelTo(now()->setDate(2026, 10, 2));
         [$owner, $workspace] = $this->createCompany();
         [$worker, $profile] = $this->createWorker('Accepted Worker', true, [
             'profile_photo' => 'worker-profile-photos/accepted/photo.jpg',

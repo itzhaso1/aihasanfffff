@@ -147,8 +147,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _onScrollToBottomTap() {
-    _scrollToLatest(frames: 2);
-    setState(() => _stickToBottom = true);
+    _scrollToLatest(reveal: true);
   }
 
   @override
@@ -166,22 +165,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
-  void _scrollToLatest({int frames = 1, bool reveal = false}) {
-    void tick(int remaining) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (_scroll.hasClients) {
-          _scroll.jumpTo(0);
-        }
-        if (remaining > 0) {
-          tick(remaining - 1);
-        } else if (reveal) {
-          setState(() => _stickToBottom = true);
-        }
-      });
-    }
-
-    tick(frames);
+  void _scrollToLatest({bool reveal = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_scroll.hasClients && _scroll.offset > 0) {
+        _scroll.jumpTo(0);
+      }
+      if (reveal && !_stickToBottom) {
+        setState(() => _stickToBottom = true);
+      }
+    });
   }
 
   void _keepComposerFocus() {
@@ -229,7 +222,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     _keepComposerFocus();
     _stickToBottom = true;
-    _scrollToLatest(frames: 1);
+    _scrollToLatest();
     final accepted = await ref
         .read(chatControllerProvider(widget.conversationId).notifier)
         .send(outgoing);
@@ -1348,6 +1341,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   String _attachmentErrorMessage(AppLocalizations l10n, String code) {
+    if (RegExp(r'[\u0600-\u06FF]').hasMatch(code)) {
+      return code;
+    }
     return switch (code) {
       'unsupported' => l10n.chatAttachmentUnsupported,
       'tooLarge' => l10n.chatAttachmentTooLarge,
@@ -1620,13 +1616,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final prevLen = previous?.messages.length ?? 0;
       final grew = next.messages.length > prevLen;
       if (grew && _stickToBottom) {
-        _scrollToLatest(frames: 1);
+        _scrollToLatest();
       }
 
       if (!_openedAtBottom && next.messages.isNotEmpty) {
         _openedAtBottom = true;
         _stickToBottom = true;
-        _scrollToLatest(frames: 2);
+        _scrollToLatest();
       }
     });
 
@@ -2014,15 +2010,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             final keyToIndex = <String, int>{};
                             for (var i = 0; i < rows.length; i++) {
                               final row = rows[rows.length - 1 - i];
+                              final String k;
                               if (row.date != null) {
-                                keyToIndex['chat-date-${row.date!.millisecondsSinceEpoch}'] = i;
-                              } else if (row.message != null) {
+                                k = 'chat-date-${row.date!.millisecondsSinceEpoch}_${rows.length - 1 - i}';
+                              } else {
                                 final m = row.message!;
-                                final k = (m.clientId != null && m.clientId!.isNotEmpty)
+                                final base = (m.clientId != null && m.clientId!.isNotEmpty)
                                     ? m.clientId!
                                     : m.id.toString();
-                                keyToIndex['chat-msg-$k'] = i;
+                                k = 'chat-msg-${base}_${rows.length - 1 - i}';
                               }
+                              keyToIndex[k] = i;
                             }
                             final list = ListView.builder(
                               controller: _scroll,
@@ -2048,15 +2046,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 if (row.date != null) {
                                   return ChatDateChip(
                                     key: ValueKey(
-                                      'chat-date-${row.date!.millisecondsSinceEpoch}',
+                                      'chat-date-${row.date!.millisecondsSinceEpoch}_${rows.length - 1 - index}',
                                     ),
                                     date: row.date!,
                                   );
                                 }
                                 final m = row.message!;
+                                final base = (m.clientId != null && m.clientId!.isNotEmpty)
+                                    ? m.clientId!
+                                    : m.id.toString();
                                 return SizedBox(
                                   key: ValueKey(
-                                    'chat-msg-${(m.clientId != null && m.clientId!.isNotEmpty) ? m.clientId : m.id}',
+                                    'chat-msg-${base}_${rows.length - 1 - index}',
                                   ),
                                   width: double.infinity,
                                   child: ChatMessageBubble(

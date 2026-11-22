@@ -12,6 +12,7 @@ use App\Models\Workspace;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class WorkspaceAnalyticsService
 {

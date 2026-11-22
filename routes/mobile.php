@@ -62,6 +62,7 @@ Route::middleware(['auth:sanctum', 'throttle:mobile-api'])->group(function (): v
     Route::delete('/sessions', [DeviceSessionController::class, 'destroyAll']);
 
     Route::get('/workspaces', [WorkspaceController::class, 'index']);
+    Route::post('/workspaces/switch', [WorkspaceController::class, 'switch'])->middleware('throttle:mobile-write');
 
     Route::prefix('worker')->name('worker.')->group(function (): void {
         Route::get('/profile', [WorkerAccountController::class, 'profile'])->name('profile');
@@ -163,7 +164,9 @@ Route::middleware([
     'throttle:mobile-api',
 ])->group(function (): void {
     Route::get('/conversations', [ConversationController::class, 'index']);
+    Route::post('/conversations', [ConversationController::class, 'store'])->middleware('throttle:mobile-write');
     Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
+    Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy'])->middleware('throttle:mobile-write');
     Route::get('/conversations/{conversation}/messages', [ConversationController::class, 'messages']);
     Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])
         ->middleware('throttle:mobile-messages');
@@ -172,6 +175,27 @@ Route::middleware([
     Route::get('/conversations/bulk-messages/{bulkSend}', [ConversationBulkMessageController::class, 'show'])
         ->whereUuid('bulkSend');
     Route::post('/conversations/{conversation}/read', [ConversationController::class, 'read']);
+    Route::post('/conversations/{conversation}/archive', [ConversationController::class, 'archive']);
+    Route::post('/conversations/{conversation}/close', [ConversationController::class, 'close'])->middleware('throttle:mobile-write');
+    Route::post('/conversations/{conversation}/reopen', [ConversationController::class, 'reopen'])->middleware('throttle:mobile-write');
+    Route::post('/conversations/{conversation}/mute', [ConversationController::class, 'mute']);
+    Route::patch('/conversations/{conversation}/ai', [ConversationController::class, 'updateAi']);
+    Route::patch('/conversations/{conversation}/classification', [ConversationController::class, 'updateClassification']);
+    Route::post('/conversations/{conversation}/handoff', [ConversationHandoffController::class, 'requestHandoff']);
+    Route::post('/conversations/{conversation}/assign', [ConversationHandoffController::class, 'assign']);
+    Route::post('/conversations/{conversation}/takeover', [ConversationHandoffController::class, 'takeover']);
+    Route::post('/conversations/{conversation}/resolve-handoff', [ConversationHandoffController::class, 'resolve']);
+    Route::post('/conversations/{conversation}/resume-ai', [ConversationHandoffController::class, 'resumeAi']);
+    Route::post('/conversations/{conversation}/typing', [ConversationController::class, 'typing']);
+    Route::get('/conversations/{conversation}/presence', [ConversationController::class, 'presence']);
+    Route::post('/conversations/{conversation}/presence/ping', [ConversationController::class, 'presencePing']);
+    Route::post('/conversations/{conversation}/presence/leave', [ConversationController::class, 'presenceLeave']);
+
+    Route::post('/messages/{message}/attachments', [AttachmentController::class, 'store'])
+        ->middleware('throttle:mobile-attachments');
+    Route::get('/attachments/{attachment}/download', [AttachmentController::class, 'download'])
+        ->name('attachments.download')
+        ->middleware(['signed', 'throttle:mobile-attachments']);
 });
 
 Route::middleware([
@@ -222,7 +246,6 @@ Route::middleware([
     'throttle:mobile-api',
 ])->group(function (): void {
     Route::get('/workspaces/current', [WorkspaceController::class, 'current']);
-    Route::post('/workspaces/switch', [WorkspaceController::class, 'switch'])->middleware('throttle:mobile-write');
 
     Route::post('/devices', [DeviceController::class, 'store'])->middleware('throttle:mobile-write');
     Route::delete('/devices/{device}', [DeviceController::class, 'destroy']);
@@ -233,30 +256,6 @@ Route::middleware([
     Route::get('/analytics', [AnalyticsController::class, 'summary']);
     Route::get('/unread', [UnreadController::class, 'index']);
     Route::get('/search', [SearchController::class, 'search'])->middleware('throttle:mobile-search');
-
-    Route::post('/conversations', [ConversationController::class, 'store'])->middleware('throttle:mobile-write');
-    Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy'])->middleware('throttle:mobile-write');
-    Route::post('/conversations/{conversation}/archive', [ConversationController::class, 'archive']);
-    Route::post('/conversations/{conversation}/close', [ConversationController::class, 'close'])->middleware('throttle:mobile-write');
-    Route::post('/conversations/{conversation}/reopen', [ConversationController::class, 'reopen'])->middleware('throttle:mobile-write');
-    Route::post('/conversations/{conversation}/mute', [ConversationController::class, 'mute']);
-    Route::patch('/conversations/{conversation}/ai', [ConversationController::class, 'updateAi']);
-    Route::patch('/conversations/{conversation}/classification', [ConversationController::class, 'updateClassification']);
-    Route::post('/conversations/{conversation}/handoff', [ConversationHandoffController::class, 'requestHandoff']);
-    Route::post('/conversations/{conversation}/assign', [ConversationHandoffController::class, 'assign']);
-    Route::post('/conversations/{conversation}/takeover', [ConversationHandoffController::class, 'takeover']);
-    Route::post('/conversations/{conversation}/resolve-handoff', [ConversationHandoffController::class, 'resolve']);
-    Route::post('/conversations/{conversation}/resume-ai', [ConversationHandoffController::class, 'resumeAi']);
-    Route::post('/conversations/{conversation}/typing', [ConversationController::class, 'typing']);
-    Route::get('/conversations/{conversation}/presence', [ConversationController::class, 'presence']);
-    Route::post('/conversations/{conversation}/presence/ping', [ConversationController::class, 'presencePing']);
-    Route::post('/conversations/{conversation}/presence/leave', [ConversationController::class, 'presenceLeave']);
-
-    Route::post('/messages/{message}/attachments', [AttachmentController::class, 'store'])
-        ->middleware('throttle:mobile-attachments');
-    Route::get('/attachments/{attachment}/download', [AttachmentController::class, 'download'])
-        ->name('attachments.download')
-        ->middleware(['signed', 'throttle:mobile-attachments']);
 
     Route::middleware('workspace.feature:email')->group(function (): void {
         Route::post('/emails', [EmailController::class, 'send'])->middleware('throttle:mobile-email');
