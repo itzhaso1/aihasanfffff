@@ -11,7 +11,6 @@ use App\Events\Conversation\ConversationHandoffActivated;
 use App\Events\Conversation\ConversationHandoffAssigned;
 use App\Events\Conversation\ConversationHandoffRequested;
 use App\Events\Conversation\ConversationHandoffResolved;
-use App\Events\Realtime\ConversationUpdated;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
@@ -60,23 +59,34 @@ final class ConversationHandoffService
             return false;
         }
 
-        return DB::transaction(function () use ($conversation, $triggerMessage): bool {
+        $handoffNote = DB::transaction(function () use ($conversation, $triggerMessage): ?Message {
             $fresh = $conversation->fresh() ?? $conversation;
             if ($this->currentStatus($fresh)->blocksAi() && $this->currentStatus($fresh) !== ConversationHandoffStatus::Resolved) {
-                return false;
+                return null;
             }
 
-            $this->request(
+            $fresh = $this->performRequest(
                 $fresh,
                 ConversationHandoffReason::CustomerRequest,
                 $this->baseContext($fresh, 'customer', $triggerMessage),
                 queueImmediately: true,
             );
 
-            $this->recordInternalHandoffNote($fresh->fresh() ?? $fresh);
-
-            return true;
+            return $this->createInternalHandoffNote($fresh);
         });
+
+        if (! $handoffNote instanceof Message) {
+            return false;
+        }
+
+        $this->publishConversation($conversation->fresh() ?? $conversation);
+        app(InboxRealtimePublisher::class)->publishNewMessage(
+            $handoffNote,
+            $conversation->fresh() ?? $conversation,
+            ['origin' => 'handoff_ack'],
+        );
+
+        return true;
     }
 
     public function requestStaffReview(
@@ -93,22 +103,34 @@ final class ConversationHandoffService
             return false;
         }
 
-        return DB::transaction(function () use ($conversation, $triggerMessage, $reason): bool {
+        $handoffNote = DB::transaction(function () use ($conversation, $triggerMessage, $reason): ?Message {
             $fresh = $conversation->fresh() ?? $conversation;
             if ($this->currentStatus($fresh)->blocksAi()) {
-                return false;
+                return null;
             }
 
-            $this->request(
+            $fresh = $this->performRequest(
                 $fresh,
                 $reason,
                 $this->baseContext($fresh, 'staff_review', $triggerMessage),
                 queueImmediately: true,
             );
-            $this->recordInternalHandoffNote($fresh->fresh() ?? $fresh);
 
-            return true;
+            return $this->createInternalHandoffNote($fresh);
         });
+
+        if (! $handoffNote instanceof Message) {
+            return false;
+        }
+
+        $this->publishConversation($conversation->fresh() ?? $conversation);
+        app(InboxRealtimePublisher::class)->publishNewMessage(
+            $handoffNote,
+            $conversation->fresh() ?? $conversation,
+            ['origin' => 'handoff_ack'],
+        );
+
+        return true;
     }
 
     /**
@@ -120,70 +142,88 @@ final class ConversationHandoffService
         array $context = [],
         bool $queueImmediately = false,
     ): Conversation {
-        return DB::transaction(function () use ($conversation, $reason, $context, $queueImmediately): Conversation {
-            $fresh = $conversation->fresh() ?? $conversation;
-            $this->assertOpen($fresh);
+        $fresh = DB::transaction(fn (): Conversation => $this->performRequest(
+            $conversation->fresh() ?? $conversation,
+            $reason,
+            $context,
+            $queueImmediately,
+        ));
 
-            $status = $this->currentStatus($fresh);
-            if (in_array($status, [ConversationHandoffStatus::None, ConversationHandoffStatus::Resolved, ConversationHandoffStatus::Active, ConversationHandoffStatus::Assigned], true)) {
-                if ($status !== ConversationHandoffStatus::Requested && $status !== ConversationHandoffStatus::Queued) {
-                    $this->transition($fresh, ConversationHandoffStatus::Requested);
-                    $fresh = $fresh->fresh() ?? $fresh;
-                }
+        return $this->publishAndReturn($fresh);
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function performRequest(
+        Conversation $conversation,
+        ConversationHandoffReason $reason,
+        array $context = [],
+        bool $queueImmediately = false,
+    ): Conversation {
+        $fresh = $conversation->fresh() ?? $conversation;
+        $this->assertOpen($fresh);
+
+        $status = $this->currentStatus($fresh);
+        if (in_array($status, [ConversationHandoffStatus::None, ConversationHandoffStatus::Resolved, ConversationHandoffStatus::Active, ConversationHandoffStatus::Assigned], true)) {
+            if ($status !== ConversationHandoffStatus::Requested && $status !== ConversationHandoffStatus::Queued) {
+                $this->transition($fresh, ConversationHandoffStatus::Requested);
+                $fresh = $fresh->fresh() ?? $fresh;
             }
+        }
 
-            $fresh = $this->applyHandoffPayload($fresh, $reason, $context);
+        $fresh = $this->applyHandoffPayload($fresh, $reason, $context);
 
-            if ($queueImmediately && $this->currentStatus($fresh) === ConversationHandoffStatus::Requested) {
-                $fresh = $this->transition($fresh, ConversationHandoffStatus::Queued);
-            }
+        if ($queueImmediately && $this->currentStatus($fresh) === ConversationHandoffStatus::Requested) {
+            $fresh = $this->transition($fresh, ConversationHandoffStatus::Queued);
+        }
 
-            $fresh->update([
-                'ai_enabled' => false,
-                'assigned_user_id' => null,
-                'assigned_worker_engagement_id' => null,
-                'handoff_assigned_at' => null,
-                'responder_type' => ConversationResponderService::TYPE_NONE,
-                'responder_name' => 'فريق العمل (بانتظار الاستلام)',
-                'responder_assigned_at' => now(),
-            ]);
-            $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
+        $fresh->update([
+            'ai_enabled' => false,
+            'assigned_user_id' => null,
+            'assigned_worker_engagement_id' => null,
+            'handoff_assigned_at' => null,
+            'responder_type' => ConversationResponderService::TYPE_NONE,
+            'responder_name' => 'فريق العمل (بانتظار الاستلام)',
+            'responder_assigned_at' => now(),
+        ]);
+        $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
 
-            $this->responderService->recordTransition(
-                $fresh,
-                ConversationResponderService::TYPE_NONE,
-                null,
-                'handoff_requested',
-                (string) ($context['requested_by'] ?? 'customer'),
-                reason: $reason->value,
-            );
+        $this->responderService->recordTransition(
+            $fresh,
+            ConversationResponderService::TYPE_NONE,
+            null,
+            'handoff_requested',
+            (string) ($context['requested_by'] ?? 'customer'),
+            reason: $reason->value,
+        );
 
-            event(new ConversationHandoffRequested($fresh, $this->summaryBuilder->build($fresh)));
-            $this->publishConversation($fresh);
+        event(new ConversationHandoffRequested($fresh, $this->summaryBuilder->build($fresh)));
 
-            Log::info('conversation.handoff.requested', [
-                'workspace_id' => (int) $fresh->workspace_id,
-                'conversation_id' => (int) $fresh->id,
-                'reason' => $reason->value,
-                'handoff_status' => $fresh->handoff_status instanceof ConversationHandoffStatus
-                    ? $fresh->handoff_status->value
-                    : (string) $fresh->handoff_status,
-            ]);
+        Log::info('conversation.handoff.requested', [
+            'workspace_id' => (int) $fresh->workspace_id,
+            'conversation_id' => (int) $fresh->id,
+            'reason' => $reason->value,
+            'handoff_status' => $fresh->handoff_status instanceof ConversationHandoffStatus
+                ? $fresh->handoff_status->value
+                : (string) $fresh->handoff_status,
+        ]);
 
-            return $fresh->fresh() ?? $fresh;
-        });
+        return $fresh->fresh() ?? $fresh;
     }
 
     public function queue(Conversation $conversation): Conversation
     {
-        return DB::transaction(function () use ($conversation): Conversation {
+        $fresh = DB::transaction(function () use ($conversation): Conversation {
             $fresh = $conversation->fresh() ?? $conversation;
             $this->assertOpen($fresh);
             $fresh = $this->transition($fresh, ConversationHandoffStatus::Queued);
             $fresh->update(['ai_enabled' => false]);
 
-            return $this->publishAndReturn($fresh);
+            return $fresh->fresh() ?? $fresh;
         });
+
+        return $this->publishAndReturn($fresh);
     }
 
     public function assign(
@@ -192,93 +232,107 @@ final class ConversationHandoffService
         ?WorkerEngagement $workerEngagement = null,
         ?User $actor = null,
     ): Conversation {
-        return DB::transaction(function () use ($conversation, $assignee, $workerEngagement, $actor): Conversation {
-            $fresh = $conversation->fresh() ?? $conversation;
-            $this->assertOpen($fresh);
-            if ($workerEngagement instanceof WorkerEngagement) {
-                $this->assertWorkerEngagement($fresh, $assignee, $workerEngagement);
-            } else {
-                $this->assertWorkspaceMember($fresh, $assignee);
-            }
-            $previousWorkerEngagementId = $fresh->assigned_worker_engagement_id;
+        $fresh = DB::transaction(fn (): Conversation => $this->performAssign(
+            $conversation->fresh() ?? $conversation,
+            $assignee,
+            $workerEngagement,
+            $actor,
+        ));
 
-            $fresh = $this->transition($fresh, ConversationHandoffStatus::Assigned);
-            $fresh->update([
-                'assigned_user_id' => $assignee->id,
-                'assigned_worker_engagement_id' => $workerEngagement?->id,
-                'handoff_assigned_at' => now(),
-                'ai_enabled' => false,
-            ]);
-            $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
+        return $this->publishAndReturn($fresh);
+    }
 
-            $this->responderService->recordTransition(
-                $fresh,
-                ConversationResponderService::TYPE_HUMAN,
-                $assignee,
-                'assigned_to_human',
-                'user',
-                $actor,
-                'إسناد المحادثة إلى موظف',
+    private function performAssign(
+        Conversation $conversation,
+        User $assignee,
+        ?WorkerEngagement $workerEngagement = null,
+        ?User $actor = null,
+    ): Conversation {
+        $fresh = $conversation->fresh() ?? $conversation;
+        $this->assertOpen($fresh);
+        if ($workerEngagement instanceof WorkerEngagement) {
+            $this->assertWorkerEngagement($fresh, $assignee, $workerEngagement);
+        } else {
+            $this->assertWorkspaceMember($fresh, $assignee);
+        }
+        $previousWorkerEngagementId = $fresh->assigned_worker_engagement_id;
+
+        $fresh = $this->transition($fresh, ConversationHandoffStatus::Assigned);
+        $fresh->update([
+            'assigned_user_id' => $assignee->id,
+            'assigned_worker_engagement_id' => $workerEngagement?->id,
+            'handoff_assigned_at' => now(),
+            'ai_enabled' => false,
+        ]);
+        $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
+
+        $this->responderService->recordTransition(
+            $fresh,
+            ConversationResponderService::TYPE_HUMAN,
+            $assignee,
+            'assigned_to_human',
+            'user',
+            $actor,
+            'إسناد المحادثة إلى موظف',
+        );
+
+        event(new ConversationHandoffAssigned($fresh, $assignee));
+
+        if ($workerEngagement instanceof WorkerEngagement) {
+            $this->auditLog->log(
+                action: 'worker.inbox.conversation.assigned',
+                entityType: Conversation::class,
+                entityId: $fresh->id,
+                newValues: [
+                    'assigned_user_id' => $assignee->id,
+                    'assigned_worker_engagement_id' => $workerEngagement->id,
+                ],
+                actor: $actor,
+                meta: [
+                    'conversation_id' => $fresh->id,
+                    'worker_engagement_id' => $workerEngagement->id,
+                    'worker_profile_id' => $workerEngagement->worker_profile_id,
+                ],
+                workspaceId: $fresh->workspace_id,
             );
 
-            event(new ConversationHandoffAssigned($fresh, $assignee));
+            $this->workerActivity->recordOperationalEvent(
+                $workerEngagement,
+                $assignee,
+                WorkerActivityEventType::ConversationAssigned,
+                Conversation::class,
+                (int) $fresh->id,
+                [
+                    'conversation_id' => $fresh->id,
+                    'assigned_by_user_id' => $actor?->id,
+                ],
+            );
+        } elseif ($previousWorkerEngagementId !== null) {
+            $this->auditLog->log(
+                action: 'worker.inbox.conversation.unassigned',
+                entityType: Conversation::class,
+                entityId: $fresh->id,
+                oldValues: [
+                    'assigned_worker_engagement_id' => (int) $previousWorkerEngagementId,
+                ],
+                newValues: [
+                    'assigned_user_id' => $assignee->id,
+                ],
+                actor: $actor,
+                meta: [
+                    'conversation_id' => $fresh->id,
+                    'worker_engagement_id' => (int) $previousWorkerEngagementId,
+                ],
+                workspaceId: $fresh->workspace_id,
+            );
+        }
 
-            if ($workerEngagement instanceof WorkerEngagement) {
-                $this->auditLog->log(
-                    action: 'worker.inbox.conversation.assigned',
-                    entityType: Conversation::class,
-                    entityId: $fresh->id,
-                    newValues: [
-                        'assigned_user_id' => $assignee->id,
-                        'assigned_worker_engagement_id' => $workerEngagement->id,
-                    ],
-                    actor: $actor,
-                    meta: [
-                        'conversation_id' => $fresh->id,
-                        'worker_engagement_id' => $workerEngagement->id,
-                        'worker_profile_id' => $workerEngagement->worker_profile_id,
-                    ],
-                    workspaceId: $fresh->workspace_id,
-                );
-
-                $this->workerActivity->recordOperationalEvent(
-                    $workerEngagement,
-                    $assignee,
-                    WorkerActivityEventType::ConversationAssigned,
-                    Conversation::class,
-                    (int) $fresh->id,
-                    [
-                        'conversation_id' => $fresh->id,
-                        'assigned_by_user_id' => $actor?->id,
-                    ],
-                );
-            } elseif ($previousWorkerEngagementId !== null) {
-                $this->auditLog->log(
-                    action: 'worker.inbox.conversation.unassigned',
-                    entityType: Conversation::class,
-                    entityId: $fresh->id,
-                    oldValues: [
-                        'assigned_worker_engagement_id' => (int) $previousWorkerEngagementId,
-                    ],
-                    newValues: [
-                        'assigned_user_id' => $assignee->id,
-                    ],
-                    actor: $actor,
-                    meta: [
-                        'conversation_id' => $fresh->id,
-                        'worker_engagement_id' => (int) $previousWorkerEngagementId,
-                    ],
-                    workspaceId: $fresh->workspace_id,
-                );
-            }
-
-            return $this->publishAndReturn($fresh);
-        });
+        return $fresh->fresh() ?? $fresh;
     }
 
     public function takeover(Conversation $conversation, User $actor): Conversation
     {
-        return DB::transaction(function () use ($conversation, $actor): Conversation {
+        $fresh = DB::transaction(function () use ($conversation, $actor): Conversation {
             $fresh = $conversation->fresh() ?? $conversation;
             $this->assertOpen($fresh);
             $this->assertWorkspaceMember($fresh, $actor);
@@ -290,7 +344,7 @@ final class ConversationHandoffService
 
             $status = $this->currentStatus($fresh);
             if ($status === ConversationHandoffStatus::None) {
-                $fresh = $this->request(
+                $fresh = $this->performRequest(
                     $fresh,
                     ConversationHandoffReason::AgentRequested,
                     $this->baseContext($fresh, 'staff'),
@@ -301,9 +355,9 @@ final class ConversationHandoffService
             }
 
             if (in_array($this->currentStatus($fresh), [ConversationHandoffStatus::Requested, ConversationHandoffStatus::Queued], true)) {
-                $fresh = $this->assign($fresh, $actor, actor: $actor);
+                $fresh = $this->performAssign($fresh, $actor, actor: $actor);
             } elseif ($fresh->assigned_user_id !== $actor->id) {
-                $fresh = $this->assign($fresh, $actor, actor: $actor);
+                $fresh = $this->performAssign($fresh, $actor, actor: $actor);
             }
 
             $fresh = $this->transition($fresh->fresh() ?? $fresh, ConversationHandoffStatus::Active);
@@ -322,13 +376,15 @@ final class ConversationHandoffService
 
             event(new ConversationHandoffActivated($fresh, $actor));
 
-            return $this->publishAndReturn($fresh);
+            return $fresh->fresh() ?? $fresh;
         });
+
+        return $this->publishAndReturn($fresh);
     }
 
     public function resolve(Conversation $conversation, User $actor): Conversation
     {
-        return DB::transaction(function () use ($conversation, $actor): Conversation {
+        $fresh = DB::transaction(function () use ($conversation, $actor): Conversation {
             $fresh = $conversation->fresh() ?? $conversation;
             $this->assertOpen($fresh);
             $this->assertWorkspaceMember($fresh, $actor);
@@ -360,13 +416,15 @@ final class ConversationHandoffService
 
             event(new ConversationHandoffResolved($fresh, $actor));
 
-            return $this->publishAndReturn($fresh);
+            return $fresh->fresh() ?? $fresh;
         });
+
+        return $this->publishAndReturn($fresh);
     }
 
     public function resumeAi(Conversation $conversation, User $actor): Conversation
     {
-        return DB::transaction(function () use ($conversation, $actor): Conversation {
+        $fresh = DB::transaction(function () use ($conversation, $actor): Conversation {
             $fresh = $conversation->fresh() ?? $conversation;
             $this->assertOpen($fresh);
             $this->assertWorkspaceMember($fresh, $actor);
@@ -428,13 +486,15 @@ final class ConversationHandoffService
                 );
             }
 
-            return $this->publishAndReturn($fresh);
+            return $fresh->fresh() ?? $fresh;
         });
+
+        return $this->publishAndReturn($fresh);
     }
 
     public function disableAi(Conversation $conversation, User $actor): Conversation
     {
-        return DB::transaction(function () use ($conversation, $actor): Conversation {
+        $fresh = DB::transaction(function () use ($conversation, $actor): Conversation {
             $fresh = $conversation->fresh() ?? $conversation;
             $this->assertWorkspaceMember($fresh, $actor);
 
@@ -443,10 +503,11 @@ final class ConversationHandoffService
             }
 
             $fresh->update(['ai_enabled' => false]);
-            $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
 
-            return $this->publishAndReturn($fresh);
+            return $this->refreshSummary($fresh->fresh() ?? $fresh);
         });
+
+        return $this->publishAndReturn($fresh);
     }
 
     /**
@@ -623,7 +684,7 @@ final class ConversationHandoffService
         return $conversation->fresh() ?? $conversation;
     }
 
-    private function recordInternalHandoffNote(Conversation $conversation): void
+    private function createInternalHandoffNote(Conversation $conversation): Message
     {
         $content = 'تم تحويل المحادثة للفريق، وسيتم الرد عليك من أحد أعضاء الفريق.';
 
@@ -643,11 +704,7 @@ final class ConversationHandoffService
 
         $conversation->update(['last_message_at' => $message->created_at]);
 
-        app(InboxRealtimePublisher::class)->publishNewMessage(
-            $message,
-            $conversation->fresh() ?? $conversation,
-            ['origin' => 'handoff_ack'],
-        );
+        return $message;
     }
 
     private function assertOpen(Conversation $conversation): void
@@ -710,10 +767,6 @@ final class ConversationHandoffService
 
     private function publishConversation(Conversation $conversation): void
     {
-        try {
-            event(new ConversationUpdated($conversation));
-        } catch (\Throwable) {
-            // Realtime is best-effort.
-        }
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation);
     }
 }

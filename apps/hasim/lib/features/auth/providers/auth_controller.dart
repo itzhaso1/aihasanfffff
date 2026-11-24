@@ -87,6 +87,7 @@ class AuthController extends StateNotifier<AuthState> {
   final Ref _ref;
   StreamSubscription? _unauthSub;
   bool _clearingUnauthorized = false;
+  int _bootstrapEpoch = 0;
 
   void _wireUnauthorized() {
     final api = _ref.read(apiClientProvider);
@@ -117,26 +118,51 @@ class AuthController extends StateNotifier<AuthState> {
   /// Ends a hung bootstrap (secure storage / network) so splash can reach login or home.
   Future<void> abortBootstrapAsGuest() async {
     if (!state.bootstrapping) return;
-    final token = state.token ?? await _ref.read(secureStoreProvider).readToken();
+    String? token = state.token;
+    if (token == null) {
+      try {
+        token = await _ref
+            .read(secureStoreProvider)
+            .readToken()
+            .timeout(const Duration(milliseconds: 500));
+      } catch (_) {
+        token = null;
+      }
+    }
+    if (!mounted || !state.bootstrapping) return;
     if (token != null && token.isNotEmpty) {
       final prefs = _ref.read(prefsStoreProvider);
       final wsId = prefs.workspaceId;
+      if (wsId != null && _ref.read(inboxSessionProvider).workspaceId != wsId) {
+        _ref.read(inboxSessionProvider).beginWorkspace(wsId);
+      }
       state = state.copyWith(
         bootstrapping: false,
         token: token,
-        workspace: state.workspace ??
+        workspace:
+            state.workspace ??
             (wsId != null ? WorkspaceModel(id: wsId, name: '') : null),
       );
       _syncWorkerProfileId();
       _startInboxServices();
       return;
     }
+    _bootstrapEpoch++;
     state = const AuthState(bootstrapping: false);
     _syncWorkerProfileId();
-    await _wipeLocalSession();
+    unawaited(_wipeLocalSessionSafely());
+  }
+
+  Future<void> _wipeLocalSessionSafely() async {
+    try {
+      await _wipeLocalSession();
+    } catch (e, st) {
+      debugPrint('[Hasim] wipeLocalSession failed: $e\n$st');
+    }
   }
 
   Future<void> bootstrap() async {
+    final epoch = ++_bootstrapEpoch;
     try {
       String? token;
       try {
@@ -147,6 +173,7 @@ class AuthController extends StateNotifier<AuthState> {
       } catch (_) {
         token = null;
       }
+      if (!mounted || epoch != _bootstrapEpoch) return;
       if (token == null || token.isEmpty) {
         state = state.copyWith(bootstrapping: false, clearSession: true);
         return;
@@ -162,9 +189,11 @@ class AuthController extends StateNotifier<AuthState> {
       } catch (_) {
         snapshot = null;
       }
+      if (!mounted || epoch != _bootstrapEpoch) return;
       if (snapshot != null) {
         try {
           await _restoreSnapshot(token, snapshot);
+          if (!mounted || epoch != _bootstrapEpoch) return;
           _startInboxServices();
           unawaited(_refreshAccount(allowWorkspaceReset: false));
           return;
@@ -180,8 +209,12 @@ class AuthController extends StateNotifier<AuthState> {
         await _refreshAccount(
           allowWorkspaceReset: true,
         ).timeout(const Duration(seconds: 3));
+        if (!mounted || epoch != _bootstrapEpoch) return;
         _startInboxServices();
       } catch (_) {
+        if (!mounted || epoch != _bootstrapEpoch || !state.bootstrapping) {
+          return;
+        }
         // Network timeout / connection error during bootstrap:
         // If we have token, keep user logged in offline instead of wiping everything!
         if (token.isNotEmpty) {
@@ -200,7 +233,7 @@ class AuthController extends StateNotifier<AuthState> {
     } catch (e, st) {
       debugPrint('[Hasim] bootstrap uncaught error: $e\n$st');
     } finally {
-      if (state.bootstrapping) {
+      if (mounted && epoch == _bootstrapEpoch && state.bootstrapping) {
         state = state.copyWith(bootstrapping: false);
       }
     }
@@ -260,6 +293,7 @@ class AuthController extends StateNotifier<AuthState> {
         .read(authRepositoryProvider)
         .me()
         .timeout(const Duration(seconds: 10));
+    if (!mounted || state.token != token) return;
     final prefs = _ref.read(prefsStoreProvider);
     WorkspaceModel? workspace;
     if (!me.participant.isIndependentWorker) {
@@ -324,6 +358,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> _applyLogin(LoginResult result) async {
+    _bootstrapEpoch++;
     await _ref.read(inboxLocalStoreProvider).clearAll();
     await _ref.read(secureStoreProvider).saveToken(result.token);
     final workspace = result.participant.isIndependentWorker
@@ -596,15 +631,21 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> _wipeLocalSession() async {
+    final epoch = ++_bootstrapEpoch;
     await _ref.read(realtimeServiceProvider).stop();
+    if (!mounted || epoch != _bootstrapEpoch) return;
     _ref.read(realtimeServiceProvider).watchConversation(null);
     await _ref.read(outboxWorkerProvider).stop();
+    if (!mounted || epoch != _bootstrapEpoch) return;
     _ref.read(inboxSessionProvider).clear();
     await _ref.read(inboxLocalStoreProvider).clearAll();
+    if (!mounted || epoch != _bootstrapEpoch) return;
     await _ref.read(secureStoreProvider).clearToken();
+    if (!mounted || epoch != _bootstrapEpoch) return;
     await _ref.read(prefsStoreProvider).clearPushDevice();
     await _ref.read(prefsStoreProvider).setCompanyPushAllowed(false);
     await _ref.read(prefsStoreProvider).setWorkspaceId(null);
+    if (!mounted || epoch != _bootstrapEpoch) return;
     _ref.read(apiClientProvider).resetUnauthorizedGate();
     state = const AuthState(bootstrapping: false);
     _syncWorkerProfileId();

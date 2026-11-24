@@ -8,6 +8,7 @@ use App\Http\Resources\Mobile\ConversationResource;
 use App\Http\Resources\Mobile\MessageResource;
 use App\Models\Conversation;
 use App\Models\ConversationUserState;
+use App\Models\Message;
 use App\Services\Conversation\ConversationClassificationService;
 use App\Services\Conversation\ConversationPresenceService;
 use App\Services\Conversation\ConversationService;
@@ -55,6 +56,7 @@ class ConversationController extends MobileController
             'customer_priority' => $request->input('customer_priority'),
             'payment_status' => $request->input('payment_status'),
             'review_status' => $request->input('review_status'),
+            'updated_after' => $request->input('updated_after'),
             'per_page' => $perPage,
         ]);
 
@@ -115,17 +117,22 @@ class ConversationController extends MobileController
 
         $afterId = $request->integer('after_id', 0);
         if ($afterId > 0) {
+            $limit = max(1, min(100, (int) $request->input('per_page', 100)));
             $messages = Message::query()
                 ->where('conversation_id', $conversation->id)
                 ->where('id', '>', $afterId)
                 ->with(['user:id,name', 'customer:id,name', 'attachments'])
                 ->orderBy('id', 'asc')
-                ->limit(50)
+                ->limit($limit)
                 ->get();
 
             return $this->ok(
                 MessageResource::collection($messages),
-                ['count' => $messages->count(), 'polled' => true],
+                [
+                    'count' => $messages->count(),
+                    'has_more' => $messages->count() === $limit,
+                    'polled' => true,
+                ],
             );
         }
 

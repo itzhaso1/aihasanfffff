@@ -16,8 +16,12 @@ class SecureStore {
 
   String? _cachedToken;
   bool _tokenLoaded = false;
+  int _cacheEpoch = 0;
+  Future<String?>? _inFlightRead;
 
   Future<void> saveToken(String token) async {
+    _cacheEpoch++;
+    _inFlightRead = null;
     _cachedToken = token;
     _tokenLoaded = true;
     try {
@@ -25,22 +29,36 @@ class SecureStore {
     } catch (_) {}
   }
 
-  Future<String?> readToken() async {
+  Future<String?> readToken() {
     if (_tokenLoaded) {
-      return _cachedToken;
+      return Future<String?>.value(_cachedToken);
     }
+    return _inFlightRead ??= _performReadToken();
+  }
+
+  Future<String?> _performReadToken() async {
+    final epoch = _cacheEpoch;
+    String? value;
     try {
-      _cachedToken = await _storage
+      value = await _storage
           .read(key: _tokenKey)
           .timeout(const Duration(seconds: 2));
     } catch (_) {
-      _cachedToken = null;
+      value = null;
+    } finally {
+      _inFlightRead = null;
     }
-    _tokenLoaded = true;
+    if (epoch == _cacheEpoch) {
+      _cachedToken = value;
+      _tokenLoaded = true;
+      return _cachedToken;
+    }
     return _cachedToken;
   }
 
   Future<void> clearToken() async {
+    _cacheEpoch++;
+    _inFlightRead = null;
     _cachedToken = null;
     _tokenLoaded = true;
     try {
@@ -49,6 +67,8 @@ class SecureStore {
   }
 
   void invalidateCache() {
+    _cacheEpoch++;
+    _inFlightRead = null;
     _cachedToken = null;
     _tokenLoaded = false;
   }

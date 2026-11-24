@@ -68,6 +68,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _chatMenuKey = GlobalKey();
   bool _openedAtBottom = false;
   bool _stickToBottom = true;
+  int _unseenBelowCount = 0;
   bool _emojiPickerOpen = false;
   bool _attachMenuOpen = false;
   bool _findingMessages = false;
@@ -141,8 +142,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .loadOlder();
     }
     final atLatest = pos.pixels <= 96;
-    if (atLatest != _stickToBottom) {
-      setState(() => _stickToBottom = atLatest);
+    if (atLatest != _stickToBottom || (atLatest && _unseenBelowCount > 0)) {
+      setState(() {
+        _stickToBottom = atLatest;
+        if (atLatest) _unseenBelowCount = 0;
+      });
     }
   }
 
@@ -171,8 +175,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (_scroll.hasClients && _scroll.offset > 0) {
         _scroll.jumpTo(0);
       }
-      if (reveal && !_stickToBottom) {
-        setState(() => _stickToBottom = true);
+      if ((reveal && !_stickToBottom) || _unseenBelowCount > 0) {
+        setState(() {
+          if (reveal) _stickToBottom = true;
+          _unseenBelowCount = 0;
+        });
       }
     });
   }
@@ -1613,16 +1620,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
       if (next.messages.isEmpty) return;
 
-      final prevLen = previous?.messages.length ?? 0;
-      final grew = next.messages.length > prevLen;
-      if (grew && _stickToBottom) {
-        _scrollToLatest();
-      }
-
       if (!_openedAtBottom && next.messages.isNotEmpty) {
         _openedAtBottom = true;
         _stickToBottom = true;
         _scrollToLatest();
+        return;
+      }
+
+      final prevLast = previous?.messages.lastOrNull;
+      final nextLast = next.messages.last;
+      final appendedAtEnd =
+          prevLast == null ||
+          prevLast.id != nextLast.id ||
+          (prevLast.clientId != nextLast.clientId &&
+              nextLast.clientId != null);
+
+      if (appendedAtEnd) {
+        if (_stickToBottom || nextLast.localPending) {
+          _scrollToLatest();
+        } else if (!nextLast.isOutbound) {
+          setState(() => _unseenBelowCount++);
+        }
       }
     });
 
@@ -2008,19 +2026,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             final composerPad =
                                 _composerHeight + 8 + attachDock + emojiDock;
                             final keyToIndex = <String, int>{};
-                            for (var i = 0; i < rows.length; i++) {
-                              final row = rows[rows.length - 1 - i];
-                              final String k;
+                            String rowKey(_ChatRow row) {
                               if (row.date != null) {
-                                k = 'chat-date-${row.date!.millisecondsSinceEpoch}_${rows.length - 1 - i}';
-                              } else {
-                                final m = row.message!;
-                                final base = (m.clientId != null && m.clientId!.isNotEmpty)
-                                    ? m.clientId!
-                                    : m.id.toString();
-                                k = 'chat-msg-${base}_${rows.length - 1 - i}';
+                                return 'chat-date-${row.date!.millisecondsSinceEpoch}';
                               }
-                              keyToIndex[k] = i;
+                              final m = row.message!;
+                              final base = m.id > 0
+                                  ? 's-${m.id}'
+                                  : 'c-${m.clientId ?? m.id}';
+                              return 'chat-msg-$base';
+                            }
+
+                            for (var i = 0; i < rows.length; i++) {
+                              keyToIndex[rowKey(rows[rows.length - 1 - i])] = i;
                             }
                             final list = ListView.builder(
                               controller: _scroll,
@@ -2043,22 +2061,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               itemCount: rows.length,
                               itemBuilder: (context, index) {
                                 final row = rows[rows.length - 1 - index];
+                                final keyStr = rowKey(row);
                                 if (row.date != null) {
                                   return ChatDateChip(
-                                    key: ValueKey(
-                                      'chat-date-${row.date!.millisecondsSinceEpoch}_${rows.length - 1 - index}',
-                                    ),
+                                    key: ValueKey(keyStr),
                                     date: row.date!,
                                   );
                                 }
                                 final m = row.message!;
-                                final base = (m.clientId != null && m.clientId!.isNotEmpty)
-                                    ? m.clientId!
-                                    : m.id.toString();
                                 return SizedBox(
-                                  key: ValueKey(
-                                    'chat-msg-${base}_${rows.length - 1 - index}',
-                                  ),
+                                  key: ValueKey(keyStr),
                                   width: double.infinity,
                                   child: ChatMessageBubble(
                                     message: m,
@@ -2258,13 +2270,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 child: InkWell(
                   onTap: _onScrollToBottomTap,
                   borderRadius: BorderRadius.circular(24),
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 26,
-                      color: HasimTokens.chatGreen,
-                    ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: _unseenBelowCount > 0
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: HasimTokens.chatGreen,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  _unseenBelowCount > 99
+                                      ? '99+'
+                                      : '$_unseenBelowCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                size: 24,
+                                color: HasimTokens.chatGreen,
+                              ),
+                            ],
+                          )
+                        : const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 26,
+                            color: HasimTokens.chatGreen,
+                          ),
                   ),
                 ),
               ),

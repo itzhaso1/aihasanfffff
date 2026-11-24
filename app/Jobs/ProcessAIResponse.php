@@ -21,6 +21,7 @@ use App\Services\Inbox\InboxHumanHandoffDetector;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Observability\OpsMetricsRecorder;
+use App\Support\Observability\CorrelationContext;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -50,6 +51,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         public readonly int $conversationId,
         public readonly int $messageId,
         public readonly ?int $workspaceId = null,
+        public readonly ?string $correlationId = null,
     ) {
         $this->onQueue((string) config('inbox.queues.ai', 'ai'));
     }
@@ -69,6 +71,23 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
     ): void {
         $started = microtime(true);
         $generationId = (string) Str::uuid();
+        CorrelationContext::set($this->correlationId);
+
+        try {
+            $this->runGeneration($aiService, $channelOutbound, $eligibility, $outputValidator, $started, $generationId);
+        } finally {
+            CorrelationContext::reset();
+        }
+    }
+
+    private function runGeneration(
+        AIService $aiService,
+        ChannelOutboundService $channelOutbound,
+        AiReplyEligibility $eligibility,
+        AiOutputValidator $outputValidator,
+        float $started,
+        string $generationId,
+    ): void {
 
         $conversation = Conversation::withoutGlobalScopes()->find($this->conversationId);
         $incomingMessage = Message::withoutGlobalScopes()
@@ -479,6 +498,8 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         }
 
         $outboundMessage = null;
+        $outboundChannel = $channelOutbound->resolveOutboundChannel($conversationFresh);
+        $initialDeliveryStatus = $channelOutbound->supportsChannel($outboundChannel) ? 'pending' : 'sent';
 
         try {
             DB::transaction(function () use (
@@ -487,6 +508,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 $eligibility,
                 $validated,
                 $generationId,
+                $initialDeliveryStatus,
                 &$outboundMessage,
             ): void {
                 if ($this->existingReply($conversationFresh, $incomingMessage)) {
@@ -510,6 +532,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                     'message_type' => ! empty($stagedAttachments) ? 'image' : 'text',
                     'content' => $validated,
                     'ai_generated' => true,
+                    'delivery_status' => $initialDeliveryStatus,
                     'external_message_id' => 'ai_reply:'.$incomingMessage->id,
                     'metadata' => [
                         'in_reply_to_message_id' => $incomingMessage->id,
@@ -557,7 +580,9 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             app(InboxHumanHandoffService::class)->recordCustomerHandoff($conversationFresh, $incomingMessage);
         }
 
-        $conversationFresh->update(['last_message_at' => now()]);
+        $conversationFresh->update(['last_message_at' => $outboundMessage->created_at ?? now()]);
+        $conversationFresh = $conversationFresh->fresh() ?? $conversationFresh;
+        $outboundMessage->loadMissing(['attachments', 'user:id,name', 'customer:id,name']);
 
         app(InboxRealtimePublisher::class)->publishNewMessage(
             $outboundMessage,
@@ -570,7 +595,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         );
 
         $channelOutbound->queueOutboundForMessage(
-            $conversationFresh->fresh() ?? $conversationFresh,
+            $conversationFresh,
             $outboundMessage,
         );
 

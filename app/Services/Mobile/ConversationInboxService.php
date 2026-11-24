@@ -2,7 +2,6 @@
 
 namespace App\Services\Mobile;
 
-use App\Events\Realtime\ConversationUpdated;
 use App\Models\Conversation;
 use App\Models\ConversationUserState;
 use App\Models\Message;
@@ -11,11 +10,13 @@ use App\Models\Workspace;
 use App\Services\Conversation\ConversationHandoffService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Inbox\InboxHumanHandoffService;
+use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Worker\WorkerInboxService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class ConversationInboxService
@@ -41,6 +42,15 @@ class ConversationInboxService
         $customerPriority = trim((string) ($filters['customer_priority'] ?? ''));
         $paymentStatus = trim((string) ($filters['payment_status'] ?? ''));
         $reviewStatus = trim((string) ($filters['review_status'] ?? ''));
+        $updatedAfterRaw = trim((string) ($filters['updated_after'] ?? ''));
+        $updatedAfter = null;
+        if ($updatedAfterRaw !== '') {
+            try {
+                $updatedAfter = Carbon::parse($updatedAfterRaw);
+            } catch (\Throwable) {
+                $updatedAfter = null;
+            }
+        }
 
         $query = Conversation::query()
             ->with([
@@ -121,6 +131,13 @@ class ConversationInboxService
                     ->orWhereHas('messages', function (Builder $messages) use ($search): void {
                         $messages->where('content', 'like', '%'.$search.'%');
                     });
+            });
+        }
+
+        if ($updatedAfter !== null) {
+            $query->where(function (Builder $q) use ($updatedAfter): void {
+                $q->where('conversations.updated_at', '>=', $updatedAfter)
+                    ->orWhere('conversations.last_message_at', '>=', $updatedAfter);
             });
         }
 
@@ -228,20 +245,45 @@ class ConversationInboxService
 
         $idempotencyKey = isset($data['idempotency_key']) ? trim((string) $data['idempotency_key']) : '';
 
-        return DB::transaction(function () use ($conversation, $actor, $payload, $idempotencyKey): Message {
+        /** @var array{message: Message, recentlyCreated: bool, conversation: Conversation} $txResult */
+        $txResult = DB::transaction(function () use ($conversation, $actor, $payload, $idempotencyKey): array {
             Conversation::query()->whereKey($conversation->id)->lockForUpdate()->first();
 
             if ($idempotencyKey !== '') {
                 $existing = $this->findMessageByIdempotencyKey($conversation, $idempotencyKey);
                 if ($existing) {
-                    return $existing->loadMissing(['user', 'customer', 'attachments']);
+                    return [
+                        'message' => $existing->loadMissing(['user', 'customer', 'attachments']),
+                        'recentlyCreated' => false,
+                        'conversation' => $conversation->fresh() ?? $conversation,
+                    ];
                 }
             }
 
-            $message = $this->conversationService->addMessage($conversation, $payload, $actor);
+            $message = $this->conversationService->addMessage(
+                $conversation,
+                $payload,
+                $actor,
+                dispatchSideEffects: false,
+            );
 
-            return $message->load(['user', 'customer', 'attachments']);
+            return [
+                'message' => $message->load(['user', 'customer', 'attachments']),
+                'recentlyCreated' => $message->wasRecentlyCreated,
+                'conversation' => $conversation->fresh() ?? $conversation,
+            ];
         });
+
+        if ($txResult['recentlyCreated']) {
+            $this->conversationService->dispatchPostCommitSideEffects(
+                $txResult['conversation'],
+                $txResult['message'],
+                $actor,
+                $payload,
+            );
+        }
+
+        return $txResult['message']->fresh(['user', 'customer', 'attachments']) ?? $txResult['message'];
     }
 
     private function findMessageByIdempotencyKey(Conversation $conversation, string $key): ?Message
@@ -277,7 +319,7 @@ class ConversationInboxService
         $state->last_read_at = now();
         $state->save();
 
-        event(new ConversationUpdated($conversation->fresh()));
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
 
         return $state;
     }
@@ -293,7 +335,7 @@ class ConversationInboxService
         $state->archived_at = $archived ? now() : null;
         $state->save();
 
-        event(new ConversationUpdated($conversation->fresh()));
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
 
         return $state;
     }
@@ -309,7 +351,7 @@ class ConversationInboxService
         $state->muted_at = $muted ? now() : null;
         $state->save();
 
-        event(new ConversationUpdated($conversation->fresh()));
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
 
         return $state;
     }

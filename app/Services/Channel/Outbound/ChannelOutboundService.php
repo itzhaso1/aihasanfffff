@@ -11,6 +11,7 @@ use App\Services\Channel\Outbound\Drivers\FacebookMessengerChannelOutboundDriver
 use App\Services\Channel\Outbound\Drivers\InstagramChannelOutboundDriver;
 use App\Services\Channel\Outbound\Drivers\TelegramChannelOutboundDriver;
 use App\Services\Channel\Outbound\Drivers\TikTokChannelOutboundDriver;
+use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Media\OutboundChannelMediaService;
 use App\Services\Meta\Facebook\FacebookOutboundService;
 use App\Services\Meta\Instagram\InstagramOutboundService;
@@ -126,55 +127,49 @@ final class ChannelOutboundService
                     $message,
                     $delivery,
                 );
-
-                return;
-            }
-
-            if ($delivery->channel === 'whatsapp') {
+            } elseif ($delivery->channel === 'whatsapp') {
                 app(WhatsAppOutboundService::class)->deliverTextForMessage(
                     $conversation,
                     $message,
                     $delivery,
                 );
-
-                return;
-            }
-
-            if ($delivery->channel === 'facebook_messenger') {
+            } elseif ($delivery->channel === 'facebook_messenger') {
                 app(FacebookOutboundService::class)->deliverTextForMessage(
                     $conversation,
                     $message,
                     $delivery,
                 );
-
-                return;
-            }
-
-            if ($delivery->channel === 'tiktok') {
+            } elseif ($delivery->channel === 'tiktok') {
                 app(TikTokOutboundService::class)->deliverTextForMessage(
                     $conversation,
                     $message,
                     $delivery,
                 );
-
-                return;
-            }
-
-            if ($delivery->channel === 'telegram') {
+            } elseif ($delivery->channel === 'telegram') {
                 app(TelegramOutboundService::class)->deliverTextForMessage(
                     $conversation,
                     $message,
                     $delivery,
                 );
+            } else {
+                Log::warning('channel.outbound.unhandled_delivery_channel', [
+                    'workspace_id' => $delivery->workspace_id,
+                    'delivery_id' => $delivery->id,
+                    'channel' => $delivery->channel,
+                ]);
 
                 return;
             }
 
-            Log::warning('channel.outbound.unhandled_delivery_channel', [
-                'workspace_id' => $delivery->workspace_id,
-                'delivery_id' => $delivery->id,
-                'channel' => $delivery->channel,
-            ]);
+            $freshDelivery = $delivery->fresh();
+            $freshMessage = $message->fresh();
+            if ($freshDelivery && $freshMessage) {
+                if ($freshDelivery->status === ChannelOutboundDelivery::STATUS_SENT) {
+                    app(InboxRealtimePublisher::class)->recordMessageDeliveryStatus($freshMessage, 'sent');
+                } elseif ($freshDelivery->status === ChannelOutboundDelivery::STATUS_FAILED) {
+                    app(InboxRealtimePublisher::class)->recordMessageDeliveryStatus($freshMessage, 'failed', $freshDelivery->last_error);
+                }
+            }
         });
     }
 

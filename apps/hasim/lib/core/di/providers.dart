@@ -203,8 +203,9 @@ final realtimeServiceProvider = Provider<RealtimeService>((ref) {
       ref.read(inboxSessionProvider).workspaceId ??
       ref.read(prefsStoreProvider).workspaceId;
 
+  final repo = ref.watch(conversationRepositoryProvider);
   final polling = PollingRealtimeService(
-    ref.watch(conversationRepositoryProvider),
+    repo,
     workspaceIdOf: getWorkspaceId,
   );
 
@@ -212,6 +213,8 @@ final realtimeServiceProvider = Provider<RealtimeService>((ref) {
     polling,
     apiClient: ref.watch(apiClientProvider),
     workspaceIdOf: getWorkspaceId,
+    repository: repo,
+    onLocalInboxChange: () => bumpInboxLocalRevision(ref),
   );
   ref.onDispose(service.dispose);
   return service;

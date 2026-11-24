@@ -310,7 +310,7 @@ class _BubbleBody extends StatelessWidget {
         ),
         if (mine) ...[
           const SizedBox(width: 3),
-          if (failed) ...[
+          if (failed || message.deliveryStatus == 'failed') ...[
             Icon(Icons.error_outline_rounded, size: 13, color: Colors.red.shade400),
             const SizedBox(width: 2),
             Icon(Icons.refresh, size: 12, color: Colors.red.shade400),
@@ -323,10 +323,12 @@ class _BubbleBody extends StatelessWidget {
                 color: Colors.red.shade400,
               ),
             ),
-          ] else if (message.localPending) ...[
+          ] else if (message.localPending ||
+              message.deliveryStatus == 'pending' ||
+              message.deliveryStatus == 'sending') ...[
             if (message.localUploading ||
                 message.localAttachmentPath != null ||
-                message.attachments.isNotEmpty)
+                (message.localPending && message.attachments.isNotEmpty))
               SizedBox(
                 width: 11,
                 height: 11,
@@ -338,9 +340,17 @@ class _BubbleBody extends StatelessWidget {
                 size: 12,
                 color: meta,
               ),
-          ] else if (message.id <= 0) ...[
+          ] else if (message.id <= 0 ||
+              message.deliveryStatus == null ||
+              message.deliveryStatus == 'sent') ...[
             Icon(
               Icons.done_rounded,
+              size: 14,
+              color: meta,
+            ),
+          ] else if (message.deliveryStatus == 'delivered') ...[
+            Icon(
+              Icons.done_all_rounded,
               size: 14,
               color: meta,
             ),

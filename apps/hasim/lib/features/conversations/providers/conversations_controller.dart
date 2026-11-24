@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
+import 'package:hasim/core/local_db/conversation_reconciler.dart';
 import 'package:hasim/core/local_db/inbox_local_store.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_exception.dart';
@@ -96,10 +97,15 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   ConversationsController(this._ref, {this.fixedFilter})
     : super(ConversationsState(filter: fixedFilter ?? 'all', loading: true)) {
     _boundWorkspaceId = _ref.read(activeWorkspaceIdProvider);
-    _sub = _ref
-        .read(realtimeServiceProvider)
-        .conversationsChanged
-        .listen((_) => _scheduleRealtimeRefresh());
+    final realtime = _ref.read(realtimeServiceProvider);
+    _sub = realtime.conversationsChanged.listen((_) {
+      if (!realtime.isWebSocketConnected) {
+        _scheduleRealtimeRefresh();
+      }
+    });
+    _reconnectSub = realtime.reconnectSyncRequested.listen((_) {
+      _scheduleDeltaSync();
+    });
     _workspaceSub = _ref.listen<int?>(activeWorkspaceIdProvider, (
       previous,
       next,
@@ -128,10 +134,12 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   final String? fixedFilter;
 
   StreamSubscription? _sub;
+  StreamSubscription? _reconnectSub;
   StreamSubscription<List<ConversationModel>>? _localSub;
   ProviderSubscription<int?>? _workspaceSub;
   ProviderSubscription<Set<int>>? _lockSub;
   Timer? _realtimeRefreshTimer;
+  Timer? _deltaSyncTimer;
   Timer? _searchDebounce;
   Timer? _prefetchTimer;
   int? _boundWorkspaceId;
@@ -218,8 +226,10 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   @override
   void dispose() {
     _sub?.cancel();
+    _reconnectSub?.cancel();
     _localSub?.cancel();
     _realtimeRefreshTimer?.cancel();
+    _deltaSyncTimer?.cancel();
     _searchDebounce?.cancel();
     _prefetchTimer?.cancel();
     _workspaceSub?.close();
@@ -329,6 +339,48 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     _realtimeRefreshTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted) unawaited(refresh(silent: true));
     });
+  }
+
+  void _scheduleDeltaSync() {
+    _deltaSyncTimer?.cancel();
+    _deltaSyncTimer = Timer(const Duration(milliseconds: 200), () {
+      if (mounted) unawaited(_syncDelta());
+    });
+  }
+
+  Future<void> _syncDelta() async {
+    final scope = captureInboxScope(_ref);
+    final workspaceId = scope.workspaceId;
+    if (workspaceId == null) return;
+    final repo = _ref.read(conversationRepositoryProvider);
+    final latestMs = await repo.latestCachedConversationUpdatedMs(workspaceId);
+    if (!_canCommit(scope)) return;
+    if (latestMs <= 0) {
+      await refresh(silent: true);
+      return;
+    }
+    try {
+      final since = DateTime.fromMillisecondsSinceEpoch(
+        latestMs,
+      ).subtract(const Duration(seconds: 5));
+      final page = await repo.deltaList(
+        updatedAfter: since,
+        filter: _remoteFilter,
+        channel: state.channel,
+        handoff: _handoffQuery,
+        search: state.search,
+        customerPriority: state.customerPriority,
+        paymentStatus: state.paymentStatus,
+        reviewStatus: state.reviewStatus,
+        workspaceId: workspaceId,
+      );
+      if (!_canCommit(scope)) return;
+      if (page.items.isNotEmpty) {
+        await _publishFetchedPage(scope, page.items);
+      }
+    } catch (_) {
+      // Fallback safely to silent state if offline/transiently unreachable.
+    }
   }
 
   Future<void> toggleClassification({
@@ -599,14 +651,20 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   }
 
   void applyRemoteConversation(ConversationModel conversation) {
-    final next = [
-      for (final item in state.items)
-        if (item.id == conversation.id)
-          item.applyingServerWrites(conversation)
-        else
-          item,
-    ].where(_matchesCurrentFilter).toList();
-    state = state.copyWith(items: next);
+    final exists = state.items.any((item) => item.id == conversation.id);
+    final updatedList = exists
+        ? [
+            for (final item in state.items)
+              if (item.id == conversation.id)
+                item.applyingServerWrites(conversation)
+              else
+                item,
+          ]
+        : [...state.items, conversation];
+    final filtered = ConversationReconciler.sortServerOrder(
+      updatedList.where(_matchesCurrentFilter).toList(),
+    );
+    state = state.copyWith(items: filtered);
   }
 
   /// «إبلاغ» من قائمة المحادثة: يعلّمها «يحتاج مراجعة» عبر واجهة التصنيف.
@@ -742,6 +800,8 @@ class ChatController extends StateNotifier<ChatState> {
   final int conversationId;
   late final RealtimeService _realtime;
   StreamSubscription? _sub;
+  StreamSubscription? _convUpdatedSub;
+  StreamSubscription? _statusUpdatedSub;
   StreamSubscription? _typingSub;
   StreamSubscription? _presenceSub;
   StreamSubscription<List<MessageModel>>? _messageSub;
@@ -754,6 +814,10 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> _init() async {
     await _sub?.cancel();
     _sub = null;
+    await _convUpdatedSub?.cancel();
+    _convUpdatedSub = null;
+    await _statusUpdatedSub?.cancel();
+    _statusUpdatedSub = null;
     await _typingSub?.cancel();
     _typingSub = null;
     await _presenceSub?.cancel();
@@ -774,6 +838,19 @@ class ChatController extends StateNotifier<ChatState> {
     _sub = _realtime.messageCreated.listen((m) {
       if (m.conversationId != conversationId) return;
       unawaited(_ingestPolledMessage(m));
+    });
+    _convUpdatedSub = _realtime.conversationUpdated.listen((updated) {
+      if (updated.id != conversationId || !mounted) return;
+      final merged = state.conversation == null
+          ? updated.copyWith(unreadCount: 0)
+          : state.conversation!
+                .applyingServerWrites(updated)
+                .copyWith(unreadCount: 0);
+      state = state.copyWith(conversation: merged);
+    });
+    _statusUpdatedSub = _realtime.messageStatusUpdated.listen((update) {
+      if (update.conversationId != conversationId || !mounted) return;
+      _applyMessageStatusUpdate(update);
     });
     _typingSub = _realtime.typingActivity.listen((data) {
       final convId = (data['conversation_id'] as num?)?.toInt();
@@ -822,6 +899,13 @@ class ChatController extends StateNotifier<ChatState> {
       final cachedConv = await repo.cachedConversation(workspaceId, conversationId);
       final cachedMsgs = await repo.cachedMessages(workspaceId, conversationId);
       if (!mounted || _boundWorkspaceId != workspaceId) return;
+      var maxCachedId = 0;
+      for (final msg in cachedMsgs) {
+        if (msg.id > maxCachedId) maxCachedId = msg.id;
+      }
+      if (maxCachedId > 0) {
+        _realtime.setSeedMaxMessageId(conversationId, maxCachedId);
+      }
       if (cachedConv != null || cachedMsgs.isNotEmpty) {
         state = state.copyWith(
           conversation: cachedConv ?? state.conversation,
@@ -931,26 +1015,24 @@ class ChatController extends StateNotifier<ChatState> {
     return merged;
   }
 
-  /// Server rows follow their ids. An AI reply is inserted after the customer
-  /// message, so a missing or later timestamp must not draw the reply first.
+  /// Confirmed server rows follow their monotonic DB ids; pending local rows
+  /// sort chronologically after confirmed messages.
   static int _messageOrder(MessageModel a, MessageModel b) {
     final aServer = a.id > 0;
     final bServer = b.id > 0;
     if (aServer != bServer) {
       return aServer ? -1 : 1;
     }
-    final at = a.createdAt;
-    final bt = b.createdAt;
-    if (at != null && bt != null && !at.isAtSameMomentAs(bt)) {
-      final diff = at.difference(bt).inSeconds;
-      if (diff != 0) {
-        return at.compareTo(bt);
-      }
-    }
     if (aServer && bServer && a.id != b.id) {
       return a.id.compareTo(b.id);
     }
-    return a.id.compareTo(b.id);
+    final at = a.createdAt;
+    final bt = b.createdAt;
+    if (at != null && bt != null && !at.isAtSameMomentAs(bt)) {
+      return at.compareTo(bt);
+    }
+    // Negative temp ids encode `-millisecondsSinceEpoch`, so more-negative is newer.
+    return b.id.compareTo(a.id);
   }
 
   @override
@@ -961,6 +1043,8 @@ class ChatController extends StateNotifier<ChatState> {
     _presenceSub = null;
     leavePresence();
     _sub?.cancel();
+    _convUpdatedSub?.cancel();
+    _statusUpdatedSub?.cancel();
     _typingSub?.cancel();
     _typingTimer?.cancel();
     _messageSub?.cancel();
@@ -1170,6 +1254,7 @@ class ChatController extends StateNotifier<ChatState> {
       createdAt: DateTime.now(),
       userName: currentUserName,
       participantType: 'company_staff',
+      deliveryStatus: 'pending',
       localPending: true,
       clientId: clientId,
     );
@@ -1315,8 +1400,10 @@ class ChatController extends StateNotifier<ChatState> {
         messages: _mergeMessages(_olderMessages, after),
         error: failed ? 'تعذر إرسال الرسالة.' : null,
       );
-      unawaited(_syncConversationFromServer(scope));
-      _realtime.triggerPoll();
+      if (!_realtime.isWebSocketConnected) {
+        unawaited(_syncConversationFromServer(scope));
+        _realtime.triggerPoll();
+      }
     } catch (_) {
       // The outbox remains responsible for retrying transient send failures.
     }
@@ -1973,10 +2060,14 @@ class ChatController extends StateNotifier<ChatState> {
           ? remote
           : current.applyingServerWrites(remote);
       if (scope.workspaceId != null) {
-        await _ref.read(conversationRepositoryProvider).persistConversations(
-          scope.workspaceId!,
-          [next],
-        );
+        try {
+          await _ref.read(conversationRepositoryProvider).persistConversations(
+            scope.workspaceId!,
+            [next],
+          );
+        } catch (e, st) {
+          debugPrint('[Hasim] persistConversations failed: $e\n$st');
+        }
       }
       if (!_canCommit(scope)) return null;
       state = state.copyWith(conversation: next);
@@ -1994,11 +2085,14 @@ class ChatController extends StateNotifier<ChatState> {
       if (!_canCommit(scope)) return e.userMessage;
       unawaited(_syncConversationFromServer(scope));
       return e.userMessage;
-    } catch (_) {
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[CHAT_CONVERSATION_UPDATE_ERROR] $e\n$st');
+      }
       if (!_canCommit(scope)) return 'تعذر تحديث المحادثة.';
       return 'تعذر تحديث المحادثة.';
     } finally {
-      if (state.mutating) {
+      if (mounted && state.mutating) {
         state = state.copyWith(mutating: false);
       }
     }
@@ -2017,10 +2111,14 @@ class ChatController extends StateNotifier<ChatState> {
           ? remote
           : current.applyingServerWrites(remote);
       if (scope.workspaceId != null) {
-        await _ref.read(conversationRepositoryProvider).persistConversations(
-          scope.workspaceId!,
-          [next],
-        );
+        try {
+          await _ref.read(conversationRepositoryProvider).persistConversations(
+            scope.workspaceId!,
+            [next],
+          );
+        } catch (e, st) {
+          debugPrint('[Hasim] _syncConversationFromServer persist failed: $e\n$st');
+        }
       }
       if (!_canCommit(scope)) {
         return;
@@ -2069,26 +2167,75 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  void _applyMessageStatusUpdate(MessageStatusUpdate update) {
+    MessageModel applyTo(MessageModel m) {
+      final matchById = update.id > 0 && m.id == update.id;
+      final matchByClient =
+          update.clientId != null &&
+          update.clientId!.isNotEmpty &&
+          m.clientId == update.clientId;
+      if (!matchById && !matchByClient) return m;
+      return m.copyWith(
+        deliveryStatus: update.deliveryStatus,
+        deliveredAt: update.deliveredAt ?? m.deliveredAt,
+        readAt: update.readAt ?? m.readAt,
+        localPending: false,
+        localFailed: update.deliveryStatus == 'failed',
+      );
+    }
+
+    _olderMessages = [for (final m in _olderMessages) applyTo(m)];
+    state = state.copyWith(
+      messages: [for (final m in state.messages) applyTo(m)],
+    );
+  }
+
   Future<void> _ingestPolledMessage(MessageModel incoming) async {
     final scope = captureInboxScope(_ref);
     if (!inboxScopeIsCurrent(_ref, scope)) return;
     final workspaceId = scope.workspaceId;
 
-    // Fast check: if message already exists with real server id, don't duplicate
-    final alreadyExists = state.messages.any(
-      (x) =>
-          x.id == incoming.id ||
-          (incoming.clientId != null &&
-              x.clientId == incoming.clientId &&
-              !x.localPending),
-    );
-    if (alreadyExists) return;
+    MessageModel? existing;
+    for (final x in state.messages) {
+      final sameId = x.id > 0 && x.id == incoming.id;
+      final sameClient =
+          incoming.clientId != null &&
+          incoming.clientId!.isNotEmpty &&
+          x.clientId == incoming.clientId &&
+          !x.localPending;
+      if (sameId || sameClient) {
+        existing = x;
+        break;
+      }
+    }
 
-    // Immediately update state so UI renders instantly!
+    if (existing != null) {
+      final changed =
+          existing.id != incoming.id ||
+          existing.content != incoming.content ||
+          existing.messageType != incoming.messageType ||
+          existing.deliveryStatus != incoming.deliveryStatus ||
+          existing.attachments.length != incoming.attachments.length ||
+          existing.localPending;
+      if (!changed) return;
+    }
+
+    if (incoming.id > 0) {
+      _realtime.setSeedMaxMessageId(conversationId, incoming.id);
+    }
+
+    final sw = Stopwatch()..start();
+    // Immediately update state so UI renders in < 5ms.
     state = state.copyWith(
       messages: _mergeMessages(state.messages, [incoming]),
       clearTyping: true,
     );
+    if (kDebugMode) {
+      debugPrint(
+        '[REALTIME_OBS] State updated conv=$conversationId msg=${incoming.id} '
+        'apply_ms=${sw.elapsedMilliseconds}',
+      );
+    }
 
     if (!incoming.isOutbound) {
       _clearUnreadAfterSend();

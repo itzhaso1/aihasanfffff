@@ -110,6 +110,53 @@ class ConversationRepository {
         Future.value();
   }
 
+  Future<int> maxCachedServerMessageId(int workspaceId, int conversationId) {
+    return _local?.getMaxServerMessageId(workspaceId, conversationId) ??
+        Future.value(0);
+  }
+
+  Future<int> latestCachedConversationUpdatedMs(int workspaceId) {
+    return _local?.getLatestConversationUpdatedMs(workspaceId) ??
+        Future.value(0);
+  }
+
+  Future<bool> applyRealtimeMessage(
+    int workspaceId,
+    MessageModel message, {
+    bool isConversationOpen = false,
+  }) {
+    return _local?.applyRealtimeMessage(
+          workspaceId,
+          message,
+          isConversationOpen: isConversationOpen,
+        ) ??
+        Future.value(false);
+  }
+
+  Future<bool> applyRealtimeConversation(
+    int workspaceId,
+    ConversationModel conversation, {
+    bool isConversationOpen = false,
+  }) {
+    return _local?.applyRealtimeConversation(
+          workspaceId,
+          conversation,
+          isConversationOpen: isConversationOpen,
+        ) ??
+        Future.value(false);
+  }
+
+  Future<void> applyMessageStatusUpdate(
+    int workspaceId,
+    MessageStatusUpdate update,
+  ) {
+    return _local?.updateMessageDeliveryStatus(
+          workspaceId: workspaceId,
+          update: update,
+        ) ??
+        Future.value();
+  }
+
   Future<({List<ConversationModel> items, String? nextCursor})> list({
     String filter = 'all',
     String? channel,
@@ -118,6 +165,52 @@ class ConversationRepository {
     String? customerPriority,
     String? paymentStatus,
     String? reviewStatus,
+    String? cursor,
+    int? workspaceId,
+  }) => _fetchConversationList(
+    filter: filter,
+    channel: channel,
+    handoff: handoff,
+    search: search,
+    customerPriority: customerPriority,
+    paymentStatus: paymentStatus,
+    reviewStatus: reviewStatus,
+    cursor: cursor,
+    workspaceId: workspaceId,
+  );
+
+  Future<({List<ConversationModel> items, String? nextCursor})> deltaList({
+    required DateTime updatedAfter,
+    String filter = 'all',
+    String? channel,
+    String? handoff,
+    String? search,
+    String? customerPriority,
+    String? paymentStatus,
+    String? reviewStatus,
+    int? workspaceId,
+  }) => _fetchConversationList(
+    filter: filter,
+    channel: channel,
+    handoff: handoff,
+    search: search,
+    customerPriority: customerPriority,
+    paymentStatus: paymentStatus,
+    reviewStatus: reviewStatus,
+    updatedAfter: updatedAfter,
+    workspaceId: workspaceId,
+  );
+
+  Future<({List<ConversationModel> items, String? nextCursor})>
+  _fetchConversationList({
+    String filter = 'all',
+    String? channel,
+    String? handoff,
+    String? search,
+    String? customerPriority,
+    String? paymentStatus,
+    String? reviewStatus,
+    DateTime? updatedAfter,
     String? cursor,
     int? workspaceId,
   }) async {
@@ -136,6 +229,8 @@ class ConversationRepository {
             'payment_status': paymentStatus,
           if (reviewStatus != null && reviewStatus.isNotEmpty)
             'review_status': reviewStatus,
+          if (updatedAfter != null)
+            'updated_after': updatedAfter.toUtc().toIso8601String(),
           if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
           'per_page': 20,
         },
@@ -220,7 +315,7 @@ class ConversationRepository {
     }
   }
 
-  Future<({List<MessageModel> items, String? nextCursor})> messages(
+  Future<({List<MessageModel> items, String? nextCursor, bool hasMore})> messagesPage(
     int conversationId, {
     String? cursor,
     int? afterId,
@@ -233,7 +328,7 @@ class ConversationRepository {
         query: {
           if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
           if (afterId != null && afterId > 0) 'after_id': afterId,
-          'per_page': 30,
+          'per_page': (afterId != null && afterId > 0) ? 100 : 30,
         },
       );
       final items = <MessageModel>[];
@@ -265,7 +360,8 @@ class ConversationRepository {
           debugPrint('[Hasim] SQLite cache write failed in messages(): $e\n$st');
         }
       }
-      return (items: items, nextCursor: res.nextCursor);
+      final hasMore = res.meta?['has_more'] == true;
+      return (items: items, nextCursor: res.nextCursor, hasMore: hasMore);
     } catch (e) {
       if (workspaceId != null &&
           (cursor == null || cursor.isEmpty) &&
@@ -273,11 +369,26 @@ class ConversationRepository {
         final cached = await cachedMessages(workspaceId, conversationId);
         if (cached.isNotEmpty) {
           lastReadFromCache = true;
-          return (items: cached.reversed.toList(), nextCursor: null);
+          return (items: cached.reversed.toList(), nextCursor: null, hasMore: false);
         }
       }
       rethrow;
     }
+  }
+
+  Future<({List<MessageModel> items, String? nextCursor})> messages(
+    int conversationId, {
+    String? cursor,
+    int? afterId,
+    int? workspaceId,
+  }) async {
+    final page = await messagesPage(
+      conversationId,
+      cursor: cursor,
+      afterId: afterId,
+      workspaceId: workspaceId,
+    );
+    return (items: page.items, nextCursor: page.nextCursor);
   }
 
   /// Always reuses [idempotencyKey] for both header and body. Do not call
@@ -724,7 +835,13 @@ class ConversationRepository {
     if (map == null) throw ApiException(fallback);
     final model = ConversationModel.fromJson(map);
     if (workspaceId != null) {
-      await _local?.upsertConversations(workspaceId, [model]);
+      try {
+        await _local?.upsertConversations(workspaceId, [model]);
+      } catch (e, st) {
+        debugPrint(
+          '[Hasim] SQLite cache write failed in _conversationWrite(): $e\n$st',
+        );
+      }
     }
     return model;
   }

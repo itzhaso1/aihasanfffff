@@ -4,7 +4,9 @@ namespace App\Jobs;
 
 use App\Exceptions\ChannelOutboundRetryableException;
 use App\Models\ChannelOutboundDelivery;
+use App\Models\Message;
 use App\Services\Channel\Outbound\ChannelOutboundService;
+use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Observability\OpsMetricsRecorder;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -107,11 +109,19 @@ class SendChannelOutboundMessage implements ShouldBeUnique, ShouldQueue
         }
 
         app(WorkspaceContext::class)->runForId($this->workspaceId, function () use ($delivery, $exception): void {
+            $reason = $exception?->getMessage() ?: $delivery->last_error;
             $delivery->forceFill([
                 'status' => ChannelOutboundDelivery::STATUS_FAILED,
-                'last_error' => $exception?->getMessage() ?: $delivery->last_error,
+                'last_error' => $reason,
                 'failed_at' => $delivery->failed_at ?? now(),
             ])->save();
+
+            $message = Message::withoutGlobalScopes()
+                ->where('workspace_id', $this->workspaceId)
+                ->find($delivery->message_id);
+            if ($message) {
+                app(InboxRealtimePublisher::class)->recordMessageDeliveryStatus($message, 'failed', $reason);
+            }
         });
     }
 }

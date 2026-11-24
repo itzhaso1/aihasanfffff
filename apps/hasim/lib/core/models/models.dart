@@ -296,6 +296,9 @@ class MessageModel extends Equatable {
     required this.messageType,
     required this.content,
     this.aiGenerated = false,
+    this.deliveryStatus,
+    this.deliveredAt,
+    this.readAt,
     this.createdAt,
     this.userName,
     this.customerName,
@@ -316,6 +319,9 @@ class MessageModel extends Equatable {
   final String messageType;
   final String content;
   final bool aiGenerated;
+  final String? deliveryStatus;
+  final DateTime? deliveredAt;
+  final DateTime? readAt;
   final DateTime? createdAt;
   final String? userName;
   final String? customerName;
@@ -423,6 +429,9 @@ class MessageModel extends Equatable {
       content: payload['content']?.toString() ?? '',
       aiGenerated:
           payload['ai_generated'] == true || payload['ai_generated'] == 1,
+      deliveryStatus: payload['delivery_status']?.toString(),
+      deliveredAt: DateTime.tryParse(payload['delivered_at']?.toString() ?? ''),
+      readAt: DateTime.tryParse(payload['read_at']?.toString() ?? ''),
       createdAt: DateTime.tryParse(payload['created_at']?.toString() ?? ''),
       userName: payload['sender_name']?.toString() ??
           payload['user_name']?.toString() ??
@@ -450,6 +459,9 @@ class MessageModel extends Equatable {
     bool? localFailed,
     bool? localUploading,
     String? content,
+    String? deliveryStatus,
+    DateTime? deliveredAt,
+    DateTime? readAt,
     List<MessageAttachmentModel>? attachments,
     String? clientId,
     DateTime? createdAt,
@@ -463,6 +475,9 @@ class MessageModel extends Equatable {
       messageType: messageType,
       content: content ?? this.content,
       aiGenerated: aiGenerated,
+      deliveryStatus: deliveryStatus ?? this.deliveryStatus,
+      deliveredAt: deliveredAt ?? this.deliveredAt,
+      readAt: readAt ?? this.readAt,
       createdAt: createdAt ?? this.createdAt,
       userName: userName,
       customerName: customerName,
@@ -487,6 +502,9 @@ class MessageModel extends Equatable {
     'message_type': messageType,
     'content': content,
     'ai_generated': aiGenerated,
+    if (deliveryStatus != null) 'delivery_status': deliveryStatus,
+    if (deliveredAt != null) 'delivered_at': deliveredAt!.toIso8601String(),
+    if (readAt != null) 'read_at': readAt!.toIso8601String(),
     'created_at': createdAt?.toIso8601String(),
     'attachments': attachments
         .map(
@@ -506,7 +524,62 @@ class MessageModel extends Equatable {
   };
 
   @override
-  List<Object?> get props => [id, clientId, content, localPending, localFailed];
+  List<Object?> get props => [
+    id,
+    clientId,
+    content,
+    localPending,
+    localFailed,
+    deliveryStatus,
+    attachments.length,
+  ];
+}
+
+class MessageStatusUpdate extends Equatable {
+  const MessageStatusUpdate({
+    required this.id,
+    required this.conversationId,
+    this.workspaceId,
+    this.clientId,
+    required this.deliveryStatus,
+    this.deliveredAt,
+    this.readAt,
+    this.errorReason,
+  });
+
+  final int id;
+  final int conversationId;
+  final int? workspaceId;
+  final String? clientId;
+  final String deliveryStatus;
+  final DateTime? deliveredAt;
+  final DateTime? readAt;
+  final String? errorReason;
+
+  factory MessageStatusUpdate.fromJson(Map<String, dynamic> json) {
+    final cid = json['client_id']?.toString().trim() ??
+        json['idempotency_key']?.toString().trim();
+    return MessageStatusUpdate(
+      id: asInt(json['id']),
+      conversationId: asInt(json['conversation_id']),
+      workspaceId: asNullableInt(json['workspace_id']),
+      clientId: (cid != null && cid.isNotEmpty && cid != 'null') ? cid : null,
+      deliveryStatus: json['delivery_status']?.toString().toLowerCase() ?? 'sent',
+      deliveredAt: DateTime.tryParse(json['delivered_at']?.toString() ?? ''),
+      readAt: DateTime.tryParse(json['read_at']?.toString() ?? ''),
+      errorReason: json['error_reason']?.toString(),
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+    id,
+    conversationId,
+    clientId,
+    deliveryStatus,
+    deliveredAt,
+    readAt,
+  ];
 }
 
 class ConversationResponder extends Equatable {
@@ -613,6 +686,7 @@ class ConversationModel extends Equatable {
     this.assignedParticipantType,
     this.canReply = true,
     this.responder,
+    this.hasUnreadCount = true,
   });
 
   final int id;
@@ -629,6 +703,7 @@ class ConversationModel extends Equatable {
   final String? assignedParticipantType;
   final bool canReply;
   final ConversationResponder? responder;
+  final bool hasUnreadCount;
   final DateTime? lastMessageAt;
   final CustomerModel? customer;
   final int unreadCount;
@@ -674,8 +749,15 @@ class ConversationModel extends Equatable {
   factory ConversationModel.fromJson(Map<String, dynamic> json) {
     final convId = asInt(json['id']);
     MessageModel? last;
+    final lmd = json['last_message_data'];
     final lm = json['last_message'];
-    if (lm is Map) {
+    if (lmd is Map) {
+      try {
+        last = MessageModel.fromJson(
+          lmd is Map<String, dynamic> ? lmd : Map<String, dynamic>.from(lmd),
+        );
+      } catch (_) {}
+    } else if (lm is Map) {
       try {
         last = MessageModel.fromJson(
           lm is Map<String, dynamic> ? lm : Map<String, dynamic>.from(lm),
@@ -763,6 +845,7 @@ class ConversationModel extends Equatable {
       assignedParticipantType: json['assigned_participant_type']?.toString(),
       canReply: json['can_reply'] == null ? true : json['can_reply'] == true,
       responder: responder,
+      hasUnreadCount: json.containsKey('unread_count'),
     );
   }
 

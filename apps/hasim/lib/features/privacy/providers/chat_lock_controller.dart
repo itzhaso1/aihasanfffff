@@ -128,7 +128,10 @@ class ChatLockController extends StateNotifier<ChatLockState> {
     final record = await _ref.read(chatLockStoreProvider).read();
     var available = false;
     try {
-      available = await _ref.read(biometricAuthenticatorProvider).isAvailable;
+      available = await _ref
+          .read(biometricAuthenticatorProvider)
+          .isAvailable
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
     } catch (_) {}
     if (!mounted || epoch != _epoch) return;
     _record = record;

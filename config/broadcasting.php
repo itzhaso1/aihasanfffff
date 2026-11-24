@@ -17,7 +17,10 @@ return [
                 'scheme' => env('REVERB_SCHEME', 'https'),
                 'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
             ],
-            'client_options' => [],
+            'client_options' => [
+                'timeout' => (float) env('REVERB_BROADCAST_TIMEOUT', 2.0),
+                'connect_timeout' => (float) env('REVERB_BROADCAST_CONNECT_TIMEOUT', 1.0),
+            ],
         ],
 
         'pusher' => [

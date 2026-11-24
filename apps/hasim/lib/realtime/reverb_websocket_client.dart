@@ -33,13 +33,16 @@ class ReverbWebSocketClient {
     required String scheme,
     required String authEndpoint,
     required String channelPrefix,
+    Duration pingInterval = const Duration(seconds: 25),
+    this.onChannelSubscribed,
   })  : _apiClient = apiClient,
         _host = host,
         _port = port,
         _key = key,
         _scheme = scheme,
         _authEndpoint = authEndpoint,
-        _channelPrefix = channelPrefix;
+        _channelPrefix = channelPrefix,
+        _pingInterval = pingInterval;
 
   final ApiClient _apiClient;
   final String _host;
@@ -48,6 +51,8 @@ class ReverbWebSocketClient {
   final String _scheme;
   final String _authEndpoint;
   final String _channelPrefix;
+  final Duration _pingInterval;
+  final void Function(String channel)? onChannelSubscribed;
 
   WebSocket? _socket;
   RealtimeConnectionState _state = RealtimeConnectionState.disconnected;
@@ -56,6 +61,9 @@ class ReverbWebSocketClient {
   int? _watchingConversationId;
 
   final _messageController = StreamController<MessageModel>.broadcast();
+  final _conversationController =
+      StreamController<ConversationModel>.broadcast();
+  final _statusController = StreamController<MessageStatusUpdate>.broadcast();
   final _conversationUpdateController = StreamController<void>.broadcast();
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
@@ -65,11 +73,20 @@ class ReverbWebSocketClient {
   Timer? _pingTimer;
   Timer? _pingTimeoutTimer;
   Timer? _reconnectTimer;
+  final Map<String, Timer> _subscribeRetryTimers = <String, Timer>{};
+  final Map<String, int> _subscribeRetryAttempts = <String, int>{};
   int _reconnectAttempts = 0;
   bool _disposed = false;
-  final Set<String> _subscribedChannels = <String>{};
+  bool _manualDisconnect = false;
+  final Set<String> _desiredChannels = <String>{};
+  final Set<String> _confirmedChannels = <String>{};
+  final Set<String> _inFlightAuthChannels = <String>{};
 
   Stream<MessageModel> get messageCreated => _messageController.stream;
+  Stream<ConversationModel> get conversationUpdated =>
+      _conversationController.stream;
+  Stream<MessageStatusUpdate> get messageStatusUpdated =>
+      _statusController.stream;
   Stream<void> get conversationsChanged => _conversationUpdateController.stream;
   Stream<Map<String, dynamic>> get typingActivity => _typingController.stream;
   Stream<Map<String, dynamic>> get presenceActivity => _presenceController.stream;
@@ -78,21 +95,25 @@ class ReverbWebSocketClient {
 
   RealtimeConnectionState get state => _state;
   bool get isConnected => _state == RealtimeConnectionState.connected;
+  Set<String> get confirmedChannels => Set.unmodifiable(_confirmedChannels);
 
   void updateWorkspace(int? workspaceId) {
     if (_workspaceId == workspaceId) return;
     _workspaceId = workspaceId;
+    _rebuildDesiredChannels();
     if (isConnected) {
-      _resubscribeAll();
+      _syncSubscriptions();
     }
   }
 
   void watchConversation(int? conversationId) {
     final prev = _watchingConversationId;
+    if (prev == conversationId) return;
     _watchingConversationId = conversationId;
+    _rebuildDesiredChannels();
     if (!isConnected || _workspaceId == null) return;
 
-    if (prev != null && prev != conversationId) {
+    if (prev != null && prev > 0) {
       final oldChannel = _conversationChannelName(_workspaceId!, prev);
       _unsubscribe(oldChannel);
     }
@@ -101,7 +122,7 @@ class ReverbWebSocketClient {
         _workspaceId!,
         conversationId,
       );
-      _subscribePrivate(newChannel);
+      unawaited(_subscribePrivate(newChannel));
     }
   }
 
@@ -117,6 +138,10 @@ class ReverbWebSocketClient {
         _state == RealtimeConnectionState.connected) {
       return;
     }
+
+    _manualDisconnect = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
 
     _setState(
       _reconnectAttempts > 0
@@ -134,7 +159,7 @@ class ReverbWebSocketClient {
         queryParameters: {
           'protocol': '7',
           'client': 'flutter',
-          'version': '1.0.0',
+          'version': '1.1.0',
         },
       );
 
@@ -146,13 +171,20 @@ class ReverbWebSocketClient {
         const Duration(seconds: 10),
       );
 
+      if (_disposed || _manualDisconnect) {
+        try {
+          await socket.close();
+        } catch (_) {}
+        return;
+      }
+
       _socket = socket;
       _reconnectAttempts = 0;
 
       socket.listen(
-        _onMessage,
-        onError: _onError,
-        onDone: _onDone,
+        (raw) => _onMessage(socket, raw),
+        onError: (Object err) => _onError(socket, err),
+        onDone: () => _onDone(socket),
         cancelOnError: true,
       );
 
@@ -161,18 +193,46 @@ class ReverbWebSocketClient {
       if (kDebugMode) {
         debugPrint('[REALTIME_WS] Connect failed: $e');
       }
-      _scheduleReconnect();
+      if (!_manualDisconnect) {
+        _scheduleReconnect();
+      }
     }
   }
 
+  /// Called on foreground resume or network interface changes to verify liveness fast
+  /// or tear down a half-open TCP connection within 2.5s.
+  void verifyConnectionOrReconnect({bool forceCycle = false}) {
+    if (_disposed) return;
+    if (forceCycle && _socket != null) {
+      if (kDebugMode) {
+        debugPrint('[REALTIME_WS] Cycling socket after network change...');
+      }
+      _teardownSocketForReconnect(resetAttempts: true);
+      return;
+    }
+    if (!isConnected) {
+      if (_state != RealtimeConnectionState.connecting) {
+        _reconnectTimer?.cancel();
+        _reconnectTimer = null;
+        _reconnectAttempts = 0;
+        unawaited(connect());
+      }
+      return;
+    }
+    _sendHeartbeatPing(timeout: const Duration(milliseconds: 2500));
+  }
+
   Future<void> disconnect() async {
+    _manualDisconnect = true;
+    _cancelChannelRetries();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _pingTimer?.cancel();
     _pingTimer = null;
     _pingTimeoutTimer?.cancel();
     _pingTimeoutTimer = null;
-    _subscribedChannels.clear();
+    _confirmedChannels.clear();
+    _inFlightAuthChannels.clear();
     _socketId = null;
 
     final s = _socket;
@@ -187,16 +247,18 @@ class ReverbWebSocketClient {
 
   void dispose() {
     _disposed = true;
-    disconnect();
+    unawaited(disconnect());
     _messageController.close();
+    _conversationController.close();
+    _statusController.close();
     _conversationUpdateController.close();
     _typingController.close();
     _presenceController.close();
     _connectionStateController.close();
   }
 
-  void _onMessage(dynamic raw) {
-    if (raw == null) return;
+  void _onMessage(WebSocket socket, dynamic raw) {
+    if (!identical(_socket, socket) || raw == null) return;
     _pingTimeoutTimer?.cancel();
     _pingTimeoutTimer = null;
     try {
@@ -208,26 +270,50 @@ class ReverbWebSocketClient {
       final channel = map['channel']?.toString() ?? '';
       final rawData = map['data'];
 
-      if (kDebugMode && event.isNotEmpty) {
-        debugPrint('[REALTIME_WS] Event: $event on channel: $channel');
-      }
-
       switch (event) {
         case 'pusher:connection_established':
           final data = _parseDataMap(rawData);
           _socketId = data['socket_id']?.toString();
           if (kDebugMode) {
-            debugPrint('[REALTIME_WS] Connected. socket_id=$_socketId');
+            debugPrint(
+              '[REALTIME_WS] Connected socket_id=$_socketId at ${DateTime.now().toIso8601String()}',
+            );
           }
           _setState(RealtimeConnectionState.connected);
-          _resubscribeAll();
+          _rebuildDesiredChannels();
+          _syncSubscriptions();
 
         case 'pusher:ping':
           _send('pusher:pong', {});
 
+        case 'pusher:pong':
+          break;
+
+        case 'pusher_internal:subscription_succeeded':
+          if (channel.isNotEmpty) {
+            _confirmedChannels.add(channel);
+            _inFlightAuthChannels.remove(channel);
+            _subscribeRetryAttempts.remove(channel);
+            _subscribeRetryTimers.remove(channel)?.cancel();
+            if (kDebugMode) {
+              debugPrint('[REALTIME_WS] Subscription confirmed: $channel');
+            }
+            onChannelSubscribed?.call(channel);
+          }
+
+        case 'pusher:subscription_error':
         case 'pusher:error':
+          final data = _parseDataMap(rawData);
+          final code = asNullableInt(data['code']);
           if (kDebugMode) {
-            debugPrint('[REALTIME_WS] Protocol error: $rawData');
+            debugPrint(
+              '[REALTIME_WS] Protocol error channel=$channel code=$code data=$rawData',
+            );
+          }
+          if (channel.isNotEmpty) {
+            _confirmedChannels.remove(channel);
+            _inFlightAuthChannels.remove(channel);
+            _scheduleChannelSubscribeRetry(channel);
           }
 
         case 'message.created':
@@ -236,6 +322,12 @@ class ReverbWebSocketClient {
           if (data.isNotEmpty) {
             try {
               final message = MessageModel.fromJson(data);
+              _logEventLatency(
+                event: event,
+                conversationId: message.conversationId,
+                messageId: message.id,
+                data: data,
+              );
               _messageController.add(message);
               _conversationUpdateController.add(null);
             } catch (e) {
@@ -247,7 +339,43 @@ class ReverbWebSocketClient {
 
         case 'conversation.updated':
         case 'App\\Events\\Realtime\\ConversationUpdated':
+          final data = _parseDataMap(rawData);
+          if (data.isNotEmpty) {
+            try {
+              final conversation = ConversationModel.fromJson(data);
+              _logEventLatency(
+                event: event,
+                conversationId: conversation.id,
+                data: data,
+              );
+              _conversationController.add(conversation);
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('[REALTIME_WS] Conversation parse error: $e');
+              }
+            }
+          }
           _conversationUpdateController.add(null);
+
+        case 'message.status_updated':
+        case 'App\\Events\\Realtime\\MessageStatusUpdated':
+          final data = _parseDataMap(rawData);
+          if (data.isNotEmpty) {
+            try {
+              final update = MessageStatusUpdate.fromJson(data);
+              _logEventLatency(
+                event: event,
+                conversationId: update.conversationId,
+                messageId: update.id,
+                data: data,
+              );
+              _statusController.add(update);
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('[REALTIME_WS] Status parse error: $e');
+              }
+            }
+          }
 
         case 'typing.activity':
         case 'App\\Events\\Realtime\\TypingActivity':
@@ -268,9 +396,7 @@ class ReverbWebSocketClient {
           }
 
         default:
-          if (event.startsWith('pusher_internal:')) {
-            // Subscription confirmations
-          }
+          break;
       }
     } catch (e) {
       if (kDebugMode) {
@@ -279,76 +405,144 @@ class ReverbWebSocketClient {
     }
   }
 
-  void _onError(Object error) {
+  void _logEventLatency({
+    required String event,
+    required int conversationId,
+    int? messageId,
+    required Map<String, dynamic> data,
+  }) {
+    if (!kDebugMode) return;
+    final broadcastAt = DateTime.tryParse(data['broadcast_at']?.toString() ?? '');
+    final latencyMs = broadcastAt == null
+        ? null
+        : DateTime.now().toUtc().difference(broadcastAt.toUtc()).inMilliseconds;
+    final correlationId = data['correlation_id']?.toString();
+    debugPrint(
+      '[REALTIME_OBS] event=$event conv=$conversationId '
+      '${messageId != null ? 'msg=$messageId ' : ''}'
+      '${correlationId != null ? 'corr=$correlationId ' : ''}'
+      '${latencyMs != null ? 'skewed_wire_ms=$latencyMs' : ''}',
+    );
+  }
+
+  void _onError(WebSocket socket, Object error) {
+    if (!identical(_socket, socket) || _manualDisconnect) return;
     if (kDebugMode) {
       debugPrint('[REALTIME_WS] Socket error: $error');
     }
     _scheduleReconnect();
   }
 
-  void _onDone() {
+  void _onDone(WebSocket socket) {
+    if (!identical(_socket, socket) || _manualDisconnect) return;
     if (kDebugMode) {
       debugPrint('[REALTIME_WS] Socket closed');
     }
     _scheduleReconnect();
   }
 
+  void _teardownSocketForReconnect({bool resetAttempts = false}) {
+    final s = _socket;
+    _socket = null;
+    if (resetAttempts) {
+      _reconnectAttempts = 0;
+    }
+    try {
+      s?.close();
+    } catch (_) {}
+    _scheduleReconnect();
+  }
+
   void _scheduleReconnect() {
+    if (_disposed || _manualDisconnect) return;
+    if (_reconnectTimer != null) return;
+
     _socket = null;
     _socketId = null;
     _pingTimer?.cancel();
     _pingTimer = null;
     _pingTimeoutTimer?.cancel();
     _pingTimeoutTimer = null;
-    _subscribedChannels.clear();
+    _cancelChannelRetries();
+    _confirmedChannels.clear();
+    _inFlightAuthChannels.clear();
     _setState(RealtimeConnectionState.reconnecting);
 
-    if (_disposed) return;
-
-    _reconnectTimer?.cancel();
-    // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
-    final delaySeconds = (1 << _reconnectAttempts).clamp(1, 10);
+    // Exponential backoff: 1s, 2s, 4s, 8s, max 12s
+    final delaySeconds = (1 << _reconnectAttempts).clamp(1, 12);
     _reconnectAttempts = (_reconnectAttempts + 1).clamp(0, 5);
 
     if (kDebugMode) {
-      debugPrint('[REALTIME_WS] Reconnecting in ${delaySeconds}s (attempt $_reconnectAttempts)...');
+      debugPrint(
+        '[REALTIME_WS] Reconnecting in ${delaySeconds}s (attempt $_reconnectAttempts)...',
+      );
     }
 
     _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
-      if (!_disposed) {
-        connect();
+      _reconnectTimer = null;
+      if (!_disposed && !_manualDisconnect) {
+        unawaited(connect());
       }
     });
   }
 
-  void _resubscribeAll() {
-    _subscribedChannels.clear();
+  void _rebuildDesiredChannels() {
+    _desiredChannels.clear();
     final wsId = _workspaceId;
     if (wsId == null || wsId <= 0) return;
-
-    // 1. Workspace conversations channel
-    final wsChannel = _workspaceChannelName(wsId);
-    _subscribePrivate(wsChannel);
-
-    // 2. Currently open conversation channel (if any)
+    _desiredChannels.add(_workspaceChannelName(wsId));
     final convId = _watchingConversationId;
     if (convId != null && convId > 0) {
-      final convChannel = _conversationChannelName(wsId, convId);
-      _subscribePrivate(convChannel);
+      _desiredChannels.add(_conversationChannelName(wsId, convId));
+    }
+  }
+
+  void _syncSubscriptions() {
+    final stale = _confirmedChannels
+        .where((ch) => !_desiredChannels.contains(ch))
+        .toList();
+    for (final ch in stale) {
+      _unsubscribe(ch);
+    }
+
+    for (final ch in _desiredChannels) {
+      if (!_confirmedChannels.contains(ch)) {
+        unawaited(_subscribePrivate(ch));
+      }
     }
   }
 
   Future<void> _subscribePrivate(String channel) async {
-    if (!isConnected || _socketId == null || _subscribedChannels.contains(channel)) {
+    if (!isConnected ||
+        _socketId == null ||
+        _confirmedChannels.contains(channel) ||
+        _inFlightAuthChannels.contains(channel) ||
+        !_desiredChannels.contains(channel)) {
       return;
     }
 
+    _inFlightAuthChannels.add(channel);
+    final authSocketId = _socketId;
+
     try {
-      final authData = await _authorizeChannel(channel);
-      if (authData == null || authData['auth'] == null || !isConnected) {
-        if (kDebugMode && authData != null && authData['auth'] == null) {
-          debugPrint('[REALTIME_WS] Authorization succeeded but missing auth key for $channel');
-        }
+      final result = await _authorizeChannel(channel);
+      if (_disposed ||
+          !isConnected ||
+          _socketId != authSocketId ||
+          !_desiredChannels.contains(channel)) {
+        _inFlightAuthChannels.remove(channel);
+        return;
+      }
+
+      if (result.permanentFailure) {
+        _inFlightAuthChannels.remove(channel);
+        return;
+      }
+
+      final authData = result.data;
+      if (authData == null || authData['auth'] == null) {
+        _inFlightAuthChannels.remove(channel);
+        _scheduleChannelSubscribeRetry(channel);
         return;
       }
 
@@ -358,28 +552,62 @@ class ReverbWebSocketClient {
         if (authData['channel_data'] != null)
           'channel_data': authData['channel_data'],
       });
-      _subscribedChannels.add(channel);
       if (kDebugMode) {
-        debugPrint('[REALTIME_WS] Subscribed to $channel');
+        debugPrint('[REALTIME_WS] Subscribing to $channel...');
       }
     } catch (e) {
+      _inFlightAuthChannels.remove(channel);
       if (kDebugMode) {
         debugPrint('[REALTIME_WS] Subscribe failed for $channel: $e');
       }
+      _scheduleChannelSubscribeRetry(channel);
     }
   }
 
+  void _scheduleChannelSubscribeRetry(String channel) {
+    if (_disposed ||
+        !isConnected ||
+        !_desiredChannels.contains(channel) ||
+        _confirmedChannels.contains(channel)) {
+      return;
+    }
+    if (_subscribeRetryTimers.containsKey(channel)) return;
+    final attempts = (_subscribeRetryAttempts[channel] ?? 0) + 1;
+    if (attempts > 5) return;
+    _subscribeRetryAttempts[channel] = attempts;
+    final delay = Duration(seconds: (1 << (attempts - 1)).clamp(1, 15));
+    _subscribeRetryTimers[channel] = Timer(delay, () {
+      _subscribeRetryTimers.remove(channel);
+      if (!_disposed && isConnected && _desiredChannels.contains(channel)) {
+        unawaited(_subscribePrivate(channel));
+      }
+    });
+  }
+
+  void _cancelChannelRetries() {
+    for (final timer in _subscribeRetryTimers.values) {
+      timer.cancel();
+    }
+    _subscribeRetryTimers.clear();
+    _subscribeRetryAttempts.clear();
+  }
+
   void _unsubscribe(String channel) {
-    if (!_subscribedChannels.remove(channel)) return;
+    _subscribeRetryTimers.remove(channel)?.cancel();
+    _subscribeRetryAttempts.remove(channel);
+    _inFlightAuthChannels.remove(channel);
+    final wasConfirmed = _confirmedChannels.remove(channel);
+    if (!wasConfirmed && !isConnected) return;
     _send('pusher:unsubscribe', {'channel': channel});
     if (kDebugMode) {
       debugPrint('[REALTIME_WS] Unsubscribed from $channel');
     }
   }
 
-  Future<Map<String, dynamic>?> _authorizeChannel(String channel) async {
+  Future<({Map<String, dynamic>? data, bool permanentFailure})>
+  _authorizeChannel(String channel) async {
     final sId = _socketId;
-    if (sId == null) return null;
+    if (sId == null) return (data: null, permanentFailure: false);
 
     try {
       final path = _authEndpoint.contains('broadcasting/auth')
@@ -400,23 +628,30 @@ class ReverbWebSocketClient {
       final data = res.data;
       if (data != null) {
         if (data.containsKey('auth')) {
-          return data;
+          return (data: data, permanentFailure: false);
         }
         if (data['data'] is Map && (data['data'] as Map).containsKey('auth')) {
-          return Map<String, dynamic>.from(data['data'] as Map);
+          return (
+            data: Map<String, dynamic>.from(data['data'] as Map),
+            permanentFailure: false,
+          );
         }
       }
-      return data;
+      return (data: data, permanentFailure: false);
     } on ApiException catch (e) {
       if (kDebugMode) {
-        debugPrint('[REALTIME_WS] Auth channel error: ${e.message}');
+        debugPrint(
+          '[REALTIME_WS] Auth channel error channel=$channel status=${e.statusCode}: ${e.message}',
+        );
       }
-      return null;
+      final permanent =
+          e.statusCode == 401 || e.statusCode == 403 || e.statusCode == 404;
+      return (data: null, permanentFailure: permanent);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[REALTIME_WS] Auth channel unexpected error: $e');
       }
-      return null;
+      return (data: null, permanentFailure: false);
     }
   }
 
@@ -434,24 +669,27 @@ class ReverbWebSocketClient {
 
   void _startPingTimer() {
     _pingTimer?.cancel();
-    _pingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (isConnected) {
-        _send('pusher:ping', {});
-        _pingTimeoutTimer?.cancel();
-        _pingTimeoutTimer = Timer(const Duration(seconds: 15), () {
-          if (isConnected && !_disposed) {
-            if (kDebugMode) {
-              debugPrint('[REALTIME_WS] Heartbeat timeout (15s). Reconnecting...');
-            }
-            final s = _socket;
-            _socket = null;
-            try {
-              s?.close();
-            } catch (_) {}
-            _scheduleReconnect();
-          }
-        });
+    _pingTimer = Timer.periodic(_pingInterval, (_) {
+      _sendHeartbeatPing();
+    });
+  }
+
+  void _sendHeartbeatPing({Duration timeout = const Duration(seconds: 10)}) {
+    if (!isConnected) return;
+    final activeSocket = _socket;
+    if (activeSocket == null) return;
+    _send('pusher:ping', {});
+    _pingTimeoutTimer?.cancel();
+    _pingTimeoutTimer = Timer(timeout, () {
+      if (!identical(_socket, activeSocket) || !isConnected || _disposed) {
+        return;
       }
+      if (kDebugMode) {
+        debugPrint(
+          '[REALTIME_WS] Heartbeat timeout (${timeout.inMilliseconds}ms). Reconnecting...',
+        );
+      }
+      _teardownSocketForReconnect();
     });
   }
 

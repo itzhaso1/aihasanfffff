@@ -260,6 +260,19 @@ class InboxLocalStore {
       }
     }
 
+    if (existing != null) {
+      final existingLastAtMs = (existing['last_message_at'] as num?)?.toInt();
+      if (existingLastId != null &&
+          incomingLastId != null &&
+          incomingLastId < existingLastId &&
+          existingLastAtMs != null &&
+          incomingLast != null &&
+          incomingLast < existingLastAtMs) {
+        // Ignore stale out-of-order conversation snapshot behind already-persisted state.
+        return;
+      }
+    }
+
     final preview =
         item.lastMessage?.content ??
         existing?['last_message_preview']?.toString();
@@ -499,6 +512,10 @@ class InboxLocalStore {
       existingState: existing?['local_state']?.toString(),
       incoming: item,
     );
+    final deliveryStatus = item.deliveryStatus ??
+        existing?['delivery_status']?.toString();
+    final deliveredAtMs = _ms(item.deliveredAt) ?? existing?['delivered_at'];
+    final readAtMs = _ms(item.readAt) ?? existing?['read_at'];
     final participantType = _participantType(item);
     final clientCreatedAt =
         existing?['client_created_at'] ??
@@ -534,6 +551,9 @@ class InboxLocalStore {
           message_type = ?,
           content = ?,
           ai_generated = ?,
+          delivery_status = COALESCE(?, delivery_status),
+          delivered_at = COALESCE(?, delivered_at),
+          read_at = COALESCE(?, read_at),
           created_at = COALESCE(?, created_at),
           user_name = COALESCE(?, user_name),
           customer_name = COALESCE(?, customer_name),
@@ -556,6 +576,9 @@ class InboxLocalStore {
           item.messageType,
           item.content,
           _bool(item.aiGenerated),
+          deliveryStatus,
+          deliveredAtMs,
+          readAtMs,
           _ms(item.createdAt),
           item.userName,
           item.customerName,
@@ -578,10 +601,11 @@ class InboxLocalStore {
       '''
       INSERT INTO inbox_messages (
         workspace_id, conversation_server_id, server_id, client_id, direction,
-        message_type, content, ai_generated, created_at, user_name, customer_name,
-        attachments_json, local_state, worker_engagement_id, sender_user_id,
-        participant_type, sync_state, client_created_at, cached_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        message_type, content, ai_generated, delivery_status, delivered_at, read_at,
+        created_at, user_name, customer_name, attachments_json, local_state,
+        worker_engagement_id, sender_user_id, participant_type, sync_state,
+        client_created_at, cached_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''',
       [
         workspaceId,
@@ -592,6 +616,9 @@ class InboxLocalStore {
         item.messageType,
         item.content,
         _bool(item.aiGenerated),
+        deliveryStatus,
+        deliveredAtMs,
+        readAtMs,
         _ms(item.createdAt),
         item.userName,
         item.customerName,
@@ -911,6 +938,253 @@ class InboxLocalStore {
     return rows.first['cursor']?.toString();
   }
 
+  /// Highest persisted server message id for incremental `after_id` catch-up.
+  Future<int> getMaxServerMessageId(
+    int workspaceId,
+    int conversationId,
+  ) async {
+    final rows = await _db.select(
+      'SELECT MAX(server_id) AS max_id FROM inbox_messages '
+      'WHERE workspace_id = ? AND conversation_server_id = ? AND server_id > 0',
+      [workspaceId, conversationId],
+    );
+    return (rows.first['max_id'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Most recent conversation `updated_at` timestamp (ms) for delta sync.
+  Future<int> getLatestConversationUpdatedMs(int workspaceId) async {
+    final rows = await _db.select(
+      'SELECT MAX(updated_at) AS max_ts FROM inbox_conversations WHERE workspace_id = ?',
+      [workspaceId],
+    );
+    return (rows.first['max_ts'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Persist an inbound or outbound realtime message and update its conversation row.
+  /// Returns `true` when the conversation is not yet cached and needs a single fetch.
+  Future<bool> applyRealtimeMessage(
+    int workspaceId,
+    MessageModel message, {
+    bool isConversationOpen = false,
+  }) async {
+    final now = DateTime.now();
+    var needsConversationFetch = false;
+
+    await _db.transaction((tx) async {
+      var wasNew = true;
+      if (message.id > 0) {
+        final existingMsg = await tx.runSelect(
+          'SELECT id FROM inbox_messages WHERE workspace_id = ? AND server_id = ? LIMIT 1',
+          [workspaceId, message.id],
+        );
+        wasNew = existingMsg.isEmpty;
+      } else if (message.clientId != null && message.clientId!.isNotEmpty) {
+        final existingMsg = await tx.runSelect(
+          'SELECT id FROM inbox_messages WHERE workspace_id = ? AND client_id = ? LIMIT 1',
+          [workspaceId, message.clientId],
+        );
+        wasNew = existingMsg.isEmpty;
+      }
+
+      await _upsertMessage(workspaceId, message.conversationId, message, now, tx: tx);
+
+      final convRows = await tx.runSelect(
+        'SELECT server_id, unread_count, last_message_server_id, last_message_at '
+        'FROM inbox_conversations WHERE workspace_id = ? AND server_id = ? AND deleted_at IS NULL LIMIT 1',
+        [workspaceId, message.conversationId],
+      );
+      if (convRows.isEmpty) {
+        needsConversationFetch = true;
+        return;
+      }
+
+      final conv = convRows.first;
+      final existingLastId = (conv['last_message_server_id'] as num?)?.toInt() ?? 0;
+      final existingLastAtMs = (conv['last_message_at'] as num?)?.toInt() ?? 0;
+      final incomingAtMs = _ms(message.createdAt ?? now) ?? _ms(now)!;
+
+      final isNewest = (message.id > 0 && message.id >= existingLastId) ||
+          (existingLastId <= 0 && incomingAtMs >= existingLastAtMs);
+
+      var nextUnread = (conv['unread_count'] as num?)?.toInt() ?? 0;
+      if (isConversationOpen) {
+        nextUnread = 0;
+      } else if (wasNew && !message.isOutbound && !message.isInternalNote) {
+        nextUnread += 1;
+      }
+
+      await tx.runCustom(
+        '''
+        UPDATE inbox_conversations SET
+          last_message_preview = CASE WHEN ? = 1 THEN ? ELSE last_message_preview END,
+          last_message_at = CASE WHEN ? = 1 THEN ? ELSE last_message_at END,
+          last_message_server_id = CASE WHEN ? = 1 AND ? > 0 THEN ? ELSE last_message_server_id END,
+          last_message_direction = CASE WHEN ? = 1 THEN ? ELSE last_message_direction END,
+          unread_count = ?,
+          server_unread_count = CASE WHEN ? > server_unread_count THEN ? ELSE server_unread_count END,
+          local_read_at = CASE WHEN ? = 1 THEN ? WHEN ? = 1 AND ? = 0 THEN NULL ELSE local_read_at END,
+          local_read_last_message_at = CASE WHEN ? = 1 THEN ? WHEN ? = 1 AND ? = 0 THEN NULL ELSE local_read_last_message_at END,
+          updated_at = ?,
+          cached_at = ?
+        WHERE workspace_id = ? AND server_id = ?
+        ''',
+        [
+          isNewest ? 1 : 0,
+          message.content,
+          isNewest ? 1 : 0,
+          incomingAtMs,
+          isNewest ? 1 : 0,
+          message.id,
+          message.id,
+          isNewest ? 1 : 0,
+          message.direction,
+          nextUnread,
+          nextUnread,
+          nextUnread,
+          isConversationOpen ? 1 : 0,
+          _ms(now),
+          (wasNew && !message.isOutbound) ? 1 : 0,
+          isConversationOpen ? 1 : 0,
+          isConversationOpen ? 1 : 0,
+          incomingAtMs,
+          (wasNew && !message.isOutbound) ? 1 : 0,
+          isConversationOpen ? 1 : 0,
+          _ms(now),
+          _ms(now),
+          workspaceId,
+          message.conversationId,
+        ],
+      );
+    });
+
+    _changed();
+    return needsConversationFetch;
+  }
+
+  /// Apply a workspace-level `conversation.updated` event while preserving per-user read/mute/archive flags
+  /// when the payload does not explicitly carry `unread_count`.
+  Future<bool> applyRealtimeConversation(
+    int workspaceId,
+    ConversationModel item, {
+    bool isConversationOpen = false,
+  }) async {
+    final now = DateTime.now();
+    final existingRows = await _db.select(
+      'SELECT * FROM inbox_conversations WHERE workspace_id = ? AND server_id = ? AND deleted_at IS NULL LIMIT 1',
+      [workspaceId, item.id],
+    );
+    if (existingRows.isEmpty) {
+      if (item.customer == null) {
+        return true;
+      }
+      await _upsertConversation(workspaceId, item, now);
+      _changed();
+      return false;
+    }
+
+    final existing = existingRows.first;
+    final preserved = ConversationModel(
+      id: item.id,
+      channel: item.channel,
+      status: item.status,
+      externalId: item.externalId ?? existing['external_id']?.toString(),
+      aiEnabled: item.aiEnabled,
+      aiReplying: item.aiReplying,
+      lastMessageAt: item.lastMessageAt ?? _fromMs(existing['last_message_at']),
+      customer: item.customer,
+      unreadCount: isConversationOpen
+          ? 0
+          : (item.hasUnreadCount
+                ? item.unreadCount
+                : ((existing['unread_count'] as num?)?.toInt() ?? 0)),
+      lastMessage: item.lastMessage,
+      muted: _asBool(existing['muted']),
+      archived: item.status == 'archived' || _asBool(existing['archived']),
+      customerPriority: item.customerPriority != 'normal'
+          ? item.customerPriority
+          : (existing['customer_priority']?.toString() ?? 'normal'),
+      paymentStatus: item.paymentStatus != 'unpaid'
+          ? item.paymentStatus
+          : (existing['payment_status']?.toString() ?? 'unpaid'),
+      reviewStatus: item.reviewStatus != 'no_review_needed'
+          ? item.reviewStatus
+          : (existing['review_status']?.toString() ?? 'no_review_needed'),
+      classificationSource: item.classificationSource != 'system'
+          ? item.classificationSource
+          : (existing['classification_source']?.toString() ?? 'system'),
+      handoffStatus: item.handoffStatus,
+      handoffReason: item.handoffReason ?? existing['handoff_reason']?.toString(),
+      assignedUserId: item.assignedUserId,
+      assignedUserName: item.assignedUserName,
+      assignedWorkerEngagementId: item.assignedWorkerEngagementId,
+      assignedParticipantType: item.assignedParticipantType,
+      canReply: item.canReply,
+      responder: item.responder,
+    );
+
+    await _upsertConversation(workspaceId, preserved, now);
+    _changed();
+    return false;
+  }
+
+  /// Apply a real-time `message.status_updated` payload cleanly to SQLite.
+  Future<void> updateMessageDeliveryStatus({
+    required int workspaceId,
+    required MessageStatusUpdate update,
+  }) async {
+    final now = DateTime.now();
+    var changed = 0;
+    if (update.id > 0) {
+      changed = await _db.update(
+        '''
+        UPDATE inbox_messages SET
+          delivery_status = ?,
+          delivered_at = COALESCE(?, delivered_at),
+          read_at = COALESCE(?, read_at),
+          local_state = CASE WHEN ? = 'failed' THEN 'failed' ELSE 'sent' END,
+          cached_at = ?,
+          updated_at = ?
+        WHERE workspace_id = ? AND server_id = ?
+        ''',
+        [
+          update.deliveryStatus,
+          _ms(update.deliveredAt),
+          _ms(update.readAt),
+          update.deliveryStatus,
+          _ms(now),
+          _ms(now),
+          workspaceId,
+          update.id,
+        ],
+      );
+    }
+    if (changed == 0 && update.clientId != null && update.clientId!.isNotEmpty) {
+      await _db.update(
+        '''
+        UPDATE inbox_messages SET
+          delivery_status = ?,
+          delivered_at = COALESCE(?, delivered_at),
+          read_at = COALESCE(?, read_at),
+          local_state = CASE WHEN ? = 'failed' THEN 'failed' ELSE 'sent' END,
+          cached_at = ?,
+          updated_at = ?
+        WHERE workspace_id = ? AND client_id = ?
+        ''',
+        [
+          update.deliveryStatus,
+          _ms(update.deliveredAt),
+          _ms(update.readAt),
+          update.deliveryStatus,
+          _ms(now),
+          _ms(now),
+          workspaceId,
+          update.clientId,
+        ],
+      );
+    }
+    _changed();
+  }
+
   Future<void> clearWorkspace(int workspaceId) async {
     await _db.transaction((tx) async {
       await tx.runCustom('DELETE FROM inbox_messages WHERE workspace_id = ?', [
@@ -1130,6 +1404,9 @@ class InboxLocalStore {
       messageType: row['message_type']?.toString() ?? 'text',
       content: row['content']?.toString() ?? '',
       aiGenerated: _asBool(row['ai_generated']),
+      deliveryStatus: row['delivery_status']?.toString(),
+      deliveredAt: _fromMs(row['delivered_at']),
+      readAt: _fromMs(row['read_at']),
       createdAt: _fromMs(row['created_at']),
       userName: row['user_name']?.toString(),
       customerName: row['customer_name']?.toString(),

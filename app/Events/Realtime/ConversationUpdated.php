@@ -5,24 +5,28 @@ namespace App\Events\Realtime;
 use App\Http\Resources\Mobile\MessageResource;
 use App\Models\Conversation;
 use App\Services\Conversation\ConversationResponderService;
+use App\Services\Workforce\WorkforceInboxAttribution;
+use App\Support\Observability\CorrelationContext;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Str;
 
-class ConversationUpdated implements ShouldBroadcast
+class ConversationUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    /**
-     * Prevent broadcasting before database transactions commit.
-     */
     public bool $afterCommit = true;
 
-    public function __construct(public Conversation $conversation) {}
+    public ?string $correlationId;
+
+    public function __construct(public Conversation $conversation, ?string $correlationId = null)
+    {
+        $this->correlationId = $correlationId ?? CorrelationContext::id();
+    }
 
     public function broadcastConnection(): ?string
     {
@@ -76,6 +80,8 @@ class ConversationUpdated implements ShouldBroadcast
                 'workspace_id' => $this->conversation->workspace_id,
                 'status' => (string) $this->conversation->status,
                 'channel' => (string) $this->conversation->channel,
+                'ai_enabled' => (bool) $this->conversation->ai_enabled,
+                'ai_replying' => $this->conversation->isAiReplying(),
                 'last_message' => $preview,
                 'last_message_preview' => $preview,
                 'last_message_direction' => $latest ? (string) $latest->direction : 'inbound',
@@ -92,6 +98,7 @@ class ConversationUpdated implements ShouldBroadcast
                     'name' => $this->conversation->assignedUser->name,
                 ] : null,
                 'assigned_worker_engagement_id' => $this->conversation->assigned_worker_engagement_id,
+                'assigned_participant_type' => WorkforceInboxAttribution::typeForConversation($this->conversation)?->value,
                 'responder' => app(ConversationResponderService::class)->determineResponder($this->conversation),
                 'active_responder' => app(ConversationResponderService::class)->determineResponder($this->conversation),
                 'last_message_sender' => $this->conversation->lastMessageSender(),
@@ -100,6 +107,8 @@ class ConversationUpdated implements ShouldBroadcast
                     'name' => $customer->name,
                     'phone' => $customer->phone,
                 ] : null,
+                'broadcast_at' => now()->toIso8601String(),
+                'correlation_id' => CorrelationContext::id(),
             ];
         });
     }

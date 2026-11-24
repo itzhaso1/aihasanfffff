@@ -59,6 +59,9 @@ class MessageResource extends JsonResource
             'message_type' => $this->message_type,
             'content' => $this->content,
             'ai_generated' => (bool) $this->ai_generated,
+            'delivery_status' => $this->delivery_status,
+            'delivered_at' => optional($this->delivered_at)?->toIso8601String(),
+            'read_at' => optional($this->read_at)?->toIso8601String(),
             'participant_type' => $this->resource instanceof Message
                 ? WorkforceInboxAttribution::typeForMessage($this->resource)?->value
                 : null,

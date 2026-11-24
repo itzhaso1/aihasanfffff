@@ -23,6 +23,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'content',
     'external_message_id',
     'ai_generated',
+    'delivery_status',
+    'delivered_at',
+    'read_at',
     'metadata',
 ])]
 class Message extends WorkspaceScopedModel
@@ -34,6 +37,8 @@ class Message extends WorkspaceScopedModel
     {
         return [
             'ai_generated' => 'boolean',
+            'delivered_at' => 'datetime',
+            'read_at' => 'datetime',
             'metadata' => 'array',
         ];
     }

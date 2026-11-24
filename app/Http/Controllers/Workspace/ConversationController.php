@@ -404,6 +404,7 @@ class ConversationController extends Controller
                 );
             }
             $conversation = $conversation->fresh() ?? $conversation;
+            app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation);
         }
 
         if ($sentMessage->wasRecentlyCreated

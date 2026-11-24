@@ -1,10 +1,25 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hasim/core/local_db/inbox_database.dart';
+import 'package:hasim/core/local_db/inbox_local_store.dart';
+import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_client.dart';
 import 'package:hasim/core/storage/prefs_store.dart';
 import 'package:hasim/core/storage/secure_store.dart';
 import 'package:hasim/features/conversations/data/conversation_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _ThrowingLocalStore extends InboxLocalStore {
+  _ThrowingLocalStore() : super(InboxDatabase.memory());
+
+  @override
+  Future<void> upsertConversations(
+    int workspaceId,
+    List<ConversationModel> items,
+  ) async {
+    throw StateError('simulated sqlite error');
+  }
+}
 
 class _MemorySecureStore extends SecureStore {
   @override
@@ -21,7 +36,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Future<({ConversationRepository repo, List<RequestOptions> calls})>
-  repository({Map<String, dynamic>? data}) async {
+  repository({Map<String, dynamic>? data, InboxLocalStore? local}) async {
     SharedPreferences.setMockInitialValues({'workspace_id': 4});
     final prefs = PrefsStore(await SharedPreferences.getInstance());
     final calls = <RequestOptions>[];
@@ -63,6 +78,7 @@ void main() {
           prefsStore: prefs,
           dio: dio,
         ),
+        local: local,
       ),
       calls: calls,
     );
@@ -196,5 +212,38 @@ void main() {
     expect(setup.calls.single.path, 'conversations/7/ai');
     expect(setup.calls.single.data, {'ai_enabled': false});
     expect(model.aiEnabled, isFalse);
+  });
+
+  test('takeover and resumeAi succeed even when local cache write throws', () async {
+    final store = _ThrowingLocalStore();
+    final takeoverSetup = await repository(
+      local: store,
+      data: {
+        'id': 7,
+        'channel': 'whatsapp',
+        'status': 'open',
+        'handoff_status': 'active',
+        'ai_enabled': false,
+        'assigned_user_id': 9,
+        'assigned_user': {'id': 9, 'name': 'موظف'},
+      },
+    );
+    final takeover = await takeoverSetup.repo.takeoverHandoff(7, workspaceId: 4);
+    expect(takeover.handoffStatus, 'active');
+    expect(takeover.assignedUserId, 9);
+
+    final resumeSetup = await repository(
+      local: store,
+      data: {
+        'id': 7,
+        'channel': 'whatsapp',
+        'status': 'open',
+        'handoff_status': 'none',
+        'ai_enabled': true,
+      },
+    );
+    final resumed = await resumeSetup.repo.resumeAi(7, workspaceId: 4);
+    expect(resumed.handoffStatus, 'none');
+    expect(resumed.aiEnabled, isTrue);
   });
 }

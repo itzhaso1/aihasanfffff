@@ -6,24 +6,27 @@ use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Services\Mobile\MessageAttachmentService;
 use App\Services\Workforce\WorkforceInboxAttribution;
+use App\Support\Observability\CorrelationContext;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 
-class MessageCreated implements ShouldBroadcast
+class MessageCreated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    /**
-     * Prevent broadcasting before database transactions commit.
-     */
     public bool $afterCommit = true;
 
-    public function __construct(public Message $message) {}
+    public ?string $correlationId;
+
+    public function __construct(public Message $message, ?string $correlationId = null)
+    {
+        $this->correlationId = $correlationId ?? CorrelationContext::id();
+    }
 
     public function broadcastConnection(): ?string
     {
@@ -102,6 +105,9 @@ class MessageCreated implements ShouldBroadcast
                 'message_type' => $this->message->message_type,
                 'content' => $this->message->content,
                 'ai_generated' => (bool) $this->message->ai_generated,
+                'delivery_status' => $this->message->delivery_status,
+                'delivered_at' => optional($this->message->delivered_at)?->toIso8601String(),
+                'read_at' => optional($this->message->read_at)?->toIso8601String(),
                 'is_internal_note' => $isInternalNote,
                 'sender_name' => $senderName,
                 'user_name' => $senderName,
@@ -120,6 +126,8 @@ class MessageCreated implements ShouldBroadcast
                 'idempotency_key' => $idempotencyKey,
                 'created_at' => optional($this->message->created_at)?->toIso8601String(),
                 'created_at_time' => optional($this->message->created_at)?->format('H:i') ?? Carbon::now()->format('H:i'),
+                'broadcast_at' => Carbon::now()->toIso8601String(),
+                'correlation_id' => $this->correlationId ?? CorrelationContext::id(),
                 'attachments' => $readyAttachments,
             ];
         });

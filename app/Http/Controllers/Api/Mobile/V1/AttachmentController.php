@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Mobile\MobileController;
 use App\Http\Resources\Mobile\MessageAttachmentResource;
 use App\Models\Message;
 use App\Services\Channel\Outbound\ChannelOutboundService;
+use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Mobile\MessageAttachmentService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
@@ -38,12 +39,26 @@ class AttachmentController extends MobileController
         }
 
         $message->loadMissing('conversation');
+        $freshMessage = $message->fresh([
+            'attachments',
+            'user:id,name',
+            'customer:id,name',
+            'workerEngagement.workerProfile:id,user_id,display_name',
+            'workerEngagement.workerProfile.user:id,name',
+        ]) ?? $message;
+
         if ($message->direction === 'outbound') {
             app(ChannelOutboundService::class)->queueOutboundForMessage(
                 $message->conversation,
-                $message->fresh(['attachments']),
+                $freshMessage,
             );
         }
+
+        app(InboxRealtimePublisher::class)->publishMessageUpdated(
+            $freshMessage,
+            $message->conversation,
+            ['provider' => 'mobile_attachment'],
+        );
 
         return $this->ok(
             new MessageAttachmentResource($attachment),

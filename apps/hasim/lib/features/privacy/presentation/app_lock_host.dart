@@ -50,30 +50,48 @@ class _AppLockHostState extends ConsumerState<AppLockHost>
 
     final auth = ref.watch(authControllerProvider);
     final lock = ref.watch(chatLockControllerProvider);
-    if (auth.isAuthenticated && !lock.loaded) {
-      return const ColoredBox(
-        color: Color(0xFFFFFFFF),
-        child: SizedBox.expand(),
-      );
-    }
-    if (!auth.isAuthenticated || !lock.needsAppLock) return widget.child;
+    final showShield =
+        auth.isAuthenticated && !auth.bootstrapping && !lock.loaded;
+    final showLock =
+        !showShield &&
+        auth.isAuthenticated &&
+        !auth.bootstrapping &&
+        lock.needsAppLock;
+    final blocked = showShield || showLock;
 
     final notifier = ref.read(chatLockControllerProvider.notifier);
-    return AppLockScreen(
-      onVerified: (pin) {
-        final ok = notifier.verifyPin(pin);
-        if (ok) notifier.markAppUnlocked();
-        return ok;
-      },
-      onBiometric: lock.appBiometricEnabled && lock.biometricAvailable
-          ? () async {
-              final ok = await notifier.authenticateBiometric(
-                'أكّد هويتك لفتح حاسم',
-              );
-              if (ok) notifier.markAppUnlocked();
-              return ok;
-            }
-          : null,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ExcludeFocus(
+          excluding: blocked,
+          child: ExcludeSemantics(
+            excluding: blocked,
+            child: IgnorePointer(ignoring: blocked, child: widget.child),
+          ),
+        ),
+        if (showShield)
+          const Positioned.fill(child: ColoredBox(color: Color(0xFFFFFFFF))),
+        if (showLock)
+          Positioned.fill(
+            child: AppLockScreen(
+              onVerified: (pin) {
+                final ok = notifier.verifyPin(pin);
+                if (ok) notifier.markAppUnlocked();
+                return ok;
+              },
+              onBiometric: lock.appBiometricEnabled && lock.biometricAvailable
+                  ? () async {
+                      final ok = await notifier.authenticateBiometric(
+                        'أكّد هويتك لفتح حاسم',
+                      );
+                      if (ok) notifier.markAppUnlocked();
+                      return ok;
+                    }
+                  : null,
+            ),
+          ),
+      ],
     );
   }
 }

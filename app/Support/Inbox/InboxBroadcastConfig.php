@@ -29,6 +29,9 @@ final class InboxBroadcastConfig
             return ['enabled' => false, 'driver' => $driver];
         }
 
+        $pingInterval = (int) config('reverb.apps.apps.0.ping_interval', 30);
+        $activityTimeout = (int) config('reverb.apps.apps.0.activity_timeout', 60);
+
         return [
             'enabled' => true,
             'driver' => $driver,
@@ -39,6 +42,9 @@ final class InboxBroadcastConfig
             'use_tls' => (bool) ($options['useTLS'] ?? true),
             'auth_endpoint' => url($authPath),
             'channel_prefix' => 'private-workspace.',
+            'ping_interval' => max(15, min(60, $pingInterval)),
+            'activity_timeout' => max(30, min(120, $activityTimeout)),
+            'server_time' => now()->toIso8601String(),
         ];
     }
 }

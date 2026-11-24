@@ -23,8 +23,10 @@ class InboxDatabase implements QueryExecutorUser {
   /// v7: independent worker read models.
   /// v8: channel and company settings read models.
   /// v9: commerce orders and customers local-first read/write models.
+  /// v10: ensure `inbox_conversations.last_message_direction` exists on upgraded DBs.
+  /// v11: add `delivery_status`, `delivered_at`, `read_at` to `inbox_messages`.
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 11;
 
   Future<void> ensureReady() async {
     if (_closed || _opened) return;
@@ -77,8 +79,44 @@ class InboxDatabase implements QueryExecutorUser {
       if (from < 9) {
         await _createCommerceAndCustomerTables(e);
       }
+      if (from < 10) {
+        await _upgradeV9ToV10(e);
+      }
+      if (from < 11) {
+        await _upgradeV10ToV11(e);
+      }
     }
     await _createIndexes(e);
+  }
+
+  Future<void> _upgradeV9ToV10(QueryExecutor e) async {
+    await _ensureColumn(
+      e,
+      'inbox_conversations',
+      'last_message_direction',
+      "last_message_direction TEXT NOT NULL DEFAULT 'inbound'",
+    );
+  }
+
+  Future<void> _upgradeV10ToV11(QueryExecutor e) async {
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'delivery_status',
+      'delivery_status TEXT NULL',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'delivered_at',
+      'delivered_at INTEGER NULL',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'read_at',
+      'read_at INTEGER NULL',
+    );
   }
 
   Future<void> _createCurrentSchema(QueryExecutor e) async {
@@ -133,6 +171,9 @@ class InboxDatabase implements QueryExecutorUser {
         message_type TEXT NOT NULL,
         content TEXT NOT NULL,
         ai_generated INTEGER NOT NULL DEFAULT 0,
+        delivery_status TEXT NULL,
+        delivered_at INTEGER NULL,
+        read_at INTEGER NULL,
         created_at INTEGER,
         user_name TEXT,
         customer_name TEXT,

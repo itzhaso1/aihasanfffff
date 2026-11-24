@@ -18,7 +18,10 @@ const _barFill = Color(0xFF01BDA6);
 const _barTrack = Color(0xFFE0E0E0);
 
 class SplashScreen extends ConsumerStatefulWidget {
-  const SplashScreen({super.key});
+  const SplashScreen({super.key, this.skipIntroAnimation});
+
+  @visibleForTesting
+  final bool? skipIntroAnimation;
 
   @override
   ConsumerState<SplashScreen> createState() => _SplashScreenState();
@@ -27,10 +30,13 @@ class SplashScreen extends ConsumerStatefulWidget {
 class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   bool _navigated = false;
+  bool _checkingNavigation = false;
+  bool _navCheckScheduled = false;
+  bool _minShowElapsed = false;
+  bool _bootstrapGuardElapsed = false;
   Timer? _bootstrapGuard;
   Timer? _minHold;
   Timer? _retryTimer;
-  late final DateTime _openedAt;
   late final AnimationController _intro;
   late final Animation<double> _markFade;
   late final Animation<double> _markScale;
@@ -42,7 +48,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   @override
   void initState() {
     super.initState();
-    _openedAt = DateTime.now();
+    _minShowElapsed = _skipIntro;
     _intro = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2600),
@@ -86,15 +92,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_runSplashIntro());
     });
+    WidgetsBinding.instance.ensureVisualUpdate();
 
-    if (!_isFlutterTest) {
+    if (!_skipIntro) {
+      _minHold = Timer(const Duration(milliseconds: 2600), () {
+        if (!mounted) return;
+        _minShowElapsed = true;
+        _scheduleNavigationCheck();
+      });
       _bootstrapGuard = Timer(const Duration(milliseconds: 2800), () async {
         if (!mounted || _navigated) return;
+        _bootstrapGuardElapsed = true;
         final auth = ref.read(authControllerProvider);
         if (auth.bootstrapping) {
-          await ref
-              .read(authControllerProvider.notifier)
-              .abortBootstrapAsGuest();
+          try {
+            await ref
+                .read(authControllerProvider.notifier)
+                .abortBootstrapAsGuest();
+          } catch (_) {}
         }
         if (mounted) {
           if (_intro.value < 1.0) {
@@ -109,19 +124,23 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   static bool get _isFlutterTest =>
       !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
 
+  bool get _skipIntro => widget.skipIntroAnimation ?? _isFlutterTest;
+
   Future<void> _runSplashIntro() async {
     if (!mounted) return;
-    if (_isFlutterTest) {
+    if (_skipIntro) {
       _intro.value = 1.0;
       _scheduleNavigationCheck();
       return;
     }
-    try {
-      await Future.wait<void>([
-        precacheImage(const AssetImage(hasimSplashAsset), context),
-        precacheImage(const AssetImage(hasimSplashMarkAsset), context),
-      ]).timeout(const Duration(milliseconds: 1500));
-    } catch (_) {}
+    if (!_isFlutterTest) {
+      try {
+        await Future.wait<void>([
+          precacheImage(const AssetImage(hasimSplashAsset), context),
+          precacheImage(const AssetImage(hasimSplashMarkAsset), context),
+        ]).timeout(const Duration(milliseconds: 1500));
+      } catch (_) {}
+    }
     if (!mounted) return;
     try {
       await _intro.forward();
@@ -144,32 +163,48 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   void _scheduleNavigationCheck() {
+    if (!mounted || _navigated || _navCheckScheduled) return;
+    _navCheckScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _maybeNavigate();
+      _navCheckScheduled = false;
+      if (mounted) {
+        unawaited(_maybeNavigate());
+      }
     });
+    // Post-frame callbacks do not wake the engine once the intro ticker stops.
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   Future<void> _maybeNavigate() async {
-    if (_navigated || !mounted) return;
-    if (_intro.status != AnimationStatus.completed && _intro.value < 1.0) {
-      final elapsed = DateTime.now().difference(_openedAt);
-      if (elapsed.inMilliseconds >= 2700) {
-        _intro.value = 1.0;
-      } else {
+    if (_navigated || _checkingNavigation || !mounted) return;
+    _checkingNavigation = true;
+    try {
+      if (!_skipIntro && !_minShowElapsed) {
         return;
       }
-    }
-    final auth = ref.read(authControllerProvider);
-    if (auth.bootstrapping) {
-      final elapsed = DateTime.now().difference(_openedAt);
-      if (elapsed.inMilliseconds >= 2750) {
-        await ref
-            .read(authControllerProvider.notifier)
-            .abortBootstrapAsGuest();
-        if (!mounted) return;
-      } else {
-        if (!_isFlutterTest) {
+      if (_intro.status != AnimationStatus.completed && _intro.value < 1.0) {
+        if (_bootstrapGuardElapsed) {
+          _intro.value = 1.0;
+        } else {
+          return;
+        }
+      }
+      var auth = ref.read(authControllerProvider);
+      if (auth.bootstrapping) {
+        if (!_skipIntro && _bootstrapGuardElapsed) {
+          try {
+            await ref
+                .read(authControllerProvider.notifier)
+                .abortBootstrapAsGuest();
+          } catch (_) {}
+          if (!mounted) return;
+          auth = ref.read(authControllerProvider);
+        } else {
+          return;
+        }
+      }
+      if (auth.bootstrapping) {
+        if (!_skipIntro) {
           _retryTimer?.cancel();
           _retryTimer = Timer(const Duration(milliseconds: 100), () {
             if (mounted) _scheduleNavigationCheck();
@@ -177,34 +212,25 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         }
         return;
       }
-    }
-    _retryTimer?.cancel();
-    if (!_isFlutterTest) {
-      final elapsed = DateTime.now().difference(_openedAt);
-      const minShow = Duration(milliseconds: 2600);
-      if (elapsed < minShow) {
-        _minHold?.cancel();
-        _minHold = Timer(minShow - elapsed, () {
-          if (mounted) _scheduleNavigationCheck();
-        });
+      _retryTimer?.cancel();
+      _navigated = true;
+
+      final target = !auth.isAuthenticated ? '/login' : auth.authenticatedHome;
+
+      try {
+        context.go(target);
+      } catch (_) {
+        _navigated = false;
+        if (!_skipIntro) {
+          _retryTimer?.cancel();
+          _retryTimer = Timer(const Duration(milliseconds: 200), () {
+            if (mounted) _scheduleNavigationCheck();
+          });
+        }
         return;
       }
-    }
-    _navigated = true;
-
-    final target = !auth.isAuthenticated ? '/login' : auth.authenticatedHome;
-
-    try {
-      context.go(target);
-    } catch (_) {
-      _navigated = false;
-      if (!_isFlutterTest) {
-        _retryTimer?.cancel();
-        _retryTimer = Timer(const Duration(milliseconds: 200), () {
-          if (mounted) _scheduleNavigationCheck();
-        });
-      }
-      return;
+    } finally {
+      _checkingNavigation = false;
     }
   }
 

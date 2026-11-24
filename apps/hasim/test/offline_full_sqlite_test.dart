@@ -26,12 +26,12 @@ void main() {
     );
   });
 
-  test('InboxDatabase schema v9 creates local_commerce_orders and local_customers', () async {
+  test('InboxDatabase schema v11 creates local_commerce_orders and local_customers', () async {
     final db = InboxDatabase.memory();
     addTearDown(db.close);
     await db.ensureReady();
 
-    expect(db.schemaVersion, 9);
+    expect(db.schemaVersion, 11);
 
     final tables = await db.select(
       "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('local_commerce_orders', 'local_customers')",

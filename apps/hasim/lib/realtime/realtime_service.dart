@@ -5,13 +5,18 @@ import 'package:hasim/features/conversations/data/conversation_repository.dart';
 
 abstract class RealtimeService {
   Stream<MessageModel> get messageCreated;
+  Stream<ConversationModel> get conversationUpdated => const Stream.empty();
+  Stream<MessageStatusUpdate> get messageStatusUpdated => const Stream.empty();
   Stream<void> get conversationsChanged;
+  Stream<void> get reconnectSyncRequested => const Stream.empty();
   Stream<Map<String, dynamic>> get typingActivity;
   Stream<Map<String, dynamic>> get presenceActivity;
+  bool get isWebSocketConnected => false;
   Future<void> start();
   Future<void> stop();
   void watchConversation(int? conversationId);
   void unwatchConversation(int conversationId);
+  void setSeedMaxMessageId(int conversationId, int maxServerId) {}
   void triggerPoll();
   void dispose();
 }
@@ -25,7 +30,11 @@ class PollingRealtimeService implements RealtimeService {
   final ConversationRepository _repo;
   final int? Function()? _workspaceIdOf;
   final _messageController = StreamController<MessageModel>.broadcast();
+  final _conversationController =
+      StreamController<ConversationModel>.broadcast();
+  final _statusController = StreamController<MessageStatusUpdate>.broadcast();
   final _listController = StreamController<void>.broadcast();
+  final _reconnectController = StreamController<void>.broadcast();
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
   Timer? _listTimer;
@@ -43,13 +52,35 @@ class PollingRealtimeService implements RealtimeService {
   Stream<MessageModel> get messageCreated => _messageController.stream;
 
   @override
+  Stream<ConversationModel> get conversationUpdated =>
+      _conversationController.stream;
+
+  @override
+  Stream<MessageStatusUpdate> get messageStatusUpdated =>
+      _statusController.stream;
+
+  @override
   Stream<void> get conversationsChanged => _listController.stream;
+
+  @override
+  Stream<void> get reconnectSyncRequested => _reconnectController.stream;
 
   @override
   Stream<Map<String, dynamic>> get typingActivity => _typingController.stream;
 
   @override
   Stream<Map<String, dynamic>> get presenceActivity => _presenceController.stream;
+
+  @override
+  bool get isWebSocketConnected => false;
+
+  @override
+  void setSeedMaxMessageId(int conversationId, int maxServerId) {
+    if (_watchingConversationId == conversationId &&
+        maxServerId > _lastMaxMessageId) {
+      _lastMaxMessageId = maxServerId;
+    }
+  }
 
   @override
   Future<void> start() async {
@@ -103,47 +134,69 @@ class PollingRealtimeService implements RealtimeService {
     _listController.add(null);
   }
 
-  Future<void> _pollChat() async {
+  Future<void> _pollChat({bool emitListOnNew = true}) async {
     final generation = _pollGeneration;
     final id = _watchingConversationId;
     if (id == null) return;
     try {
-      final page = await _repo.messages(
-        id,
-        afterId: _lastMaxMessageId > 0 ? _lastMaxMessageId : null,
-        workspaceId: _workspaceIdOf?.call(),
-      );
-      if (generation != _pollGeneration || _watchingConversationId != id) {
-        return;
-      }
-      if (page.items.isEmpty) return;
-
-      final ordered = _lastMaxMessageId > 0
-          ? page.items.where((m) => m.id > 0)
-          : page.items.reversed.where((m) => m.id > 0);
-
+      var pagesFetched = 0;
       var anyNew = false;
-      for (final message in ordered) {
-        if (message.id > _lastMaxMessageId) {
-          _lastMaxMessageId = message.id;
+
+      do {
+        final after = _lastMaxMessageId > 0 ? _lastMaxMessageId : null;
+        final page = await _repo.messages(
+          id,
+          afterId: after,
+          workspaceId: _workspaceIdOf?.call(),
+        );
+        if (generation != _pollGeneration || _watchingConversationId != id) {
+          return;
         }
-        if (_deliveredMessageIds.add(message.id)) {
-          _messageController.add(message);
-          anyNew = true;
+        if (page.items.isEmpty) break;
+
+        final ordered = after != null
+            ? page.items.where((m) => m.id > 0)
+            : page.items.reversed.where((m) => m.id > 0);
+
+        for (final message in ordered) {
+          if (message.id > _lastMaxMessageId) {
+            _lastMaxMessageId = message.id;
+          }
+          if (_deliveredMessageIds.add(message.id)) {
+            _messageController.add(message);
+            anyNew = true;
+          }
         }
-      }
-      if (anyNew) {
+
+        pagesFetched++;
+        if (after == null || page.items.length < 100 || pagesFetched >= 5) {
+          break;
+        }
+      } while (true);
+
+      if (anyNew && emitListOnNew) {
         _listController.add(null);
       }
     } catch (_) {
       // ignore transient poll errors
     }
   }
+
+  /// Run an explicit incremental catch-up using known [afterId] without flipping polling timers.
+  Future<void> catchUpConversation(int conversationId, {int afterId = 0}) async {
+    if (_watchingConversationId != conversationId) return;
+    setSeedMaxMessageId(conversationId, afterId);
+    await _pollChat(emitListOnNew: false);
+  }
+
   @override
   void dispose() {
     stop();
     _messageController.close();
+    _conversationController.close();
+    _statusController.close();
     _listController.close();
+    _reconnectController.close();
     _typingController.close();
     _presenceController.close();
   }
@@ -151,19 +204,33 @@ class PollingRealtimeService implements RealtimeService {
 
 class NoopRealtimeService implements RealtimeService {
   final _messageController = StreamController<MessageModel>.broadcast();
+  final _conversationController =
+      StreamController<ConversationModel>.broadcast();
+  final _statusController = StreamController<MessageStatusUpdate>.broadcast();
   final _listController = StreamController<void>.broadcast();
+  final _reconnectController = StreamController<void>.broadcast();
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
 
   @override
   Stream<MessageModel> get messageCreated => _messageController.stream;
   @override
+  Stream<ConversationModel> get conversationUpdated =>
+      _conversationController.stream;
+  @override
+  Stream<MessageStatusUpdate> get messageStatusUpdated =>
+      _statusController.stream;
+  @override
   Stream<void> get conversationsChanged => _listController.stream;
+  @override
+  Stream<void> get reconnectSyncRequested => _reconnectController.stream;
 
   @override
   Stream<Map<String, dynamic>> get typingActivity => _typingController.stream;
   @override
   Stream<Map<String, dynamic>> get presenceActivity => _presenceController.stream;
+  @override
+  bool get isWebSocketConnected => false;
   @override
   Future<void> start() async {}
   @override
@@ -173,11 +240,16 @@ class NoopRealtimeService implements RealtimeService {
   @override
   void unwatchConversation(int conversationId) {}
   @override
+  void setSeedMaxMessageId(int conversationId, int maxServerId) {}
+  @override
   void triggerPoll() {}
   @override
   void dispose() {
     _messageController.close();
+    _conversationController.close();
+    _statusController.close();
     _listController.close();
+    _reconnectController.close();
     _typingController.close();
     _presenceController.close();
   }

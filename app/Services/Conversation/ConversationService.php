@@ -39,11 +39,16 @@ class ConversationService
     /**
      * @param  array<string, mixed>  $data
      */
-    public function addMessage(Conversation $conversation, array $data, ?User $actor = null, array $uploadedFiles = []): Message
-    {
+    public function addMessage(
+        Conversation $conversation,
+        array $data,
+        ?User $actor = null,
+        array $uploadedFiles = [],
+        bool $dispatchSideEffects = true,
+    ): Message {
         $workspaceId = (int) ($data['workspace_id'] ?? $conversation->workspace_id);
 
-        $runner = function () use ($conversation, $data, $actor, $uploadedFiles, $workspaceId): Message {
+        $runner = function () use ($conversation, $data, $actor, $uploadedFiles, $workspaceId, $dispatchSideEffects): Message {
             $externalMessageId = isset($data['external_message_id']) && is_string($data['external_message_id']) && trim($data['external_message_id']) !== ''
             ? trim($data['external_message_id'])
             : null;
@@ -94,10 +99,21 @@ class ConversationService
                         }
                     }
 
+                    $direction = (string) ($data['direction'] ?? 'outbound');
+                    $messageType = (string) ($data['message_type'] ?? 'text');
+                    $initialDeliveryStatus = $data['delivery_status'] ?? null;
+                    if ($initialDeliveryStatus === null && $direction === 'outbound' && $messageType !== 'system') {
+                        $outboundChannel = $this->channelOutbound->resolveOutboundChannel($conversation);
+                        $initialDeliveryStatus = $this->channelOutbound->supportsChannel($outboundChannel)
+                            ? 'pending'
+                            : 'sent';
+                    }
+
                     $message = $conversation->messages()->create([
                         ...$data,
                         'workspace_id' => $workspaceId,
                         'user_id' => $data['user_id'] ?? $actor?->id,
+                        'delivery_status' => $initialDeliveryStatus,
                     ]);
                 } catch (UniqueConstraintViolationException $e) {
                     if ($externalMessageId !== null) {
@@ -174,50 +190,11 @@ class ConversationService
                 return $message->load('attachments');
             });
 
-            if (! $message->wasRecentlyCreated) {
+            if (! $message->wasRecentlyCreated || ! $dispatchSideEffects) {
                 return $message;
             }
 
-            if ($message->direction === 'outbound') {
-                $this->channelOutbound->queueOutboundForMessage(
-                    $conversation->fresh() ?? $conversation,
-                    $message,
-                );
-            }
-
-            app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage(
-                $conversation->fresh() ?? $conversation,
-                $message,
-            );
-
-            if ($message->direction === 'inbound' && $message->message_type === 'text') {
-                app(ConversationClassificationService::class)->applySignals(
-                    $conversation->fresh() ?? $conversation,
-                    (string) $message->content,
-                );
-            }
-
-            app(InboxRealtimePublisher::class)->publishNewMessage(
-                $message,
-                $conversation->fresh() ?? $conversation,
-                ['provider' => 'web_inbox'],
-            );
-
-            if ($message->direction === 'outbound' && $actor instanceof User && ! (bool) ($data['ai_generated'] ?? false)) {
-                // Track last time a human employee replied (used for idle-handoff auto-resume)
-                $conversation->updateQuietly(['employee_last_replied_at' => $message->created_at ?? now()]);
-
-                app(ConversationResponderService::class)->recordTransition(
-                    $conversation->fresh() ?? $conversation,
-                    ConversationResponderService::TYPE_HUMAN,
-                    $actor,
-                    'staff_reply',
-                    'user',
-                    $actor,
-                    'رد الموظف على المحادثة',
-                );
-                app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
-            }
+            $this->dispatchPostCommitSideEffects($conversation, $message, $actor, $data);
 
             return $message;
         };
@@ -227,6 +204,71 @@ class ConversationService
         }
 
         return $runner();
+    }
+
+    /**
+     * Dispatch outbound delivery and realtime broadcasts only after the caller's DB transaction commits.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function dispatchPostCommitSideEffects(
+        Conversation $conversation,
+        Message $message,
+        ?User $actor = null,
+        array $data = [],
+    ): void {
+        if (! $message->wasRecentlyCreated) {
+            return;
+        }
+
+        $freshConversation = $conversation->fresh() ?? $conversation;
+
+        if ($message->direction === 'outbound') {
+            $this->channelOutbound->queueOutboundForMessage(
+                $freshConversation,
+                $message,
+            );
+        }
+
+        app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage(
+            $freshConversation,
+            $message,
+        );
+
+        if ($message->direction === 'inbound' && $message->message_type === 'text') {
+            app(ConversationClassificationService::class)->applySignals(
+                $conversation->fresh() ?? $freshConversation,
+                (string) $message->content,
+            );
+        }
+
+        if ($message->direction === 'outbound' && $actor instanceof User && ! (bool) ($data['ai_generated'] ?? false)) {
+            $freshConversation->updateQuietly(['employee_last_replied_at' => $message->created_at ?? now()]);
+
+            app(ConversationResponderService::class)->recordTransition(
+                $conversation->fresh() ?? $freshConversation,
+                ConversationResponderService::TYPE_HUMAN,
+                $actor,
+                'staff_reply',
+                'user',
+                $actor,
+                'رد الموظف على المحادثة',
+            );
+        }
+
+        $message->loadMissing([
+            'attachments',
+            'user:id,name',
+            'customer:id,name',
+            'workerEngagement.workerProfile:id,user_id,display_name',
+            'workerEngagement.workerProfile.user:id,name',
+        ]);
+
+        app(InboxRealtimePublisher::class)->publishNewMessage(
+            $message,
+            $conversation->fresh() ?? $freshConversation,
+            ['provider' => $message->direction === 'inbound' ? 'inbox_inbound' : 'web_inbox'],
+        );
     }
 
     public function toggleAi(Conversation $conversation, User $actor, bool $enabled): Conversation
