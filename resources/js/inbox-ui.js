@@ -302,7 +302,8 @@ const updateMessageDeliveryStatus = (update) => {
     }
     if (!node) return;
     const tick = node.querySelector('[data-delivery-tick]');
-    if (tick) {
+    if (tick && update.delivery_status) {
+        tick.dataset.deliveryStatus = String(update.delivery_status).toLowerCase();
         tick.innerHTML = renderDeliveryStatusSvg(update.delivery_status);
     }
 };
@@ -334,6 +335,7 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
         if (payload.delivery_status) {
             const tick = existingId.querySelector('[data-delivery-tick]');
             if (tick) {
+                tick.dataset.deliveryStatus = String(payload.delivery_status).toLowerCase();
                 tick.innerHTML = renderDeliveryStatusSvg(payload.delivery_status);
             }
         }
@@ -451,9 +453,9 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
         const checkmark = document.createElement('span');
         checkmark.className = 'inline-flex items-center';
         checkmark.dataset.deliveryTick = '1';
-        checkmark.innerHTML = renderDeliveryStatusSvg(
-            optimistic ? 'pending' : (payload.delivery_status || 'sent')
-        );
+        const initialStatus = optimistic ? 'pending' : (payload.delivery_status || 'sent');
+        checkmark.dataset.deliveryStatus = String(initialStatus).toLowerCase();
+        checkmark.innerHTML = renderDeliveryStatusSvg(initialStatus);
         footer.appendChild(checkmark);
     }
 
@@ -842,6 +844,231 @@ const updateTopResponderBar = (responder, conv) => {
     }
 };
 
+const showInboxActionToast = (message, isError = false) => {
+    if (!message) return;
+    let toast = document.getElementById('inbox-action-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'inbox-action-toast';
+        toast.className = 'fixed bottom-4 start-4 z-[80] max-w-sm rounded-xl px-4 py-2.5 text-xs font-bold shadow-xl transition-opacity duration-200';
+        document.body.appendChild(toast);
+    }
+    toast.className = `fixed bottom-4 start-4 z-[80] max-w-sm rounded-xl px-4 py-2.5 text-xs font-bold shadow-xl transition-opacity duration-200 ${
+        isError
+            ? 'border border-rose-200 bg-rose-600 text-white'
+            : 'border border-emerald-200 bg-emerald-600 text-white'
+    }`;
+    toast.textContent = message;
+    toast.classList.remove('opacity-0', 'pointer-events-none');
+    clearTimeout(toast.__hideTimer);
+    toast.__hideTimer = setTimeout(() => {
+        toast.classList.add('opacity-0', 'pointer-events-none');
+    }, 3500);
+};
+
+const shouldAcceptConversationSnapshot = (conv) => {
+    if (!conv?.id) return false;
+    const shell = document.getElementById('inbox-shell');
+    const activeId = shell?.dataset?.activeConversationId ? Number(shell.dataset.activeConversationId) : null;
+    if (!activeId || Number(conv.id) !== activeId) {
+        return true;
+    }
+    const incomingVer = Number(conv.handoff_version ?? 0);
+    const currentVer = Number(shell?.dataset?.handoffVersion ?? 0);
+    if (incomingVer > 0 && currentVer > 0 && incomingVer < currentVer) {
+        return false;
+    }
+    if (incomingVer > 0 && shell) {
+        shell.dataset.handoffVersion = String(incomingVer);
+    }
+    return true;
+};
+
+const renderDynamicHandoffControls = (conv) => {
+    const shell = document.getElementById('inbox-shell');
+    if (!shell || !conv?.id || Number(shell.dataset.activeConversationId) !== Number(conv.id)) {
+        return;
+    }
+
+    const allowsCompany = shell.dataset.allowsCompanyActions === '1';
+    const allowsWorker = shell.dataset.allowsWorkerHandoff === '1';
+    if (!allowsCompany && !allowsWorker) return;
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const status = String(conv.status || 'open');
+    const isOpen = status === 'open';
+    const currentUserId = Number(shell.dataset.currentUserId || 0);
+    const assignedUserId = conv.assigned_user_id ? Number(conv.assigned_user_id) : null;
+    const handoffStatus = String(conv.handoff_status || 'none');
+    const handoffBlocksAi = ['requested', 'queued', 'assigned', 'active'].includes(handoffStatus);
+    const aiReplying = Boolean(conv.ai_replying ?? conv.is_ai_replying ?? (isOpen && conv.ai_enabled && handoffStatus === 'none'));
+    const isAlreadyAssignedToMe = assignedUserId !== null && assignedUserId === currentUserId && !conv.ai_enabled;
+    const isOwnedByAnotherHuman = ['active', 'assigned'].includes(handoffStatus) && assignedUserId !== null && assignedUserId !== currentUserId;
+    const isHumanNeeded = ['requested', 'queued'].includes(handoffStatus);
+
+    const canClaim = isOpen && !isAlreadyAssignedToMe && (isHumanNeeded || aiReplying || (allowsCompany && isOwnedByAnotherHuman));
+    const canConvertToAi = isOpen && (handoffBlocksAi || !aiReplying) && (allowsCompany || !isOwnedByAnotherHuman);
+
+    const takeoverUrl = shell.dataset.takeoverUrl || '';
+    const resolveUrl = shell.dataset.resolveUrl || '';
+    const resumeAiUrl = shell.dataset.resumeAiUrl || '';
+
+    const buildForm = (actionType, actionUrl, btnHtml) => {
+        if (!actionUrl) return '';
+        return `<form method="POST" action="${escapeHtml(actionUrl)}" data-inbox-action-form="${actionType}" class="inline-flex">
+            <input type="hidden" name="_token" value="${escapeHtml(csrfToken)}">
+            ${btnHtml}
+        </form>`;
+    };
+
+    const takeoverBtn = (compact) => buildForm(
+        'takeover',
+        takeoverUrl,
+        `<button type="submit" data-inbox-takeover-btn class="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition disabled:opacity-60" title="تولي الرد على المحادثة">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            <span>تولي الرد</span>
+        </button>`
+    );
+
+    const resolveBtn = () => buildForm(
+        'resolve',
+        resolveUrl,
+        `<button type="submit" class="inline-flex items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 disabled:opacity-60">
+            <svg class="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            <span class="hidden sm:inline">إنهاء المراجعة</span>
+            <span class="sm:hidden">إنهاء</span>
+        </button>`
+    );
+
+    const resumeAiBtn = (compact) => buildForm(
+        'resume_ai',
+        resumeAiUrl,
+        `<button type="submit" data-inbox-resume-ai-btn class="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-emerald-800 shadow-2xs transition hover:bg-emerald-100 disabled:opacity-60">
+            <svg class="h-3.5 w-3.5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <span class="hidden sm:inline">تحويل إلى الذكاء الاصطناعي</span>
+            <span class="sm:hidden">${compact ? 'لـ AI' : 'تحويل لـ AI'}</span>
+        </button>`
+    );
+
+    const headerSlot = document.getElementById('inbox-header-handoff-actions');
+    if (headerSlot) {
+        let html = '';
+        if (canClaim) html += takeoverBtn(false);
+        if (allowsCompany && isOpen && handoffBlocksAi) html += resolveBtn();
+        if (canConvertToAi) html += resumeAiBtn(false);
+        headerSlot.innerHTML = html;
+    }
+
+    const barSlot = document.getElementById('inbox-responder-bar-actions');
+    if (barSlot) {
+        const auditBtn = barSlot.querySelector('button[title*="سجل تاريخ"]');
+        barSlot.querySelectorAll('form[data-inbox-action-form]').forEach((f) => f.remove());
+        let html = '';
+        if (canClaim) html += takeoverBtn(true);
+        if (canConvertToAi) html += resumeAiBtn(true);
+        if (html && auditBtn) {
+            auditBtn.insertAdjacentHTML('beforebegin', html);
+        } else if (html) {
+            barSlot.insertAdjacentHTML('afterbegin', html);
+        }
+    }
+
+    const aiToggleBtn = document.querySelector('form[data-inbox-action-form="ai_toggle"] button[type="submit"]');
+    const aiToggleInput = document.querySelector('form[data-inbox-action-form="ai_toggle"] input[name="ai_enabled"]');
+    if (aiToggleBtn && aiToggleInput && typeof conv.ai_enabled === 'boolean') {
+        aiToggleInput.value = conv.ai_enabled ? '0' : '1';
+        aiToggleBtn.className = `inline-flex items-center gap-1 rounded-xl border ${conv.ai_enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200/90 bg-white text-slate-500'} px-2.5 py-1 sm:px-2.5 sm:py-1.5 text-xs font-semibold shadow-2xs transition hover:opacity-90`;
+        const spans = aiToggleBtn.querySelectorAll('span');
+        if (spans[0]) spans[0].textContent = conv.ai_enabled ? 'AI نشط' : 'AI معطل';
+        if (spans[1]) spans[1].textContent = conv.ai_enabled ? 'AI' : 'معطل';
+    }
+};
+
+const applyConversationSnapshot = (conv, { moveToTop = false } = {}) => {
+    if (!conv?.id) return;
+    if (!shouldAcceptConversationSnapshot(conv)) return;
+    updateConversationInSidebar(conv, { moveToTop });
+    const shell = document.getElementById('inbox-shell');
+    const activeId = shell?.dataset?.activeConversationId ? Number(shell.dataset.activeConversationId) : null;
+    if (activeId && Number(conv.id) === activeId) {
+        if (conv.responder) {
+            updateTopResponderBar(conv.responder, conv);
+        }
+        if (conv.status) {
+            updateActiveConversationStatus(conv.status);
+        }
+        renderDynamicHandoffControls(conv);
+    }
+};
+
+const bindActionForms = () => {
+    const shell = document.getElementById('inbox-shell');
+    if (!shell || shell.dataset.hsActionFormsBound === '1') {
+        return;
+    }
+    shell.dataset.hsActionFormsBound = '1';
+
+    shell.addEventListener('submit', async (event) => {
+        const form = event.target.closest('form[data-inbox-action-form]');
+        if (!form) return;
+
+        event.preventDefault();
+        if (form.dataset.submitting === '1') {
+            return;
+        }
+        form.dataset.submitting = '1';
+
+        const submitBtn = form.querySelector('button[type="submit"], [type="submit"]');
+        const prevDisabled = submitBtn ? submitBtn.disabled : false;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-70', 'cursor-wait');
+        }
+
+        const formData = new FormData(form);
+        const currentVer = shell.dataset.handoffVersion;
+        if (currentVer && !formData.has('expected_handoff_version')) {
+            formData.append('expected_handoff_version', currentVer);
+        }
+
+        try {
+            const res = await fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                },
+                credentials: 'same-origin',
+                body: formData,
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok) {
+                if (data?.handoff_version) {
+                    shell.dataset.handoffVersion = String(data.handoff_version);
+                }
+                showInboxActionToast(data?.message || 'تعذر تنفيذ الإجراء، حاول مرة أخرى.', true);
+                return;
+            }
+
+            if (data?.conversation) {
+                applyConversationSnapshot(data.conversation, { moveToTop: false });
+            }
+            if (data?.message) {
+                showInboxActionToast(data.message, false);
+            }
+        } catch (_) {
+            showInboxActionToast('تعذر الاتصال بالخادم، يرجى المحاولة مرة أخرى.', true);
+        } finally {
+            delete form.dataset.submitting;
+            if (submitBtn && document.body.contains(submitBtn)) {
+                submitBtn.disabled = prevDisabled;
+                submitBtn.classList.remove('opacity-70', 'cursor-wait');
+            }
+        }
+    });
+};
+
 const updateActiveConversationStatus = (newStatus) => {
     if (!newStatus) return;
     const btn = document.querySelector('[data-hs-region] button[title="تغيير حالة المحادثة"]');
@@ -883,11 +1110,11 @@ const bindComposeForm = () => {
             const conversationId = root?.dataset?.activeConversationId || new URLSearchParams(window.location.search).get('conversation');
             if (!conversationId) return;
 
-            const isWorker = window.location.pathname.includes('/workers/');
+            const isWorker = root?.dataset?.inboxIsWorker === '1' || window.location.pathname.includes('/workers/');
             const workspaceId = root?.dataset?.workspaceId;
-            const url = isWorker
+            const url = root?.dataset?.typingUrl || (isWorker
                 ? `/workers/${workspaceId}/inbox/${conversationId}/typing`
-                : `/workspace/conversations/${conversationId}/typing`;
+                : `/workspace/conversations/${conversationId}/typing`);
 
             fetch(url, {
                 method: 'POST',
@@ -1711,12 +1938,25 @@ const bindLivePolling = () => {
             const ids = [...currentList.querySelectorAll('[data-message-id]')]
                 .map((el) => Number(el.dataset.messageId))
                 .filter((id) => !isNaN(id) && id > 0);
+            const pendingIds = [...currentList.querySelectorAll('[data-message-id]')]
+                .filter((el) => {
+                    const status = el.querySelector('[data-delivery-tick]')?.dataset?.deliveryStatus || '';
+                    return ['pending', 'sending', 'queued', 'accepted'].includes(status);
+                })
+                .map((el) => Number(el.dataset.messageId))
+                .filter((id) => !isNaN(id) && id > 0);
 
             const afterId = ids.length > 0 ? Math.max(...ids) : 0;
+            const pendingQuery = pendingIds.length > 0
+                ? `&pending_ids=${encodeURIComponent(pendingIds.join(','))}`
+                : '';
+
+            const pollMessagesUrl = root.dataset.pollMessagesUrl || `/workspace/conversations/${conversationId}/poll-messages`;
+            const sep = pollMessagesUrl.includes('?') ? '&' : '?';
 
             try {
                 isPolling = true;
-                const res = await fetch(`/workspace/conversations/${conversationId}/poll-messages?after_id=${afterId}`, {
+                const res = await fetch(`${pollMessagesUrl}${sep}after_id=${afterId}${pendingQuery}`, {
                     headers: {
                         Accept: 'application/json',
                         'X-Requested-With': 'XMLHttpRequest',
@@ -1736,11 +1976,13 @@ const bindLivePolling = () => {
                         scrollMessagesToBottom(false);
                     }
                 }
-                if (data?.conversation) {
-                    updateConversationInSidebar(data.conversation, { moveToTop: anyAppended });
-                    if (data.conversation.responder) {
-                        updateTopResponderBar(data.conversation.responder, data.conversation);
+                if (Array.isArray(data?.status_updates) && data.status_updates.length > 0) {
+                    for (const update of data.status_updates) {
+                        updateMessageDeliveryStatus(update);
                     }
+                }
+                if (data?.conversation) {
+                    applyConversationSnapshot(data.conversation, { moveToTop: anyAppended });
                 }
             } catch (_) {
                 // silent ignore
@@ -1759,9 +2001,10 @@ const bindLivePolling = () => {
         }
 
         if (isSidebarPolling) return;
+        const pollUpdatesUrl = root.dataset.pollUpdatesUrl || '/workspace/conversations/poll-updates';
         try {
             isSidebarPolling = true;
-            const res = await fetch('/workspace/conversations/poll-updates', {
+            const res = await fetch(pollUpdatesUrl, {
                 headers: {
                     Accept: 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
@@ -1813,6 +2056,7 @@ const bootInbox = (event) => {
     bindConversationListScroll(workspaceId);
     bindConversationLinks(workspaceId);
     bindComposeForm();
+    bindActionForms();
     bindMediaInteractions();
     bindLivePolling();
     scrollMessagesToBottom(true);
@@ -1824,6 +2068,7 @@ const bootInbox = (event) => {
         isNearBottom,
         updateConversationInSidebar,
         updateTopResponderBar,
+        applyConversationSnapshot,
         updateActiveConversationStatus,
         showTypingIndicator,
         hideTypingIndicator,

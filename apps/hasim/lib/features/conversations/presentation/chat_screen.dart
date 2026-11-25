@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/core/network/media_auth_headers.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/utils/quoted_reply.dart';
@@ -69,8 +70,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _attachButtonKey = GlobalKey();
   final _chatMenuKey = GlobalKey();
   bool _openedAtBottom = false;
-  bool _stickToBottom = true;
-  int _unseenBelowCount = 0;
+  final ValueNotifier<bool> _stickToBottomNotifier = ValueNotifier<bool>(true);
+  final ValueNotifier<int> _unseenBelowNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<String> _searchQueryNotifier = ValueNotifier<String>('');
   bool _emojiPickerOpen = false;
   bool _attachMenuOpen = false;
   bool _findingMessages = false;
@@ -137,8 +139,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       _suggestGeneration++;
       _openedAtBottom = false;
-      _stickToBottom = true;
-      _unseenBelowCount = 0;
+      _stickToBottomNotifier.value = true;
+      _unseenBelowNotifier.value = 0;
       _emojiPickerOpen = false;
       _attachMenuOpen = false;
       _replyTo = null;
@@ -159,11 +161,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .loadOlder();
     }
     final atLatest = pos.pixels <= 96;
-    if (atLatest != _stickToBottom || (atLatest && _unseenBelowCount > 0)) {
-      setState(() {
-        _stickToBottom = atLatest;
-        if (atLatest) _unseenBelowCount = 0;
-      });
+    if (atLatest != _stickToBottomNotifier.value) {
+      _stickToBottomNotifier.value = atLatest;
+    }
+    if (atLatest && _unseenBelowNotifier.value > 0) {
+      _unseenBelowNotifier.value = 0;
     }
   }
 
@@ -184,6 +186,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     unawaited(_voiceRecorder?.dispose());
     _scroll.removeListener(_onScroll);
     _controller.removeListener(_onComposerTextChanged);
+    _stickToBottomNotifier.dispose();
+    _unseenBelowNotifier.dispose();
+    _searchQueryNotifier.dispose();
     _controller.dispose();
     _messageSearch.dispose();
     _composerFocus.dispose();
@@ -197,11 +202,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (_scroll.hasClients && _scroll.offset > 0) {
         _scroll.jumpTo(0);
       }
-      if ((reveal && !_stickToBottom) || _unseenBelowCount > 0) {
-        setState(() {
-          if (reveal) _stickToBottom = true;
-          _unseenBelowCount = 0;
-        });
+      if (reveal && !_stickToBottomNotifier.value) {
+        _stickToBottomNotifier.value = true;
+      }
+      if (_unseenBelowNotifier.value > 0) {
+        _unseenBelowNotifier.value = 0;
       }
     });
   }
@@ -212,11 +217,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  List<MessageModel>? _cachedRowsSource;
-  String? _cachedRowsQuery;
-  Set<String>? _cachedHiddenKeys;
-  List<_ChatRow> _cachedRows = const [];
-  Map<String, int> _cachedKeyToIndex = const {};
   bool _sendingComposer = false;
 
   Future<void> _send() async {
@@ -245,7 +245,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         setState(() => _replyTo = null);
       }
       _keepComposerFocus();
-      _stickToBottom = true;
+      _stickToBottomNotifier.value = true;
       _scrollToLatest();
       final accepted = await ref
           .read(chatControllerProvider(widget.conversationId).notifier)
@@ -866,7 +866,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ).showSnackBar(const SnackBar(content: Text('التسجيل قصير جداً.')));
       return;
     }
-    _stickToBottom = true;
+    _stickToBottomNotifier.value = true;
     final err = await ref
         .read(chatControllerProvider(widget.conversationId).notifier)
         .sendVoiceNote(
@@ -1038,12 +1038,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: Text('إنهاء التحويل'),
           ),
         if (conversation != null &&
-            isCompanyUser &&
-            ConversationHandoffValues.canResumeAi(conversation))
+            ConversationHandoffValues.canTakeoverForActor(
+              conversation,
+              isWorker: !isCompanyUser,
+              currentUserId: ref.read(authControllerProvider).user?.id,
+            ))
+          const PopupMenuItem(
+            key: Key('chat-action-takeover'),
+            value: 'takeover',
+            child: Text('تولي الرد'),
+          ),
+        if (conversation != null &&
+            ConversationHandoffValues.canResumeAiForActor(
+              conversation,
+              isWorker: !isCompanyUser,
+              currentUserId: ref.read(authControllerProvider).user?.id,
+            ))
           const PopupMenuItem(
             key: Key('chat-action-resume-ai'),
             value: 'resume_ai',
-            child: Text('تحويل إلى AI'),
+            child: Text('تحويل إلى الذكاء الاصطناعي'),
           ),
       ],
     );
@@ -1115,6 +1129,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     if (selected == 'end_handoff' ||
         selected == 'move_to_team' ||
+        selected == 'takeover' ||
         selected == 'resume_ai') {
       final notifier = ref.read(
         chatControllerProvider(widget.conversationId).notifier,
@@ -1125,6 +1140,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final Future<String?> request;
       if (selected == 'resume_ai') {
         request = notifier.resumeAi();
+      } else if (selected == 'takeover') {
+        request = notifier.takeoverHandoff();
       } else {
         request = notifier.endHandoff();
       }
@@ -1347,7 +1364,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
 
-    _stickToBottom = true;
+    _stickToBottomNotifier.value = true;
     final err = await ref
         .read(chatControllerProvider(widget.conversationId).notifier)
         .sendMultipleAttachments(
@@ -1571,23 +1588,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  List<_ChatRow> _rows(List<MessageModel> messages) {
-    final rows = <_ChatRow>[];
-    DateTime? lastDay;
-    for (final message in messages) {
-      final created = message.createdAt?.toLocal();
-      if (created != null) {
-        final day = DateTime(created.year, created.month, created.day);
-        if (lastDay == null || day != lastDay) {
-          rows.add(_ChatRow.date(day));
-          lastDay = day;
-        }
-      }
-      rows.add(_ChatRow.message(message));
-    }
-    return rows;
-  }
-
   static bool _sameSenderGroup(MessageModel? a, MessageModel? b) {
     if (a == null || b == null) return false;
     if (a.isInternalNote || b.isInternalNote) return false;
@@ -1600,46 +1600,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return b.createdAt!.difference(a.createdAt!).inMinutes.abs() <= 3;
     }
     return true;
-  }
-
-  static String _rowKeyFor(_ChatRow row) {
-    if (row.date != null) {
-      return 'chat-date-${row.date!.millisecondsSinceEpoch}';
-    }
-    final m = row.message!;
-    final base = m.id > 0 ? 's-${m.id}' : 'c-${m.clientId ?? m.id}';
-    return 'chat-msg-$base';
-  }
-
-  List<_ChatRow> _rowsFor(
-    List<MessageModel> messages,
-    String query,
-    Set<String> hiddenKeys,
-  ) {
-    if (identical(_cachedRowsSource, messages) &&
-        _cachedRowsQuery == query &&
-        identical(_cachedHiddenKeys, hiddenKeys)) {
-      return _cachedRows;
-    }
-    final visibleMessages = query.isEmpty && hiddenKeys.isEmpty
-        ? messages
-        : messages
-              .where(
-                (m) =>
-                    (query.isEmpty || m.content.contains(query)) &&
-                    !hiddenKeys.contains(ConversationMarks.messageKey(m)),
-              )
-              .toList();
-    _cachedRowsSource = messages;
-    _cachedRowsQuery = query;
-    _cachedHiddenKeys = hiddenKeys;
-    final rows = _rows(visibleMessages);
-    _cachedRows = rows;
-    _cachedKeyToIndex = <String, int>{
-      for (var i = 0; i < rows.length; i++)
-        _rowKeyFor(rows[rows.length - 1 - i]): i,
-    };
-    return _cachedRows;
   }
 
   @override
@@ -1677,7 +1637,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       if (!_openedAtBottom && next.messages.isNotEmpty) {
         _openedAtBottom = true;
-        _stickToBottom = true;
+        _stickToBottomNotifier.value = true;
         _scrollToLatest();
         return;
       }
@@ -1691,253 +1651,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               nextLast.clientId != null);
 
       if (appendedAtEnd) {
-        if (_stickToBottom || nextLast.localPending) {
+        if (_stickToBottomNotifier.value || nextLast.localPending) {
           _scrollToLatest();
         } else if (!nextLast.isOutbound) {
-          setState(() => _unseenBelowCount++);
+          _unseenBelowNotifier.value = _unseenBelowNotifier.value + 1;
         }
       }
     });
 
-    final state = ref.watch(chatControllerProvider(widget.conversationId));
-    final marks = ref.watch(conversationMarksProvider);
-    final sharedBubble = ref.watch(chatBubbleColorControllerProvider);
-    final bubbleOverride = ref.watch(
-      conversationThemeProvider(
-        widget.conversationId,
-      ).select((t) => t.bubbleColorId),
-    );
-    final activeBubbleColorId = bubbleOverride ?? sharedBubble;
     final l10n = AppLocalizations.of(context);
-    final title = state.conversation?.title ?? 'محادثة';
-    final query = _messageSearch.text.trim();
-    final rows = _rowsFor(state.messages, query, marks.hiddenMessageKeys);
     final selectingMessages = _selectedMessageKeys.isNotEmpty;
-    MessageModel? pinnedMessage;
-    if (marks.pinnedMessageKeys.isNotEmpty) {
-      for (final message in state.messages.reversed) {
-        if (marks.isMessagePinned(message) && !marks.isMessageHidden(message)) {
-          pinnedMessage = message;
-          break;
-        }
-      }
-    }
+    final compact = HasimLayout.isCompact(context);
+    final attachDock =
+        compact && _attachMenuOpen ? ChatAttachmentGridPanel.heightFor(context) : 0.0;
+    final emojiDock = _phoneEmojiDock(context);
+    final bottomOverlaysHeight = attachDock + emojiDock;
+    final composerPad = _composerHeight + 8 + bottomOverlaysHeight;
     final replyTo = _replyTo;
-    final conversation = state.conversation ?? widget.initialConversation;
-    final initial = title.isNotEmpty ? title.characters.first : '#';
     final headerBg = HasimTokens.cardBg(context);
-
-    Widget titleBlock() {
-      final row = Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: HasimTokens.chatGreen.withValues(alpha: 0.15),
-            child: Text(
-              initial,
-              style: const TextStyle(
-                color: HasimTokens.chatGreen,
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (conversation != null) ...[
-                  const SizedBox(width: 6),
-                  ConversationChannelIcon(
-                    channel: conversation.channel,
-                    size: 18,
-                    tooltip: conversation.channelLabel,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      );
-      return InkWell(
-        key: Key(
-          widget.embedded ? 'desktop-customer-header' : 'chat-customer-header',
-        ),
-        onTap: _openCustomerFile,
-        borderRadius: BorderRadius.circular(8),
-        child: row,
-      );
-    }
 
     final scaffold = Scaffold(
       backgroundColor: HasimTokens.chatCanvas(context),
       appBar: selectingMessages
           ? _messageSelectionAppBar(headerBg)
-          : AppBar(
-              automaticallyImplyLeading: !widget.embedded,
-              centerTitle: false,
-              backgroundColor: headerBg,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              titleSpacing: widget.embedded ? 16 : 0,
-              shape: Border(
-                bottom: BorderSide(color: HasimTokens.lineColor(context)),
-              ),
-              bottom: _findingMessages
-                  ? PreferredSize(
-                      preferredSize: const Size.fromHeight(52),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                        child: TextField(
-                          controller: _messageSearch,
-                          autofocus: true,
-                          onChanged: (_) => setState(() {}),
-                          decoration: InputDecoration(
-                            hintText: 'بحث في هذه المحادثة',
-                            isDense: true,
-                            suffixIcon: IconButton(
-                              onPressed: () {
-                                _messageSearch.clear();
-                                setState(() => _findingMessages = false);
-                              },
-                              icon: const Icon(Icons.close),
-                            ),
-                          ),
-                        ),
-                      ),
-                    )
-                  : null,
-              title: titleBlock(),
-              actions: [
-                if (widget.embedded)
-                  IconButton(
-                    key: const Key('desktop-customer-info'),
-                    tooltip: 'معلومات العميل',
-                    onPressed: () =>
-                        ref
-                                .read(
-                                  desktopCustomerDrawerOpenProvider.notifier,
-                                )
-                                .state =
-                            true,
-                    icon: Icon(
-                      Icons.info_outline_rounded,
-                      color: HasimTokens.mutedColor(context),
-                    ),
-                  ),
-                if (state.presentEmployees.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsetsDirectional.only(end: 4),
-                    child: InkWell(
-                      key: const Key('chat-present-employees-button'),
-                      onTap: () => _showPresentEmployeesSheet(
-                        context,
-                        state.presentEmployees,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 4,
-                        ),
-                        margin: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: HasimTokens.chatGreen.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: HasimTokens.chatGreen.withValues(
-                              alpha: 0.3,
-                            ),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: const BoxDecoration(
-                                color: HasimTokens.chatGreen,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'الموظفون (${state.presentEmployees.length})',
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.bold,
-                                color: HasimTokens.chatGreen,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                PopupMenuButton<String>(
-                  key: _chatMenuKey,
-                  enabled: !state.mutating,
-                  icon: Icon(
-                    Icons.more_vert_rounded,
-                    color: HasimTokens.mutedColor(context),
-                  ),
-                  offset: const Offset(0, 44),
-                  color: HasimTokens.cardBg(context),
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  onSelected: (v) =>
-                      _onChatMenuSelected(context, v, conversation),
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(
-                      value: 'add_contact',
-                      child: Text('إضافة إلى جهات الاتصال'),
-                    ),
-                    const PopupMenuItem(value: 'search', child: Text('بحث')),
-                    const PopupMenuItem(
-                      value: 'add_list',
-                      child: Text('إضافة إلى القائمة'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'media',
-                      child: Text('وسائط وروابط ومستندات'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'disappearing',
-                      child: Text('الرسائل ذاتية الاختفاء'),
-                    ),
-                    const PopupMenuItem(
-                      key: Key('chat-action-themes'),
-                      value: 'themes',
-                      child: Text('سمة الدردشة'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'more',
-                      child: Row(
-                        children: [
-                          Expanded(child: Text('المزيد')),
-                          Icon(Icons.chevron_left, size: 18),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 8),
-              ],
+          : _ChatHeaderAppBar(
+              conversationId: widget.conversationId,
+              embedded: widget.embedded,
+              initialConversation: widget.initialConversation,
+              findingMessages: _findingMessages,
+              messageSearch: _messageSearch,
+              chatMenuKey: _chatMenuKey,
+              onSearchChanged: (v) => _searchQueryNotifier.value = v.trim(),
+              onCloseSearch: () {
+                _messageSearch.clear();
+                _searchQueryNotifier.value = '';
+                setState(() => _findingMessages = false);
+              },
+              onOpenCustomerFile: _openCustomerFile,
+              onOpenCustomerDrawer: () =>
+                  ref.read(desktopCustomerDrawerOpenProvider.notifier).state = true,
+              onShowPresentEmployees: (employees) =>
+                  _showPresentEmployeesSheet(context, employees),
+              onMenuSelected: (value, conv) =>
+                  _onChatMenuSelected(context, value, conv),
             ),
       body: Stack(
         children: [
@@ -1946,478 +1702,91 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           Column(
             children: [
-              if (state.loadingOlder)
-                const LinearProgressIndicator(minHeight: 2),
-              if (state.aiBusy || state.mutating)
-                const LinearProgressIndicator(minHeight: 2),
-              if ((ref.watch(realtimeConnectionStateProvider).valueOrNull ??
-                      ref
-                          .watch(realtimeServiceProvider)
-                          .currentConnectionState) ==
-                  RealtimeConnectionState.reconnecting)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 5,
-                  ),
-                  color: HasimTokens.warningBannerBg(context),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 11,
-                        height: 11,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            HasimTokens.warningBannerInk(context),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          'جاري إعادة الاتصال بالتحديث المباشر...',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: HasimTokens.warningBannerInk(context),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              if (!HasimLayout.isCompact(context) &&
-                  conversation?.isHumanHandoffActive == true)
-                ColoredBox(
-                  color: HasimTokens.warningBannerBg(context),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      child: Text(
-                        'تحتاج مراجعة من الفريق',
-                        key: const Key('chat-team-review'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: HasimTokens.warningBannerInk(context),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              if (conversation != null)
-                _LiveResponderHeaderBar(
-                  conversation: conversation,
-                  isWorker: ref.watch(
-                    authControllerProvider.select((s) => s.isIndependentWorker),
-                  ),
-                  onTakeover: () async {
-                    final err = await ref
-                        .read(
-                          chatControllerProvider(
-                            widget.conversationId,
-                          ).notifier,
-                        )
-                        .takeoverHandoff();
-                    if (!mounted) return;
-                    if (err != null) {
-                      ScaffoldMessenger.of(
-                        this.context,
-                      ).showSnackBar(SnackBar(content: Text(err)));
-                    } else {
-                      ScaffoldMessenger.of(
-                        this.context,
-                      ).showSnackBar(
-                        const SnackBar(
-                          content: Text('تم تولي الرد على المحادثة بنجاح'),
-                        ),
-                      );
-                    }
-                  },
-                  onMoveToTeam: () async {
-                    final err = await ref
-                        .read(
-                          chatControllerProvider(
-                            widget.conversationId,
-                          ).notifier,
-                        )
-                        .requestHandoff();
-                    if (!mounted) return;
-                    if (err != null) {
-                      ScaffoldMessenger.of(
-                        this.context,
-                      ).showSnackBar(SnackBar(content: Text(err)));
-                    } else {
-                      ScaffoldMessenger.of(
-                        this.context,
-                      ).showSnackBar(
-                        const SnackBar(
-                          content: Text('تم تحويل المحادثة إلى الفريق'),
-                        ),
-                      );
-                    }
-                  },
-                  onResumeAi: () async {
-                    final err = await ref
-                        .read(
-                          chatControllerProvider(
-                            widget.conversationId,
-                          ).notifier,
-                        )
-                        .resumeAi();
-                    if (!mounted) return;
-                    if (err != null) {
-                      ScaffoldMessenger.of(
-                        this.context,
-                      ).showSnackBar(SnackBar(content: Text(err)));
-                    } else {
-                      ScaffoldMessenger.of(
-                        this.context,
-                      ).showSnackBar(
-                        const SnackBar(
-                          content: Text('تم إعادة تفعيل الرد الآلي بواسطة AI'),
-                        ),
-                      );
-                    }
-                  },
-                ),
-              if (pinnedMessage != null) _pinnedMessageBar(pinnedMessage),
+              _ChatProgressBanners(conversationId: widget.conversationId),
+              _ChatResponderBannerSection(
+                conversationId: widget.conversationId,
+                initialConversation: widget.initialConversation,
+                compact: compact,
+                onTakeover: _handleTakeoverAction,
+                onMoveToTeam: _handleMoveToTeamAction,
+                onResumeAi: _handleResumeAiAction,
+              ),
+              _ChatPinnedMessageSection(
+                conversationId: widget.conversationId,
+                buildBar: _pinnedMessageBar,
+              ),
               Expanded(
-                child: state.loading && state.messages.isEmpty
-                    ? const SkeletonList()
-                    : AsyncBody(
-                        loading: false,
-                        error: state.error != null && state.messages.isEmpty
-                            ? state.error
-                            : null,
-                        isEmpty: !state.loading && state.messages.isEmpty,
-                        emptyTitle: 'ابدأ المحادثة',
-                        emptySubtitle: 'لا توجد رسائل بعد.',
-                        onRetry: () => ref
-                            .read(
-                              chatControllerProvider(
-                                widget.conversationId,
-                              ).notifier,
-                            )
-                            .refresh(),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final compact = HasimLayout.isCompact(context);
-                            final bubbleCap =
-                                constraints.maxWidth * (compact ? 0.78 : 0.72);
-                            final attachDock = compact && _attachMenuOpen
-                                ? ChatAttachmentGridPanel.heightFor(context)
-                                : 0.0;
-                            final emojiDock = _phoneEmojiDock(context);
-                            final composerPad =
-                                _composerHeight + 8 + attachDock + emojiDock;
-                            final keyToIndex = _cachedKeyToIndex;
-                            final list = RepaintBoundary(
-                              child: ListView.builder(
-                                controller: _scroll,
-                                reverse: true,
-                                findChildIndexCallback: (Key key) {
-                                  if (key is ValueKey<String>) {
-                                    return keyToIndex[key.value];
-                                  }
-                                  return null;
-                                },
-                                scrollCacheExtent:
-                                    const ScrollCacheExtent.pixels(600),
-                                padding: EdgeInsets.fromLTRB(
-                                  compact ? 10 : 16,
-                                  8,
-                                  compact ? 10 : 16,
-                                  composerPad,
-                                ),
-                                itemCount: rows.length,
-                                itemBuilder: (context, index) {
-                                  final rowIdx = rows.length - 1 - index;
-                                  final row = rows[rowIdx];
-                                  final prevRow =
-                                      rowIdx > 0 ? rows[rowIdx - 1] : null;
-                                  final nextRow = rowIdx + 1 < rows.length
-                                      ? rows[rowIdx + 1]
-                                      : null;
-                                  final keyStr = _rowKeyFor(row);
-                                  if (row.date != null) {
-                                    return ChatDateChip(
-                                      key: ValueKey(keyStr),
-                                      date: row.date!,
-                                    );
-                                  }
-                                  final m = row.message!;
-                                  final groupedPrev = _sameSenderGroup(
-                                    prevRow?.message,
-                                    m,
-                                  );
-                                  final groupedNext = _sameSenderGroup(
-                                    m,
-                                    nextRow?.message,
-                                  );
-                                  return SizedBox(
-                                    key: ValueKey(keyStr),
-                                    width: double.infinity,
-                                    child: ChatMessageBubble(
-                                      message: m,
-                                      maxWidth: bubbleCap,
-                                      bubbleColorId: activeBubbleColorId,
-                                      groupedWithPrevious: groupedPrev,
-                                      groupedWithNext: groupedNext,
-                                      onRetry: m.outboundPhase == OutboundPhase.failed
-                                          ? () => ref
-                                                .read(
-                                                  chatControllerProvider(
-                                                    widget.conversationId,
-                                                  ).notifier,
-                                                )
-                                                .retryFailed(m)
-                                          : null,
-                                      onImageTap: _openImage,
-                                      onMediaUrlExpired: _refreshMessages,
-                                      onOpenFailed: () {
-                                        if (!mounted) return;
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              l10n.chatAttachmentOpenFailed,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                      pinned: marks.isMessagePinned(m),
-                                      starred: marks.isMessageStarred(m),
-                                      selected: _selectedMessageKeys.contains(
-                                        ConversationMarks.messageKey(m),
-                                      ),
-                                      selectionMode: selectingMessages,
-                                      onToggleSelected: () =>
-                                          _toggleMessageSelection(m),
-                                      onContextMenu: (position) =>
-                                          _showMessageMenu(m, position),
-                                    ),
-                                  );
-                                },
-                              ),
-                            );
-                            return list;
-                          },
-                        ),
-                      ),
+                child: _ChatMessageListSection(
+                  conversationId: widget.conversationId,
+                  scrollController: _scroll,
+                  searchQueryNotifier: _searchQueryNotifier,
+                  bottomPadding: composerPad,
+                  selectingMessages: selectingMessages,
+                  selectedMessageKeys: _selectedMessageKeys,
+                  onRefresh: _refreshMessages,
+                  onImageTap: _openImage,
+                  onOpenFailed: () {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(l10n.chatAttachmentOpenFailed)),
+                    );
+                  },
+                  onToggleSelected: _toggleMessageSelection,
+                  onContextMenu: _showMessageMenu,
+                  onRetryFailed: (message) => ref
+                      .read(chatControllerProvider(widget.conversationId).notifier)
+                      .retryFailed(message),
+                ),
               ),
             ],
           ),
-          if (state.typingIndicator != null)
-            Positioned(
-              left: 16,
-              bottom: _composerHeight +
-                  12 +
-                  (HasimLayout.isCompact(context) && _attachMenuOpen
-                      ? ChatAttachmentGridPanel.heightFor(context)
-                      : 0) +
-                  _phoneEmojiDock(context),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: HasimTokens.floatingPillBg(context),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: HasimTokens.floatingPillBorder(context),
-                  ),
-                  boxShadow: HasimTokens.softShadow(context),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          HasimTokens.accent,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      state.typingIndicator!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: HasimTokens.mutedColor(context),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (conversation?.canReply != false)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom:
-                  (HasimLayout.isCompact(context) && _attachMenuOpen
-                      ? ChatAttachmentGridPanel.heightFor(context)
-                      : 0) +
-                  _phoneEmojiDock(context),
-              child: ChatComposer(
-                controller: _controller,
-                focusNode: _composerFocus,
-                emojiButtonKey: _emojiButtonKey,
-                attachButtonKey: _attachButtonKey,
-                sendEnabled: !state.sending,
-                recording: _recordingVoice,
-                recordElapsed: _voiceElapsed,
-                emojiAsKeyboard:
-                    HasimLayout.isCompact(context) && _emojiPickerOpen,
-                bottomSafe:
-                    !((HasimLayout.isCompact(context) && _attachMenuOpen) ||
-                        _phoneEmojiDock(context) > 0),
-                onSend: _send,
-                onAttach: _onAttachPressed,
-                onCamera: _openCamera,
-                onEmoji: _onEmojiPressed,
-                onRecord: _startVoiceRecording,
-                onCancelRecord: _cancelVoiceRecording,
-                onConfirmRecord: _confirmVoiceRecording,
-                onTogglePause: _toggleVoicePause,
-                voicePaused: _voicePaused,
-                voiceAmplitude: _voiceAmplitude,
-                replyTitle: replyTo == null ? null : _replyTitle(replyTo),
-                replyPreview: replyTo == null
-                    ? null
-                    : splitQuotedReply(_messageText(replyTo)).body,
-                onCancelReply: () => setState(() => _replyTo = null),
-              ),
-            )
-          else
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: HasimTokens.cardBg(context),
-                    border: Border(
-                      top: BorderSide(
-                        color: HasimTokens.lineColor(context),
-                        width: 0.8,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.lock_outline_rounded,
-                        size: 16,
-                        color: HasimTokens.mutedColor(context),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'لا تملك صلاحية الرد على هذه المحادثة',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: HasimTokens.mutedColor(context),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          if (!_stickToBottom &&
-              rows.isNotEmpty &&
-              !(state.loading && state.messages.isEmpty))
-            PositionedDirectional(
-              key: const Key('chat-scroll-to-bottom'),
-              end: HasimLayout.isCompact(context) ? 12 : 20,
-              bottom:
-                  _composerHeight +
-                  10 +
-                  (HasimLayout.isCompact(context) && _attachMenuOpen
-                      ? ChatAttachmentGridPanel.heightFor(context)
-                      : 0) +
-                  _phoneEmojiDock(context),
-              child: Material(
-                elevation: 2,
-                shadowColor: Colors.black26,
-                color: HasimTokens.cardBg(context),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  side: BorderSide(color: HasimTokens.lineColor(context)),
-                ),
-                child: InkWell(
-                  onTap: _onScrollToBottomTap,
-                  borderRadius: BorderRadius.circular(24),
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: _unseenBelowCount > 0
-                        ? Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: HasimTokens.chatGreen,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  _unseenBelowCount > 99
-                                      ? '99+'
-                                      : '$_unseenBelowCount',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 2),
-                              const Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                size: 24,
-                                color: HasimTokens.chatGreen,
-                              ),
-                            ],
-                          )
-                        : const Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            size: 26,
-                            color: HasimTokens.chatGreen,
-                          ),
-                  ),
-                ),
-              ),
-            ),
-          if (_attachMenuOpen && HasimLayout.isCompact(context))
+          _ChatTypingIndicatorOverlay(
+            conversationId: widget.conversationId,
+            bottomOffset: _composerHeight + 12 + bottomOverlaysHeight,
+          ),
+          _ChatComposerSection(
+            conversationId: widget.conversationId,
+            initialConversation: widget.initialConversation,
+            controller: _controller,
+            focusNode: _composerFocus,
+            emojiButtonKey: _emojiButtonKey,
+            attachButtonKey: _attachButtonKey,
+            recording: _recordingVoice,
+            recordElapsed: _voiceElapsed,
+            emojiAsKeyboard: compact && _emojiPickerOpen,
+            bottomSafe: !(bottomOverlaysHeight > 0),
+            bottomOffset: bottomOverlaysHeight,
+            onSend: _send,
+            onAttach: _onAttachPressed,
+            onCamera: _openCamera,
+            onEmoji: _onEmojiPressed,
+            onRecord: _startVoiceRecording,
+            onCancelRecord: _cancelVoiceRecording,
+            onConfirmRecord: _confirmVoiceRecording,
+            onTogglePause: _toggleVoicePause,
+            voicePaused: _voicePaused,
+            voiceAmplitude: _voiceAmplitude,
+            replyTitle: replyTo == null ? null : _replyTitle(replyTo),
+            replyPreview:
+                replyTo == null ? null : splitQuotedReply(_messageText(replyTo)).body,
+            onCancelReply: () => setState(() => _replyTo = null),
+          ),
+          _ChatScrollToBottomOverlay(
+            conversationId: widget.conversationId,
+            stickToBottomNotifier: _stickToBottomNotifier,
+            unseenBelowNotifier: _unseenBelowNotifier,
+            endOffset: compact ? 12 : 20,
+            bottomOffset: _composerHeight + 10 + bottomOverlaysHeight,
+            onTap: _onScrollToBottomTap,
+          ),
+          if (_attachMenuOpen && compact)
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
               child: ChatAttachmentGridPanel(onSelected: _onAttachMenuSelected),
             ),
-          if (_attachMenuOpen && !HasimLayout.isCompact(context))
+          if (_attachMenuOpen && !compact)
             Builder(
               builder: (context) {
                 final left = _anchorMenuLeft(
@@ -2444,12 +1813,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 );
               },
             ),
-          if (_emojiPickerOpen && HasimLayout.isCompact(context))
+          if (_emojiPickerOpen && compact)
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              height: _phoneEmojiDock(context),
+              height: emojiDock,
               child: ChatEmojiPickerPanel(
                 docked: true,
                 onEmojiSelected: _insertEmojiCharacter,
@@ -2459,7 +1828,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 },
               ),
             ),
-          if (_emojiPickerOpen && !HasimLayout.isCompact(context))
+          if (_emojiPickerOpen && !compact)
             Builder(
               builder: (context) {
                 final screenW = MediaQuery.sizeOf(context).width;
@@ -2505,6 +1874,1101 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       child: scaffold,
     );
   }
+
+  Future<void> _handleTakeoverAction() async {
+    final err = await ref
+        .read(chatControllerProvider(widget.conversationId).notifier)
+        .takeoverHandoff();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(err ?? 'تم تولي الرد على المحادثة بنجاح')),
+    );
+  }
+
+  Future<void> _handleMoveToTeamAction() async {
+    final err = await ref
+        .read(chatControllerProvider(widget.conversationId).notifier)
+        .requestHandoff();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(err ?? 'تم تحويل المحادثة إلى الفريق')),
+    );
+  }
+
+  Future<void> _handleResumeAiAction() async {
+    final err = await ref
+        .read(chatControllerProvider(widget.conversationId).notifier)
+        .resumeAi();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(err ?? 'تم تحويل المحادثة إلى الذكاء الاصطناعي')),
+    );
+  }
+}
+
+class _ChatHeaderAppBar extends ConsumerWidget implements PreferredSizeWidget {
+  const _ChatHeaderAppBar({
+    required this.conversationId,
+    required this.embedded,
+    required this.initialConversation,
+    required this.findingMessages,
+    required this.messageSearch,
+    required this.chatMenuKey,
+    required this.onSearchChanged,
+    required this.onCloseSearch,
+    required this.onOpenCustomerFile,
+    required this.onOpenCustomerDrawer,
+    required this.onShowPresentEmployees,
+    required this.onMenuSelected,
+  });
+
+  final int conversationId;
+  final bool embedded;
+  final ConversationModel? initialConversation;
+  final bool findingMessages;
+  final TextEditingController messageSearch;
+  final GlobalKey chatMenuKey;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onCloseSearch;
+  final VoidCallback onOpenCustomerFile;
+  final VoidCallback onOpenCustomerDrawer;
+  final ValueChanged<List<PresentEmployeeModel>> onShowPresentEmployees;
+  final void Function(String value, ConversationModel? conversation) onMenuSelected;
+
+  @override
+  Size get preferredSize => Size.fromHeight(kToolbarHeight + (findingMessages ? 52 : 0));
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final conversation = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.conversation),
+    ) ?? initialConversation;
+    final presentEmployees = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.presentEmployees),
+    );
+    final mutating = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.mutating),
+    );
+
+    final title = conversation?.title ?? 'محادثة';
+    final initial = title.isNotEmpty ? title.characters.first : '#';
+    final headerBg = HasimTokens.cardBg(context);
+
+    final titleWidget = InkWell(
+      key: Key(embedded ? 'desktop-customer-header' : 'chat-customer-header'),
+      onTap: onOpenCustomerFile,
+      borderRadius: BorderRadius.circular(8),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: HasimTokens.chatGreen.withValues(alpha: 0.15),
+            child: Text(
+              initial,
+              style: const TextStyle(
+                color: HasimTokens.chatGreen,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (conversation != null) ...[
+                  const SizedBox(width: 6),
+                  ConversationChannelIcon(
+                    channel: conversation.channel,
+                    size: 18,
+                    tooltip: conversation.channelLabel,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return AppBar(
+      automaticallyImplyLeading: !embedded,
+      centerTitle: false,
+      backgroundColor: headerBg,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      titleSpacing: embedded ? 16 : 0,
+      shape: Border(bottom: BorderSide(color: HasimTokens.lineColor(context))),
+      bottom: findingMessages
+          ? PreferredSize(
+              preferredSize: const Size.fromHeight(52),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: TextField(
+                  controller: messageSearch,
+                  autofocus: true,
+                  onChanged: onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'بحث في هذه المحادثة',
+                    isDense: true,
+                    suffixIcon: IconButton(
+                      onPressed: onCloseSearch,
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : null,
+      title: titleWidget,
+      actions: [
+        if (embedded)
+          IconButton(
+            key: const Key('desktop-customer-info'),
+            tooltip: 'معلومات العميل',
+            onPressed: onOpenCustomerDrawer,
+            icon: Icon(
+              Icons.info_outline_rounded,
+              color: HasimTokens.mutedColor(context),
+            ),
+          ),
+        if (presentEmployees.isNotEmpty)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: 4),
+            child: InkWell(
+              key: const Key('chat-present-employees-button'),
+              onTap: () => onShowPresentEmployees(presentEmployees),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: HasimTokens.chatGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: HasimTokens.chatGreen.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: HasimTokens.chatGreen,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'الموظفون (${presentEmployees.length})',
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                        color: HasimTokens.chatGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        PopupMenuButton<String>(
+          key: chatMenuKey,
+          enabled: !mutating,
+          icon: Icon(
+            Icons.more_vert_rounded,
+            color: HasimTokens.mutedColor(context),
+          ),
+          offset: const Offset(0, 44),
+          color: headerBg,
+          elevation: 8,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          onSelected: (v) => onMenuSelected(v, conversation),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'add_contact', child: Text('إضافة إلى جهات الاتصال')),
+            PopupMenuItem(value: 'search', child: Text('بحث')),
+            PopupMenuItem(value: 'add_list', child: Text('إضافة إلى القائمة')),
+            PopupMenuItem(value: 'media', child: Text('وسائط وروابط ومستندات')),
+            PopupMenuItem(value: 'disappearing', child: Text('الرسائل ذاتية الاختفاء')),
+            PopupMenuItem(key: Key('chat-action-themes'), value: 'themes', child: Text('سمة الدردشة')),
+            PopupMenuItem(
+              value: 'more',
+              child: Row(
+                children: [
+                  Expanded(child: Text('المزيد')),
+                  Icon(Icons.chevron_left, size: 18),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+}
+
+class _ChatProgressBanners extends ConsumerWidget {
+  const _ChatProgressBanners({required this.conversationId});
+
+  final int conversationId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final loadingOlder = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.loadingOlder),
+    );
+    final busy = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.aiBusy || s.mutating),
+    );
+    final reconnecting = (ref.watch(realtimeConnectionStateProvider).valueOrNull ??
+            ref.watch(realtimeServiceProvider).currentConnectionState) ==
+        RealtimeConnectionState.reconnecting;
+
+    if (!loadingOlder && !busy && !reconnecting) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (loadingOlder) const LinearProgressIndicator(minHeight: 2),
+        if (busy) const LinearProgressIndicator(minHeight: 2),
+        if (reconnecting)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+            color: HasimTokens.warningBannerBg(context),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 11,
+                  height: 11,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      HasimTokens.warningBannerInk(context),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'جاري إعادة الاتصال بالتحديث المباشر...',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: HasimTokens.warningBannerInk(context),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ChatResponderBannerSection extends ConsumerWidget {
+  const _ChatResponderBannerSection({
+    required this.conversationId,
+    required this.initialConversation,
+    required this.compact,
+    required this.onTakeover,
+    required this.onMoveToTeam,
+    required this.onResumeAi,
+  });
+
+  final int conversationId;
+  final ConversationModel? initialConversation;
+  final bool compact;
+  final VoidCallback onTakeover;
+  final VoidCallback onMoveToTeam;
+  final VoidCallback onResumeAi;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final conversation = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.conversation),
+    ) ?? initialConversation;
+    if (conversation == null) {
+      return const SizedBox.shrink();
+    }
+    final isWorker = ref.watch(
+      authControllerProvider.select((s) => s.isIndependentWorker),
+    );
+    final currentUserId = ref.watch(
+      authControllerProvider.select((s) => s.user?.id),
+    );
+    final isMutating = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.mutating),
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!compact && conversation.isHumanHandoffActive)
+          ColoredBox(
+            color: HasimTokens.warningBannerBg(context),
+            child: SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  'تحتاج مراجعة من الفريق',
+                  key: const Key('chat-team-review'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: HasimTokens.warningBannerInk(context),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        _LiveResponderHeaderBar(
+          conversation: conversation,
+          isWorker: isWorker,
+          currentUserId: currentUserId,
+          isMutating: isMutating,
+          onTakeover: onTakeover,
+          onMoveToTeam: onMoveToTeam,
+          onResumeAi: onResumeAi,
+        ),
+      ],
+    );
+  }
+}
+
+class _ChatPinnedMessageSection extends ConsumerWidget {
+  const _ChatPinnedMessageSection({
+    required this.conversationId,
+    required this.buildBar,
+  });
+
+  final int conversationId;
+  final Widget Function(MessageModel message) buildBar;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasPinned = ref.watch(
+      conversationMarksProvider.select((m) => m.pinnedMessageKeys.isNotEmpty),
+    );
+    if (!hasPinned) return const SizedBox.shrink();
+
+    final marks = ref.watch(conversationMarksProvider);
+    final messages = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.messages),
+    );
+    for (final message in messages.reversed) {
+      if (marks.isMessagePinned(message) && !marks.isMessageHidden(message)) {
+        return buildBar(message);
+      }
+    }
+    return const SizedBox.shrink();
+  }
+}
+
+class _ChatTypingIndicatorOverlay extends ConsumerWidget {
+  const _ChatTypingIndicatorOverlay({
+    required this.conversationId,
+    required this.bottomOffset,
+  });
+
+  final int conversationId;
+  final double bottomOffset;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final typingIndicator = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.typingIndicator),
+    );
+    if (typingIndicator == null) return const SizedBox.shrink();
+
+    return Positioned(
+      left: 16,
+      bottom: bottomOffset,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: HasimTokens.floatingPillBg(context),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: HasimTokens.floatingPillBorder(context)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.more_horiz_rounded,
+              size: 15,
+              color: HasimTokens.accent,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              typingIndicator,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: HasimTokens.mutedColor(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatComposerSection extends ConsumerWidget {
+  const _ChatComposerSection({
+    required this.conversationId,
+    required this.initialConversation,
+    required this.controller,
+    required this.focusNode,
+    required this.emojiButtonKey,
+    required this.attachButtonKey,
+    required this.recording,
+    required this.recordElapsed,
+    required this.emojiAsKeyboard,
+    required this.bottomSafe,
+    required this.bottomOffset,
+    required this.onSend,
+    required this.onAttach,
+    required this.onCamera,
+    required this.onEmoji,
+    required this.onRecord,
+    required this.onCancelRecord,
+    required this.onConfirmRecord,
+    required this.onTogglePause,
+    required this.voicePaused,
+    required this.voiceAmplitude,
+    this.replyTitle,
+    this.replyPreview,
+    this.onCancelReply,
+  });
+
+  final int conversationId;
+  final ConversationModel? initialConversation;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final GlobalKey emojiButtonKey;
+  final GlobalKey attachButtonKey;
+  final bool recording;
+  final Duration recordElapsed;
+  final bool emojiAsKeyboard;
+  final bool bottomSafe;
+  final double bottomOffset;
+  final VoidCallback onSend;
+  final VoidCallback onAttach;
+  final VoidCallback onCamera;
+  final VoidCallback onEmoji;
+  final VoidCallback onRecord;
+  final VoidCallback onCancelRecord;
+  final VoidCallback onConfirmRecord;
+  final VoidCallback onTogglePause;
+  final bool voicePaused;
+  final double voiceAmplitude;
+  final String? replyTitle;
+  final String? replyPreview;
+  final VoidCallback? onCancelReply;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canReply = ref.watch(
+      chatControllerProvider(conversationId).select(
+        (s) => (s.conversation ?? initialConversation)?.canReply != false,
+      ),
+    );
+    if (!canReply) {
+      return Positioned(
+        left: 0,
+        right: 0,
+        bottom: 0,
+        child: SafeArea(
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: HasimTokens.cardBg(context),
+              border: Border(
+                top: BorderSide(
+                  color: HasimTokens.lineColor(context),
+                  width: 0.8,
+                ),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.lock_outline_rounded,
+                  size: 16,
+                  color: HasimTokens.mutedColor(context),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'لا تملك صلاحية الرد على هذه المحادثة',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: HasimTokens.mutedColor(context),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final sending = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.sending),
+    );
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: bottomOffset,
+      child: ChatComposer(
+        controller: controller,
+        focusNode: focusNode,
+        emojiButtonKey: emojiButtonKey,
+        attachButtonKey: attachButtonKey,
+        sendEnabled: !sending,
+        recording: recording,
+        recordElapsed: recordElapsed,
+        emojiAsKeyboard: emojiAsKeyboard,
+        bottomSafe: bottomSafe,
+        onSend: onSend,
+        onAttach: onAttach,
+        onCamera: onCamera,
+        onEmoji: onEmoji,
+        onRecord: onRecord,
+        onCancelRecord: onCancelRecord,
+        onConfirmRecord: onConfirmRecord,
+        onTogglePause: onTogglePause,
+        voicePaused: voicePaused,
+        voiceAmplitude: voiceAmplitude,
+        replyTitle: replyTitle,
+        replyPreview: replyPreview,
+        onCancelReply: onCancelReply,
+      ),
+    );
+  }
+}
+
+class _ChatScrollToBottomOverlay extends ConsumerWidget {
+  const _ChatScrollToBottomOverlay({
+    required this.conversationId,
+    required this.stickToBottomNotifier,
+    required this.unseenBelowNotifier,
+    required this.endOffset,
+    required this.bottomOffset,
+    required this.onTap,
+  });
+
+  final int conversationId;
+  final ValueNotifier<bool> stickToBottomNotifier;
+  final ValueNotifier<int> unseenBelowNotifier;
+  final double endOffset;
+  final double bottomOffset;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isEmpty = ref.watch(
+      chatControllerProvider(conversationId).select((s) => s.messages.isEmpty),
+    );
+    if (isEmpty) return const SizedBox.shrink();
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: stickToBottomNotifier,
+      builder: (_, stickToBottom, _) {
+        if (stickToBottom) return const SizedBox.shrink();
+        return PositionedDirectional(
+          key: const Key('chat-scroll-to-bottom'),
+          end: endOffset,
+          bottom: bottomOffset,
+          child: Material(
+            elevation: 2,
+            shadowColor: Colors.black26,
+            color: HasimTokens.cardBg(context),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: HasimTokens.lineColor(context)),
+            ),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(24),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: ValueListenableBuilder<int>(
+                  valueListenable: unseenBelowNotifier,
+                  builder: (_, unseenCount, _) {
+                    if (unseenCount <= 0) {
+                      return const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 26,
+                        color: HasimTokens.chatGreen,
+                      );
+                    }
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: HasimTokens.chatGreen,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            unseenCount > 99 ? '99+' : '$unseenCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 24,
+                          color: HasimTokens.chatGreen,
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ChatMessageListSection extends ConsumerStatefulWidget {
+  const _ChatMessageListSection({
+    required this.conversationId,
+    required this.scrollController,
+    required this.searchQueryNotifier,
+    required this.bottomPadding,
+    required this.selectingMessages,
+    required this.selectedMessageKeys,
+    required this.onRefresh,
+    required this.onImageTap,
+    required this.onOpenFailed,
+    required this.onToggleSelected,
+    required this.onContextMenu,
+    required this.onRetryFailed,
+  });
+
+  final int conversationId;
+  final ScrollController scrollController;
+  final ValueNotifier<String> searchQueryNotifier;
+  final double bottomPadding;
+  final bool selectingMessages;
+  final Set<String> selectedMessageKeys;
+  final VoidCallback onRefresh;
+  final void Function(String url) onImageTap;
+  final VoidCallback onOpenFailed;
+  final void Function(MessageModel message) onToggleSelected;
+  final void Function(MessageModel message, Offset position) onContextMenu;
+  final void Function(MessageModel message) onRetryFailed;
+
+  @override
+  ConsumerState<_ChatMessageListSection> createState() =>
+      _ChatMessageListSectionState();
+}
+
+class _ChatMessageListSectionState extends ConsumerState<_ChatMessageListSection> {
+  List<MessageModel>? _cachedRowsSource;
+  String? _cachedRowsQuery;
+  Set<String>? _cachedHiddenKeys;
+  List<_ChatRow> _cachedRows = const [];
+  final Map<String, int> _cachedKeyToForwardIndex = <String, int>{};
+  final Map<int, int> _cachedMessageIdxToRowIdx = <int, int>{};
+  DateTime? _cachedLastDay;
+
+  static String _rowKeyFor(_ChatRow row) {
+    if (row.date != null) {
+      return 'chat-date-${row.date!.millisecondsSinceEpoch}';
+    }
+    final m = row.message!;
+    final base = m.id > 0 ? 's-${m.id}' : 'c-${m.clientId ?? m.id}';
+    return 'chat-msg-$base';
+  }
+
+  void _rebuildAllRows(List<MessageModel> visibleMessages) {
+    final rows = <_ChatRow>[];
+    _cachedKeyToForwardIndex.clear();
+    _cachedMessageIdxToRowIdx.clear();
+    DateTime? lastDay;
+    for (var i = 0; i < visibleMessages.length; i++) {
+      final message = visibleMessages[i];
+      final created = message.createdAt?.toLocal();
+      if (created != null) {
+        final day = DateTime(created.year, created.month, created.day);
+        if (lastDay == null || day != lastDay) {
+          final dateRow = _ChatRow.date(day);
+          _cachedKeyToForwardIndex[_rowKeyFor(dateRow)] = rows.length;
+          rows.add(dateRow);
+          lastDay = day;
+        }
+      }
+      final msgRow = _ChatRow.message(message);
+      _cachedMessageIdxToRowIdx[i] = rows.length;
+      _cachedKeyToForwardIndex[_rowKeyFor(msgRow)] = rows.length;
+      rows.add(msgRow);
+    }
+    _cachedLastDay = lastDay;
+    _cachedRows = rows;
+  }
+
+  List<_ChatRow> _rowsFor(
+    List<MessageModel> messages,
+    String query,
+    Set<String> hiddenKeys,
+  ) {
+    if (identical(_cachedRowsSource, messages) &&
+        _cachedRowsQuery == query &&
+        identical(_cachedHiddenKeys, hiddenKeys)) {
+      return _cachedRows;
+    }
+
+    final canIncremental =
+        query.isEmpty &&
+        hiddenKeys.isEmpty &&
+        _cachedRowsQuery == '' &&
+        (_cachedHiddenKeys?.isEmpty ?? false) &&
+        _cachedRowsSource != null;
+
+    if (canIncremental) {
+      final prev = _cachedRowsSource!;
+      // Fast O(1) tail-append path
+      if (messages.length == prev.length + 1 &&
+          prev.isNotEmpty &&
+          identical(messages[prev.length - 1], prev.last) &&
+          identical(messages.first, prev.first)) {
+        final lastMsg = messages.last;
+        final created = lastMsg.createdAt?.toLocal();
+        if (created != null) {
+          final day = DateTime(created.year, created.month, created.day);
+          if (_cachedLastDay == null || day != _cachedLastDay) {
+            final dateRow = _ChatRow.date(day);
+            _cachedKeyToForwardIndex[_rowKeyFor(dateRow)] = _cachedRows.length;
+            _cachedRows.add(dateRow);
+            _cachedLastDay = day;
+          }
+        }
+        final msgRow = _ChatRow.message(lastMsg);
+        _cachedMessageIdxToRowIdx[messages.length - 1] = _cachedRows.length;
+        _cachedKeyToForwardIndex[_rowKeyFor(msgRow)] = _cachedRows.length;
+        _cachedRows.add(msgRow);
+        _cachedRowsSource = messages;
+        return _cachedRows;
+      }
+
+      // Fast O(N) pointer equality check -> O(1) single-row update (e.g. status tick)
+      if (messages.length == prev.length && messages.isNotEmpty) {
+        var diffCount = 0;
+        var diffIdx = -1;
+        for (var i = messages.length - 1; i >= 0; i--) {
+          if (!identical(messages[i], prev[i])) {
+            diffCount++;
+            diffIdx = i;
+            if (diffCount > 1) break;
+          }
+        }
+        if (diffCount == 0) {
+          _cachedRowsSource = messages;
+          return _cachedRows;
+        }
+        if (diffCount == 1 &&
+            diffIdx >= 0 &&
+            messages[diffIdx].createdAt == prev[diffIdx].createdAt) {
+          final rowIdx = _cachedMessageIdxToRowIdx[diffIdx];
+          if (rowIdx != null) {
+            _cachedKeyToForwardIndex.remove(_rowKeyFor(_cachedRows[rowIdx]));
+            final updatedRow = _ChatRow.message(messages[diffIdx]);
+            _cachedRows[rowIdx] = updatedRow;
+            _cachedKeyToForwardIndex[_rowKeyFor(updatedRow)] = rowIdx;
+            _cachedRowsSource = messages;
+            return _cachedRows;
+          }
+        }
+      }
+    }
+
+    final visibleMessages = query.isEmpty && hiddenKeys.isEmpty
+        ? messages
+        : messages
+              .where(
+                (m) =>
+                    (query.isEmpty || m.content.contains(query)) &&
+                    !hiddenKeys.contains(ConversationMarks.messageKey(m)),
+              )
+              .toList();
+
+    _cachedRowsSource = messages;
+    _cachedRowsQuery = query;
+    _cachedHiddenKeys = hiddenKeys;
+    _rebuildAllRows(visibleMessages);
+    return _cachedRows;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loading = ref.watch(
+      chatControllerProvider(widget.conversationId).select((s) => s.loading),
+    );
+    final messages = ref.watch(
+      chatControllerProvider(widget.conversationId).select((s) => s.messages),
+    );
+    final error = ref.watch(
+      chatControllerProvider(widget.conversationId).select((s) => s.error),
+    );
+    final pinnedKeys = ref.watch(
+      conversationMarksProvider.select((m) => m.pinnedMessageKeys),
+    );
+    final starredKeys = ref.watch(
+      conversationMarksProvider.select((m) => m.starredMessageKeys),
+    );
+    final hiddenKeys = ref.watch(
+      conversationMarksProvider.select((m) => m.hiddenMessageKeys),
+    );
+    final sharedBubble = ref.watch(chatBubbleColorControllerProvider);
+    final bubbleOverride = ref.watch(
+      conversationThemeProvider(
+        widget.conversationId,
+      ).select((t) => t.bubbleColorId),
+    );
+    final activeBubbleColorId = bubbleOverride ?? sharedBubble;
+    final mediaHeaders = ref.watch(mediaAuthHeadersProvider).valueOrNull;
+
+    if (loading && messages.isEmpty) {
+      return const SkeletonList();
+    }
+
+    return AsyncBody(
+      loading: false,
+      error: error != null && messages.isEmpty ? error : null,
+      isEmpty: !loading && messages.isEmpty,
+      emptyTitle: 'ابدأ المحادثة',
+      emptySubtitle: 'لا توجد رسائل بعد.',
+      onRetry: widget.onRefresh,
+      child: ValueListenableBuilder<String>(
+        valueListenable: widget.searchQueryNotifier,
+        builder: (context, query, _) {
+          final rows = _rowsFor(messages, query, hiddenKeys);
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = HasimLayout.isCompact(context);
+              final bubbleCap = constraints.maxWidth * (compact ? 0.78 : 0.72);
+              final renderStyle = ChatBubbleRenderStyle.resolve(
+                context,
+                maxWidthOverride: bubbleCap,
+                bubbleColorId: activeBubbleColorId,
+                mediaHeaders: mediaHeaders,
+              );
+
+              return RepaintBoundary(
+                child: ListView.builder(
+                  controller: widget.scrollController,
+                  reverse: true,
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
+                  findChildIndexCallback: (Key key) {
+                    if (key is ValueKey<String>) {
+                      final forward = _cachedKeyToForwardIndex[key.value];
+                      if (forward == null) return null;
+                      return rows.length - 1 - forward;
+                    }
+                    return null;
+                  },
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(380),
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 10 : 16,
+                    8,
+                    compact ? 10 : 16,
+                    widget.bottomPadding,
+                  ),
+                  itemCount: rows.length,
+                  itemBuilder: (context, index) {
+                    final rowIdx = rows.length - 1 - index;
+                    final row = rows[rowIdx];
+                    final keyStr = _rowKeyFor(row);
+                    if (row.date != null) {
+                      return ChatDateChip(
+                        key: ValueKey(keyStr),
+                        date: row.date!,
+                      );
+                    }
+                    final prevRow = rowIdx > 0 ? rows[rowIdx - 1] : null;
+                    final nextRow = rowIdx + 1 < rows.length
+                        ? rows[rowIdx + 1]
+                        : null;
+                    final m = row.message!;
+                    final groupedPrev = _ChatScreenState._sameSenderGroup(
+                      prevRow?.message,
+                      m,
+                    );
+                    final groupedNext = _ChatScreenState._sameSenderGroup(
+                      m,
+                      nextRow?.message,
+                    );
+                    final markKey = ConversationMarks.messageKey(m);
+                    return _MemoizedMessageTile(
+                      key: ValueKey(keyStr),
+                      message: m,
+                      maxWidth: bubbleCap,
+                      bubbleColorId: activeBubbleColorId,
+                      renderStyle: renderStyle,
+                      groupedPrev: groupedPrev,
+                      groupedNext: groupedNext,
+                      pinned: pinnedKeys.contains(markKey),
+                      starred: starredKeys.contains(markKey),
+                      selected: widget.selectedMessageKeys.contains(markKey),
+                      selectionMode: widget.selectingMessages,
+                      onRetry: m.outboundPhase == OutboundPhase.failed
+                          ? () => widget.onRetryFailed(m)
+                          : null,
+                      onImageTap: widget.onImageTap,
+                      onMediaUrlExpired: widget.onRefresh,
+                      onOpenFailed: widget.onOpenFailed,
+                      onToggleSelected: () => widget.onToggleSelected(m),
+                      onContextMenu: (pos) => widget.onContextMenu(m, pos),
+                    );
+                  },
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MemoizedMessageTile extends StatefulWidget {
+  const _MemoizedMessageTile({
+    super.key,
+    required this.message,
+    required this.maxWidth,
+    required this.bubbleColorId,
+    required this.renderStyle,
+    required this.groupedPrev,
+    required this.groupedNext,
+    required this.pinned,
+    required this.starred,
+    required this.selected,
+    required this.selectionMode,
+    required this.onRetry,
+    required this.onImageTap,
+    required this.onMediaUrlExpired,
+    required this.onOpenFailed,
+    required this.onToggleSelected,
+    required this.onContextMenu,
+  });
+
+  final MessageModel message;
+  final double maxWidth;
+  final String? bubbleColorId;
+  final ChatBubbleRenderStyle renderStyle;
+  final bool groupedPrev;
+  final bool groupedNext;
+  final bool pinned;
+  final bool starred;
+  final bool selected;
+  final bool selectionMode;
+  final VoidCallback? onRetry;
+  final void Function(String url) onImageTap;
+  final VoidCallback onMediaUrlExpired;
+  final VoidCallback onOpenFailed;
+  final VoidCallback onToggleSelected;
+  final void Function(Offset position) onContextMenu;
+
+  @override
+  State<_MemoizedMessageTile> createState() => _MemoizedMessageTileState();
+}
+
+class _MemoizedMessageTileState extends State<_MemoizedMessageTile> {
+  Widget? _cached;
+
+  static bool _sameMessage(MessageModel a, MessageModel b) {
+    return identical(a, b) ||
+        (a == b &&
+            a.localUploading == b.localUploading &&
+            a.localAttachmentPath == b.localAttachmentPath &&
+            a.userName == b.userName &&
+            a.customerName == b.customerName);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MemoizedMessageTile old) {
+    super.didUpdateWidget(old);
+    if (!_sameMessage(old.message, widget.message) ||
+        old.maxWidth != widget.maxWidth ||
+        old.bubbleColorId != widget.bubbleColorId ||
+        old.renderStyle != widget.renderStyle ||
+        old.groupedPrev != widget.groupedPrev ||
+        old.groupedNext != widget.groupedNext ||
+        old.pinned != widget.pinned ||
+        old.starred != widget.starred ||
+        old.selected != widget.selected ||
+        old.selectionMode != widget.selectionMode) {
+      _cached = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _cached ??= SizedBox(
+      width: double.infinity,
+      child: ChatMessageBubble(
+        message: widget.message,
+        maxWidth: widget.maxWidth,
+        bubbleColorId: widget.bubbleColorId,
+        renderStyle: widget.renderStyle,
+        groupedWithPrevious: widget.groupedPrev,
+        groupedWithNext: widget.groupedNext,
+        onRetry: widget.onRetry,
+        onImageTap: widget.onImageTap,
+        onMediaUrlExpired: widget.onMediaUrlExpired,
+        onOpenFailed: widget.onOpenFailed,
+        pinned: widget.pinned,
+        starred: widget.starred,
+        selected: widget.selected,
+        selectionMode: widget.selectionMode,
+        onToggleSelected: widget.onToggleSelected,
+        onContextMenu: widget.onContextMenu,
+      ),
+    );
+  }
 }
 
 class _ChatRow {
@@ -2523,6 +2987,8 @@ class _LiveResponderHeaderBar extends StatelessWidget {
   const _LiveResponderHeaderBar({
     required this.conversation,
     this.isWorker = false,
+    this.currentUserId,
+    this.isMutating = false,
     required this.onTakeover,
     required this.onMoveToTeam,
     required this.onResumeAi,
@@ -2530,6 +2996,8 @@ class _LiveResponderHeaderBar extends StatelessWidget {
 
   final ConversationModel conversation;
   final bool isWorker;
+  final int? currentUserId;
+  final bool isMutating;
   final VoidCallback onTakeover;
   final VoidCallback onMoveToTeam;
   final VoidCallback onResumeAi;
@@ -2574,24 +3042,146 @@ class _LiveResponderHeaderBar extends StatelessWidget {
 
     final assignedName = conversation.assignedUserName;
     final String titleText;
+    final String pillLabel;
     switch (responder.status) {
       case 'ai_active':
         titleText = '${responder.name} يتولى الرد على هذه المحادثة';
+        pillLabel = 'مشغل AI';
       case 'human_active':
         titleText = responder.isTyping
             ? '${responder.name} يكتب رداً الآن...'
             : (assignedName != null && assignedName.isNotEmpty
-                ? 'المسؤول: $assignedName'
-                : 'المسؤول الحالي: ${responder.name}');
+                ? 'الموظف المسؤول: $assignedName'
+                : 'الموظف المسؤول: ${responder.name}');
+        pillLabel = responder.isTyping ? responder.label : 'الرد بواسطة الموظف';
       case 'human_needed':
         titleText = 'المحادثة بانتظار استلام من أحد موظفي الفريق';
+        pillLabel = responder.label;
       case 'waiting':
         titleText = (assignedName != null && assignedName.isNotEmpty)
-            ? 'المسؤول: $assignedName'
+            ? 'الموظف المسؤول: $assignedName'
             : 'المحادثة متوقفة مؤقتاً بانتظار الرد';
+        pillLabel = responder.label;
       default:
         titleText = 'المحادثة مغلقة أو غير متصلة';
+        pillLabel = responder.label;
     }
+
+    final canModifyActions =
+        ConversationHandoffValues.isOpen(conversation) &&
+        (!isWorker || conversation.canReply);
+    final canTakeover =
+        canModifyActions &&
+        ConversationHandoffValues.canTakeoverForActor(
+          conversation,
+          isWorker: isWorker,
+          currentUserId: currentUserId,
+        );
+    final canMoveToTeam =
+        canModifyActions &&
+        !isWorker &&
+        (responder.status == 'human_active' ||
+            (canTakeover && responder.status == 'ai_active'));
+    final canResumeAi =
+        canModifyActions &&
+        ConversationHandoffValues.canResumeAiForActor(
+          conversation,
+          isWorker: isWorker,
+          currentUserId: currentUserId,
+        );
+
+    final actionButtons = <Widget>[
+      if (canTakeover)
+        _buildActionButton(
+          buttonKey: const Key('responder-takeover-btn'),
+          label: 'تولي الرد',
+          backgroundColor: const Color(0xFF2563EB),
+          showSpinner: isMutating,
+          onPressed: isMutating ? null : onTakeover,
+        ),
+      if (canMoveToTeam)
+        _buildActionButton(
+          label: 'تحويل للفريق',
+          backgroundColor: const Color(0xFFD97706),
+          onPressed: isMutating ? null : onMoveToTeam,
+        ),
+      if (canResumeAi)
+        _buildActionButton(
+          buttonKey: const Key('responder-resume-ai-btn'),
+          label: 'تحويل إلى الذكاء الاصطناعي',
+          backgroundColor: const Color(0xFF067E6B),
+          onPressed: isMutating ? null : onResumeAi,
+        ),
+    ];
+
+    final statusIcon = Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: dotColor.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(iconData, size: 16, color: dotColor),
+    );
+
+    final statusDetails = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          titleText,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 11.5,
+            color: textColor,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                pillLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  color: textColor.withValues(alpha: 0.85),
+                ),
+              ),
+            ),
+            if (responder.assignedAtHuman != null &&
+                responder.assignedAtHuman!.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  '• ${responder.assignedAtHuman}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontSize: 9.5,
+                    color: textColor.withValues(alpha: 0.75),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
 
     return Container(
       width: double.infinity,
@@ -2600,207 +3190,98 @@ class _LiveResponderHeaderBar extends StatelessWidget {
         color: bgColor,
         border: Border(bottom: BorderSide(color: borderColor, width: 0.8)),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: dotColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(iconData, size: 16, color: dotColor),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (actionButtons.isEmpty) {
+            return Row(
               children: [
-                Text(
-                  titleText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11.5,
-                    color: textColor,
+                statusIcon,
+                const SizedBox(width: 8),
+                Expanded(child: statusDetails),
+              ],
+            );
+          }
+          if (constraints.maxWidth >= 600) {
+            return Row(
+              children: [
+                statusIcon,
+                const SizedBox(width: 8),
+                Expanded(child: statusDetails),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    alignment: WrapAlignment.end,
+                    children: actionButtons,
                   ),
-                ),
-                const SizedBox(height: 1),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 5,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: dotColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        responder.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w600,
-                          color: textColor.withValues(alpha: 0.85),
-                        ),
-                      ),
-                    ),
-                    if (responder.assignedAtHuman != null &&
-                        responder.assignedAtHuman!.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          '• ${responder.assignedAtHuman}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(
-                                fontSize: 9.5,
-                                color: textColor.withValues(alpha: 0.75),
-                              ),
-                        ),
-                      ),
-                    ],
-                  ],
                 ),
               ],
-            ),
-          ),
-          if (!isWorker &&
-              conversation.status == 'open' &&
-              !conversation.archived) ...[
-            if (responder.status == 'ai_active') ...[
-              TextButton(
-                onPressed: onTakeover,
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  backgroundColor: const Color(0xFF2563EB),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                ),
-                child: const Text(
-                  'تولي الرد',
-                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
-                ),
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  statusIcon,
+                  const SizedBox(width: 8),
+                  Expanded(child: statusDetails),
+                ],
               ),
-              const SizedBox(width: 4),
-              TextButton(
-                onPressed: onMoveToTeam,
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  backgroundColor: const Color(0xFFD97706),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                ),
-                child: const Text(
-                  'تحويل للفريق',
-                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ] else if (responder.status == 'human_active') ...[
-              TextButton(
-                onPressed: onMoveToTeam,
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  backgroundColor: const Color(0xFFD97706),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                ),
-                child: const Text(
-                  'تحويل للفريق',
-                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
-                ),
-              ),
-              const SizedBox(width: 4),
-              TextButton(
-                onPressed: onResumeAi,
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  backgroundColor: const Color(0xFF067E6B),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                ),
-                child: const Text(
-                  'إعادة إلى AI',
-                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ] else if (responder.status == 'human_needed' ||
-                responder.status == 'waiting') ...[
-              TextButton(
-                onPressed: onTakeover,
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  backgroundColor: const Color(0xFF2563EB),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                ),
-                child: const Text(
-                  'تولي الرد',
-                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
-                ),
-              ),
-              const SizedBox(width: 4),
-              TextButton(
-                onPressed: onResumeAi,
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  backgroundColor: const Color(0xFF067E6B),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                ),
-                child: const Text(
-                  'إعادة إلى AI',
-                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+              const SizedBox(height: 5),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.end,
+                  children: actionButtons,
                 ),
               ),
             ],
-          ],
-        ],
+          );
+        },
       ),
+    );
+  }
+
+  Widget _buildActionButton({
+    Key? buttonKey,
+    required String label,
+    required Color backgroundColor,
+    required VoidCallback? onPressed,
+    bool showSpinner = false,
+  }) {
+    return TextButton(
+      key: buttonKey,
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        minimumSize: const Size(0, 28),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        backgroundColor: backgroundColor,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+      ),
+      child: showSpinner
+          ? const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
     );
   }
 }

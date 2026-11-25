@@ -210,7 +210,7 @@ class ConversationInboxService
     }
 
     /**
-     * @param  array{direction?:string,message_type?:string,content?:string,metadata?:array,idempotency_key?:string}  $data
+     * @param  array{direction?:string,message_type?:string,content?:string,metadata?:array,idempotency_key?:string|null,client_id?:string|null}  $data
      */
     public function sendMessage(Conversation $conversation, User $actor, array $data, ?Request $request = null): Message
     {
@@ -225,9 +225,11 @@ class ConversationInboxService
                 $workspace,
                 $conversation->id,
                 [
+                    'direction' => (string) ($data['direction'] ?? 'outbound'),
                     'content' => (string) ($data['content'] ?? ''),
                     'message_type' => (string) ($data['message_type'] ?? 'text'),
-                    'idempotency_key' => $data['idempotency_key'] ?? null,
+                    'idempotency_key' => $data['idempotency_key'] ?? ($data['client_id'] ?? null),
+                    'client_id' => $data['client_id'] ?? ($data['idempotency_key'] ?? null),
                 ],
                 $request,
             );
@@ -383,6 +385,57 @@ class ConversationInboxService
             ->where('conversation_id', $conversation->id)
             ->orderByDesc('id')
             ->cursorPaginate($perPage);
+    }
+
+    /**
+     * Lightweight delivery status snapshots for existing outbound messages during incremental polling.
+     *
+     * @param  array<int, int>  $requestedIds
+     * @return list<array<string, mixed>>
+     */
+    public function recentOutboundStatusUpdates(Conversation $conversation, int $upToMessageId, array $requestedIds = []): array
+    {
+        $filteredIds = array_values(array_unique(array_filter(array_map('intval', $requestedIds), fn (int $id): bool => $id > 0)));
+
+        $query = Message::query()
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', 'outbound')
+            ->where('message_type', '!=', 'system')
+            ->whereNotNull('delivery_status')
+            ->select(['id', 'workspace_id', 'conversation_id', 'delivery_status', 'delivered_at', 'read_at', 'metadata']);
+
+        if ($filteredIds !== []) {
+            $query->whereIn('id', $filteredIds);
+        } elseif ($upToMessageId > 0) {
+            $query->where('id', '<=', $upToMessageId)
+                ->orderByDesc('id')
+                ->limit(30);
+        } else {
+            return [];
+        }
+
+        return $query->get()
+            ->map(function (Message $message): array {
+                $metadata = is_array($message->metadata) ? $message->metadata : [];
+                $clientId = $metadata['client_id'] ?? $metadata['idempotency_key'] ?? null;
+
+                return [
+                    'id' => $message->id,
+                    'conversation_id' => $message->conversation_id,
+                    'workspace_id' => $message->workspace_id,
+                    'client_id' => $clientId,
+                    'idempotency_key' => $clientId,
+                    'delivery_status' => $message->delivery_status,
+                    'delivery_error' => $message->delivery_status === 'failed'
+                        && is_string($metadata['delivery_error'] ?? null)
+                        ? $metadata['delivery_error']
+                        : null,
+                    'delivered_at' => optional($message->delivered_at)?->toIso8601String(),
+                    'read_at' => optional($message->read_at)?->toIso8601String(),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     public function joinUserState(Builder $query, User $user): void

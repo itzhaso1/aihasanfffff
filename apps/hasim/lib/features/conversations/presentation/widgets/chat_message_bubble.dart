@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,7 +11,111 @@ import 'package:hasim/features/conversations/presentation/widgets/chat_attachmen
 import 'package:hasim/features/conversations/presentation/widgets/chat_image_grid.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_media_viewer_dialog.dart';
 import 'package:hasim/l10n/app_localizations.dart';
-import 'package:intl/intl.dart' hide TextDirection;
+
+/// Pre-resolved styling/localization context shared across visible message bubbles
+/// so scrolled rows avoid redundant `Theme.of`, `MediaQuery.of`, and `AppLocalizations.of` lookups.
+class ChatBubbleRenderStyle {
+  const ChatBubbleRenderStyle({
+    required this.dark,
+    required this.compact,
+    required this.maxWidth,
+    required this.fg,
+    required this.meta,
+    required this.cardBg,
+    required this.lineColor,
+    required this.outgoingBubbleBg,
+    required this.dangerSoftBg,
+    required this.retryLabel,
+    required this.openLabel,
+    required this.uploadingLabel,
+    required this.sendingLabel,
+    this.mediaHeaders,
+  });
+
+  final bool dark;
+  final bool compact;
+  final double maxWidth;
+  final Color fg;
+  final Color meta;
+  final Color cardBg;
+  final Color lineColor;
+  final Color outgoingBubbleBg;
+  final Color dangerSoftBg;
+  final String retryLabel;
+  final String openLabel;
+  final String uploadingLabel;
+  final String sendingLabel;
+  final Map<String, String>? mediaHeaders;
+
+  static ChatBubbleRenderStyle resolve(
+    BuildContext context, {
+    double? maxWidthOverride,
+    String? bubbleColorId,
+    Map<String, String>? mediaHeaders,
+  }) {
+    final dark = HasimTokens.isDark(context);
+    final compact = HasimLayout.isCompact(context);
+    final l10n = AppLocalizations.of(context);
+    final activeBubbleColor = bubbleColorId ?? 'default';
+    return ChatBubbleRenderStyle(
+      dark: dark,
+      compact: compact,
+      maxWidth:
+          maxWidthOverride ?? MediaQuery.sizeOf(context).width * (compact ? 0.80 : 0.68),
+      fg: HasimTokens.inkColor(context),
+      meta: HasimTokens.mutedColor(context),
+      cardBg: HasimTokens.cardBg(context),
+      lineColor: HasimTokens.lineColor(context),
+      outgoingBubbleBg: ChatBubbleColorCatalog.outgoingBubble(context, activeBubbleColor),
+      dangerSoftBg: HasimTokens.dangerSoftColor(context),
+      retryLabel: l10n.chatAttachmentRetry,
+      openLabel: l10n.chatAttachmentOpen,
+      uploadingLabel: l10n.chatAttachmentUploading,
+      sendingLabel: l10n.chatAttachmentSending,
+      mediaHeaders: mediaHeaders,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChatBubbleRenderStyle &&
+          dark == other.dark &&
+          compact == other.compact &&
+          maxWidth == other.maxWidth &&
+          fg == other.fg &&
+          meta == other.meta &&
+          cardBg == other.cardBg &&
+          lineColor == other.lineColor &&
+          outgoingBubbleBg == other.outgoingBubbleBg &&
+          dangerSoftBg == other.dangerSoftBg &&
+          retryLabel == other.retryLabel &&
+          identical(mediaHeaders, other.mediaHeaders);
+
+  @override
+  int get hashCode => Object.hash(
+        dark,
+        compact,
+        maxWidth,
+        fg,
+        meta,
+        outgoingBubbleBg,
+        retryLabel,
+        identityHashCode(mediaHeaders),
+      );
+}
+
+class _ParsedBubbleText {
+  const _ParsedBubbleText({
+    required this.quote,
+    required this.body,
+    required this.direction,
+  });
+
+  final String? quote;
+  final String body;
+  final TextDirection? direction;
+}
 
 class ChatMessageBubble extends StatelessWidget {
   const ChatMessageBubble({
@@ -30,6 +135,7 @@ class ChatMessageBubble extends StatelessWidget {
     this.bubbleColorId,
     this.groupedWithPrevious = false,
     this.groupedWithNext = false,
+    this.renderStyle,
   });
 
   final MessageModel message;
@@ -51,14 +157,43 @@ class ChatMessageBubble extends StatelessWidget {
   final String? bubbleColorId;
   final bool groupedWithPrevious;
   final bool groupedWithNext;
+  final ChatBubbleRenderStyle? renderStyle;
 
-  static const _bubbleShadowLight = [
-    BoxShadow(color: Color(0x09000000), blurRadius: 3, offset: Offset(0, 1)),
-  ];
+  static final LinkedHashMap<String, _ParsedBubbleText> _parsedTextCache =
+      LinkedHashMap<String, _ParsedBubbleText>();
+  static const int _maxParsedTextEntries = 360;
 
-  static const _bubbleShadowDark = [
-    BoxShadow(color: Color(0x28000000), blurRadius: 3, offset: Offset(0, 1)),
-  ];
+  static _ParsedBubbleText _parseText(String content) {
+    final cached = _parsedTextCache.remove(content);
+    if (cached != null) {
+      _parsedTextCache[content] = cached;
+      return cached;
+    }
+    final quoted = splitQuotedReply(content);
+    final dir = _detectBidiDirection(quoted.body);
+    final entry = _ParsedBubbleText(
+      quote: quoted.quote,
+      body: quoted.body,
+      direction: dir,
+    );
+    _parsedTextCache[content] = entry;
+    while (_parsedTextCache.length > _maxParsedTextEntries) {
+      _parsedTextCache.remove(_parsedTextCache.keys.first);
+    }
+    return entry;
+  }
+
+  static final List<String> _twoDigits = List<String>.generate(
+    60,
+    (i) => i < 10 ? '0$i' : '$i',
+    growable: false,
+  );
+
+  static String _formatClock(DateTime? dt) {
+    if (dt == null) return '';
+    final local = dt.toLocal();
+    return '${_twoDigits[local.hour]}:${_twoDigits[local.minute]}';
+  }
 
   static BorderRadius _bubbleRadius({
     required bool onPhysicalLeft,
@@ -105,7 +240,8 @@ class ChatMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = HasimTokens.isDark(context);
+    final style = renderStyle;
+    final dark = style?.dark ?? HasimTokens.isDark(context);
     if (message.isInternalNote) {
       final noteBg = dark ? const Color(0xFF28200D) : const Color(0xFFFFFBEB);
       final noteBorder = dark
@@ -117,7 +253,7 @@ class ChatMessageBubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 20),
         child: Center(
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxWidth ?? 360),
+            constraints: BoxConstraints(maxWidth: maxWidth ?? style?.maxWidth ?? 360),
             child: DecoratedBox(
               key: const Key('chat-internal-note'),
               decoration: BoxDecoration(
@@ -156,12 +292,12 @@ class ChatMessageBubble extends StatelessWidget {
                     Text(
                       message.content,
                       textAlign: TextAlign.center,
-                      textDirection: _detectBidiDirection(message.content),
+                      textDirection: _parseText(message.content).direction,
                       style: TextStyle(
                         fontSize: 12.5,
                         height: 1.35,
                         fontWeight: FontWeight.w600,
-                        color: HasimTokens.inkColor(context),
+                        color: style?.fg ?? HasimTokens.inkColor(context),
                       ),
                     ),
                   ],
@@ -173,17 +309,15 @@ class ChatMessageBubble extends StatelessWidget {
       );
     }
 
-    final l10n = AppLocalizations.of(context);
     final activeBubbleColor = bubbleColorId ?? 'default';
     final mine = message.isOutbound;
-    final compact = HasimLayout.isCompact(context);
+    final compact = style?.compact ?? HasimLayout.isCompact(context);
     // Sent (outbound) on the physical left, received on the right — all breakpoints.
     final onPhysicalLeft = mine;
     // Alignment (not Directional) — physical left/right even when the app is RTL.
     final alignment = onPhysicalLeft
         ? Alignment.centerLeft
         : Alignment.centerRight;
-    final bubbleMaxFraction = compact ? 0.80 : 0.68;
     final outerGutter = compact ? 8.0 : 14.0;
     final oppositeBreathing = compact ? 24.0 : 48.0;
     final topGap = groupedWithPrevious ? 1.5 : 3.5;
@@ -201,45 +335,49 @@ class ChatMessageBubble extends StatelessWidget {
     final Color bg;
     final Border? bubbleBorder;
     if (failed) {
-      bg = HasimTokens.dangerSoftColor(context);
+      bg = style?.dangerSoftBg ?? HasimTokens.dangerSoftColor(context);
       bubbleBorder = Border.all(
-        color: HasimTokens.danger.withValues(alpha: 0.45),
+        color: dark ? const Color(0x73EF4444) : const Color(0x73EF4444),
         width: 0.9,
       );
     } else if (isAiBubble && activeBubbleColor == 'default') {
       bg = dark ? const Color(0xFF1A2236) : const Color(0xFFEEF4FF);
       bubbleBorder = Border.all(
-        color: (dark ? const Color(0xFF818CF8) : const Color(0xFF6366F1))
-            .withValues(alpha: dark ? 0.42 : 0.28),
+        color: dark ? const Color(0x6B818CF8) : const Color(0x476366F1),
         width: 0.9,
       );
     } else if (mine) {
-      bg = ChatBubbleColorCatalog.outgoingBubble(context, activeBubbleColor);
+      bg = style?.outgoingBubbleBg ??
+          ChatBubbleColorCatalog.outgoingBubble(context, activeBubbleColor);
       if (isWorkerBubble) {
         bubbleBorder = Border.all(
-          color: const Color(0xFFD97706).withValues(alpha: dark ? 0.45 : 0.30),
+          color: dark ? const Color(0x73D97706) : const Color(0x4CD97706),
           width: 0.8,
         );
       } else if (activeBubbleColor == 'default') {
         bubbleBorder = Border.all(
-          color: dark
-              ? Colors.white.withValues(alpha: 0.08)
-              : const Color(0xFFC9F0E8),
+          color: dark ? const Color(0x14FFFFFF) : const Color(0xFFC9F0E8),
           width: 0.7,
         );
       } else {
-        bubbleBorder = null;
+        bubbleBorder = Border.all(
+          color: dark ? const Color(0x18FFFFFF) : const Color(0x14000000),
+          width: 0.7,
+        );
       }
     } else {
-      bg = HasimTokens.cardBg(context);
+      bg = style?.cardBg ?? HasimTokens.cardBg(context);
       bubbleBorder = Border.all(
-        color: HasimTokens.lineColor(context).withValues(alpha: dark ? 0.85 : 0.9),
+        color: style?.lineColor ?? HasimTokens.lineColor(context),
         width: 0.7,
       );
     }
 
-    final fg = HasimTokens.inkColor(context);
-    final meta = HasimTokens.mutedColor(context);
+    final fg = style?.fg ?? HasimTokens.inkColor(context);
+    final meta = style?.meta ?? HasimTokens.mutedColor(context);
+    final retryLabel = style?.retryLabel ?? AppLocalizations.of(context).chatAttachmentRetry;
+    final uploadingLabel = style?.uploadingLabel ?? AppLocalizations.of(context).chatAttachmentUploading;
+    final sendingLabel = style?.sendingLabel ?? AppLocalizations.of(context).chatAttachmentSending;
     final showCaption = message.content.isNotEmpty && message.content != '📎';
     final radius = _bubbleRadius(
       onPhysicalLeft: onPhysicalLeft,
@@ -250,12 +388,32 @@ class ChatMessageBubble extends StatelessWidget {
     final openMenu = onContextMenu;
     final bubbleTap = selectionMode ? onToggleSelected : onRetry;
 
+    final Widget body = _BubbleBody(
+      message: message,
+      mine: mine,
+      failed: failed,
+      dark: dark,
+      showCaption: showCaption,
+      showSenderHeader: !groupedWithPrevious,
+      pinned: pinned,
+      starred: starred,
+      fg: fg,
+      meta: meta,
+      lineColor: style?.lineColor ?? HasimTokens.lineColor(context),
+      retryLabel: retryLabel,
+      uploadingLabel: uploadingLabel,
+      sendingLabel: sendingLabel,
+      mediaHeaders: style?.mediaHeaders,
+      onImageTap: onImageTap,
+      onMediaUrlExpired: onMediaUrlExpired,
+      onOpenFailed: onOpenFailed,
+    );
+
     final Widget decoratedBubble = DecoratedBox(
       decoration: BoxDecoration(
         color: bg,
         borderRadius: radius,
         border: bubbleBorder,
-        boxShadow: dark ? _bubbleShadowDark : _bubbleShadowLight,
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(
@@ -264,26 +422,14 @@ class ChatMessageBubble extends StatelessWidget {
           compact ? 10 : 12,
           compact ? 4 : 5,
         ),
-        child: AbsorbPointer(
-          absorbing: selectionMode,
-          child: _BubbleBody(
-            message: message,
-            mine: mine,
-            failed: failed,
-            showCaption: showCaption,
-            showSenderHeader: !groupedWithPrevious,
-            fg: fg,
-            meta: meta,
-            l10n: l10n,
-            pinned: pinned,
-            starred: starred,
-            onImageTap: onImageTap,
-            onMediaUrlExpired: onMediaUrlExpired,
-            onOpenFailed: onOpenFailed,
-          ),
-        ),
+        child: selectionMode ? AbsorbPointer(child: body) : body,
       ),
     );
+
+    final effectiveMaxWidth =
+        maxWidth ??
+        style?.maxWidth ??
+        MediaQuery.sizeOf(context).width * (compact ? 0.80 : 0.68);
 
     final row = SizedBox(
       width: double.infinity,
@@ -293,6 +439,8 @@ class ChatMessageBubble extends StatelessWidget {
           padding: bubblePadding,
           child: GestureDetector(
             key: Key('chat-message-gesture-${message.id}'),
+            behavior: HitTestBehavior.opaque,
+            onTap: bubbleTap,
             onLongPressStart: openMenu == null
                 ? null
                 : (details) {
@@ -302,19 +450,9 @@ class ChatMessageBubble extends StatelessWidget {
             onSecondaryTapUp: openMenu == null
                 ? null
                 : (details) => openMenu(details.globalPosition),
-            child: InkWell(
-              onTap: bubbleTap,
-              borderRadius: radius,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth:
-                      maxWidth ??
-                      MediaQuery.sizeOf(context).width * bubbleMaxFraction,
-                ),
-                child: message.attachments.isNotEmpty || message.localPending
-                    ? RepaintBoundary(child: decoratedBubble)
-                    : decoratedBubble,
-              ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: effectiveMaxWidth),
+              child: decoratedBubble,
             ),
           ),
         ),
@@ -343,13 +481,18 @@ class _BubbleBody extends StatelessWidget {
     required this.message,
     required this.mine,
     required this.failed,
+    required this.dark,
     required this.showCaption,
     required this.showSenderHeader,
     required this.fg,
     required this.meta,
-    required this.l10n,
+    required this.lineColor,
+    required this.retryLabel,
+    required this.uploadingLabel,
+    required this.sendingLabel,
     this.pinned = false,
     this.starred = false,
+    this.mediaHeaders,
     this.onImageTap,
     this.onMediaUrlExpired,
     this.onOpenFailed,
@@ -358,13 +501,18 @@ class _BubbleBody extends StatelessWidget {
   final MessageModel message;
   final bool mine;
   final bool failed;
+  final bool dark;
   final bool showCaption;
   final bool showSenderHeader;
-  final Color fg;
-  final Color meta;
-  final AppLocalizations l10n;
   final bool pinned;
   final bool starred;
+  final Color fg;
+  final Color meta;
+  final Color lineColor;
+  final String retryLabel;
+  final String uploadingLabel;
+  final String sendingLabel;
+  final Map<String, String>? mediaHeaders;
   final void Function(String url)? onImageTap;
   final VoidCallback? onMediaUrlExpired;
   final VoidCallback? onOpenFailed;
@@ -374,8 +522,6 @@ class _BubbleBody extends StatelessWidget {
     fontSize: 14,
     fontWeight: FontWeight.w500,
   );
-
-  static final DateFormat _timeFormat = DateFormat('HH:mm');
 
   Widget _metaRow() {
     return Row(
@@ -400,9 +546,7 @@ class _BubbleBody extends StatelessWidget {
           const SizedBox(width: 3),
         ],
         Text(
-          message.createdAt == null
-              ? ''
-              : _timeFormat.format(message.createdAt!.toLocal()),
+          ChatMessageBubble._formatClock(message.createdAt),
           style: TextStyle(
             color: meta,
             fontSize: 10.5,
@@ -426,7 +570,7 @@ class _BubbleBody extends StatelessWidget {
                 const Icon(Icons.refresh, size: 12, color: HasimTokens.danger),
                 const SizedBox(width: 2),
                 Text(
-                  l10n.chatAttachmentRetry,
+                  retryLabel,
                   style: const TextStyle(
                     fontSize: 10,
                     height: 1.1,
@@ -487,12 +631,16 @@ class _BubbleBody extends StatelessWidget {
     final textOnly = showCaption && !hasAttachments && !pendingUpload;
 
     final header = showSenderHeader
-        ? _SenderHeader(message: message, mine: mine)
+        ? _SenderHeader(
+            message: message,
+            dark: dark,
+            metaColor: meta,
+            lineColor: lineColor,
+          )
         : const SizedBox.shrink();
 
     if (textOnly) {
-      final quoted = splitQuotedReply(message.content);
-      final bodyDirection = ChatMessageBubble._detectBidiDirection(quoted.body);
+      final parsed = ChatMessageBubble._parseText(message.content);
       final textRow = Wrap(
         spacing: 6,
         runSpacing: 2,
@@ -500,8 +648,8 @@ class _BubbleBody extends StatelessWidget {
         alignment: WrapAlignment.end,
         children: [
           Text(
-            quoted.body,
-            textDirection: bodyDirection,
+            parsed.body,
+            textDirection: parsed.direction,
             style: _textStyle.copyWith(color: fg),
           ),
           _metaRow(),
@@ -512,8 +660,8 @@ class _BubbleBody extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           header,
-          if (quoted.quote != null) ...[
-            _QuotedReplyBlock(text: quoted.quote!, mine: mine),
+          if (parsed.quote != null) ...[
+            _QuotedReplyBlock(text: parsed.quote!, mine: mine, meta: meta),
             const SizedBox(height: 3),
           ],
           textRow,
@@ -551,6 +699,7 @@ class _BubbleBody extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 4),
             child: ChatImageGrid(
               attachments: imageAttachments,
+              mediaHeaders: mediaHeaders,
               onImageTap: (idx) {
                 final a = imageAttachments[idx];
                 final url = a.displayUrl ?? '';
@@ -574,6 +723,7 @@ class _BubbleBody extends StatelessWidget {
             padding: const EdgeInsets.only(top: 4),
             child: ChatAttachmentContent(
               attachment: a,
+              mediaHeaders: mediaHeaders,
               onImageTap: onImageTap,
               onMediaUrlExpired: onMediaUrlExpired,
               onOpenFailed: onOpenFailed,
@@ -588,6 +738,8 @@ class _BubbleBody extends StatelessWidget {
                 File(message.localAttachmentPath!),
                 height: 160,
                 width: 220,
+                cacheWidth: 480,
+                filterQuality: FilterQuality.low,
                 fit: BoxFit.cover,
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
@@ -600,9 +752,9 @@ class _BubbleBody extends StatelessWidget {
             ),
             child: Text(
               message.content,
-              textDirection: ChatMessageBubble._detectBidiDirection(
+              textDirection: ChatMessageBubble._parseText(
                 message.content,
-              ),
+              ).direction,
               style: _textStyle.copyWith(color: fg),
             ),
           ),
@@ -610,9 +762,7 @@ class _BubbleBody extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(
-              message.localUploading
-                  ? l10n.chatAttachmentUploading
-                  : l10n.chatAttachmentSending,
+              message.localUploading ? uploadingLabel : sendingLabel,
               style: TextStyle(
                 color: meta,
                 fontSize: 12,
@@ -635,11 +785,15 @@ class _BubbleBody extends StatelessWidget {
 class _SenderHeader extends StatelessWidget {
   const _SenderHeader({
     required this.message,
-    required this.mine,
+    required this.dark,
+    required this.metaColor,
+    required this.lineColor,
   });
 
   final MessageModel message;
-  final bool mine;
+  final bool dark;
+  final Color metaColor;
+  final Color lineColor;
 
   @override
   Widget build(BuildContext context) {
@@ -647,7 +801,6 @@ class _SenderHeader extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final dark = HasimTokens.isDark(context);
     final isEmployee = message.isFromEmployee;
     final isAi = message.isFromAi;
     final isWorker = message.isFromWorker;
@@ -675,8 +828,8 @@ class _SenderHeader extends StatelessWidget {
       roleLabel = 'موظف';
     } else {
       icon = Icons.person_outline;
-      color = HasimTokens.mutedColor(context);
-      badgeBg = HasimTokens.lineColor(context).withValues(alpha: dark ? 0.45 : 0.6);
+      color = metaColor;
+      badgeBg = lineColor.withValues(alpha: dark ? 0.45 : 0.6);
       roleLabel = 'عميل';
     }
 
@@ -731,20 +884,25 @@ class _SenderHeader extends StatelessWidget {
 
 /// اقتباس الرد داخل الفقاعة — مثل واتساب: شريط جانبي ونص مختصر.
 class _QuotedReplyBlock extends StatelessWidget {
-  const _QuotedReplyBlock({required this.text, required this.mine});
+  const _QuotedReplyBlock({
+    required this.text,
+    required this.mine,
+    required this.meta,
+  });
 
   final String text;
   final bool mine;
+  final Color meta;
 
   @override
   Widget build(BuildContext context) {
-    final accent = HasimTokens.chatGreen;
+    const accent = HasimTokens.chatGreen;
     return DecoratedBox(
       key: const Key('chat-message-quote'),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: mine ? 0.06 : 0.04),
+        color: mine ? const Color(0x0F000000) : const Color(0x0A000000),
         borderRadius: BorderRadius.circular(6),
-        border: BorderDirectional(start: BorderSide(color: accent, width: 3)),
+        border: const BorderDirectional(start: BorderSide(color: accent, width: 3)),
       ),
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(8, 5, 8, 5),
@@ -756,7 +914,7 @@ class _QuotedReplyBlock extends StatelessWidget {
             fontSize: 12.5,
             height: 1.3,
             fontWeight: FontWeight.w500,
-            color: HasimTokens.mutedColor(context),
+            color: meta,
           ),
         ),
       ),
@@ -768,6 +926,9 @@ class ChatDateChip extends StatelessWidget {
   const ChatDateChip({super.key, required this.date});
 
   final DateTime date;
+
+  static int? _cachedTodayKey;
+  static final Map<int, String> _labelCache = <int, String>{};
 
   @override
   Widget build(BuildContext context) {
@@ -797,10 +958,17 @@ class ChatDateChip extends StatelessWidget {
   }
 
   static String _label(DateTime date) {
-    final local = date.toLocal();
     final now = DateTime.now();
-    final day = DateTime(local.year, local.month, local.day);
-    final today = DateTime(now.year, now.month, now.day);
+    final todayKey = now.year * 10000 + now.month * 100 + now.day;
+    if (_cachedTodayKey != todayKey) {
+      _cachedTodayKey = todayKey;
+      _labelCache.clear();
+    }
+    final local = date.toLocal();
+    final dayKey = local.year * 10000 + local.month * 100 + local.day;
+    final cached = _labelCache[dayKey];
+    if (cached != null) return cached;
+
     const months = [
       'يناير',
       'فبراير',
@@ -816,12 +984,16 @@ class ChatDateChip extends StatelessWidget {
       'ديسمبر',
     ];
     final formatted = '${local.day} ${months[local.month - 1]} ${local.year}';
-    if (day == today) {
-      return 'اليوم · $formatted';
+    final day = DateTime(local.year, local.month, local.day);
+    final today = DateTime(now.year, now.month, now.day);
+    final result = day == today
+        ? 'اليوم · $formatted'
+        : (day == today.subtract(const Duration(days: 1))
+              ? 'أمس · $formatted'
+              : formatted);
+    if (_labelCache.length < 120) {
+      _labelCache[dayKey] = result;
     }
-    if (day == today.subtract(const Duration(days: 1))) {
-      return 'أمس · $formatted';
-    }
-    return formatted;
+    return result;
   }
 }

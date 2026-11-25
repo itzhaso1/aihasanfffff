@@ -256,15 +256,17 @@ class ConversationService
         if ($message->direction === 'outbound' && $actor instanceof User && ! (bool) ($data['ai_generated'] ?? false)) {
             $freshConversation->updateQuietly(['employee_last_replied_at' => $message->created_at ?? now()]);
 
-            app(ConversationResponderService::class)->recordTransition(
-                $conversation->fresh() ?? $freshConversation,
-                ConversationResponderService::TYPE_HUMAN,
-                $actor,
-                'staff_reply',
-                'user',
-                $actor,
-                'رد الموظف على المحادثة',
-            );
+            if (! (bool) ($data['skip_responder_log'] ?? false)) {
+                app(ConversationResponderService::class)->recordTransition(
+                    $conversation->fresh() ?? $freshConversation,
+                    ConversationResponderService::TYPE_HUMAN,
+                    $actor,
+                    'staff_reply',
+                    'user',
+                    $actor,
+                    'رد الموظف على المحادثة',
+                );
+            }
         }
 
         $message->loadMissing([

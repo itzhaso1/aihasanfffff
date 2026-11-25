@@ -40,9 +40,15 @@ class ConversationRepository {
 
   final ApiClient _api;
   final InboxLocalStore? _local;
+  final Map<int, List<MessageStatusUpdate>> _polledStatusUpdates = {};
 
   /// True when the last list/messages call returned SQLite because the API failed.
   bool lastReadFromCache = false;
+
+  /// Consumes status updates returned in the latest incremental poll response.
+  List<MessageStatusUpdate> takePolledStatusUpdates(int conversationId) {
+    return _polledStatusUpdates.remove(conversationId) ?? const [];
+  }
 
   Future<List<ConversationModel>> cachedConversations(
     int workspaceId, {
@@ -411,6 +417,31 @@ class ConversationRepository {
           }
         } catch (e, st) {
           debugPrint('[Hasim] SQLite cache write failed in messages(): $e\n$st');
+        }
+      }
+      final rawStatuses = res.meta?['status_updates'];
+      if (rawStatuses is List && rawStatuses.isNotEmpty) {
+        final updates = <MessageStatusUpdate>[];
+        for (final row in rawStatuses) {
+          if (row is! Map) continue;
+          try {
+            final map = row is Map<String, dynamic>
+                ? row
+                : Map<String, dynamic>.from(row);
+            final parsed = MessageStatusUpdate.fromJson(map);
+            updates.add(parsed);
+            if (workspaceId != null) {
+              try {
+                await _local?.updateMessageDeliveryStatus(
+                  workspaceId: workspaceId,
+                  update: parsed,
+                );
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
+        if (updates.isNotEmpty) {
+          _polledStatusUpdates[conversationId] = updates;
         }
       }
       final hasMore = res.meta?['has_more'] == true;
@@ -888,9 +919,16 @@ class ConversationRepository {
 
   Future<ConversationModel> takeoverHandoff(
     int conversationId, {
+    int? expectedHandoffVersion,
     int? workspaceId,
   }) async {
-    final res = await _api.post('/conversations/$conversationId/takeover');
+    final res = await _api.post(
+      '/conversations/$conversationId/takeover',
+      body: {
+        if (expectedHandoffVersion != null && expectedHandoffVersion > 0)
+          'expected_handoff_version': expectedHandoffVersion,
+      },
+    );
     return _conversationWrite(
       res.data,
       workspaceId: workspaceId,
@@ -900,10 +938,15 @@ class ConversationRepository {
 
   Future<ConversationModel> resolveHandoff(
     int conversationId, {
+    int? expectedHandoffVersion,
     int? workspaceId,
   }) async {
     final res = await _api.post(
       '/conversations/$conversationId/resolve-handoff',
+      body: {
+        if (expectedHandoffVersion != null && expectedHandoffVersion > 0)
+          'expected_handoff_version': expectedHandoffVersion,
+      },
     );
     return _conversationWrite(
       res.data,
@@ -914,9 +957,16 @@ class ConversationRepository {
 
   Future<ConversationModel> resumeAi(
     int conversationId, {
+    int? expectedHandoffVersion,
     int? workspaceId,
   }) async {
-    final res = await _api.post('/conversations/$conversationId/resume-ai');
+    final res = await _api.post(
+      '/conversations/$conversationId/resume-ai',
+      body: {
+        if (expectedHandoffVersion != null && expectedHandoffVersion > 0)
+          'expected_handoff_version': expectedHandoffVersion,
+      },
+    );
     return _conversationWrite(
       res.data,
       workspaceId: workspaceId,

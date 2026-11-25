@@ -10,10 +10,51 @@
         ];
     @endphp
 
+    @php
+        $workspaceId = $workspaceId ?? app(\App\Support\Tenancy\WorkspaceContext::class)->workspaceId();
+        $isCompanyMode = ($inboxAllowsCompanyActions ?? true);
+        $allowsWorkerHandoff = (bool) ($inboxAllowsWorkerHandoff ?? false);
+        $defaultPollUpdatesUrl = $inboxPollUpdatesUrl ?? route('workspace.conversations.updates.poll');
+        $defaultPollMessagesUrl = $inboxPollMessagesUrl ?? ($activeConversation && $isCompanyMode ? route('workspace.conversations.messages.poll', $activeConversation) : '');
+        $defaultPresencePingUrl = $activeConversation
+            ? ($isCompanyMode
+                ? route('workspace.conversations.presence.ping', $activeConversation)
+                : ($workspaceId ? route('worker.inbox.presence.ping', [$workspaceId, $activeConversation->id]) : ''))
+            : '';
+        $defaultPresenceLeaveUrl = $activeConversation
+            ? ($isCompanyMode
+                ? route('workspace.conversations.presence.leave', $activeConversation)
+                : ($workspaceId ? route('worker.inbox.presence.leave', [$workspaceId, $activeConversation->id]) : ''))
+            : '';
+        $defaultTypingUrl = $activeConversation
+            ? ($isCompanyMode
+                ? route('workspace.conversations.typing', $activeConversation)
+                : ($workspaceId ? route('worker.inbox.typing', [$workspaceId, $activeConversation->id]) : ''))
+            : '';
+        $defaultTakeoverUrl = $inboxTakeoverAction ?? ($activeConversation && $isCompanyMode ? route('workspace.conversations.handoff.takeover', $activeConversation) : '');
+        $defaultResolveUrl = $inboxResolveHandoffAction ?? ($activeConversation && $isCompanyMode ? route('workspace.conversations.handoff.resolve', $activeConversation) : '');
+        $defaultResumeAiUrl = $inboxResumeAiAction ?? ($activeConversation && $isCompanyMode ? route('workspace.conversations.handoff.resume-ai', $activeConversation) : '');
+        $defaultResponderLogsUrl = $inboxResponderLogsUrl ?? ($activeConversation && $isCompanyMode ? route('workspace.conversations.responder-logs', $activeConversation) : '');
+    @endphp
+
     <div
         id="inbox-shell"
-        data-workspace-id="{{ $workspaceId ?? app(\App\Support\Tenancy\WorkspaceContext::class)->workspaceId() }}"
+        data-workspace-id="{{ $workspaceId }}"
         data-active-conversation-id="{{ $activeConversation?->id }}"
+        data-current-user-id="{{ auth()->id() }}"
+        data-inbox-is-worker="{{ $isCompanyMode ? '0' : '1' }}"
+        data-allows-company-actions="{{ $isCompanyMode ? '1' : '0' }}"
+        data-allows-worker-handoff="{{ $allowsWorkerHandoff ? '1' : '0' }}"
+        data-handoff-version="{{ $activeConversation ? (int) ($activeConversation->handoff_version ?? 1) : 1 }}"
+        data-poll-updates-url="{{ $defaultPollUpdatesUrl }}"
+        data-poll-messages-url="{{ $defaultPollMessagesUrl }}"
+        data-presence-ping-url="{{ $defaultPresencePingUrl }}"
+        data-presence-leave-url="{{ $defaultPresenceLeaveUrl }}"
+        data-typing-url="{{ $defaultTypingUrl }}"
+        data-takeover-url="{{ $defaultTakeoverUrl }}"
+        data-resolve-url="{{ $defaultResolveUrl }}"
+        data-resume-ai-url="{{ $defaultResumeAiUrl }}"
+        data-responder-logs-url="{{ $defaultResponderLogsUrl }}"
         x-data="{ detailsOpen: false }"
         @keydown.escape.window="detailsOpen = false"
         class="hs-inbox-shell hs-inbox-shell--embedded flex min-h-0 flex-1 h-full max-h-full flex-col overflow-hidden"
@@ -33,13 +74,13 @@
     </div>
 
     @php
-        $workspaceId = app(\App\Support\Tenancy\WorkspaceContext::class)->workspaceId();
         $inboxRealtime = array_merge(
             \App\Support\Inbox\InboxBroadcastConfig::clientPayload('/broadcasting/auth'),
             [
                 'workspaceId' => $workspaceId,
                 'activeConversationId' => $activeConversation?->id,
                 'userId' => auth()->id(),
+                'isWorker' => ! $isCompanyMode,
             ],
         );
     @endphp

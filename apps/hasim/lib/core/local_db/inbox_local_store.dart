@@ -83,6 +83,7 @@ class InboxLocalStore {
 
   final InboxDatabase _db;
   final _changes = StreamController<void>.broadcast();
+  final Map<int, int> _handoffVersions = <int, int>{};
 
   /// Newest messages returned for an open chat. Older rows stay in SQLite.
   static const latestMessageWindow = 300;
@@ -228,18 +229,43 @@ class InboxLocalStore {
       [workspaceId, item.id],
     );
     final existing = existingRows.isEmpty ? null : existingRows.first;
-    final incomingLast = _ms(item.lastMessageAt);
-    var displayUnread = item.unreadCount;
+    final knownVersion = _handoffVersions[item.id] ?? 0;
+    final isStaleHandoffVersion =
+        knownVersion > 0 &&
+        item.handoffVersion > 0 &&
+        item.handoffVersion < knownVersion;
+    if (item.handoffVersion > knownVersion) {
+      _handoffVersions[item.id] = item.handoffVersion;
+    }
+    final effectiveItem = (isStaleHandoffVersion && existing != null)
+        ? item.copyWith(
+            aiEnabled: _asBool(existing['ai_enabled']),
+            handoffStatus: existing['handoff_status']?.toString() ?? 'none',
+            handoffReason: existing['handoff_reason']?.toString(),
+            handoffVersion: knownVersion,
+            assignedUserId: (existing['assigned_user_id'] as num?)?.toInt(),
+            assignedUserName: existing['assigned_user_name']?.toString(),
+            assignedWorkerEngagementId:
+                (existing['assigned_worker_engagement_id'] as num?)?.toInt(),
+            assignedParticipantType:
+                existing['assigned_participant_type']?.toString(),
+            clearAssignedUser: existing['assigned_user_id'] == null,
+            clearAssignedWorkerEngagement:
+                existing['assigned_worker_engagement_id'] == null,
+          )
+        : item;
+    final incomingLast = _ms(effectiveItem.lastMessageAt);
+    var displayUnread = effectiveItem.unreadCount;
     Object? localReadAt = existing?['local_read_at'];
     Object? localReadLast = existing?['local_read_last_message_at'];
     final existingLastId = (existing?['last_message_server_id'] as num?)
         ?.toInt();
-    final incomingLastId = (item.lastMessage?.id ?? 0) > 0
-        ? item.lastMessage!.id
+    final incomingLastId = (effectiveItem.lastMessage?.id ?? 0) > 0
+        ? effectiveItem.lastMessage!.id
         : null;
-    final incomingOutbound = item.lastMessage?.isOutbound == true;
+    final incomingOutbound = effectiveItem.lastMessage?.isOutbound == true;
 
-    if (item.unreadCount <= 0) {
+    if (effectiveItem.unreadCount <= 0) {
       displayUnread = 0;
     } else if (existing != null && localReadAt != null) {
       final readUntil = (localReadLast as num?)?.toInt();
@@ -338,18 +364,18 @@ class InboxLocalStore {
       ''',
       [
         workspaceId,
-        item.id,
-        item.channel,
-        item.status,
-        item.externalId,
-        _bool(item.aiEnabled),
+        effectiveItem.id,
+        effectiveItem.channel,
+        effectiveItem.status,
+        effectiveItem.externalId,
+        _bool(effectiveItem.aiEnabled),
         incomingLast,
         displayUnread,
-        item.unreadCount,
+        effectiveItem.unreadCount,
         localReadAt,
         localReadLast,
-        _bool(item.muted),
-        _bool(item.archived),
+        _bool(effectiveItem.muted),
+        _bool(effectiveItem.archived),
         customerId,
         customerName,
         customerPhone,
@@ -357,17 +383,17 @@ class InboxLocalStore {
         preview,
         lastServerId,
         lastDirection,
-        item.customerPriority,
-        item.paymentStatus,
-        item.reviewStatus,
-        item.classificationSource,
-        item.handoffStatus,
-        item.handoffReason,
-        item.assignedUserId,
-        item.assignedUserName,
-        item.assignedWorkerEngagementId,
-        item.assignedParticipantType,
-        _bool(item.canReply),
+        effectiveItem.customerPriority,
+        effectiveItem.paymentStatus,
+        effectiveItem.reviewStatus,
+        effectiveItem.classificationSource,
+        effectiveItem.handoffStatus,
+        effectiveItem.handoffReason,
+        effectiveItem.assignedUserId,
+        effectiveItem.assignedUserName,
+        effectiveItem.assignedWorkerEngagementId,
+        effectiveItem.assignedParticipantType,
+        _bool(effectiveItem.canReply),
         'synced',
         null,
         _ms(item.lastMessageAt ?? now),
@@ -1196,6 +1222,8 @@ class InboxLocalStore {
 
     final preserved = ConversationModel(
       id: item.id,
+      workspaceId:
+          item.workspaceId ?? (existing['workspace_id'] as num?)?.toInt(),
       channel: item.channel,
       status: item.status,
       externalId: item.externalId ?? existing['external_id']?.toString(),
@@ -1225,6 +1253,9 @@ class InboxLocalStore {
           : (existing['classification_source']?.toString() ?? 'system'),
       handoffStatus: item.handoffStatus,
       handoffReason: item.handoffReason ?? existing['handoff_reason']?.toString(),
+      handoffVersion: item.handoffVersion > 0
+          ? item.handoffVersion
+          : (_handoffVersions[item.id] ?? 0),
       assignedUserId: item.assignedUserId,
       assignedUserName: item.assignedUserName,
       assignedWorkerEngagementId: item.assignedWorkerEngagementId,
@@ -1239,7 +1270,7 @@ class InboxLocalStore {
   }
 
   static int _deliveryRank(String? status) => switch (status?.toLowerCase()) {
-    'pending' || 'sending' => 0,
+    'pending' || 'sending' || 'queued' || 'accepted' => 0,
     'sent' => 1,
     'delivered' => 2,
     'read' => 3,
@@ -1425,6 +1456,7 @@ class InboxLocalStore {
       await tx.runCustom('DELETE FROM local_worker_records');
       await tx.runCustom('DELETE FROM local_company_cache');
     });
+    _handoffVersions.clear();
     _changed();
   }
 
@@ -1472,6 +1504,7 @@ class InboxLocalStore {
     final preview = row['last_message_preview']?.toString();
     return ConversationModel(
       id: (row['server_id'] as num).toInt(),
+      workspaceId: (row['workspace_id'] as num?)?.toInt(),
       channel: row['channel']?.toString() ?? 'web',
       status: row['status']?.toString() ?? 'open',
       externalId: row['external_id']?.toString(),
@@ -1497,6 +1530,7 @@ class InboxLocalStore {
           row['classification_source']?.toString() ?? 'system',
       handoffStatus: row['handoff_status']?.toString() ?? 'none',
       handoffReason: row['handoff_reason']?.toString(),
+      handoffVersion: _handoffVersions[(row['server_id'] as num).toInt()] ?? 0,
       assignedUserId: (row['assigned_user_id'] as num?)?.toInt(),
       assignedUserName: row['assigned_user_name']?.toString(),
       assignedWorkerEngagementId: (row['assigned_worker_engagement_id'] as num?)

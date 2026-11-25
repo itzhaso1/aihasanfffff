@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:equatable/equatable.dart';
 import 'package:hasim/core/config/app_config.dart';
 import 'package:hasim/core/utils/quoted_reply.dart';
@@ -729,6 +731,7 @@ class ConversationModel extends Equatable {
     required this.id,
     required this.channel,
     required this.status,
+    this.workspaceId,
     this.externalId,
     this.aiEnabled = false,
     this.aiReplying,
@@ -744,6 +747,7 @@ class ConversationModel extends Equatable {
     this.classificationSource = 'system',
     this.handoffStatus = 'none',
     this.handoffReason,
+    this.handoffVersion = 0,
     this.assignedUserId,
     this.assignedUserName,
     this.assignedWorkerEngagementId,
@@ -754,6 +758,7 @@ class ConversationModel extends Equatable {
   });
 
   final int id;
+  final int? workspaceId;
   final String channel;
   final String status;
   final String? externalId;
@@ -761,6 +766,7 @@ class ConversationModel extends Equatable {
   final bool? aiReplying;
   final String handoffStatus;
   final String? handoffReason;
+  final int handoffVersion;
   final int? assignedUserId;
   final String? assignedUserName;
   final int? assignedWorkerEngagementId;
@@ -877,6 +883,7 @@ class ConversationModel extends Equatable {
 
     return ConversationModel(
       id: convId,
+      workspaceId: asNullableInt(json['workspace_id']),
       channel: json['channel']?.toString() ?? 'web',
       status: json['status']?.toString() ?? 'open',
       externalId: json['external_id']?.toString(),
@@ -899,6 +906,7 @@ class ConversationModel extends Equatable {
           json['classification_source']?.toString() ?? 'system',
       handoffStatus: json['handoff_status']?.toString() ?? 'none',
       handoffReason: json['handoff_reason']?.toString(),
+      handoffVersion: asInt(json['handoff_version'], 0),
       assignedUserId: assignedUserId,
       assignedUserName: (json['assigned_user'] is Map
               ? (json['assigned_user'] as Map)['name']?.toString()
@@ -977,6 +985,7 @@ class ConversationModel extends Equatable {
 
   Map<String, dynamic> toCacheJson() => {
     'id': id,
+    if (workspaceId != null) 'workspace_id': workspaceId,
     'channel': channel,
     'status': status,
     'external_id': externalId,
@@ -992,6 +1001,7 @@ class ConversationModel extends Equatable {
     'classification_source': classificationSource,
     'handoff_status': handoffStatus,
     if (handoffReason != null) 'handoff_reason': handoffReason,
+    if (handoffVersion > 0) 'handoff_version': handoffVersion,
     if (assignedUserId != null) 'assigned_user_id': assignedUserId,
     if (assignedUserName != null)
       'assigned_user': {'id': assignedUserId, 'name': assignedUserName},
@@ -1012,6 +1022,7 @@ class ConversationModel extends Equatable {
   };
 
   ConversationModel copyWith({
+    int? workspaceId,
     int? unreadCount,
     DateTime? lastMessageAt,
     MessageModel? lastMessage,
@@ -1023,9 +1034,12 @@ class ConversationModel extends Equatable {
     String? classificationSource,
     String? handoffStatus,
     String? handoffReason,
+    int? handoffVersion,
     int? assignedUserId,
+    bool clearAssignedUser = false,
     String? assignedUserName,
     int? assignedWorkerEngagementId,
+    bool clearAssignedWorkerEngagement = false,
     String? assignedParticipantType,
     bool? aiEnabled,
     bool? aiReplying,
@@ -1035,6 +1049,7 @@ class ConversationModel extends Equatable {
   }) {
     return ConversationModel(
       id: id,
+      workspaceId: workspaceId ?? this.workspaceId,
       channel: channel,
       status: status ?? this.status,
       externalId: externalId,
@@ -1052,12 +1067,17 @@ class ConversationModel extends Equatable {
       classificationSource: classificationSource ?? this.classificationSource,
       handoffStatus: handoffStatus ?? this.handoffStatus,
       handoffReason: handoffReason ?? this.handoffReason,
-      assignedUserId: assignedUserId ?? this.assignedUserId,
-      assignedUserName: assignedUserName ?? this.assignedUserName,
-      assignedWorkerEngagementId:
-          assignedWorkerEngagementId ?? this.assignedWorkerEngagementId,
-      assignedParticipantType:
-          assignedParticipantType ?? this.assignedParticipantType,
+      handoffVersion: handoffVersion ?? this.handoffVersion,
+      assignedUserId:
+          clearAssignedUser ? null : (assignedUserId ?? this.assignedUserId),
+      assignedUserName:
+          clearAssignedUser ? null : (assignedUserName ?? this.assignedUserName),
+      assignedWorkerEngagementId: clearAssignedWorkerEngagement
+          ? null
+          : (assignedWorkerEngagementId ?? this.assignedWorkerEngagementId),
+      assignedParticipantType: clearAssignedUser
+          ? null
+          : (assignedParticipantType ?? this.assignedParticipantType),
       canReply: canReply ?? this.canReply,
       responder: responder ?? this.responder,
     );
@@ -1073,13 +1093,20 @@ class ConversationModel extends Equatable {
         (lastMessageAt == null ||
             remote.lastMessageAt == null ||
             !remote.lastMessageAt!.isAfter(lastMessageAt!));
+    final keepNewerHandoff =
+        handoffVersion > 0 &&
+        remote.handoffVersion > 0 &&
+        remote.handoffVersion < handoffVersion;
+    final nextVersion = math.max(handoffVersion, remote.handoffVersion);
     return ConversationModel(
       id: remote.id,
+      workspaceId: remote.workspaceId ?? workspaceId,
       channel: remote.channel,
-      status: remote.status,
+      status: keepNewerHandoff ? status : remote.status,
       externalId: remote.externalId ?? externalId,
-      aiEnabled: remote.aiEnabled,
-      aiReplying: remote.aiReplying ?? aiReplying,
+      aiEnabled: keepNewerHandoff ? aiEnabled : remote.aiEnabled,
+      aiReplying:
+          keepNewerHandoff ? aiReplying : (remote.aiReplying ?? aiReplying),
       lastMessageAt: keepExistingLast
           ? (lastMessageAt ?? remote.lastMessageAt)
           : (remote.lastMessageAt ?? lastMessageAt),
@@ -1094,16 +1121,29 @@ class ConversationModel extends Equatable {
       paymentStatus: remote.paymentStatus,
       reviewStatus: remote.reviewStatus,
       classificationSource: remote.classificationSource,
-      handoffStatus: remote.handoffStatus,
-      handoffReason: remote.handoffReason,
-      assignedUserId: remote.assignedUserId,
-      assignedUserName: remote.assignedUserName ?? assignedUserName,
-      assignedWorkerEngagementId:
-          remote.assignedWorkerEngagementId ?? assignedWorkerEngagementId,
-      assignedParticipantType:
-          remote.assignedParticipantType ?? assignedParticipantType,
+      handoffStatus: keepNewerHandoff ? handoffStatus : remote.handoffStatus,
+      handoffReason: keepNewerHandoff ? handoffReason : remote.handoffReason,
+      handoffVersion: nextVersion,
+      assignedUserId:
+          keepNewerHandoff ? assignedUserId : remote.assignedUserId,
+      assignedUserName: keepNewerHandoff
+          ? assignedUserName
+          : (remote.assignedUserId == null
+                ? remote.assignedUserName
+                : (remote.assignedUserName ?? assignedUserName)),
+      assignedWorkerEngagementId: keepNewerHandoff
+          ? assignedWorkerEngagementId
+          : (remote.assignedUserId == null
+                ? remote.assignedWorkerEngagementId
+                : (remote.assignedWorkerEngagementId ??
+                      assignedWorkerEngagementId)),
+      assignedParticipantType: keepNewerHandoff
+          ? assignedParticipantType
+          : (remote.assignedUserId == null
+                ? remote.assignedParticipantType
+                : (remote.assignedParticipantType ?? assignedParticipantType)),
       canReply: canReply,
-      responder: remote.responder ?? responder,
+      responder: keepNewerHandoff ? responder : (remote.responder ?? responder),
     );
   }
 
@@ -1121,6 +1161,7 @@ class ConversationModel extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    workspaceId,
     unreadCount,
     lastMessageAt,
     muted,
@@ -1129,6 +1170,10 @@ class ConversationModel extends Equatable {
     paymentStatus,
     reviewStatus,
     handoffStatus,
+    handoffVersion,
+    aiEnabled,
+    assignedUserId,
+    responder,
   ];
 }
 

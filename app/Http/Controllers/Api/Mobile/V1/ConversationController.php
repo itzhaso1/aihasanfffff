@@ -128,12 +128,18 @@ class ConversationController extends MobileController
                 ->limit($limit)
                 ->get();
 
+            $statusUpdates = $this->conversationInboxService->recentOutboundStatusUpdates(
+                $conversation,
+                $afterId,
+            );
+
             return $this->ok(
                 MessageResource::collection($messages),
                 [
                     'count' => $messages->count(),
                     'has_more' => $messages->count() === $limit,
                     'polled' => true,
+                    'status_updates' => $statusUpdates,
                 ],
             );
         }

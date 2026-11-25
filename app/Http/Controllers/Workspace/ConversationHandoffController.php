@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Workspace;
 
 use App\Enums\ConversationHandoffReason;
+use App\Enums\ConversationHandoffStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Workspace\Concerns\InteractsWithWorkspace;
 use App\Http\Requests\Conversation\AssignConversationRequest;
@@ -12,6 +13,7 @@ use App\Models\User;
 use App\Models\Worker\WorkerEngagement;
 use App\Services\Conversation\ConversationHandoffService;
 use App\Services\Conversation\ConversationResponderService;
+use App\Services\Conversation\Exceptions\HandoffConflictException;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -120,8 +122,22 @@ class ConversationHandoffController extends Controller
     {
         $this->authorize('manageHandoff', $conversation);
 
+        $expectedVersion = $request->filled('expected_handoff_version')
+            ? $request->integer('expected_handoff_version')
+            : null;
+
         try {
-            $fresh = $this->handoff->takeover($conversation, $request->user());
+            $fresh = $this->handoff->takeover($conversation, $request->user(), $expectedVersion);
+        } catch (HandoffConflictException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $exception->getMessage(),
+                    'handoff_version' => $exception->currentHandoffVersion,
+                ], 409);
+            }
+
+            return back()->with('error', $exception->getMessage());
         } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
@@ -134,10 +150,7 @@ class ConversationHandoffController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'أنت تتولى المحادثة الآن.',
-                'conversation' => [
-                    'id' => $fresh->id,
-                    'responder' => $fresh->currentResponder(),
-                ],
+                'conversation' => $this->conversationPayload($fresh),
             ]);
         }
 
@@ -148,8 +161,22 @@ class ConversationHandoffController extends Controller
     {
         $this->authorize('manageHandoff', $conversation);
 
+        $expectedVersion = $request->filled('expected_handoff_version')
+            ? $request->integer('expected_handoff_version')
+            : null;
+
         try {
-            $fresh = $this->handoff->resolve($conversation, $request->user());
+            $fresh = $this->handoff->resolve($conversation, $request->user(), $expectedVersion);
+        } catch (HandoffConflictException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $exception->getMessage(),
+                    'handoff_version' => $exception->currentHandoffVersion,
+                ], 409);
+            }
+
+            return back()->with('error', $exception->getMessage());
         } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
@@ -162,10 +189,7 @@ class ConversationHandoffController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'تم إنهاء التحويل.',
-                'conversation' => [
-                    'id' => $fresh->id,
-                    'responder' => $fresh->currentResponder(),
-                ],
+                'conversation' => $this->conversationPayload($fresh),
             ]);
         }
 
@@ -176,12 +200,22 @@ class ConversationHandoffController extends Controller
     {
         $this->authorize('resumeAi', $conversation);
 
+        $expectedVersion = $request->filled('expected_handoff_version')
+            ? $request->integer('expected_handoff_version')
+            : null;
+
         try {
-            if ($conversation->handoffStatusEnum()->blocksAi()) {
-                $this->handoff->resolve($conversation, $request->user());
-                $conversation = $conversation->fresh() ?? $conversation;
+            $fresh = $this->handoff->resumeAi($conversation, $request->user(), $expectedVersion);
+        } catch (HandoffConflictException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $exception->getMessage(),
+                    'handoff_version' => $exception->currentHandoffVersion,
+                ], 409);
             }
-            $fresh = $this->handoff->resumeAi($conversation, $request->user());
+
+            return back()->with('error', $exception->getMessage());
         } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
@@ -193,15 +227,38 @@ class ConversationHandoffController extends Controller
         if ($request->expectsJson()) {
             return response()->json([
                 'success' => true,
-                'message' => 'تم تفعيل الذكاء الاصطناعي.',
-                'conversation' => [
-                    'id' => $fresh->id,
-                    'responder' => $fresh->currentResponder(),
-                ],
+                'message' => 'تم تحويل المحادثة إلى الذكاء الاصطناعي.',
+                'conversation' => $this->conversationPayload($fresh),
             ]);
         }
 
         return back()->with('success', 'تم تفعيل الذكاء الاصطناعي.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function conversationPayload(Conversation $conversation): array
+    {
+        $conversation->loadMissing(['assignedUser:id,name']);
+        $responder = $conversation->currentResponder();
+
+        return [
+            'id' => $conversation->id,
+            'status' => (string) $conversation->status,
+            'ai_enabled' => (bool) $conversation->ai_enabled,
+            'ai_replying' => $conversation->isAiReplying(),
+            'handoff_status' => $conversation->handoff_status instanceof ConversationHandoffStatus
+                ? $conversation->handoff_status->value
+                : (string) ($conversation->handoff_status ?? 'none'),
+            'handoff_version' => (int) ($conversation->handoff_version ?? 1),
+            'assigned_user_id' => $conversation->assigned_user_id,
+            'assigned_user_name' => $conversation->assignedUser?->name,
+            'assigned_worker_engagement_id' => $conversation->assigned_worker_engagement_id,
+            'responder' => $responder,
+            'active_responder' => $responder,
+            'last_message_sender' => $conversation->lastMessageSender(),
+        ];
     }
 
     /**

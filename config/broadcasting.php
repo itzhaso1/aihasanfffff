@@ -18,8 +18,11 @@ return [
                 'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
             ],
             'client_options' => [
-                'timeout' => (float) env('REVERB_BROADCAST_TIMEOUT', 2.0),
-                'connect_timeout' => (float) env('REVERB_BROADCAST_CONNECT_TIMEOUT', 1.0),
+                'timeout' => (float) env('REVERB_BROADCAST_TIMEOUT', 0.9),
+                'connect_timeout' => (float) env('REVERB_BROADCAST_CONNECT_TIMEOUT', 0.35),
+                'headers' => [
+                    'Connection' => 'keep-alive',
+                ],
             ],
         ],
 

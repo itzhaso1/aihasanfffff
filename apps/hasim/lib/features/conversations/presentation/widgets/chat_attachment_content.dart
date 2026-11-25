@@ -15,12 +15,14 @@ class ChatAttachmentContent extends ConsumerWidget {
     this.onImageTap,
     this.onOpenFailed,
     this.onMediaUrlExpired,
+    this.mediaHeaders,
   });
 
   final MessageAttachmentModel attachment;
   final void Function(String url)? onImageTap;
   final VoidCallback? onOpenFailed;
   final VoidCallback? onMediaUrlExpired;
+  final Map<String, String>? mediaHeaders;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -43,12 +45,32 @@ class ChatAttachmentContent extends ConsumerWidget {
       };
     }
 
+    if (mediaHeaders != null) {
+      return switch (attachment.kind) {
+        'image' => _ImageAttachment(
+          url: url,
+          previewUrl: attachment.previewUrl,
+          headers: mediaHeaders!,
+          onTap: () => onImageTap?.call(url),
+          onError: onMediaUrlExpired,
+        ),
+        _ => _VideoAttachment(
+          url: url,
+          headers: mediaHeaders!,
+          onError: onMediaUrlExpired,
+        ),
+      };
+    }
+
     final headersAsync = ref.watch(mediaAuthHeadersProvider);
 
     return headersAsync.when(
       loading: () => const SizedBox(
         height: 80,
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        child: ColoredBox(
+          color: Color(0x0D000000),
+          child: Center(child: Icon(Icons.image_outlined, size: 24)),
+        ),
       ),
       error: (_, _) => _MediaErrorPlaceholder(onRetry: onMediaUrlExpired),
       data: (headers) => switch (attachment.kind) {
@@ -110,8 +132,19 @@ class _ImageAttachment extends StatelessWidget {
           httpHeaders: headers,
           height: 160,
           fit: BoxFit.cover,
-          memCacheWidth: 600,
-          memCacheHeight: 600,
+          memCacheWidth: 480,
+          memCacheHeight: 480,
+          filterQuality: FilterQuality.low,
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
+          placeholderFadeInDuration: Duration.zero,
+          placeholder: (_, _) => const SizedBox(
+            height: 160,
+            child: ColoredBox(
+              color: Color(0x14000000),
+              child: Center(child: Icon(Icons.image_outlined, size: 24)),
+            ),
+          ),
           errorWidget: (_, _, _) => _MediaErrorPlaceholder(onRetry: onError),
         ),
       ),

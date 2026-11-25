@@ -271,7 +271,7 @@ class ConversationController extends Controller
         ]);
     }
 
-    public function update(UpdateConversationRequest $request, Conversation $conversation): RedirectResponse
+    public function update(UpdateConversationRequest $request, Conversation $conversation): RedirectResponse|JsonResponse
     {
         $payload = $request->validated();
         $actor = $request->user();
@@ -291,6 +291,10 @@ class ConversationController extends Controller
                         $wantAi,
                     );
                 } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
+                    if ($request->expectsJson()) {
+                        return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
+                    }
+
                     return back()->with('error', $exception->getMessage());
                 }
             }
@@ -301,10 +305,36 @@ class ConversationController extends Controller
             'metadata' => $this->parseJsonField($request, 'metadata_json', $conversation->metadata ?? []),
         ]);
 
-        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation->fresh() ?? $conversation);
+        $fresh = $conversation->fresh(['assignedUser:id,name']) ?? $conversation;
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($fresh, alreadyFresh: true);
+
+        if ($request->expectsJson()) {
+            $responder = $fresh->currentResponder();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم تحديث المحادثة.',
+                'conversation' => [
+                    'id' => $fresh->id,
+                    'status' => (string) $fresh->status,
+                    'ai_enabled' => (bool) $fresh->ai_enabled,
+                    'ai_replying' => $fresh->isAiReplying(),
+                    'handoff_status' => $fresh->handoff_status instanceof ConversationHandoffStatus
+                        ? $fresh->handoff_status->value
+                        : ($fresh->handoff_status ?? 'none'),
+                    'handoff_version' => (int) ($fresh->handoff_version ?? 1),
+                    'assigned_user_id' => $fresh->assigned_user_id,
+                    'assigned_user_name' => $fresh->assignedUser?->name,
+                    'assigned_worker_engagement_id' => $fresh->assigned_worker_engagement_id,
+                    'responder' => $responder,
+                    'active_responder' => $responder,
+                    'last_message_sender' => $fresh->lastMessageSender(),
+                ],
+            ]);
+        }
 
         return redirect()->route('workspace.conversations.index', [
-            'conversation' => $conversation->id,
+            'conversation' => $fresh->id,
         ])->with('success', 'تم تحديث المحادثة.');
     }
 
@@ -328,10 +358,12 @@ class ConversationController extends Controller
         $payload['customer_id'] = $payload['customer_id'] ?? $conversation->customer_id;
         $payload['message_type'] = $payload['message_type'] ?? 'text';
         $payload['metadata'] = $this->parseJsonField($request, 'metadata_json');
-        if ($request->filled('client_id')) {
-            $clientId = $request->string('client_id')->toString();
-            $payload['metadata']['client_id'] = $clientId;
-            $payload['metadata']['idempotency_key'] = $clientId;
+        if ($request->filled('client_id') || $request->filled('idempotency_key')) {
+            $clientId = trim((string) ($request->input('client_id') ?? $request->input('idempotency_key')));
+            if ($clientId !== '') {
+                $payload['metadata']['client_id'] = $clientId;
+                $payload['metadata']['idempotency_key'] = trim((string) ($request->input('idempotency_key') ?? $clientId)) ?: $clientId;
+            }
         }
 
         $uploadedFiles = [];
@@ -417,7 +449,7 @@ class ConversationController extends Controller
                     $conversation,
                     $sentMessage,
                     $actor,
-                    $payload,
+                    [...$payload, 'skip_responder_log' => true],
                 );
                 $sentMessage = $sentMessage->fresh([
                     'attachments',
@@ -513,19 +545,35 @@ class ConversationController extends Controller
             ->limit(50)
             ->get();
 
+        $pendingIds = array_values(array_filter(array_map(
+            'intval',
+            explode(',', (string) $request->query('pending_ids', '')),
+        )));
+        $statusUpdates = $this->conversationInboxService->recentOutboundStatusUpdates(
+            $conversation,
+            $afterId,
+            $pendingIds,
+        );
+
         $user = $request->user();
         $unreadCount = $user ? $this->conversationInboxService->unreadCountForConversation($conversation, $user) : 0;
         $latestMessage = $conversation->messages()->latest('id')->first();
 
         return response()->json([
             'messages' => $messages->map(fn (Message $m): array => $this->serializeMessageForInbox($m))->values(),
+            'status_updates' => $statusUpdates,
             'conversation' => [
                 'id' => $conversation->id,
+                'status' => (string) $conversation->status,
                 'ai_enabled' => (bool) $conversation->ai_enabled,
                 'ai_replying' => $conversation->isAiReplying(),
                 'handoff_status' => $conversation->handoff_status instanceof ConversationHandoffStatus
                     ? $conversation->handoff_status->value
                     : ($conversation->handoff_status ?? 'none'),
+                'handoff_version' => (int) ($conversation->handoff_version ?? 1),
+                'assigned_user_id' => $conversation->assigned_user_id,
+                'assigned_user_name' => $conversation->assignedUser?->name,
+                'assigned_worker_engagement_id' => $conversation->assigned_worker_engagement_id,
                 'last_message' => $latestMessage?->content ?? '',
                 'last_message_at' => $conversation->last_message_at?->format('h:i A') ?? '',
                 'unread_count' => $unreadCount,
@@ -567,9 +615,15 @@ class ConversationController extends Controller
                 'last_message_at' => $conv->last_message_at?->format('h:i A') ?? '',
                 'unread_count' => $this->conversationInboxService->unreadCountForConversation($conv, $user),
                 'is_ai_replying' => $conv->isAiReplying(),
+                'ai_enabled' => (bool) $conv->ai_enabled,
+                'ai_replying' => $conv->isAiReplying(),
                 'handoff_status' => $conv->handoff_status instanceof ConversationHandoffStatus
                     ? $conv->handoff_status->value
                     : ($conv->handoff_status ?? 'none'),
+                'handoff_version' => (int) ($conv->handoff_version ?? 1),
+                'assigned_user_id' => $conv->assigned_user_id,
+                'assigned_user_name' => $conv->assignedUser?->name,
+                'assigned_worker_engagement_id' => $conv->assigned_worker_engagement_id,
                 'status' => $conv->status,
                 'responder' => $conv->currentResponder(),
             ];

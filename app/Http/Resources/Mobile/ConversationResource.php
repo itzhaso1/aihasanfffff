@@ -45,6 +45,8 @@ class ConversationResource extends JsonResource
             'handoff_requested_at' => optional($this->handoff_requested_at)?->toIso8601String(),
             'handoff_assigned_at' => optional($this->handoff_assigned_at)?->toIso8601String(),
             'handoff_resolved_at' => optional($this->handoff_resolved_at)?->toIso8601String(),
+            'handoff_version' => (int) ($this->handoff_version ?? 1),
+            'updated_at' => optional($this->updated_at)?->toIso8601String(),
             'assigned_user_id' => $this->assigned_user_id,
             'assigned_user_name' => $this->assignedUser?->name,
             'assigned_worker_engagement_id' => $this->assigned_worker_engagement_id,

@@ -21,7 +21,11 @@ class ChatWallpaper extends ConsumerWidget {
     final shared = ref.watch(chatWallpaperControllerProvider);
     final override = conversationId == null
         ? null
-        : ref.watch(conversationThemeProvider(conversationId!)).wallpaperId;
+        : ref.watch(
+            conversationThemeProvider(
+              conversationId!,
+            ).select((theme) => theme.wallpaperId),
+          );
     final wallpaperId = override ?? shared;
     return RepaintBoundary(
       child: SizedBox.expand(

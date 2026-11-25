@@ -36,6 +36,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'handoff_requested_at',
     'handoff_assigned_at',
     'handoff_resolved_at',
+    'handoff_version',
     'assigned_user_id',
     'assigned_worker_engagement_id',
     'ai_employee_id',
@@ -60,6 +61,7 @@ class Conversation extends WorkspaceScopedModel
             'handoff_requested_at' => 'datetime',
             'handoff_assigned_at' => 'datetime',
             'handoff_resolved_at' => 'datetime',
+            'handoff_version' => 'integer',
             'responder_assigned_at' => 'datetime',
             'classification_updated_at' => 'datetime',
             'last_message_at' => 'datetime',
@@ -200,10 +202,14 @@ class Conversation extends WorkspaceScopedModel
             }
 
             if ($last->ai_generated) {
+                $aiName = $this->ai_employee_id !== null
+                    ? ($this->aiEmployee?->name ?? 'مشعل')
+                    : 'مشعل';
+
                 return [
                     'type' => 'ai',
                     'id' => $this->ai_employee_id,
-                    'name' => ($this->aiEmployee?->name ?? 'مشعل').' AI',
+                    'name' => $aiName.' AI',
                 ];
             }
 

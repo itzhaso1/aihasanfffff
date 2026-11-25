@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +10,7 @@ import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/features/conversations/data/conversation_repository.dart';
 import 'package:hasim/realtime/realtime_service.dart';
 import 'package:hasim/realtime/reverb_websocket_client.dart';
+import 'package:hasim/realtime/ws_transport.dart';
 
 /// WebSocket-first inbox updates with resilient config retry, lifecycle recovery,
 /// SQLite incremental persistence, and Polling fallback.
@@ -34,6 +34,7 @@ class HybridRealtimeService
 
   void _listenToPolling() {
     _pollingMessageSub ??= _polling.messageCreated.listen(_onIncomingMessage);
+    _pollingStatusSub ??= _polling.messageStatusUpdated.listen(_onStatusUpdated);
     _pollingListSub ??= _polling.conversationsChanged.listen((_) {
       if (!isWebSocketConnected) {
         _listController.add(null);
@@ -50,6 +51,7 @@ class HybridRealtimeService
 
   ReverbWebSocketClient? _wsClient;
   StreamSubscription<MessageModel>? _pollingMessageSub;
+  StreamSubscription<MessageStatusUpdate>? _pollingStatusSub;
   StreamSubscription<void>? _pollingListSub;
   StreamSubscription<MessageModel>? _wsMessageSub;
   StreamSubscription<ConversationModel>? _wsConversationSub;
@@ -69,6 +71,7 @@ class HybridRealtimeService
   bool _explicitlyDisabled = false;
   String? _lastConnectivityKey;
   int? _activeConversationId;
+  int? _watchingWorkspaceId;
   int? _lastWorkspaceId;
   final Set<int> _fetchingConversationIds = <int>{};
 
@@ -243,7 +246,7 @@ class HybridRealtimeService
   }
 
   Connectivity? _safeDefaultConnectivity() {
-    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (!kIsWeb && WsTransport.isFlutterTestEnvironment) {
       return null;
     }
     try {
@@ -411,7 +414,10 @@ class HybridRealtimeService
 
     client.updateWorkspace(_workspaceIdOf?.call());
     if (_activeConversationId != null) {
-      client.watchConversation(_activeConversationId);
+      client.watchConversation(
+        _activeConversationId,
+        workspaceId: _watchingWorkspaceId,
+      );
     }
     unawaited(client.connect());
   }
@@ -427,7 +433,7 @@ class HybridRealtimeService
   }
 
   Future<void> _runIncrementalCatchUp() async {
-    final wsId = _workspaceIdOf?.call();
+    final wsId = _watchingWorkspaceId ?? _workspaceIdOf?.call();
     final activeId = _activeConversationId;
     if (activeId != null && activeId > 0) {
       var seedMax = 0;
@@ -470,7 +476,11 @@ class HybridRealtimeService
 
   Future<void> _persistRealtimeMessage(MessageModel message) async {
     final repo = _repository;
-    final wsId = _workspaceIdOf?.call();
+    final wsId =
+        (_activeConversationId == message.conversationId
+            ? _watchingWorkspaceId
+            : null) ??
+        _workspaceIdOf?.call();
     if (repo == null || wsId == null) return;
 
     try {
@@ -510,7 +520,12 @@ class HybridRealtimeService
     ConversationModel conversation,
   ) async {
     final repo = _repository;
-    final wsId = _workspaceIdOf?.call();
+    final wsId =
+        conversation.workspaceId ??
+        (_activeConversationId == conversation.id
+            ? _watchingWorkspaceId
+            : null) ??
+        _workspaceIdOf?.call();
     if (repo == null || wsId == null) return;
 
     try {
@@ -542,7 +557,12 @@ class HybridRealtimeService
     if (_disposed) return;
     _statusController.add(update);
     final repo = _repository;
-    final wsId = _workspaceIdOf?.call();
+    final wsId =
+        update.workspaceId ??
+        (_activeConversationId == update.conversationId
+            ? _watchingWorkspaceId
+            : null) ??
+        _workspaceIdOf?.call();
     if (repo == null || wsId == null) return;
     unawaited(repo.applyMessageStatusUpdate(wsId, update));
   }
@@ -556,8 +576,10 @@ class HybridRealtimeService
     _catchUpDebounce = null;
     await _polling.stop();
     await _pollingMessageSub?.cancel();
+    await _pollingStatusSub?.cancel();
     await _pollingListSub?.cancel();
     _pollingMessageSub = null;
+    _pollingStatusSub = null;
     _pollingListSub = null;
     await _wsMessageSub?.cancel();
     await _wsConversationSub?.cancel();
@@ -573,13 +595,14 @@ class HybridRealtimeService
   }
 
   @override
-  void watchConversation(int? conversationId) {
+  void watchConversation(int? conversationId, {int? workspaceId}) {
     _activeConversationId = conversationId;
+    _watchingWorkspaceId = conversationId == null ? null : workspaceId;
     _wsClient?.updateWorkspace(_workspaceIdOf?.call());
-    _wsClient?.watchConversation(conversationId);
+    _wsClient?.watchConversation(conversationId, workspaceId: workspaceId);
     _polling.watchConversation(conversationId);
 
-    final wsId = _workspaceIdOf?.call();
+    final wsId = workspaceId ?? _workspaceIdOf?.call();
     final repo = _repository;
     if (conversationId != null &&
         conversationId > 0 &&
@@ -599,6 +622,7 @@ class HybridRealtimeService
   void unwatchConversation(int conversationId) {
     if (_activeConversationId == conversationId) {
       _activeConversationId = null;
+      _watchingWorkspaceId = null;
     }
     _wsClient?.updateWorkspace(_workspaceIdOf?.call());
     _wsClient?.unwatchConversation(conversationId);

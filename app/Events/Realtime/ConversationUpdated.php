@@ -64,16 +64,57 @@ class ConversationUpdated implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return app(WorkspaceContext::class)->runForId((int) $this->conversation->workspace_id, function (): array {
-            $this->conversation->loadMissing([
-                'customer:id,name,phone',
-                'lastMessage',
-                'assignedUser:id,name',
-                'assignedWorkerEngagement.workerProfile:id,user_id,display_name',
-            ]);
+            $missing = [];
+            if ($this->conversation->customer_id !== null && ! $this->conversation->relationLoaded('customer')) {
+                $missing[] = 'customer:id,name,phone';
+            }
+            if (! $this->conversation->relationLoaded('lastMessage')) {
+                $missing[] = 'lastMessage';
+            }
+            if ($this->conversation->assigned_user_id !== null && ! $this->conversation->relationLoaded('assignedUser')) {
+                $missing[] = 'assignedUser:id,name';
+            }
+            if ($this->conversation->assigned_worker_engagement_id !== null && ! $this->conversation->relationLoaded('assignedWorkerEngagement')) {
+                $missing[] = 'assignedWorkerEngagement.workerProfile:id,user_id,display_name';
+            }
+            if ($missing !== []) {
+                $this->conversation->loadMissing($missing);
+            }
 
             $latest = $this->conversation->lastMessage;
+            if ($latest !== null) {
+                if (
+                    $latest->customer_id !== null
+                    && $latest->customer_id === $this->conversation->customer_id
+                    && ! $latest->relationLoaded('customer')
+                    && $this->conversation->relationLoaded('customer')
+                ) {
+                    $latest->setRelation('customer', $this->conversation->customer);
+                }
+
+                $latestMissing = [];
+                if ($latest->user_id !== null && ! $latest->relationLoaded('user')) {
+                    $latestMissing[] = 'user:id,name';
+                }
+                if ($latest->customer_id !== null && ! $latest->relationLoaded('customer')) {
+                    $latestMissing[] = 'customer:id,name';
+                }
+                if (! $latest->relationLoaded('attachments')) {
+                    $latestMissing[] = 'attachments';
+                }
+                if ($latest->worker_engagement_id !== null && ! $latest->relationLoaded('workerEngagement')) {
+                    $latestMissing[] = 'workerEngagement.workerProfile:id,user_id,display_name';
+                }
+                if ($latestMissing !== []) {
+                    $latest->loadMissing($latestMissing);
+                }
+            }
+
             $customer = $this->conversation->customer;
             $preview = $latest ? Str::limit($latest->content, 90) : '';
+            $responder = app(ConversationResponderService::class)->determineResponder($this->conversation);
+            $lastMessageData = $latest ? (new MessageResource($latest))->resolve() : null;
+            $lastMessageSender = $this->conversation->lastMessageSender();
 
             return [
                 'id' => $this->conversation->id,
@@ -85,12 +126,14 @@ class ConversationUpdated implements ShouldBroadcastNow
                 'last_message' => $preview,
                 'last_message_preview' => $preview,
                 'last_message_direction' => $latest ? (string) $latest->direction : 'inbound',
-                'last_message_data' => $latest ? (new MessageResource($latest))->resolve() : null,
+                'last_message_data' => $lastMessageData,
                 'last_message_at' => optional($this->conversation->last_message_at)?->toIso8601String(),
                 'last_message_at_human' => optional($this->conversation->last_message_at)?->diffForHumans() ?? '',
                 'handoff_status' => $this->conversation->handoff_status instanceof \BackedEnum
                     ? $this->conversation->handoff_status->value
                     : (string) ($this->conversation->handoff_status ?? 'none'),
+                'handoff_version' => (int) ($this->conversation->handoff_version ?? 1),
+                'updated_at' => optional($this->conversation->updated_at)?->toIso8601String(),
                 'assigned_user_id' => $this->conversation->assigned_user_id,
                 'assigned_user_name' => $this->conversation->assignedUser?->name,
                 'assigned_user' => $this->conversation->assignedUser ? [
@@ -99,9 +142,9 @@ class ConversationUpdated implements ShouldBroadcastNow
                 ] : null,
                 'assigned_worker_engagement_id' => $this->conversation->assigned_worker_engagement_id,
                 'assigned_participant_type' => WorkforceInboxAttribution::typeForConversation($this->conversation)?->value,
-                'responder' => app(ConversationResponderService::class)->determineResponder($this->conversation),
-                'active_responder' => app(ConversationResponderService::class)->determineResponder($this->conversation),
-                'last_message_sender' => $this->conversation->lastMessageSender(),
+                'responder' => $responder,
+                'active_responder' => $responder,
+                'last_message_sender' => $lastMessageSender,
                 'customer' => $customer ? [
                     'id' => $customer->id,
                     'name' => $customer->name,

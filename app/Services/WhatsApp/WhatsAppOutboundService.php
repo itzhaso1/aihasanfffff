@@ -424,14 +424,8 @@ class WhatsAppOutboundService
 
     private function assertWhatsAppEntitlement(Workspace $workspace): void
     {
-        $user = auth()->user();
-
-        if ($user) {
-            $this->featureAccess->assertFeature($user, $workspace, 'whatsapp');
-
-            return;
-        }
-
+        // Outbound channel delivery is authorized when the message is accepted by the controller/policy.
+        // Checking workspace-level entitlement avoids diverging between queued AI jobs and human/worker dispatches.
         if (! $this->featureAccess->workspaceHasFeature($workspace, 'whatsapp')) {
             throw new FeatureNotAvailableException(
                 feature: 'whatsapp',

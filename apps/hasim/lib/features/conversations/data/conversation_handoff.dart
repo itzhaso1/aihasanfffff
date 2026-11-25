@@ -34,8 +34,44 @@ abstract final class ConversationHandoffValues {
       isOpen(conversation) &&
       assignableStatuses.contains(conversation.handoffStatus);
 
-  static bool canTakeover(ConversationModel conversation) =>
-      isOpen(conversation);
+  static bool canTakeover(ConversationModel conversation) {
+    if (!isOpen(conversation)) return false;
+    final isHumanNeeded =
+        conversation.handoffStatus == 'requested' ||
+        conversation.handoffStatus == 'queued';
+    final isOwnedByHuman =
+        conversation.handoffStatus == 'assigned' ||
+        conversation.handoffStatus == 'active';
+    return isHumanNeeded || conversation.isAiReplying || isOwnedByHuman;
+  }
+
+  static bool isOwnedByAnotherHuman(
+    ConversationModel conversation, {
+    int? currentUserId,
+  }) =>
+      const ['assigned', 'active'].contains(conversation.handoffStatus) &&
+      conversation.assignedUserId != null &&
+      (currentUserId == null || conversation.assignedUserId != currentUserId);
+
+  static bool canTakeoverForActor(
+    ConversationModel conversation, {
+    required bool isWorker,
+    int? currentUserId,
+  }) {
+    if (!canTakeover(conversation)) return false;
+    if (isWorker && !conversation.canReply) return false;
+    if (isWorker &&
+        isOwnedByAnotherHuman(conversation, currentUserId: currentUserId)) {
+      return false;
+    }
+    if (conversation.assignedUserId != null &&
+        conversation.assignedUserId == currentUserId &&
+        !conversation.aiEnabled &&
+        conversation.handoffStatus == 'active') {
+      return false;
+    }
+    return true;
+  }
 
   static bool canResolve(ConversationModel conversation) =>
       isOpen(conversation) &&
@@ -48,6 +84,20 @@ abstract final class ConversationHandoffValues {
 
   static bool canResumeAi(ConversationModel conversation) =>
       isOpen(conversation) && !conversation.isAiReplying;
+
+  static bool canResumeAiForActor(
+    ConversationModel conversation, {
+    required bool isWorker,
+    int? currentUserId,
+  }) {
+    if (!canResumeAi(conversation)) return false;
+    if (isWorker && !conversation.canReply) return false;
+    if (isWorker &&
+        isOwnedByAnotherHuman(conversation, currentUserId: currentUserId)) {
+      return false;
+    }
+    return true;
+  }
 
   static bool canMoveToTeamReview(ConversationModel conversation) =>
       isOpen(conversation) &&

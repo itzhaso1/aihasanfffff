@@ -12,13 +12,15 @@ const leavePresence = (conversationId, csrfToken) => {
     const targetId = conversationId || currentTrackingConversationId;
     if (!targetId) return;
 
+    const shell = document.getElementById('inbox-shell');
+    const url = shell?.dataset?.presenceLeaveUrl || `/workspace/conversations/${targetId}/presence/leave`;
     const token = csrfToken || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     if (navigator.sendBeacon) {
         const formData = new FormData();
         formData.append('_token', token);
-        navigator.sendBeacon(`/workspace/conversations/${targetId}/presence/leave`, formData);
+        navigator.sendBeacon(url, formData);
     } else {
-        fetch(`/workspace/conversations/${targetId}/presence/leave`, {
+        fetch(url, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': token },
             keepalive: true,
@@ -165,49 +167,67 @@ const bindRealtime = () => {
         }
     };
 
+    let hasConnectedOnce = false;
+    let lastConversationSignature = '';
+
     const syncMissedState = async () => {
-        const { activeConversationId: activeId } = resolveShellContext(config);
-        if (activeId) {
+        const { shell: currentShell, activeConversationId: activeId } = resolveShellContext(config);
+        const pollMessagesBase = currentShell?.dataset?.pollMessagesUrl || (activeId ? `/workspace/conversations/${activeId}/poll-messages` : '');
+        const pollUpdatesUrl = currentShell?.dataset?.pollUpdatesUrl || '/workspace/conversations/poll-updates';
+
+        const tasks = [];
+
+        if (activeId && pollMessagesBase) {
             const messageList = document.getElementById('inbox-message-list');
             const ids = [...(messageList?.querySelectorAll('[data-message-id]') || [])]
                 .map((el) => Number(el.dataset.messageId))
                 .filter((id) => !isNaN(id) && id > 0);
             const afterId = ids.length > 0 ? Math.max(...ids) : 0;
-            try {
-                const res = await fetch(`/workspace/conversations/${activeId}/poll-messages?after_id=${afterId}`, {
+            const sep = pollMessagesBase.includes('?') ? '&' : '?';
+
+            tasks.push(
+                fetch(`${pollMessagesBase}${sep}after_id=${afterId}`, {
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     credentials: 'same-origin',
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (Array.isArray(data?.messages)) {
-                        data.messages.forEach((msg) => appendMessage(msg));
-                    }
-                    if (data?.conversation) {
-                        window.__INBOX_UI__?.updateConversationInSidebar?.(data.conversation, { moveToTop: true });
-                        if (data.conversation.responder) {
-                            window.__INBOX_UI__?.updateTopResponderBar?.(data.conversation.responder, data.conversation);
+                })
+                    .then((res) => (res.ok ? res.json() : null))
+                    .then((data) => {
+                        if (!data) return;
+                        if (Array.isArray(data.messages)) {
+                            data.messages.forEach((msg) => appendMessage(msg));
                         }
-                    }
-                }
-            } catch (_) {}
+                        if (Array.isArray(data.status_updates)) {
+                            data.status_updates.forEach((u) => window.__INBOX_UI__?.updateMessageDeliveryStatus?.(u));
+                        }
+                        if (data.conversation) {
+                            window.__INBOX_UI__?.applyConversationSnapshot?.(data.conversation, { moveToTop: false });
+                        }
+                    })
+                    .catch(() => {})
+            );
         }
 
-        // Catch up on sidebar unread counters and latest snippet
-        try {
-            const updatesRes = await fetch(`/workspace/conversations/poll-updates`, {
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                credentials: 'same-origin',
-            });
-            if (updatesRes.ok) {
-                const updatesData = await updatesRes.json();
-                if (Array.isArray(updatesData?.conversations)) {
-                    updatesData.conversations.forEach((conv) => {
-                        window.__INBOX_UI__?.updateConversationInSidebar?.(conv, { moveToTop: false });
-                    });
-                }
-            }
-        } catch (_) {}
+        if (pollUpdatesUrl) {
+            tasks.push(
+                fetch(pollUpdatesUrl, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                })
+                    .then((res) => (res.ok ? res.json() : null))
+                    .then((updatesData) => {
+                        if (Array.isArray(updatesData?.conversations)) {
+                            updatesData.conversations.forEach((conv) => {
+                                window.__INBOX_UI__?.updateConversationInSidebar?.(conv, { moveToTop: false });
+                            });
+                        }
+                    })
+                    .catch(() => {})
+            );
+        }
+
+        if (tasks.length > 0) {
+            await Promise.allSettled(tasks);
+        }
     };
 
     // Connection state listeners (guarded against duplicate bindings)
@@ -217,7 +237,11 @@ const bindRealtime = () => {
             const current = states.current;
             if (current === 'connected') {
                 window.__INBOX_UI__?.setConnectionStatus?.('connected');
-                syncMissedState();
+                if (hasConnectedOnce) {
+                    syncMissedState();
+                } else {
+                    hasConnectedOnce = true;
+                }
             } else if (current === 'connecting') {
                 window.__INBOX_UI__?.setConnectionStatus?.('reconnecting');
             } else if (current === 'unavailable' || current === 'failed' || current === 'disconnected') {
@@ -267,18 +291,24 @@ const bindRealtime = () => {
 
     const handleConversationUpdated = (payload) => {
         if (!payload?.id) return;
-        if (window.__INBOX_UI__?.updateConversationInSidebar) {
-            window.__INBOX_UI__.updateConversationInSidebar(payload, { moveToTop: false });
+        const sig = [
+            payload.id,
+            payload.handoff_version ?? '',
+            payload.status ?? '',
+            payload.ai_enabled ?? '',
+            payload.handoff_status ?? '',
+            payload.assigned_user_id ?? '',
+            payload.responder?.status ?? '',
+            payload.responder?.is_ai_generating ?? '',
+            payload.responder?.is_typing ?? '',
+            payload.last_message_data?.id ?? '',
+        ].join(':');
+        if (sig === lastConversationSignature) {
+            return;
         }
-        const { activeConversationId: currentId } = resolveShellContext(config);
-        if (currentId && Number(payload.id) === Number(currentId)) {
-            if (payload.responder) {
-                window.__INBOX_UI__?.updateTopResponderBar?.(payload.responder, payload);
-            }
-            if (payload.status) {
-                window.__INBOX_UI__?.updateActiveConversationStatus?.(payload.status);
-            }
-        }
+        lastConversationSignature = sig;
+
+        window.__INBOX_UI__?.applyConversationSnapshot?.(payload, { moveToTop: false });
     };
 
     const handleTypingActivity = (payload) => {
@@ -333,8 +363,9 @@ const bindRealtime = () => {
 
         // Presence Heartbeat Loop (every 20 seconds)
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const presencePingUrl = shell.dataset.presencePingUrl || `/workspace/conversations/${activeConversationId}/presence/ping`;
         const pingPresence = (state = 'viewing') => {
-            fetch(`/workspace/conversations/${activeConversationId}/presence/ping`, {
+            fetch(presencePingUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -216,15 +216,38 @@ Route::middleware(['auth'])->prefix('workers')->as('worker.')->group(function ()
     Route::get('/{workspace}/inbox', [WorkerInboxController::class, 'index'])
         ->whereNumber('workspace')
         ->name('inbox.index');
+    Route::get('/{workspace}/inbox/poll-updates', [WorkerInboxController::class, 'pollUpdates'])
+        ->whereNumber('workspace')
+        ->name('inbox.updates.poll');
     Route::get('/{workspace}/inbox/{conversation}', [WorkerInboxController::class, 'show'])
         ->whereNumber('workspace')
         ->whereNumber('conversation')
         ->name('inbox.show');
+    Route::get('/{workspace}/inbox/{conversation}/poll-messages', [WorkerInboxController::class, 'pollMessages'])
+        ->whereNumber('workspace')
+        ->whereNumber('conversation')
+        ->name('inbox.messages.poll');
     Route::post('/{workspace}/inbox/{conversation}/messages', [WorkerInboxController::class, 'storeMessage'])
         ->whereNumber('workspace')
         ->whereNumber('conversation')
         ->middleware('throttle:mobile-messages')
         ->name('inbox.messages.store');
+    Route::post('/{workspace}/inbox/{conversation}/takeover', [WorkerInboxController::class, 'takeover'])
+        ->whereNumber('workspace')
+        ->whereNumber('conversation')
+        ->name('inbox.handoff.takeover');
+    Route::post('/{workspace}/inbox/{conversation}/resolve-handoff', [WorkerInboxController::class, 'resolve'])
+        ->whereNumber('workspace')
+        ->whereNumber('conversation')
+        ->name('inbox.handoff.resolve');
+    Route::post('/{workspace}/inbox/{conversation}/resume-ai', [WorkerInboxController::class, 'resumeAi'])
+        ->whereNumber('workspace')
+        ->whereNumber('conversation')
+        ->name('inbox.handoff.resume-ai');
+    Route::get('/{workspace}/inbox/{conversation}/responder-logs', [WorkerInboxController::class, 'responderLogs'])
+        ->whereNumber('workspace')
+        ->whereNumber('conversation')
+        ->name('inbox.responder-logs');
     Route::post('/{workspace}/inbox/{conversation}/typing', [WorkerInboxController::class, 'typing'])
         ->whereNumber('workspace')
         ->whereNumber('conversation')

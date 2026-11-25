@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +8,7 @@ import 'package:hasim/core/logging/messaging_logger.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_client.dart';
 import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/realtime/ws_transport.dart';
 
 /// Client connection state for Reverb / Pusher WebSockets.
 enum RealtimeConnectionState {
@@ -56,11 +57,13 @@ class ReverbWebSocketClient {
   final Duration _pingInterval;
   final void Function(String channel)? onChannelSubscribed;
 
-  WebSocket? _socket;
+  WsTransport? _socket;
+  StreamSubscription<dynamic>? _socketSub;
   RealtimeConnectionState _state = RealtimeConnectionState.disconnected;
   String? _socketId;
   int? _workspaceId;
   int? _watchingConversationId;
+  int? _watchingWorkspaceId;
 
   final _messageController = StreamController<MessageModel>.broadcast();
   final _conversationController =
@@ -83,6 +86,9 @@ class ReverbWebSocketClient {
   final Set<String> _desiredChannels = <String>{};
   final Set<String> _confirmedChannels = <String>{};
   final Set<String> _inFlightAuthChannels = <String>{};
+  final LinkedHashMap<String, String> _recentEventSignatures =
+      LinkedHashMap<String, String>();
+  static const int _maxEventSignatureEntries = 400;
 
   Stream<MessageModel> get messageCreated => _messageController.stream;
   Stream<ConversationModel> get conversationUpdated =>
@@ -108,21 +114,30 @@ class ReverbWebSocketClient {
     }
   }
 
-  void watchConversation(int? conversationId) {
+  void watchConversation(int? conversationId, {int? workspaceId}) {
     final prev = _watchingConversationId;
+    final prevWsId = _watchingWorkspaceId ?? _workspaceId;
     _watchingConversationId = conversationId;
+    _watchingWorkspaceId = conversationId == null
+        ? null
+        : ((workspaceId != null && workspaceId > 0) ? workspaceId : _workspaceId);
     _rebuildDesiredChannels();
-    if (!isConnected || _workspaceId == null) return;
+    final targetWsId = _watchingWorkspaceId ?? _workspaceId;
+    if (!isConnected) return;
 
-    if (prev != null && prev > 0 && prev != conversationId) {
-      final oldChannel = _conversationChannelName(_workspaceId!, prev);
+    if (prev != null &&
+        prev > 0 &&
+        prevWsId != null &&
+        prevWsId > 0 &&
+        (prev != conversationId || prevWsId != targetWsId)) {
+      final oldChannel = _conversationChannelName(prevWsId, prev);
       _unsubscribe(oldChannel);
     }
-    if (conversationId != null && conversationId > 0) {
-      final newChannel = _conversationChannelName(
-        _workspaceId!,
-        conversationId,
-      );
+    if (conversationId != null &&
+        conversationId > 0 &&
+        targetWsId != null &&
+        targetWsId > 0) {
+      final newChannel = _conversationChannelName(targetWsId, conversationId);
       if (!_confirmedChannels.contains(newChannel)) {
         unawaited(_subscribePrivate(newChannel));
       }
@@ -170,8 +185,9 @@ class ReverbWebSocketClient {
         debugPrint('[REALTIME_WS] Connecting to $uri');
       }
 
-      final socket = await WebSocket.connect(uri.toString()).timeout(
-        const Duration(seconds: 10),
+      final socket = await WsTransport.connect(
+        uri,
+        timeout: const Duration(seconds: 10),
       );
 
       if (_disposed || _manualDisconnect) {
@@ -184,7 +200,8 @@ class ReverbWebSocketClient {
       _socket = socket;
       _reconnectAttempts = 0;
 
-      socket.listen(
+      unawaited(_socketSub?.cancel());
+      _socketSub = socket.stream.listen(
         (raw) => _onMessage(socket, raw),
         onError: (Object err) => _onError(socket, err),
         onDone: () => _onDone(socket),
@@ -240,6 +257,8 @@ class ReverbWebSocketClient {
 
     final s = _socket;
     _socket = null;
+    await _socketSub?.cancel();
+    _socketSub = null;
     if (s != null) {
       try {
         await s.close();
@@ -261,7 +280,7 @@ class ReverbWebSocketClient {
     _connectionStateController.close();
   }
 
-  void _onMessage(WebSocket socket, dynamic raw) {
+  void _onMessage(WsTransport socket, dynamic raw) {
     if (_disposed || !identical(_socket, socket) || raw == null) return;
     _pingTimeoutTimer?.cancel();
     _pingTimeoutTimer = null;
@@ -326,6 +345,11 @@ class ReverbWebSocketClient {
           if (data.isNotEmpty) {
             try {
               final message = MessageModel.fromJson(data);
+              final msgSigKey = 'msg:${message.conversationId}:${message.id > 0 ? message.id : message.clientId}';
+              final msgSigVal = '${message.deliveryStatus ?? ''}:${message.attachments.length}:${message.content.hashCode}';
+              if (_isDuplicateFrame(msgSigKey, msgSigVal)) {
+                return;
+              }
               MessagingLogger.log(
                 'WEBSOCKET_EVENT_RECEIVED',
                 correlationId: data['correlation_id']?.toString(),
@@ -342,7 +366,6 @@ class ReverbWebSocketClient {
                 data: data,
               );
               _messageController.add(message);
-              _conversationUpdateController.add(null);
             } catch (e) {
               if (kDebugMode) {
                 debugPrint('[REALTIME_WS] Message parse error: $e');
@@ -356,6 +379,12 @@ class ReverbWebSocketClient {
           if (data.isNotEmpty) {
             try {
               final conversation = ConversationModel.fromJson(data);
+              final convSigKey = 'conv:${conversation.id}';
+              final convSigVal =
+                  '${conversation.handoffVersion}:${conversation.status}:${conversation.aiEnabled}:${conversation.handoffStatus}:${conversation.assignedUserId}:${conversation.responder?.status}:${conversation.responder?.isAiGenerating}:${conversation.responder?.isTyping}:${conversation.lastMessage?.id}';
+              if (_isDuplicateFrame(convSigKey, convSigVal)) {
+                return;
+              }
               _logEventLatency(
                 event: event,
                 conversationId: conversation.id,
@@ -368,7 +397,6 @@ class ReverbWebSocketClient {
               }
             }
           }
-          _conversationUpdateController.add(null);
 
         case 'message.status_updated':
         case 'App\\Events\\Realtime\\MessageStatusUpdated':
@@ -448,7 +476,7 @@ class ReverbWebSocketClient {
     );
   }
 
-  void _onError(WebSocket socket, Object error) {
+  void _onError(WsTransport socket, Object error) {
     if (!identical(_socket, socket) || _manualDisconnect) return;
     if (kDebugMode) {
       debugPrint('[REALTIME_WS] Socket error: $error');
@@ -456,7 +484,7 @@ class ReverbWebSocketClient {
     _scheduleReconnect();
   }
 
-  void _onDone(WebSocket socket) {
+  void _onDone(WsTransport socket) {
     if (!identical(_socket, socket) || _manualDisconnect) return;
     if (kDebugMode) {
       debugPrint('[REALTIME_WS] Socket closed');
@@ -520,11 +548,15 @@ class ReverbWebSocketClient {
   void _rebuildDesiredChannels() {
     _desiredChannels.clear();
     final wsId = _workspaceId;
-    if (wsId == null || wsId <= 0) return;
-    _desiredChannels.add(_workspaceChannelName(wsId));
+    if (wsId != null && wsId > 0) {
+      _desiredChannels.add(_workspaceChannelName(wsId));
+    }
     final convId = _watchingConversationId;
-    if (convId != null && convId > 0) {
-      _desiredChannels.add(_conversationChannelName(wsId, convId));
+    final convWsId = (_watchingWorkspaceId != null && _watchingWorkspaceId! > 0)
+        ? _watchingWorkspaceId
+        : wsId;
+    if (convId != null && convId > 0 && convWsId != null && convWsId > 0) {
+      _desiredChannels.add(_conversationChannelName(convWsId, convId));
     }
   }
 
@@ -647,12 +679,21 @@ class ReverbWebSocketClient {
               ? _authEndpoint
               : _authEndpoint.replaceFirst(RegExp(r'^/?(api/mobile/v1/)?'), ''));
 
+      final wsMatch = RegExp(
+        r'(\d+)\.(?:conversations|conversation\.)',
+      ).firstMatch(channel);
+      final channelWsId = wsMatch != null ? int.tryParse(wsMatch.group(1)!) : null;
+      final effectiveWsId = _workspaceId ?? channelWsId;
+
       final res = await _apiClient.post<Map<String, dynamic>>(
         path,
         body: {
           'socket_id': sId,
           'channel_name': channel,
         },
+        headers: (effectiveWsId != null && effectiveWsId > 0)
+            ? {'X-Workspace-Id': '$effectiveWsId'}
+            : null,
         mapData: (raw) =>
             raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{},
       );
@@ -690,12 +731,24 @@ class ReverbWebSocketClient {
     final s = _socket;
     if (s == null) return;
     try {
-      s.add(jsonEncode({'event': event, 'data': data}));
+      s.sendText(jsonEncode({'event': event, 'data': data}));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[REALTIME_WS] Send failed: $e');
       }
     }
+  }
+
+  bool _isDuplicateFrame(String key, String value) {
+    if (_recentEventSignatures[key] == value) {
+      return true;
+    }
+    _recentEventSignatures.remove(key);
+    _recentEventSignatures[key] = value;
+    while (_recentEventSignatures.length > _maxEventSignatureEntries) {
+      _recentEventSignatures.remove(_recentEventSignatures.keys.first);
+    }
+    return false;
   }
 
   void _startPingTimer() {

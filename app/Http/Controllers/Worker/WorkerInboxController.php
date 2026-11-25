@@ -12,13 +12,18 @@ use App\Models\Message;
 use App\Models\User;
 use App\Models\Worker\WorkerEngagement;
 use App\Models\Workspace;
+use App\Services\Conversation\ConversationHandoffService;
 use App\Services\Conversation\ConversationPresenceService;
+use App\Services\Conversation\ConversationResponderService;
+use App\Services\Conversation\Exceptions\HandoffConflictException;
+use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use App\Services\Mobile\ConversationInboxService;
 use App\Services\Worker\WorkerEngagementAuthorization;
 use App\Services\Worker\WorkerInboxException;
 use App\Services\Worker\WorkerInboxService;
 use App\Services\Workforce\WorkforceInboxAttribution;
 use App\Support\Tenancy\WorkspaceContext;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -27,6 +32,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\View\View;
+use InvalidArgumentException;
 
 final class WorkerInboxController extends Controller
 {
@@ -34,6 +40,8 @@ final class WorkerInboxController extends Controller
         private readonly WorkerInboxService $inbox,
         private readonly WorkerEngagementAuthorization $authorization,
         private readonly ConversationInboxService $conversationInboxService,
+        private readonly ConversationHandoffService $handoff,
+        private readonly ConversationResponderService $responderService,
     ) {}
 
     public function home(Request $request): View
@@ -180,6 +188,8 @@ final class WorkerInboxController extends Controller
             $senderName = $message->user->name;
         }
 
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+
         return [
             'id' => $message->id,
             'conversation_id' => $message->conversation_id,
@@ -187,11 +197,20 @@ final class WorkerInboxController extends Controller
             'message_type' => $message->message_type,
             'content' => $message->content,
             'ai_generated' => (bool) $message->ai_generated,
+            'delivery_status' => $message->delivery_status,
+            'delivery_error' => $message->delivery_status === 'failed'
+                && is_string($metadata['delivery_error'] ?? null)
+                ? $metadata['delivery_error']
+                : null,
+            'delivered_at' => optional($message->delivered_at)?->toIso8601String(),
+            'read_at' => optional($message->read_at)?->toIso8601String(),
             'is_internal_note' => $isInternalNote,
             'sender_name' => $senderName,
             'created_at_time' => optional($message->created_at)?->format('h:i A'),
             'participant_type' => $participantType,
             'worker_engagement_id' => $message->worker_engagement_id,
+            'client_id' => $metadata['client_id'] ?? $metadata['idempotency_key'] ?? null,
+            'idempotency_key' => $metadata['idempotency_key'] ?? $metadata['client_id'] ?? null,
             'created_at' => optional($message->created_at)?->toIso8601String(),
             'attachments' => [],
         ];
@@ -232,9 +251,28 @@ final class WorkerInboxController extends Controller
             'inboxIndexRoute' => $workspace instanceof Workspace ? 'worker.inbox.index' : 'worker.inbox.home',
             'inboxRouteParameters' => $workspace instanceof Workspace ? ['workspace' => $workspace->id] : [],
             'inboxAllowsCompanyActions' => false,
+            'inboxAllowsWorkerHandoff' => $canSend,
             'inboxCanSend' => $canSend,
             'inboxMessageAction' => $activeConversation instanceof Conversation && $workspace instanceof Workspace
                 ? route('worker.inbox.messages.store', [$workspace, $activeConversation->id])
+                : null,
+            'inboxPollUpdatesUrl' => $workspace instanceof Workspace
+                ? route('worker.inbox.updates.poll', $workspace)
+                : null,
+            'inboxPollMessagesUrl' => $activeConversation instanceof Conversation && $workspace instanceof Workspace
+                ? route('worker.inbox.messages.poll', [$workspace, $activeConversation->id])
+                : null,
+            'inboxTakeoverAction' => $activeConversation instanceof Conversation && $workspace instanceof Workspace
+                ? route('worker.inbox.handoff.takeover', [$workspace, $activeConversation->id])
+                : null,
+            'inboxResolveHandoffAction' => $activeConversation instanceof Conversation && $workspace instanceof Workspace
+                ? route('worker.inbox.handoff.resolve', [$workspace, $activeConversation->id])
+                : null,
+            'inboxResumeAiAction' => $activeConversation instanceof Conversation && $workspace instanceof Workspace
+                ? route('worker.inbox.handoff.resume-ai', [$workspace, $activeConversation->id])
+                : null,
+            'inboxResponderLogsUrl' => $activeConversation instanceof Conversation && $workspace instanceof Workspace
+                ? route('worker.inbox.responder-logs', [$workspace, $activeConversation->id])
                 : null,
             'inboxRealtimeEnabled' => true,
         ]);
@@ -489,5 +527,259 @@ final class WorkerInboxController extends Controller
         return response()->json([
             'status' => 'ok',
         ]);
+    }
+
+    public function takeover(
+        Request $request,
+        Workspace $workspace,
+        int $conversation,
+    ): RedirectResponse|JsonResponse {
+        return $this->runWorkerHandoffAction(
+            $request,
+            $workspace,
+            $conversation,
+            fn (Conversation $conv, User $actor, ?int $expectedVersion): Conversation => $this->handoff->takeover($conv, $actor, $expectedVersion),
+            'أنت تتولى المحادثة الآن.',
+        );
+    }
+
+    public function resolve(
+        Request $request,
+        Workspace $workspace,
+        int $conversation,
+    ): RedirectResponse|JsonResponse {
+        return $this->runWorkerHandoffAction(
+            $request,
+            $workspace,
+            $conversation,
+            fn (Conversation $conv, User $actor, ?int $expectedVersion): Conversation => $this->handoff->resolve($conv, $actor, $expectedVersion),
+            'تم إنهاء التحويل.',
+        );
+    }
+
+    public function resumeAi(
+        Request $request,
+        Workspace $workspace,
+        int $conversation,
+    ): RedirectResponse|JsonResponse {
+        return $this->runWorkerHandoffAction(
+            $request,
+            $workspace,
+            $conversation,
+            fn (Conversation $conv, User $actor, ?int $expectedVersion): Conversation => $this->handoff->resumeAi($conv, $actor, $expectedVersion),
+            'تم تحويل المحادثة إلى الذكاء الاصطناعي.',
+        );
+    }
+
+    public function responderLogs(
+        Request $request,
+        Workspace $workspace,
+        int $conversation,
+    ): JsonResponse {
+        $worker = $request->user();
+        abort_unless($worker instanceof User, 403);
+
+        app(WorkspaceContext::class)->set($workspace);
+        [$resolved] = $this->inbox->resolveConversationForWorker($worker, $workspace, $conversation);
+        $logs = $this->responderService->getLogs($resolved);
+
+        return response()->json([
+            'conversation_id' => $resolved->id,
+            'current_responder' => $resolved->currentResponder(),
+            'logs' => $logs->map(fn ($log) => [
+                'id' => $log->id,
+                'action' => $log->action,
+                'action_label' => $log->actionLabel(),
+                'previous_type' => $log->previous_responder_type,
+                'previous_name' => $log->previous_responder_name,
+                'new_type' => $log->new_responder_type,
+                'new_name' => $log->new_responder_name,
+                'actor_type' => $log->actor_type,
+                'actor_name' => $log->actor?->name ?? ($log->actor_type === 'ai' ? 'مشعل AI' : 'النظام'),
+                'reason' => $log->reason,
+                'created_at' => $log->created_at?->format('Y-m-d h:i A'),
+                'created_at_human' => $log->created_at?->diffForHumans(),
+            ])->values(),
+        ]);
+    }
+
+    public function pollMessages(
+        Request $request,
+        Workspace $workspace,
+        int $conversation,
+    ): JsonResponse {
+        $worker = $request->user();
+        abort_unless($worker instanceof User, 403);
+
+        app(WorkspaceContext::class)->set($workspace);
+        [$resolved] = $this->inbox->resolveConversationForWorker($worker, $workspace, $conversation);
+
+        $afterId = $request->integer('after_id', 0);
+        $messages = Message::query()
+            ->where('conversation_id', $resolved->id)
+            ->when($afterId > 0, fn ($query) => $query->where('id', '>', $afterId))
+            ->with([
+                'user:id,name',
+                'workerEngagement.workerProfile:id,display_name',
+                'attachments',
+            ])
+            ->orderBy('id', 'asc')
+            ->limit(50)
+            ->get();
+
+        $pendingIds = array_values(array_filter(array_map(
+            'intval',
+            explode(',', (string) $request->query('pending_ids', '')),
+        )));
+        $statusUpdates = $this->conversationInboxService->recentOutboundStatusUpdates(
+            $resolved,
+            $afterId,
+            $pendingIds,
+        );
+        $unreadCount = $this->conversationInboxService->unreadCountForConversation($resolved, $worker);
+        $latestMessage = $resolved->messages()->latest('id')->first();
+
+        return response()->json([
+            'messages' => $messages->map(fn (Message $m): array => $this->serializeMessageForInbox($m))->values(),
+            'status_updates' => $statusUpdates,
+            'conversation' => [
+                'id' => $resolved->id,
+                'status' => (string) $resolved->status,
+                'ai_enabled' => (bool) $resolved->ai_enabled,
+                'ai_replying' => $resolved->isAiReplying(),
+                'handoff_status' => $resolved->handoff_status instanceof ConversationHandoffStatus
+                    ? $resolved->handoff_status->value
+                    : ($resolved->handoff_status ?? 'none'),
+                'handoff_version' => (int) ($resolved->handoff_version ?? 1),
+                'assigned_user_id' => $resolved->assigned_user_id,
+                'assigned_user_name' => $resolved->assignedUser?->name,
+                'assigned_worker_engagement_id' => $resolved->assigned_worker_engagement_id,
+                'last_message' => $latestMessage?->content ?? '',
+                'last_message_at' => $resolved->last_message_at?->format('h:i A') ?? '',
+                'unread_count' => $unreadCount,
+                'responder' => $resolved->currentResponder(),
+            ],
+        ]);
+    }
+
+    public function pollUpdates(Request $request, Workspace $workspace): JsonResponse
+    {
+        $worker = $request->user();
+        abort_unless($worker instanceof User, 403);
+
+        app(WorkspaceContext::class)->set($workspace);
+        $recent = $this->inbox->conversations($worker, $workspace)->take(20);
+
+        $items = $recent->map(function (Conversation $conv) use ($worker): array {
+            $latestMsg = $conv->messages->first();
+
+            return [
+                'id' => $conv->id,
+                'customer_name' => $conv->customer?->name ?? 'عميل غير معروف',
+                'channel' => $this->displayChannel($conv),
+                'last_message' => $latestMsg?->content ?? '',
+                'last_message_at' => $conv->last_message_at?->format('h:i A') ?? '',
+                'unread_count' => $this->conversationInboxService->unreadCountForConversation($conv, $worker),
+                'ai_enabled' => (bool) $conv->ai_enabled,
+                'is_ai_replying' => $conv->isAiReplying(),
+                'ai_replying' => $conv->isAiReplying(),
+                'handoff_status' => $conv->handoff_status instanceof ConversationHandoffStatus
+                    ? $conv->handoff_status->value
+                    : ($conv->handoff_status ?? 'none'),
+                'handoff_version' => (int) ($conv->handoff_version ?? 1),
+                'assigned_user_id' => $conv->assigned_user_id,
+                'assigned_user_name' => $conv->assignedUser?->name,
+                'assigned_worker_engagement_id' => $conv->assigned_worker_engagement_id,
+                'status' => $conv->status,
+                'responder' => $conv->currentResponder(),
+            ];
+        })->values();
+
+        return response()->json([
+            'conversations' => $items,
+        ]);
+    }
+
+    /**
+     * @param  callable(Conversation, User, ?int): Conversation  $callback
+     */
+    private function runWorkerHandoffAction(
+        Request $request,
+        Workspace $workspace,
+        int $conversation,
+        callable $callback,
+        string $successMessage,
+    ): RedirectResponse|JsonResponse {
+        $worker = $request->user();
+        abort_unless($worker instanceof User, 403);
+
+        app(WorkspaceContext::class)->set($workspace);
+        [$resolved] = $this->inbox->resolveConversationForWorker(
+            $worker,
+            $workspace,
+            $conversation,
+            [WorkerInboxService::SEND_CAPABILITY],
+        );
+
+        $expectedVersion = $request->filled('expected_handoff_version')
+            ? $request->integer('expected_handoff_version')
+            : null;
+
+        try {
+            $fresh = $callback($resolved, $worker, $expectedVersion);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        } catch (AuthorizationException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $exception->getMessage() ?: 'لا تملك صلاحية تنفيذ هذا الإجراء.'], 403);
+            }
+            abort(403);
+        } catch (HandoffConflictException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $exception->getMessage(),
+                    'handoff_version' => $exception->currentHandoffVersion,
+                ], 409);
+            }
+
+            return back()->with('error', $exception->getMessage());
+        } catch (InvalidHandoffTransitionException|InvalidArgumentException|WorkerInboxException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
+            }
+
+            return back()->with('error', $exception->getMessage());
+        }
+
+        if ($request->expectsJson()) {
+            $fresh->loadMissing(['assignedUser:id,name']);
+            $responder = $fresh->currentResponder();
+
+            return response()->json([
+                'success' => true,
+                'message' => $successMessage,
+                'conversation' => [
+                    'id' => $fresh->id,
+                    'status' => (string) $fresh->status,
+                    'ai_enabled' => (bool) $fresh->ai_enabled,
+                    'ai_replying' => $fresh->isAiReplying(),
+                    'handoff_status' => $fresh->handoff_status instanceof ConversationHandoffStatus
+                        ? $fresh->handoff_status->value
+                        : ($fresh->handoff_status ?? 'none'),
+                    'handoff_version' => (int) ($fresh->handoff_version ?? 1),
+                    'assigned_user_id' => $fresh->assigned_user_id,
+                    'assigned_user_name' => $fresh->assignedUser?->name,
+                    'assigned_worker_engagement_id' => $fresh->assigned_worker_engagement_id,
+                    'responder' => $responder,
+                    'active_responder' => $responder,
+                    'last_message_sender' => $fresh->lastMessageSender(),
+                ],
+            ]);
+        }
+
+        return redirect()
+            ->route('worker.inbox.show', [$workspace, $conversation])
+            ->with('success', $successMessage);
     }
 }

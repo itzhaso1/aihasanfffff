@@ -24,18 +24,32 @@
     $inboxIndexRoute = $inboxIndexRoute ?? 'workspace.conversations.index';
     $inboxRouteParameters = $inboxRouteParameters ?? [];
     $inboxAllowsCompanyActions = $inboxAllowsCompanyActions ?? true;
+    $inboxAllowsWorkerHandoff = (bool) ($inboxAllowsWorkerHandoff ?? false);
+    $inboxCanHandoffControl = $inboxAllowsCompanyActions || $inboxAllowsWorkerHandoff;
     $inboxCanSend = $inboxCanSend ?? true;
     $inboxMessageAction = $inboxMessageAction ?? route('workspace.conversations.messages.store', $activeConversation);
+    $wsForLinks = $workspaceId ?? app(\App\Support\Tenancy\WorkspaceContext::class)->workspaceId();
+    $takeoverActionUrl = $inboxTakeoverAction ?? ($inboxAllowsCompanyActions ? route('workspace.conversations.handoff.takeover', $activeConversation) : null);
+    $resolveHandoffActionUrl = $inboxResolveHandoffAction ?? ($inboxAllowsCompanyActions ? route('workspace.conversations.handoff.resolve', $activeConversation) : null);
+    $resumeAiActionUrl = $inboxResumeAiAction ?? ($inboxAllowsCompanyActions ? route('workspace.conversations.handoff.resume-ai', $activeConversation) : null);
+    $responderLogsActionUrl = $inboxResponderLogsUrl ?? ($inboxAllowsCompanyActions
+        ? route('workspace.conversations.responder-logs', $activeConversation)
+        : ($wsForLinks ? route('worker.inbox.responder-logs', [$wsForLinks, $activeConversation->id]) : null));
     $conversationIsOpen = $activeConversation->isOpen();
     $handoffEnum = $activeConversation->handoff_status instanceof \App\Enums\ConversationHandoffStatus
         ? $activeConversation->handoff_status
         : (\App\Enums\ConversationHandoffStatus::tryFrom((string) $handoffStatus) ?? \App\Enums\ConversationHandoffStatus::None);
     $handoffBlocksAi = $handoffEnum->blocksAi();
-    $canConvertToAi = $conversationIsOpen && ! $activeConversation->isAiReplying() && ! $handoffBlocksAi;
+    $currentUserId = auth()->id();
+    $isOwnedByAnotherHuman = in_array($handoffEnum, [\App\Enums\ConversationHandoffStatus::Active, \App\Enums\ConversationHandoffStatus::Assigned], true)
+        && $activeConversation->assigned_user_id !== null
+        && (int) $activeConversation->assigned_user_id !== (int) $currentUserId;
+    $canConvertToAi = $conversationIsOpen
+        && ($handoffBlocksAi || ! $activeConversation->isAiReplying())
+        && ($inboxAllowsCompanyActions || ! $isOwnedByAnotherHuman);
     $canEndActiveHandoff = $conversationIsOpen && $handoffBlocksAi;
     $canTakeControlFromAi = $conversationIsOpen && $activeConversation->isAiReplying();
     $activeResponder = $activeConversation->currentResponder();
-    $currentUserId = auth()->id();
     $initialPresence = auth()->check()
         ? app(\App\Services\Conversation\ConversationPresenceService::class)->join($activeConversation, auth()->user())
         : app(\App\Services\Conversation\ConversationPresenceService::class)->getConversationState($activeConversation);
@@ -43,7 +57,7 @@
     $isHumanNeeded = in_array($handoffEnum, [\App\Enums\ConversationHandoffStatus::Requested, \App\Enums\ConversationHandoffStatus::Queued], true);
     $canClaimConversation = $conversationIsOpen
         && ! $isAlreadyAssignedToMe
-        && ($isHumanNeeded || $canTakeControlFromAi || ($handoffEnum === \App\Enums\ConversationHandoffStatus::Active && (int) $activeConversation->assigned_user_id !== (int) $currentUserId));
+        && ($isHumanNeeded || $canTakeControlFromAi || ($inboxAllowsCompanyActions && $isOwnedByAnotherHuman));
 @endphp
 
 <section 
@@ -52,8 +66,10 @@
         auditLogs: [],
         auditLoading: false,
         fetchAuditLogs() {
+            const url = document.getElementById('inbox-shell')?.dataset?.responderLogsUrl || '{{ $responderLogsActionUrl }}';
+            if (!url) return;
             this.auditLoading = true;
-            fetch('{{ route('workspace.conversations.responder-logs', $activeConversation) }}')
+            fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(r => r.json())
                 .then(data => {
                     this.auditLogs = data.logs || [];
@@ -146,50 +162,49 @@
         {{-- Actions in Header --}}
         <div class="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 overflow-visible pt-1.5 sm:pt-0 border-t border-slate-100 sm:border-t-0">
             <span id="inbox-connection-badge" class="hidden"></span>
-            @if($inboxAllowsCompanyActions && $conversationIsOpen)
-                @can('manageHandoff', $activeConversation)
-                    @if($canEndActiveHandoff)
-                        @if($canClaimConversation)
-                            <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">
+            <div id="inbox-header-handoff-actions" class="inline-flex items-center gap-1.5 sm:gap-2">
+                @if($inboxCanHandoffControl && $conversationIsOpen)
+                    @php
+                        $headerCanManageHandoff = $inboxAllowsCompanyActions
+                            ? auth()->user()?->can('manageHandoff', $activeConversation)
+                            : $inboxAllowsWorkerHandoff;
+                        $headerCanResumeAi = $inboxAllowsCompanyActions
+                            ? auth()->user()?->can('resumeAi', $activeConversation)
+                            : $inboxAllowsWorkerHandoff;
+                    @endphp
+                    @if($headerCanManageHandoff)
+                        @if($canClaimConversation && $takeoverActionUrl)
+                            <form method="POST" action="{{ $takeoverActionUrl }}" data-inbox-action-form="takeover" class="inline-flex">
                                 @csrf
-                                <button type="submit" class="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition" title="استلام المحادثة وتولي الرد عليها">
+                                <button type="submit" data-inbox-takeover-btn class="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition disabled:opacity-60" title="تولي الرد على المحادثة">
                                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                                    <span>استلام المحادثة</span>
+                                    <span>تولي الرد</span>
                                 </button>
                             </form>
                         @endif
-                        <form method="POST" action="{{ route('workspace.conversations.handoff.resolve', $activeConversation) }}">
-                            @csrf
-                            <button type="submit" class="inline-flex items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50">
-                                <svg class="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                <span class="hidden sm:inline">إنهاء المراجعة</span>
-                                <span class="sm:hidden">إنهاء</span>
-                            </button>
-                        </form>
-                    @elseif($canTakeControlFromAi)
-                        <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">
-                            @csrf
-                            <button type="submit" class="inline-flex items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50">
-                                <svg class="h-3.5 w-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                                <span class="hidden sm:inline">تحويل إلى الفريق</span>
-                                <span class="sm:hidden">تحويل</span>
-                            </button>
-                        </form>
+                        @if($inboxAllowsCompanyActions && $canEndActiveHandoff && $resolveHandoffActionUrl)
+                            <form method="POST" action="{{ $resolveHandoffActionUrl }}" data-inbox-action-form="resolve" class="inline-flex">
+                                @csrf
+                                <button type="submit" class="inline-flex items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 disabled:opacity-60">
+                                    <svg class="h-3.5 w-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    <span class="hidden sm:inline">إنهاء المراجعة</span>
+                                    <span class="sm:hidden">إنهاء</span>
+                                </button>
+                            </form>
+                        @endif
                     @endif
-                @endcan
-                @can('resumeAi', $activeConversation)
-                    @if($canConvertToAi)
-                        <form method="POST" action="{{ route('workspace.conversations.handoff.resume-ai', $activeConversation) }}">
+                    @if($headerCanResumeAi && $canConvertToAi && $resumeAiActionUrl)
+                        <form method="POST" action="{{ $resumeAiActionUrl }}" data-inbox-action-form="resume_ai" class="inline-flex">
                             @csrf
-                            <button type="submit" class="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-emerald-800 shadow-2xs transition hover:bg-emerald-100">
+                            <button type="submit" data-inbox-resume-ai-btn class="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-emerald-800 shadow-2xs transition hover:bg-emerald-100 disabled:opacity-60">
                                 <svg class="h-3.5 w-3.5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                                <span class="hidden sm:inline">تحويل إلى AI</span>
-                                <span class="sm:hidden">إلى AI</span>
+                                <span class="hidden sm:inline">تحويل إلى الذكاء الاصطناعي</span>
+                                <span class="sm:hidden">تحويل لـ AI</span>
                             </button>
                         </form>
                     @endif
-                @endcan
-            @endif
+                @endif
+            </div>
 
             @if($inboxAllowsCompanyActions)
                 {{-- Status Dropdown --}}
@@ -211,7 +226,7 @@
                         class="absolute end-0 top-full z-50 mt-1.5 min-w-[9rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl"
                     >
                         @foreach(['open' => ['مفتوحة', 'bg-emerald-500'], 'closed' => ['مغلقة', 'bg-slate-400'], 'archived' => ['مؤرشفة', 'bg-amber-500']] as $sKey => [$sLabel, $sDot])
-                            <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}">
+                            <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}" data-inbox-action-form="status">
                                 @csrf
                                 @method('PUT')
                                 <input type="hidden" name="status" value="{{ $sKey }}">
@@ -233,7 +248,7 @@
                 </div>
 
                 {{-- AI Toggle Switch --}}
-                <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}" class="inline-flex">
+                <form method="POST" action="{{ route('workspace.conversations.update', $activeConversation) }}" data-inbox-action-form="ai_toggle" class="inline-flex">
                     @csrf
                     @method('PUT')
                     <input type="hidden" name="status" value="{{ $activeConversation->status }}">
@@ -340,7 +355,7 @@
         </div>
     </div>
 
-    @if($inboxAllowsCompanyActions)
+    @if($inboxCanHandoffControl)
     {{-- Live Responder Status Banner --}}
     <div 
         id="inbox-live-responder-bar" 
@@ -411,21 +426,43 @@
             </div>
 
             {{-- Actions & Audit Log in Responder Bar --}}
-            <div class="flex items-center gap-1.5 shrink-0">
-                @if($inboxAllowsCompanyActions && $canClaimConversation)
-                    @can('manageHandoff', $activeConversation)
-                        <form method="POST" action="{{ route('workspace.conversations.handoff.takeover', $activeConversation) }}">
-                            @csrf
-                            <button
-                                type="submit"
-                                class="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition"
-                                title="استلام مسؤولية الرد على هذه المحادثة"
-                            >
-                                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                                <span>استلام المحادثة</span>
-                            </button>
-                        </form>
-                    @endcan
+            <div id="inbox-responder-bar-actions" class="flex items-center gap-1.5 shrink-0">
+                @php
+                    $barCanManageHandoff = $inboxAllowsCompanyActions
+                        ? auth()->user()?->can('manageHandoff', $activeConversation)
+                        : $inboxAllowsWorkerHandoff;
+                    $barCanResumeAi = $inboxAllowsCompanyActions
+                        ? auth()->user()?->can('resumeAi', $activeConversation)
+                        : $inboxAllowsWorkerHandoff;
+                @endphp
+                @if($barCanManageHandoff && $canClaimConversation && $takeoverActionUrl)
+                    <form method="POST" action="{{ $takeoverActionUrl }}" data-inbox-action-form="takeover" class="inline-flex">
+                        @csrf
+                        <button
+                            type="submit"
+                            data-inbox-takeover-btn
+                            class="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition disabled:opacity-60"
+                            title="تولي الرد على هذه المحادثة"
+                        >
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                            <span>تولي الرد</span>
+                        </button>
+                    </form>
+                @endif
+                @if($barCanResumeAi && $canConvertToAi && $resumeAiActionUrl)
+                    <form method="POST" action="{{ $resumeAiActionUrl }}" data-inbox-action-form="resume_ai" class="inline-flex">
+                        @csrf
+                        <button
+                            type="submit"
+                            data-inbox-resume-ai-btn
+                            class="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-semibold text-emerald-800 shadow-2xs hover:bg-emerald-100 transition disabled:opacity-60"
+                            title="تحويل المحادثة إلى الذكاء الاصطناعي"
+                        >
+                            <svg class="h-3.5 w-3.5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            <span class="hidden sm:inline">تحويل إلى الذكاء الاصطناعي</span>
+                            <span class="sm:hidden">لـ AI</span>
+                        </button>
+                    </form>
                 @endif
                 <button
                     type="button"
@@ -570,10 +607,22 @@
                         @endif
 
                         @if($outbound && ! $isInternalNote)
-                            {{-- Double Checkmark Icon (WhatsApp Style) --}}
-                            <svg class="h-3 w-3 text-[#06C2A4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5" />
-                            </svg>
+                            @php
+                                $deliveryStatus = strtolower((string) ($message->delivery_status ?? 'sent'));
+                            @endphp
+                            <span data-delivery-tick data-delivery-status="{{ $deliveryStatus }}">
+                                @if($deliveryStatus === 'failed')
+                                    <svg class="h-3 w-3 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                @elseif(in_array($deliveryStatus, ['pending', 'sending', 'queued', 'accepted'], true))
+                                    <svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"/></svg>
+                                @elseif($deliveryStatus === 'delivered')
+                                    <svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5"/></svg>
+                                @elseif($deliveryStatus === 'read')
+                                    <svg class="h-3 w-3 text-[#06C2A4]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5"/></svg>
+                                @else
+                                    <svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7"/></svg>
+                                @endif
+                            </span>
                         @endif
                     </div>
                 </div>

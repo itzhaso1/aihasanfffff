@@ -48,7 +48,7 @@
             >
                 <!-- Brand Header -->
                 <div class="flex h-16 items-center justify-between border-b border-slate-100 px-4">
-                    <a href="{{ route('workspace.dashboard') }}" class="flex items-center gap-2.5 overflow-hidden">
+                    <a href="{{ $isIndependentWorker ? route('worker.inbox.home') : route('workspace.dashboard') }}" class="flex items-center gap-2.5 overflow-hidden">
                         <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#06C2A4] to-[#049E86] text-white shadow-sm">
                             <span class="text-base font-extrabold tracking-tight">H</span>
                         </div>
@@ -74,9 +74,24 @@
 
                 <!-- Navigation Links -->
                 <div class="flex-1 overflow-y-auto px-3 py-4 hs-scrollbar">
-                    @include('workspace.partials.sidebar-links')
+                    @if($isIndependentWorker)
+                        <nav class="flex flex-col gap-1" aria-label="أقسام حسابي">
+                            <a
+                                href="{{ route('worker.inbox.home') }}"
+                                class="group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium bg-[#E8FAF6] text-[#067E6B] font-bold shadow-[0_1px_2px_rgba(6,194,164,0.08)]"
+                            >
+                                <span class="flex h-5 w-5 shrink-0 items-center justify-center text-[#06C2A4]">
+                                    <svg class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.502 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.27Z" /></svg>
+                                </span>
+                                <span class="truncate">المحادثات</span>
+                            </a>
+                        </nav>
+                    @else
+                        @include('workspace.partials.sidebar-links')
+                    @endif
                 </div>
 
+                @unless($isIndependentWorker)
                 <!-- Workspace Info Footer -->
                 <div class="border-t border-slate-100 p-3">
                     <a 
@@ -96,6 +111,7 @@
                         </svg>
                     </a>
                 </div>
+                @endunless
             </aside>
 
             <!-- Floating Sidebar Toggle Arrow Tab on edge when collapsed -->
@@ -278,7 +294,7 @@
                     <button @click="sidebarOpen = false" type="button" class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"></button>
                     <aside x-transition:enter="transition ease-in-out duration-300" x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0" class="absolute inset-y-0 start-0 w-72 overflow-y-auto border-e border-slate-200 bg-white shadow-xl" data-hs-chrome="sidebar-mobile">
                         <div class="flex h-16 items-center justify-between border-b border-slate-100 px-5">
-                            <a href="{{ route('workspace.dashboard') }}" class="flex items-center gap-2.5">
+                            <a href="{{ $isIndependentWorker ? route('worker.inbox.home') : route('workspace.dashboard') }}" class="flex items-center gap-2.5">
                                 <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#06C2A4] to-[#049E86] text-white font-extrabold shadow-sm">
                                     H
                                 </div>
@@ -289,11 +305,20 @@
                             </button>
                         </div>
                         <div class="px-3 py-4">
-                            @include('workspace.partials.sidebar-links')
+                            @if($isIndependentWorker)
+                                <nav class="flex flex-col gap-1" aria-label="أقسام حسابي">
+                                    <a href="{{ route('worker.inbox.home') }}" class="flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-bold bg-[#E8FAF6] text-[#067E6B]">
+                                        <span>المحادثات</span>
+                                    </a>
+                                </nav>
+                            @else
+                                @include('workspace.partials.sidebar-links')
+                            @endif
                         </div>
                     </aside>
                 </div>
 
+                @unless($isIndependentWorker)
                 <!-- Global Quick Search Modal (Cmd+K) -->
                 <div x-cloak x-show="searchOpen" class="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 md:p-20" role="dialog" aria-modal="true">
                     <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" @click="searchOpen = false"></div>
@@ -335,6 +360,7 @@
                         </div>
                     </div>
                 </div>
+                @endunless
 
                 @isset($header)
                     <section class="border-b border-slate-200/80 bg-white">

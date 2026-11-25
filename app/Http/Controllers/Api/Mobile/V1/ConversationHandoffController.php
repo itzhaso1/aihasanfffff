@@ -10,7 +10,11 @@ use App\Models\Conversation;
 use App\Models\User;
 use App\Models\Worker\WorkerEngagement;
 use App\Services\Conversation\ConversationHandoffService;
+use App\Services\Conversation\Exceptions\HandoffConflictException;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
+use App\Services\Mobile\MobileInboxActor;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -52,6 +56,10 @@ class ConversationHandoffController extends MobileController
         AssignConversationRequest $request,
         Conversation $conversation,
     ): JsonResponse {
+        if (! app(MobileInboxActor::class)->isMember($request->user(), $conversation->workspace)) {
+            return $this->fail('لا تملك صلاحية تنفيذ هذا الإجراء.', 403);
+        }
+
         try {
             $validated = $request->validated();
             if (isset($validated['worker_engagement_id'])) {
@@ -87,10 +95,27 @@ class ConversationHandoffController extends MobileController
 
     public function takeover(Request $request, Conversation $conversation): JsonResponse
     {
-        $this->authorize('manageHandoff', $conversation);
+        $user = $request->user();
+        if (! $user instanceof User) {
+            return $this->fail('غير مصرح.', 401);
+        }
+
+        if ($guardResponse = $this->guardActiveConversationAbility($conversation, 'manageHandoff')) {
+            return $guardResponse;
+        }
+
+        $expectedVersion = $request->filled('expected_handoff_version')
+            ? $request->integer('expected_handoff_version')
+            : null;
 
         try {
-            $updated = $this->handoff->takeover($conversation, $request->user());
+            $updated = $this->handoff->takeover($conversation, $user, $expectedVersion);
+        } catch (ModelNotFoundException) {
+            return $this->fail('العنصر المطلوب غير موجود.', 404);
+        } catch (AuthorizationException $exception) {
+            return $this->fail($exception->getMessage() ?: 'لا تملك صلاحية تنفيذ هذا الإجراء.', 403);
+        } catch (HandoffConflictException $exception) {
+            return $this->conflictResponse($exception);
         } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
             return $this->fail($exception->getMessage(), 422);
         }
@@ -100,10 +125,27 @@ class ConversationHandoffController extends MobileController
 
     public function resolve(Request $request, Conversation $conversation): JsonResponse
     {
-        $this->authorize('manageHandoff', $conversation);
+        $user = $request->user();
+        if (! $user instanceof User) {
+            return $this->fail('غير مصرح.', 401);
+        }
+
+        if ($guardResponse = $this->guardActiveConversationAbility($conversation, 'manageHandoff')) {
+            return $guardResponse;
+        }
+
+        $expectedVersion = $request->filled('expected_handoff_version')
+            ? $request->integer('expected_handoff_version')
+            : null;
 
         try {
-            $updated = $this->handoff->resolve($conversation, $request->user());
+            $updated = $this->handoff->resolve($conversation, $user, $expectedVersion);
+        } catch (ModelNotFoundException) {
+            return $this->fail('العنصر المطلوب غير موجود.', 404);
+        } catch (AuthorizationException $exception) {
+            return $this->fail($exception->getMessage() ?: 'لا تملك صلاحية تنفيذ هذا الإجراء.', 403);
+        } catch (HandoffConflictException $exception) {
+            return $this->conflictResponse($exception);
         } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
             return $this->fail($exception->getMessage(), 422);
         }
@@ -113,14 +155,57 @@ class ConversationHandoffController extends MobileController
 
     public function resumeAi(Request $request, Conversation $conversation): JsonResponse
     {
-        $this->authorize('resumeAi', $conversation);
+        $user = $request->user();
+        if (! $user instanceof User) {
+            return $this->fail('غير مصرح.', 401);
+        }
+
+        if ($guardResponse = $this->guardActiveConversationAbility($conversation, 'resumeAi')) {
+            return $guardResponse;
+        }
+
+        $expectedVersion = $request->filled('expected_handoff_version')
+            ? $request->integer('expected_handoff_version')
+            : null;
 
         try {
-            $updated = $this->handoff->resumeAi($conversation, $request->user());
+            $updated = $this->handoff->resumeAi($conversation, $user, $expectedVersion);
+        } catch (ModelNotFoundException) {
+            return $this->fail('العنصر المطلوب غير موجود.', 404);
+        } catch (AuthorizationException $exception) {
+            return $this->fail($exception->getMessage() ?: 'لا تملك صلاحية تنفيذ هذا الإجراء.', 403);
+        } catch (HandoffConflictException $exception) {
+            return $this->conflictResponse($exception);
         } catch (InvalidHandoffTransitionException|InvalidArgumentException $exception) {
             return $this->fail($exception->getMessage(), 422);
         }
 
-        return $this->ok(new ConversationResource($updated->load(['customer', 'assignedUser'])), message: 'تم تفعيل الذكاء الاصطناعي.');
+        return $this->ok(new ConversationResource($updated->load(['customer', 'assignedUser'])), message: 'تم تحويل المحادثة إلى الذكاء الاصطناعي.');
+    }
+
+    private function guardActiveConversationAbility(Conversation $conversation, string $ability): ?JsonResponse
+    {
+        $this->authorize('view', $conversation);
+
+        if ((string) $conversation->status === 'archived') {
+            return $this->fail('العنصر المطلوب غير موجود.', 404);
+        }
+
+        $this->authorize($ability, $conversation);
+
+        return null;
+    }
+
+    private function conflictResponse(HandoffConflictException $exception): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $exception->getMessage(),
+            'data' => [
+                'handoff_version' => $exception->currentHandoffVersion,
+                'assigned_user_id' => $exception->assignedUserId,
+                'assigned_user_name' => $exception->assignedUserName,
+            ],
+        ], 409);
     }
 }

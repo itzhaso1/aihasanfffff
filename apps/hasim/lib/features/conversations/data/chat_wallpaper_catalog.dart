@@ -169,6 +169,10 @@ class ChatWallpaperCatalog {
     return find(id)?.asset ?? defaultAsset;
   }
 
+  static void _ignoreWallpaperError(Object _, StackTrace? stackTrace) {}
+
+  static final Map<String, DecorationImage> _decorationCache = {};
+
   /// طريقة عرض الخلفية في المحادثة والمعاينة.
   static DecorationImage decorationImage(
     String? id, {
@@ -176,8 +180,13 @@ class ChatWallpaperCatalog {
     double opacity = 1,
   }) {
     final option = find(id) ?? options.first;
+    final cacheKey = '${option.id}:$patternScale:$opacity';
+    final cached = _decorationCache[cacheKey];
+    if (cached != null) return cached;
+
+    final DecorationImage built;
     if (option.tile) {
-      return DecorationImage(
+      built = DecorationImage(
         image: ResizeImage(
           AssetImage(option.asset),
           width: 512,
@@ -188,20 +197,23 @@ class ChatWallpaperCatalog {
         scale: patternScale,
         filterQuality: FilterQuality.none,
         opacity: opacity,
-        onError: (_, _) {},
+        onError: _ignoreWallpaperError,
+      );
+    } else {
+      built = DecorationImage(
+        image: ResizeImage(
+          AssetImage(option.asset),
+          width: 900,
+          policy: ResizeImagePolicy.fit,
+        ),
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.low,
+        opacity: opacity,
+        onError: _ignoreWallpaperError,
       );
     }
-    return DecorationImage(
-      image: ResizeImage(
-        AssetImage(option.asset),
-        width: 1080,
-        policy: ResizeImagePolicy.fit,
-      ),
-      fit: BoxFit.cover,
-      alignment: Alignment.center,
-      filterQuality: FilterQuality.low,
-      opacity: opacity,
-      onError: (_, _) {},
-    );
+    _decorationCache[cacheKey] = built;
+    return built;
   }
 }

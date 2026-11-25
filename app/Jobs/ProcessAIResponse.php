@@ -53,6 +53,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         public readonly ?int $workspaceId = null,
         public readonly ?string $correlationId = null,
         public readonly int $coalesceAttempt = 0,
+        public readonly ?int $expectedHandoffVersion = null,
     ) {
         $this->onQueue((string) config('inbox.queues.ai', 'ai'));
     }
@@ -65,12 +66,15 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         int $messageId,
         ?int $workspaceId = null,
         ?string $correlationId = null,
+        ?int $expectedHandoffVersion = null,
     ): void {
         $pending = self::dispatch(
             $conversationId,
             $messageId,
             $workspaceId,
             $correlationId ?? CorrelationContext::id(),
+            0,
+            $expectedHandoffVersion,
         );
 
         $batchSeconds = max(0, (int) config('ai.inbox_agent.batch_window_seconds', 0));
@@ -377,7 +381,9 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         $effectiveMessage ??= $incomingMessage;
         $batchedIds = $batchedIds !== [] ? $batchedIds : [(int) $incomingMessage->id];
         $conversationFresh = $conversation->fresh() ?? $conversation;
-        if (! $eligibility->mayGenerate($conversationFresh, $incomingMessage)) {
+        $capturedHandoffVersion = $this->expectedHandoffVersion ?? (int) ($conversationFresh->handoff_version ?? 1);
+        if ((int) ($conversationFresh->handoff_version ?? 1) !== $capturedHandoffVersion
+            || ! $eligibility->mayGenerate($conversationFresh, $incomingMessage)) {
             Log::info('ai.reply.skipped_precheck', [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
@@ -419,6 +425,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 $startedAt,
                 $effectiveMessage,
                 $batchedIds,
+                $capturedHandoffVersion,
             );
         } finally {
             Cache::forget("conversation:{$conversation->id}:ai_generating");
@@ -450,10 +457,12 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         float $startedAt,
         ?Message $effectiveMessage = null,
         array $batchedIds = [],
+        ?int $capturedHandoffVersion = null,
     ): void {
         $effectiveMessage ??= $incomingMessage;
         $batchedIds = $batchedIds !== [] ? $batchedIds : [(int) $incomingMessage->id];
         $conversationFresh = $conversation->fresh() ?? $conversation;
+        $capturedHandoffVersion ??= $this->expectedHandoffVersion ?? (int) ($conversationFresh->handoff_version ?? 1);
         $maxInboundIdBeforeGeneration = (int) (Message::withoutGlobalScopes()
             ->where('workspace_id', $conversationFresh->workspace_id)
             ->where('conversation_id', $conversationFresh->id)
@@ -530,7 +539,8 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         }
 
         $conversationFresh = $conversation->fresh() ?? $conversation;
-        if (! $eligibility->mayPersist($conversationFresh, $incomingMessage)) {
+        if ((int) ($conversationFresh->handoff_version ?? 1) !== $capturedHandoffVersion
+            || ! $eligibility->mayPersist($conversationFresh, $incomingMessage)) {
             Log::info('ai.reply.discarded_takeover', [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
@@ -629,29 +639,36 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 $conversationFresh,
                 $incomingMessage,
                 $eligibility,
+                $capturedHandoffVersion,
                 $validated,
                 $generationId,
                 $initialDeliveryStatus,
                 $batchedIds,
                 &$outboundMessage,
             ): void {
-                if ($this->existingReply($conversationFresh, $incomingMessage)) {
+                $lockedConversation = Conversation::withoutGlobalScopes()
+                    ->whereKey($conversationFresh->id)
+                    ->lockForUpdate()
+                    ->first() ?? $conversationFresh;
+
+                if ($this->existingReply($lockedConversation, $incomingMessage)) {
                     return;
                 }
 
-                if (! $eligibility->mayPersist($conversationFresh->fresh() ?? $conversationFresh, $incomingMessage)) {
+                if ((int) ($lockedConversation->handoff_version ?? 1) !== $capturedHandoffVersion
+                    || ! $eligibility->mayPersist($lockedConversation, $incomingMessage)) {
                     return;
                 }
 
                 $stagedAttachments = app(AiMediaStagingService::class)->consumeStagedAttachments(
-                    (int) $conversationFresh->workspace_id,
-                    (int) $conversationFresh->id,
+                    (int) $lockedConversation->workspace_id,
+                    (int) $lockedConversation->id,
                 );
 
                 $outboundMessage = Message::withoutGlobalScopes()->create([
-                    'workspace_id' => $conversationFresh->workspace_id,
-                    'conversation_id' => $conversationFresh->id,
-                    'customer_id' => $conversationFresh->customer_id,
+                    'workspace_id' => $lockedConversation->workspace_id,
+                    'conversation_id' => $lockedConversation->id,
+                    'customer_id' => $lockedConversation->customer_id,
                     'direction' => 'outbound',
                     'message_type' => ! empty($stagedAttachments) ? 'image' : 'text',
                     'content' => $validated,
@@ -719,10 +736,13 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             ],
         );
 
-        $channelOutbound->queueOutboundForMessage(
-            $conversationFresh,
-            $outboundMessage,
-        );
+        if ((int) ($conversationFresh->handoff_version ?? 1) === $capturedHandoffVersion
+            && $eligibility->mayGenerate($conversationFresh, $incomingMessage)) {
+            $channelOutbound->queueOutboundForMessage(
+                $conversationFresh,
+                $outboundMessage,
+            );
+        }
 
         try {
             ExtractInboxAgentMemoryJob::dispatch(

@@ -60,8 +60,18 @@ final class InboxRealtimePublisher
         array $context = [],
     ): void {
         $started = microtime(true);
-        $conversation ??= Conversation::withoutGlobalScopes()->find($message->conversation_id);
-        $freshConversation = $conversation?->fresh() ?? $conversation;
+        if ($conversation instanceof Conversation) {
+            $freshConversation = $conversation;
+        } else {
+            $freshConversation = Conversation::withoutGlobalScopes()->find($message->conversation_id);
+        }
+
+        if ($freshConversation instanceof Conversation) {
+            $freshConversation->setRelation('lastMessage', $message);
+            if ($message->relationLoaded('customer') && $message->customer !== null && ! $freshConversation->relationLoaded('customer')) {
+                $freshConversation->setRelation('customer', $message->customer);
+            }
+        }
 
         try {
             event(new MessageCreated($message));
@@ -173,12 +183,13 @@ final class InboxRealtimePublisher
         $this->publishMessageStatus($message->fresh() ?? $message, $errorReason);
     }
 
-    public function publishConversationUpdate(Conversation $conversation): void
+    public function publishConversationUpdate(Conversation $conversation, bool $alreadyFresh = false): void
     {
         $started = microtime(true);
 
         try {
-            event(new ConversationUpdated($conversation->fresh() ?? $conversation));
+            $target = $alreadyFresh ? $conversation : ($conversation->fresh() ?? $conversation);
+            event(new ConversationUpdated(clone $target));
         } catch (Throwable $exception) {
             Log::warning('inbox.realtime.conversation_update_failed', array_merge(CorrelationContext::logContext(), [
                 'workspace_id' => $conversation->workspace_id,
@@ -199,8 +210,18 @@ final class InboxRealtimePublisher
         array $context,
     ): void {
         $started = microtime(true);
-        $conversation ??= Conversation::withoutGlobalScopes()->find($message->conversation_id);
-        $freshConversation = $conversation?->fresh() ?? $conversation;
+        if ($conversation instanceof Conversation) {
+            $freshConversation = $conversation;
+        } else {
+            $freshConversation = Conversation::withoutGlobalScopes()->find($message->conversation_id);
+        }
+
+        if ($freshConversation instanceof Conversation) {
+            $freshConversation->setRelation('lastMessage', $message);
+            if ($message->relationLoaded('customer') && $message->customer !== null && ! $freshConversation->relationLoaded('customer')) {
+                $freshConversation->setRelation('customer', $message->customer);
+            }
+        }
 
         try {
             event(new MessageCreated($message));

@@ -982,6 +982,7 @@ class ChatController extends StateNotifier<ChatState> {
   ProviderSubscription<int?>? _workspaceSub;
   Timer? _typingTimer;
   Timer? _presenceTimer;
+  Timer? _pendingStatusFollowUpTimer;
   int? _boundWorkspaceId;
   List<MessageModel> _olderMessages = const [];
   final Set<String> _reportedFailureClientIds = <String>{};
@@ -996,7 +997,10 @@ class ChatController extends StateNotifier<ChatState> {
   /// even when revisiting a previously cached [ChatController] family instance.
   void onActivated() {
     if (!mounted || conversationId <= 0) return;
-    _realtime.watchConversation(conversationId);
+    _realtime.watchConversation(
+      conversationId,
+      workspaceId: state.conversation?.workspaceId ?? _boundWorkspaceId,
+    );
     var maxId = 0;
     for (final m in state.messages) {
       if (m.id > maxId) maxId = m.id;
@@ -1041,6 +1045,8 @@ class ChatController extends StateNotifier<ChatState> {
     _typingTimer = null;
     _presenceTimer?.cancel();
     _presenceTimer = null;
+    _pendingStatusFollowUpTimer?.cancel();
+    _pendingStatusFollowUpTimer = null;
     await _messageSub?.cancel();
     _messageSub = null;
     _olderMessages = const [];
@@ -1049,7 +1055,10 @@ class ChatController extends StateNotifier<ChatState> {
       return;
     }
     final workspaceId = _boundWorkspaceId;
-    _realtime.watchConversation(conversationId);
+    _realtime.watchConversation(
+      conversationId,
+      workspaceId: state.conversation?.workspaceId ?? workspaceId,
+    );
     _sub = _realtime.messageCreated.listen((m) {
       if (m.conversationId != conversationId) return;
       unawaited(_ingestPolledMessage(m));
@@ -1157,6 +1166,13 @@ class ChatController extends StateNotifier<ChatState> {
             // local read of that partial snapshot must not erase the inbound
             // customer message once the full page has been shown.
             final messages = _mergeMessages(state.messages, latest);
+            if (_sameMessageSnapshot(state.messages, messages) &&
+                (!state.loading || messages.isNotEmpty)) {
+              if (state.loading) {
+                state = state.copyWith(loading: false);
+              }
+              return;
+            }
             state = state.copyWith(
               messages: messages,
               loading: messages.isEmpty && state.loading,
@@ -1171,6 +1187,12 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   void seedConversation(ConversationModel conversation) {
+    if (conversation.workspaceId != null && conversation.workspaceId! > 0) {
+      _realtime.watchConversation(
+        conversationId,
+        workspaceId: conversation.workspaceId,
+      );
+    }
     if (state.conversation != null) return;
     state = state.copyWith(
       conversation: conversation,
@@ -1209,7 +1231,7 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   static int _deliveryRank(String? status) => switch (status?.toLowerCase()) {
-    'pending' || 'sending' => 0,
+    'pending' || 'sending' || 'queued' || 'accepted' => 0,
     'sent' => 1,
     'delivered' => 2,
     'read' => 3,
@@ -1293,6 +1315,8 @@ class ChatController extends StateNotifier<ChatState> {
   void dispose() {
     _presenceTimer?.cancel();
     _presenceTimer = null;
+    _pendingStatusFollowUpTimer?.cancel();
+    _pendingStatusFollowUpTimer = null;
     _presenceSub?.cancel();
     _presenceSub = null;
     leavePresence();
@@ -1815,6 +1839,18 @@ class ChatController extends StateNotifier<ChatState> {
       if (!_realtime.isWebSocketConnected) {
         unawaited(_syncConversationFromServer(scope));
         _realtime.triggerPoll();
+        if (target != null &&
+            !failed &&
+            target.outboundPhase == OutboundPhase.accepted) {
+          _pendingStatusFollowUpTimer?.cancel();
+          _pendingStatusFollowUpTimer = Timer(
+            const Duration(milliseconds: 900),
+            () {
+              if (!mounted || _realtime.isWebSocketConnected) return;
+              _realtime.triggerPoll();
+            },
+          );
+        }
       }
     } catch (_) {
       // The outbox remains responsible for retrying transient send failures.
@@ -2645,29 +2681,74 @@ class ChatController extends StateNotifier<ChatState> {
     );
   }
 
+  static bool _sameMessageSnapshot(
+    List<MessageModel> a,
+    List<MessageModel> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final left = a[i];
+      final right = b[i];
+      if (left.id != right.id ||
+          left.clientId != right.clientId ||
+          left.content != right.content ||
+          left.deliveryStatus != right.deliveryStatus ||
+          left.localPending != right.localPending ||
+          left.localSending != right.localSending ||
+          left.localFailed != right.localFailed ||
+          left.attachments.length != right.attachments.length) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<String?> takeoverHandoff() {
-    if (!_companyInboxWriteAllowed()) {
+    if (!_canHandoffWrite()) {
       return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
     }
+    final expectedVersion = state.conversation?.handoffVersion;
+    final actor = _ref.read(authControllerProvider).user;
     return _applyServerConversation(
-      (repo, workspaceId) =>
-          repo.takeoverHandoff(conversationId, workspaceId: workspaceId),
+      (repo, workspaceId) => repo.takeoverHandoff(
+        conversationId,
+        expectedHandoffVersion: expectedVersion,
+        workspaceId: workspaceId,
+      ),
+      optimisticUpdate: (current) => current.copyWith(
+        handoffStatus: 'active',
+        aiEnabled: false,
+        aiReplying: false,
+        assignedUserId: actor?.id ?? current.assignedUserId,
+        assignedUserName: actor?.name ?? current.assignedUserName,
+        responder: ConversationResponder(
+          status: 'human_active',
+          type: 'human',
+          name: actor?.name ?? 'الموظف',
+          label: 'الرد بواسطة الموظف',
+          userId: actor?.id,
+        ),
+      ),
     );
   }
 
   Future<String?> resolveHandoff() {
-    if (!_companyInboxWriteAllowed()) {
+    if (!_canHandoffWrite()) {
       return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
     }
+    final expectedVersion = state.conversation?.handoffVersion;
     return _applyServerConversation(
-      (repo, workspaceId) =>
-          repo.resolveHandoff(conversationId, workspaceId: workspaceId),
+      (repo, workspaceId) => repo.resolveHandoff(
+        conversationId,
+        expectedHandoffVersion: expectedVersion,
+        workspaceId: workspaceId,
+      ),
     );
   }
 
   /// Stopping an AI reply opens team review. Ending an open review resolves it.
   Future<String?> endHandoff() {
-    if (!_companyInboxWriteAllowed()) {
+    if (!_canHandoffWrite()) {
       return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
     }
     final current = state.conversation;
@@ -2678,12 +2759,29 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   Future<String?> resumeAi() {
-    if (!_companyInboxWriteAllowed()) {
+    if (!_canHandoffWrite()) {
       return Future.value('لا تملك صلاحية تنفيذ هذا الإجراء.');
     }
+    final expectedVersion = state.conversation?.handoffVersion;
     return _applyServerConversation(
-      (repo, workspaceId) =>
-          repo.resumeAi(conversationId, workspaceId: workspaceId),
+      (repo, workspaceId) => repo.resumeAi(
+        conversationId,
+        expectedHandoffVersion: expectedVersion,
+        workspaceId: workspaceId,
+      ),
+      optimisticUpdate: (current) => current.copyWith(
+        handoffStatus: 'none',
+        aiEnabled: true,
+        aiReplying: current.status == 'open' && !current.archived,
+        clearAssignedUser: true,
+        clearAssignedWorkerEngagement: true,
+        responder: const ConversationResponder(
+          status: 'ai_active',
+          type: 'ai',
+          name: 'مشعل AI',
+          label: 'مشغل AI',
+        ),
+      ),
     );
   }
 
@@ -2704,26 +2802,43 @@ class ChatController extends StateNotifier<ChatState> {
     return _ref.read(authControllerProvider).isCompanyUser;
   }
 
+  bool _canHandoffWrite() {
+    final auth = _ref.read(authControllerProvider);
+    if (auth.isCompanyUser) return true;
+    return auth.isIndependentWorker && (state.conversation?.canReply ?? false);
+  }
+
   Future<String?> _applyServerConversation(
     Future<ConversationModel> Function(
       ConversationRepository repo,
       int? workspaceId,
     )
-    apply,
-  ) async {
+    apply, {
+    ConversationModel Function(ConversationModel current)? optimisticUpdate,
+  }) async {
     if (state.mutating) return null;
     final scope = captureInboxScope(_ref);
-    state = state.copyWith(mutating: true);
+    final previous = state.conversation;
+    final optimistic = previous != null && optimisticUpdate != null
+        ? optimisticUpdate(previous)
+        : null;
+    state = state.copyWith(
+      mutating: true,
+      conversation: optimistic ?? previous,
+    );
+    if (optimistic != null) {
+      _ref
+          .read(conversationsControllerProvider.notifier)
+          .applyRemoteConversation(optimistic);
+    }
     try {
       final remote = await apply(
         _ref.read(conversationRepositoryProvider),
         scope.workspaceId,
       );
       if (!_canCommit(scope)) return null;
-      final current = state.conversation;
-      final next = current == null
-          ? remote
-          : current.applyingServerWrites(remote);
+      final base = previous ?? state.conversation;
+      final next = base == null ? remote : base.applyingServerWrites(remote);
       if (scope.workspaceId != null) {
         try {
           await _ref.read(conversationRepositoryProvider).persistConversations(
@@ -2740,14 +2855,15 @@ class ChatController extends StateNotifier<ChatState> {
           .read(conversationsControllerProvider.notifier)
           .applyRemoteConversation(next);
       bumpInboxLocalRevision(_ref);
-      unawaited(
-        _ref
-            .read(conversationsControllerProvider.notifier)
-            .refresh(silent: true),
-      );
       return null;
     } on ApiException catch (e) {
       if (!_canCommit(scope)) return e.userMessage;
+      if (previous != null) {
+        state = state.copyWith(conversation: previous);
+        _ref
+            .read(conversationsControllerProvider.notifier)
+            .applyRemoteConversation(previous);
+      }
       unawaited(_syncConversationFromServer(scope));
       return e.userMessage;
     } catch (e, st) {
@@ -2755,6 +2871,12 @@ class ChatController extends StateNotifier<ChatState> {
         debugPrint('[CHAT_CONVERSATION_UPDATE_ERROR] $e\n$st');
       }
       if (!_canCommit(scope)) return 'تعذر تحديث المحادثة.';
+      if (previous != null) {
+        state = state.copyWith(conversation: previous);
+        _ref
+            .read(conversationsControllerProvider.notifier)
+            .applyRemoteConversation(previous);
+      }
       return 'تعذر تحديث المحادثة.';
     } finally {
       if (mounted && state.mutating) {
@@ -2851,18 +2973,18 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   void _applyMessageStatusUpdate(MessageStatusUpdate update) {
-    MessageModel applyTo(MessageModel m) {
+    MessageModel? applyTo(MessageModel m) {
       final matchById = update.id > 0 && m.id == update.id;
       final matchByClient =
           update.clientId != null &&
           update.clientId!.isNotEmpty &&
           m.clientId == update.clientId;
-      if (!matchById && !matchByClient) return m;
+      if (!matchById && !matchByClient) return null;
       if (!_shouldApplyDeliveryStatus(
         current: m.deliveryStatus,
         incoming: update.deliveryStatus,
       )) {
-        return m;
+        return null;
       }
       return m.copyWith(
         deliveryStatus: update.deliveryStatus,
@@ -2876,10 +2998,34 @@ class ChatController extends StateNotifier<ChatState> {
       );
     }
 
-    _olderMessages = [for (final m in _olderMessages) applyTo(m)];
-    state = state.copyWith(
-      messages: [for (final m in state.messages) applyTo(m)],
-    );
+    final current = state.messages;
+    for (var i = current.length - 1; i >= 0; i--) {
+      final updated = applyTo(current[i]);
+      if (updated != null) {
+        final next = List<MessageModel>.of(current, growable: false);
+        next[i] = updated;
+        state = state.copyWith(messages: next);
+        return;
+      }
+    }
+
+    if (_olderMessages.isNotEmpty) {
+      for (var i = _olderMessages.length - 1; i >= 0; i--) {
+        final updated = applyTo(_olderMessages[i]);
+        if (updated != null) {
+          final nextOlder = List<MessageModel>.of(_olderMessages, growable: false);
+          nextOlder[i] = updated;
+          _olderMessages = nextOlder;
+          final next = List<MessageModel>.of(current, growable: false);
+          final idx = next.indexWhere((m) => m.id == updated.id && updated.id > 0);
+          if (idx >= 0) {
+            next[idx] = updated;
+            state = state.copyWith(messages: next);
+          }
+          return;
+        }
+      }
+    }
   }
 
   Future<void> _ingestPolledMessage(MessageModel incoming) async {
@@ -2888,7 +3034,10 @@ class ChatController extends StateNotifier<ChatState> {
     final workspaceId = scope.workspaceId;
 
     MessageModel? existing;
-    for (final x in state.messages) {
+    int existingIdx = -1;
+    final current = state.messages;
+    for (var i = current.length - 1; i >= 0; i--) {
+      final x = current[i];
       final sameId = x.id > 0 && x.id == incoming.id;
       final sameClient =
           incoming.clientId != null &&
@@ -2897,6 +3046,7 @@ class ChatController extends StateNotifier<ChatState> {
           !x.localPending;
       if (sameId || sameClient) {
         existing = x;
+        existingIdx = i;
         break;
       }
     }
@@ -2917,11 +3067,26 @@ class ChatController extends StateNotifier<ChatState> {
     }
 
     final sw = Stopwatch()..start();
-    // Immediately update state so UI renders cleanly without dropping older history.
-    final merged = _mergeMessages(
-      _olderMessages,
-      _mergeMessages(state.messages, [incoming]),
-    );
+    final List<MessageModel> merged;
+    if (existing == null &&
+        incoming.id > 0 &&
+        current.isNotEmpty &&
+        current.last.id > 0 &&
+        incoming.id > current.last.id) {
+      // O(1) tail-append fast path preserves monotonic order without sorting thousands of rows.
+      merged = [...current, incoming];
+    } else if (existing != null &&
+        existingIdx >= 0 &&
+        existing.id > 0 &&
+        existing.id == incoming.id) {
+      merged = List<MessageModel>.of(current, growable: false);
+      merged[existingIdx] = _mergeServerMessage(existing, incoming);
+    } else {
+      merged = _mergeMessages(
+        _olderMessages,
+        _mergeMessages(current, [incoming]),
+      );
+    }
     state = state.copyWith(
       messages: merged,
       clearTyping: true,

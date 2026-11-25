@@ -64,13 +64,23 @@ class MessageCreated implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return app(WorkspaceContext::class)->runForId((int) $this->message->workspace_id, function (): array {
-            $this->message->loadMissing([
-                'attachments',
-                'user:id,name',
-                'customer:id,name',
-                'workerEngagement.workerProfile:id,user_id,display_name',
-                'workerEngagement.workerProfile.user:id,name',
-            ]);
+            $missing = [];
+            if (! $this->message->relationLoaded('attachments')) {
+                $missing[] = 'attachments';
+            }
+            if ($this->message->user_id !== null && ! $this->message->relationLoaded('user')) {
+                $missing[] = 'user:id,name';
+            }
+            if ($this->message->customer_id !== null && ! $this->message->relationLoaded('customer')) {
+                $missing[] = 'customer:id,name';
+            }
+            if ($this->message->worker_engagement_id !== null && ! $this->message->relationLoaded('workerEngagement')) {
+                $missing[] = 'workerEngagement.workerProfile:id,user_id,display_name';
+                $missing[] = 'workerEngagement.workerProfile.user:id,name';
+            }
+            if ($missing !== []) {
+                $this->message->loadMissing($missing);
+            }
 
             $readyAttachments = $this->message->attachments ? $this->message->attachments->map(function ($attachment): array {
                 $ready = ($attachment->status ?? 'stored') === MessageAttachment::STATUS_STORED;

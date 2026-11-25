@@ -145,7 +145,9 @@ class ConversationResponderService
 
         // 3. AI Active (Meshal AI in charge)
         if ((bool) $conversation->ai_enabled && $handoffStatus->allowsAiAutoReply()) {
-            $aiName = $conversation->aiEmployee?->name ?? 'مشعل';
+            $aiName = $conversation->ai_employee_id !== null
+                ? ($conversation->aiEmployee?->name ?? 'مشعل')
+                : 'مشعل';
 
             return [
                 'status' => self::STATUS_AI_ACTIVE,
@@ -194,6 +196,8 @@ class ConversationResponderService
         ?User $actor = null,
         ?string $reason = null,
         ?array $metadata = null,
+        bool $skipConversationUpdate = false,
+        ?string $resolvedNewName = null,
     ): ConversationResponderLog {
         return DB::transaction(function () use (
             $conversation,
@@ -204,32 +208,50 @@ class ConversationResponderService
             $actor,
             $reason,
             $metadata,
+            $skipConversationUpdate,
+            $resolvedNewName,
         ): ConversationResponderLog {
-            $fresh = $conversation->fresh() ?? $conversation;
+            $fresh = $skipConversationUpdate ? $conversation : ($conversation->fresh() ?? $conversation);
 
             $previousType = $fresh->responder_type ?? (
                 $fresh->assigned_user_id !== null ? self::TYPE_HUMAN : ($fresh->ai_enabled ? self::TYPE_AI : self::TYPE_NONE)
             );
             $previousUserId = $fresh->assigned_user_id;
-            $previousName = $fresh->responder_name ?? ($previousType === self::TYPE_AI ? 'مشعل AI' : ($fresh->assignedUser?->name ?? '—'));
-
-            $workerName = null;
-            if ($fresh->assigned_worker_engagement_id !== null) {
-                $workerEngagement = $fresh->relationLoaded('assignedWorkerEngagement')
-                    ? $fresh->assignedWorkerEngagement
-                    : $fresh->assignedWorkerEngagement()->with('workerProfile.user')->first();
-                $workerProfile = $workerEngagement?->workerProfile;
-                if (! $newUser || $workerProfile?->user_id === $newUser->id) {
-                    $workerName = $workerProfile?->display_name ?: $workerProfile?->user?->name;
-                }
+            $previousName = $fresh->responder_name;
+            if ($previousName === null || $previousName === '') {
+                $previousName = $previousType === self::TYPE_AI
+                    ? 'مشعل AI'
+                    : ($previousUserId !== null
+                        ? ($fresh->relationLoaded('assignedUser') ? $fresh->assignedUser?->name : $fresh->assignedUser()->value('name')) ?? '—'
+                        : '—');
             }
 
-            $newName = match ($newType) {
-                self::TYPE_AI => ($fresh->aiEmployee?->name ?? 'مشعل').' AI',
-                self::TYPE_HUMAN => $workerName ?: ($newUser?->name ?? 'موظف خدمة العملاء'),
-                default => '—',
-            };
+            if ($resolvedNewName !== null && $resolvedNewName !== '') {
+                $newName = $resolvedNewName;
+            } else {
+                $workerName = null;
+                if ($fresh->assigned_worker_engagement_id !== null) {
+                    $workerEngagement = $fresh->relationLoaded('assignedWorkerEngagement')
+                        ? $fresh->assignedWorkerEngagement
+                        : $fresh->assignedWorkerEngagement()->with('workerProfile.user')->first();
+                    $workerProfile = $workerEngagement?->workerProfile;
+                    if (! $newUser || $workerProfile?->user_id === $newUser->id) {
+                        $workerName = $workerProfile?->display_name ?: $workerProfile?->user?->name;
+                    }
+                }
 
+                $aiName = $fresh->ai_employee_id !== null
+                    ? ($fresh->aiEmployee?->name ?? 'مشعل')
+                    : 'مشعل';
+
+                $newName = match ($newType) {
+                    self::TYPE_AI => $aiName.' AI',
+                    self::TYPE_HUMAN => $workerName ?: ($newUser?->name ?? 'موظف خدمة العملاء'),
+                    default => '—',
+                };
+            }
+
+            $now = now();
             $log = ConversationResponderLog::query()->create([
                 'workspace_id' => $fresh->workspace_id,
                 'conversation_id' => $fresh->id,
@@ -244,14 +266,16 @@ class ConversationResponderService
                 'actor_id' => $actor?->id,
                 'reason' => $reason,
                 'metadata' => $metadata,
-                'created_at' => now(),
+                'created_at' => $now,
             ]);
 
-            $fresh->update([
-                'responder_type' => $newType,
-                'responder_name' => $newName,
-                'responder_assigned_at' => now(),
-            ]);
+            if (! $skipConversationUpdate) {
+                $fresh->update([
+                    'responder_type' => $newType,
+                    'responder_name' => $newName,
+                    'responder_assigned_at' => $now,
+                ]);
+            }
 
             return $log;
         });

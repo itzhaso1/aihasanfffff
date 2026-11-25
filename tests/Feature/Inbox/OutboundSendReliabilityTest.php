@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inbox;
 
+use App\Enums\WorkerEngagementStatus;
 use App\Events\Realtime\ConversationUpdated;
 use App\Events\Realtime\MessageCreated;
 use App\Events\Realtime\MessageStatusUpdated;
@@ -18,6 +19,9 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Models\WhatsAppAccount;
 use App\Models\WhatsAppPhoneNumber;
+use App\Models\Worker\WorkerEngagement;
+use App\Models\Worker\WorkerEngagementPermission;
+use App\Models\Worker\WorkerProfile;
 use App\Models\Workspace;
 use App\Models\WorkspaceMetaConnection;
 use App\Models\WorkspaceTelegramConnection;
@@ -33,6 +37,7 @@ use App\Services\Channel\Outbound\Drivers\WhatsAppChannelOutboundDriver;
 use App\Support\Meta\MetaConnectionKind;
 use App\Support\Tenancy\WorkspaceContext;
 use Database\Seeders\FoundationSeeder;
+use Database\Seeders\WorkerCapabilitySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Event;
@@ -473,6 +478,157 @@ final class OutboundSendReliabilityTest extends TestCase
                 'Idempotency-Key' => 'validation-empty-key',
             ],
         )->assertStatus(422);
+    }
+
+    public function test_cors_preflight_allows_correlation_and_idempotency_headers_for_mobile_send(): void
+    {
+        config([
+            'cors.allowed_origins' => ['http://localhost:5000'],
+        ]);
+
+        $response = $this->withHeaders([
+            'Origin' => 'http://localhost:5000',
+            'Access-Control-Request-Method' => 'POST',
+            'Access-Control-Request-Headers' => 'authorization,content-type,x-workspace-id,idempotency-key,x-correlation-id',
+        ])->options('/api/mobile/v1/conversations/1/messages');
+
+        $response->assertStatus(204);
+        $allowed = strtolower((string) $response->headers->get('Access-Control-Allow-Headers', ''));
+        $this->assertStringContainsString('x-correlation-id', $allowed);
+        $this->assertStringContainsString('idempotency-key', $allowed);
+        $this->assertStringContainsString('x-workspace-id', $allowed);
+    }
+
+    public function test_polling_after_id_and_web_poll_return_status_updates_for_pending_human_messages(): void
+    {
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.poll.status.1']]], 200),
+        ]);
+        config(['queue.default' => 'sync']);
+
+        [$owner, $workspace, $conversation] = $this->workspaceWithChannel('whatsapp', [
+            'phone_number_id' => 'pn-poll-status',
+        ]);
+        Sanctum::actingAs($owner);
+
+        $send = $this->withHeaders([
+            'X-Workspace-Id' => (string) $workspace->id,
+            'X-Correlation-Id' => 'corr-poll-status-1',
+            'Idempotency-Key' => 'client-poll-status-1',
+        ])->postJson("/api/mobile/v1/conversations/{$conversation->id}/messages", [
+            'content' => 'رسالة ستتحول إلى مرسلة',
+            'idempotency_key' => 'client-poll-status-1',
+        ]);
+
+        $send->assertCreated();
+        $messageId = (int) $send->json('data.id');
+        $this->assertSame('sent', Message::withoutGlobalScopes()->findOrFail($messageId)->delivery_status);
+
+        // Incremental polling with after_id=$messageId returns no newer messages, yet reports status_updates.
+        $pollMobile = $this->withHeader('X-Workspace-Id', (string) $workspace->id)
+            ->getJson("/api/mobile/v1/conversations/{$conversation->id}/messages?after_id={$messageId}");
+        $pollMobile->assertOk()
+            ->assertJsonPath('meta.count', 0)
+            ->assertJsonPath('meta.status_updates.0.id', $messageId)
+            ->assertJsonPath('meta.status_updates.0.client_id', 'client-poll-status-1')
+            ->assertJsonPath('meta.status_updates.0.delivery_status', 'sent');
+
+        // Web dashboard poll-messages endpoint returns status_updates as well.
+        auth()->forgetGuards();
+        $pollWeb = $this->actingAs($owner, 'web')
+            ->withSession(['current_workspace_id' => $workspace->id])
+            ->getJson("/workspace/conversations/{$conversation->id}/poll-messages?after_id={$messageId}&pending_ids={$messageId}");
+        $pollWeb->assertOk()
+            ->assertJsonPath('status_updates.0.id', $messageId)
+            ->assertJsonPath('status_updates.0.client_id', 'client-poll-status-1')
+            ->assertJsonPath('status_updates.0.delivery_status', 'sent');
+    }
+
+    public function test_worker_and_owner_deliver_to_whatsapp_and_preserve_client_id_under_sync_queue(): void
+    {
+        $this->seed(WorkerCapabilitySeeder::class);
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::sequence()
+                ->push(['messages' => [['id' => 'wamid.sync.owner']]], 200)
+                ->push(['messages' => [['id' => 'wamid.sync.worker.mobile']]], 200)
+                ->push(['messages' => [['id' => 'wamid.sync.worker.web']]], 200),
+        ]);
+        config(['queue.default' => 'sync']);
+
+        [$owner, $workspace, $conversation] = $this->workspaceWithChannel('whatsapp', [
+            'phone_number_id' => 'pn-sync-human',
+        ]);
+
+        // 1. Owner sends via Mobile API under sync queue.
+        Sanctum::actingAs($owner);
+        $ownerRes = $this->withHeaders([
+            'X-Workspace-Id' => (string) $workspace->id,
+            'Idempotency-Key' => 'client-sync-owner',
+        ])->postJson("/api/mobile/v1/conversations/{$conversation->id}/messages", [
+            'content' => 'رسالة المالك',
+            'client_id' => 'client-sync-owner',
+            'idempotency_key' => 'client-sync-owner',
+        ]);
+        $ownerRes->assertCreated()->assertJsonPath('data.client_id', 'client-sync-owner');
+        $ownerMsg = Message::withoutGlobalScopes()->findOrFail((int) $ownerRes->json('data.id'));
+        $this->assertSame('sent', $ownerMsg->delivery_status);
+
+        // 2. Approved independent worker (not a workspace_user pivot member) sends under sync queue.
+        $worker = User::factory()->create(['name' => 'موظف مستقل للاختبار']);
+        $profile = WorkerProfile::query()->create([
+            'user_id' => $worker->id,
+            'display_name' => 'موظف مستقل للاختبار',
+            'country_code' => WorkerProfile::COUNTRY_SAUDI_ARABIA,
+            'nationality' => 'Saudi',
+            'verification_status' => WorkerProfile::VERIFICATION_APPROVED,
+            'lifecycle_status' => WorkerProfile::LIFECYCLE_VERIFIED,
+            'availability_status' => WorkerProfile::AVAILABILITY_AVAILABLE,
+            'professional_summary' => 'Summary',
+            'sales_experience_level' => 'senior',
+        ]);
+        $engagement = WorkerEngagement::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'worker_profile_id' => $profile->id,
+            'status' => WorkerEngagementStatus::Active,
+            'job_title' => 'Inbox Specialist',
+            'created_by' => $owner->id,
+            'active_at' => now(),
+        ]);
+        foreach (['inbox.messages.read', 'inbox.messages.send'] as $cap) {
+            WorkerEngagementPermission::query()->create([
+                'worker_engagement_id' => $engagement->id,
+                'capability_key' => $cap,
+                'allowed' => true,
+            ]);
+        }
+
+        Sanctum::actingAs($worker);
+        $workerMobileRes = $this->withHeaders([
+            'X-Workspace-Id' => (string) $workspace->id,
+            'Idempotency-Key' => 'client-sync-worker-mobile',
+        ])->postJson("/api/mobile/v1/conversations/{$conversation->id}/messages", [
+            'content' => 'رسالة الموظف من التطبيق',
+            'client_id' => 'client-sync-worker-mobile',
+            'idempotency_key' => 'client-sync-worker-mobile',
+        ]);
+        $workerMobileRes->assertCreated()
+            ->assertJsonPath('data.client_id', 'client-sync-worker-mobile');
+        $workerMobileMsg = Message::withoutGlobalScopes()->findOrFail((int) $workerMobileRes->json('data.id'));
+        $this->assertSame('sent', $workerMobileMsg->delivery_status);
+
+        auth()->forgetGuards();
+        $workerWebRes = $this->actingAs($worker, 'web')
+            ->postJson("/workers/{$workspace->id}/inbox/{$conversation->id}/messages", [
+                'content' => 'رسالة الموظف من الويب',
+                'client_id' => 'client-sync-worker-web',
+                'idempotency_key' => 'client-sync-worker-web',
+            ]);
+        $workerWebRes->assertOk()
+            ->assertJsonPath('message.client_id', 'client-sync-worker-web');
+        $workerWebMsg = Message::withoutGlobalScopes()->findOrFail((int) $workerWebRes->json('message.id'));
+        $this->assertSame('sent', $workerWebMsg->delivery_status);
+
+        Http::assertSentCount(3);
     }
 
     /**

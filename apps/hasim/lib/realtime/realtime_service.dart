@@ -23,7 +23,7 @@ abstract class RealtimeService {
   Future<void> start();
   Future<void> stop();
   void updateWorkspace(int? workspaceId) {}
-  void watchConversation(int? conversationId);
+  void watchConversation(int? conversationId, {int? workspaceId});
   void unwatchConversation(int conversationId);
   void setSeedMaxMessageId(int conversationId, int maxServerId) {}
   Future<void> catchUpConversation(int conversationId, {int afterId = 0}) async {}
@@ -51,6 +51,7 @@ class PollingRealtimeService implements RealtimeService {
   Timer? _chatTimer;
   int? _watchingConversationId;
   final Set<int> _deliveredMessageIds = <int>{};
+  final Map<int, String> _emittedStatusKeys = <int, String>{};
   int _lastMaxMessageId = 0;
   int _pollGeneration = 0;
   bool _disposed = false;
@@ -125,6 +126,7 @@ class PollingRealtimeService implements RealtimeService {
   void updateWorkspace(int? workspaceId) {
     _pollGeneration++;
     _deliveredMessageIds.clear();
+    _emittedStatusKeys.clear();
     _lastMaxMessageId = 0;
     if (_watchingConversationId != null && !paused) {
       _pollChat();
@@ -134,10 +136,11 @@ class PollingRealtimeService implements RealtimeService {
   }
 
   @override
-  void watchConversation(int? conversationId) {
+  void watchConversation(int? conversationId, {int? workspaceId}) {
     _pollGeneration++;
     _watchingConversationId = conversationId;
     _deliveredMessageIds.clear();
+    _emittedStatusKeys.clear();
     _lastMaxMessageId = 0;
     _chatTimer?.cancel();
     if (conversationId == null || conversationId <= 0) {
@@ -185,6 +188,17 @@ class PollingRealtimeService implements RealtimeService {
         );
         if (generation != _pollGeneration || _watchingConversationId != id) {
           return;
+        }
+        final statusUpdates = _repo.takePolledStatusUpdates(id);
+        for (final update in statusUpdates) {
+          final statusKey = '${update.deliveryStatus}:${update.errorReason ?? ''}';
+          if (update.id > 0 && _emittedStatusKeys[update.id] == statusKey) {
+            continue;
+          }
+          if (update.id > 0) {
+            _emittedStatusKeys[update.id] = statusKey;
+          }
+          _statusController.add(update);
         }
         if (page.items.isEmpty) break;
 
@@ -289,7 +303,7 @@ class NoopRealtimeService implements RealtimeService {
   Future<void> catchUpConversation(int conversationId, {int afterId = 0}) async {}
 
   @override
-  void watchConversation(int? conversationId) {}
+  void watchConversation(int? conversationId, {int? workspaceId}) {}
   @override
   void unwatchConversation(int conversationId) {}
   @override

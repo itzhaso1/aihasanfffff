@@ -37,6 +37,7 @@ ConversationModel _conv({
   String status = 'open',
   bool aiEnabled = false,
   bool archived = false,
+  bool canReply = true,
   int unread = 3,
   int? assignedUserId,
 }) {
@@ -52,6 +53,7 @@ ConversationModel _conv({
     assignedUserId: assignedUserId,
     aiEnabled: aiEnabled,
     archived: archived,
+    canReply: canReply,
     customer: const CustomerModel(id: 2, name: 'أحمد'),
   );
 }
@@ -282,6 +284,7 @@ class _RecordingRepo extends ConversationRepository {
   @override
   Future<ConversationModel> takeoverHandoff(
     int conversationId, {
+    int? expectedHandoffVersion,
     int? workspaceId,
   }) async {
     takeoverCalls++;
@@ -291,53 +294,43 @@ class _RecordingRepo extends ConversationRepository {
       assignedUserId: 9,
       assignedUserName: 'موظف الشركة',
       aiEnabled: false,
+      handoffVersion: item.handoffVersion + 1,
     );
-    return ConversationModel(
-      id: item.id,
-      channel: item.channel,
-      status: item.status,
-      handoffStatus: 'active',
-      assignedUserId: 9,
-      assignedUserName: 'موظف الشركة',
-      aiEnabled: false,
-      customer: item.customer,
-    );
+    return item;
   }
 
   @override
   Future<ConversationModel> resolveHandoff(
     int conversationId, {
+    int? expectedHandoffVersion,
     int? workspaceId,
   }) async {
     resolveCalls++;
     await _hold();
-    item = item.copyWith(handoffStatus: 'resolved', aiEnabled: false);
-    return ConversationModel(
-      id: item.id,
-      channel: item.channel,
-      status: item.status,
+    item = item.copyWith(
       handoffStatus: 'resolved',
       aiEnabled: false,
-      customer: item.customer,
+      handoffVersion: item.handoffVersion + 1,
     );
+    return item;
   }
 
   @override
   Future<ConversationModel> resumeAi(
     int conversationId, {
+    int? expectedHandoffVersion,
     int? workspaceId,
   }) async {
     resumeAiCalls++;
     await _hold();
-    item = item.copyWith(handoffStatus: 'none', aiEnabled: true);
-    return ConversationModel(
-      id: item.id,
-      channel: item.channel,
-      status: item.status,
+    item = item.copyWith(
       handoffStatus: 'none',
       aiEnabled: true,
-      customer: item.customer,
+      clearAssignedUser: true,
+      clearAssignedWorkerEngagement: true,
+      handoffVersion: item.handoffVersion + 1,
     );
+    return item;
   }
 
   @override
@@ -1133,10 +1126,10 @@ void main() {
   });
 
   test(
-    'independent worker cannot call classification or handoff writes',
+    'independent worker cannot call classification or company-only handoff writes, and read-only worker cannot takeover or resume AI',
     () async {
       final h = await _openController(
-        item: _conv(handoff: 'queued'),
+        item: _conv(handoff: 'queued').copyWith(canReply: false),
         worker: true,
       );
       addTearDown(() async {
@@ -1450,7 +1443,13 @@ void main() {
     expect(find.text('تعيين عامل مستقل'), findsNothing);
     expect(find.text('تعيين المحادثة'), findsNothing);
     expect(find.text('تولي المحادثة'), findsNothing);
-    expect(find.text('تحويل إلى AI'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('chat-action-resume-ai')),
+        matching: find.text('تحويل إلى الذكاء الاصطناعي'),
+      ),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('chat-action-resume-ai')), findsOneWidget);
     expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
   });
@@ -1477,7 +1476,7 @@ void main() {
     await tester.pumpAndSettle();
     await openMore(tester);
     expect(find.byKey(const Key('chat-action-resume-ai')), findsOneWidget);
-    expect(find.text('تحويل إلى AI'), findsOneWidget);
+    expect(find.text('تحويل إلى الذكاء الاصطناعي'), findsWidgets);
     expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
     expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
     await tester.tap(find.byKey(const Key('chat-action-resume-ai')));
@@ -1563,7 +1562,7 @@ void main() {
       await openMore(tester);
       expect(find.text('رد AI'), findsNothing);
       expect(find.byKey(const Key('chat-action-resume-ai')), findsOneWidget);
-      expect(find.text('تحويل إلى AI'), findsOneWidget);
+      expect(find.text('تحويل إلى الذكاء الاصطناعي'), findsWidgets);
       expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
       expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);
       expect(find.text('تعيين عامل مستقل'), findsNothing);
@@ -1655,7 +1654,7 @@ void main() {
   });
 
   testWidgets(
-    'independent worker does not get classification or handoff writes',
+    'read-only independent worker does not get classification or handoff writes',
     (tester) async {
       setPhone(tester);
       SharedPreferences.setMockInitialValues({});
@@ -1668,7 +1667,7 @@ void main() {
           prefsStore: PrefsStore(prefs),
         ),
         InboxLocalStore(db),
-      )..item = _conv(handoff: 'queued');
+      )..item = _conv(handoff: 'queued', canReply: false);
 
       await tester.pumpWidget(
         chatApp(repo: repo, prefs: prefs, auth: workerAuth),
@@ -1681,7 +1680,7 @@ void main() {
         findsNothing,
       );
       expect(find.byKey(const Key('chat-action-assign-handoff')), findsNothing);
-      expect(find.text('تولي المحادثة'), findsNothing);
+      expect(find.byKey(const Key('chat-action-takeover')), findsNothing);
       expect(find.byKey(const Key('chat-action-end-handoff')), findsNothing);
       expect(find.byKey(const Key('chat-action-resume-ai')), findsNothing);
       expect(find.byKey(const Key('chat-action-toggle-ai')), findsNothing);

@@ -86,20 +86,20 @@ class ConversationPolicy
                 || $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['member', 'staff']);
         }
 
-        return app(MobileInboxActor::class)->canAccessInbox($user, $conversation->workspace);
+        return app(MobileInboxActor::class)->canReply($user, $conversation);
     }
 
     public function resumeAi(User $user, Conversation $conversation): bool
     {
-        if (! $this->hasMembership($user, $conversation->workspace)) {
-            return false;
+        if ($this->hasMembership($user, $conversation->workspace)) {
+            if ($user->can('conversations.manage') || $user->can('workspace.manage') || $user->can('ai.manage')) {
+                return true;
+            }
+
+            return $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['owner', 'admin', 'manager']);
         }
 
-        if ($user->can('conversations.manage') || $user->can('workspace.manage') || $user->can('ai.manage')) {
-            return true;
-        }
-
-        return $this->hasAnyWorkspaceRole($user, $conversation->workspace, ['owner', 'admin', 'manager']);
+        return app(MobileInboxActor::class)->canReply($user, $conversation);
     }
 
     /**

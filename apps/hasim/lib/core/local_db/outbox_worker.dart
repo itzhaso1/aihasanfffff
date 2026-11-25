@@ -412,8 +412,14 @@ class OutboxWorker with WidgetsBindingObserver {
     }
     return status == 400 ||
         status == 401 ||
+        status == 402 ||
         status == 403 ||
         status == 404 ||
-        status == 422;
+        status == 405 ||
+        status == 410 ||
+        status == 413 ||
+        status == 415 ||
+        status == 422 ||
+        status == 451;
   }
 }

@@ -70,11 +70,15 @@ class ChatComposer extends StatefulWidget {
 
 class _ChatComposerState extends State<ChatComposer> {
   late String _committedText;
+  late final ValueNotifier<bool> _hasTextNotifier;
+  late final ValueNotifier<TextDirection?> _textDirNotifier;
 
   @override
   void initState() {
     super.initState();
     _committedText = _withoutNewlines(widget.controller.text);
+    _hasTextNotifier = ValueNotifier<bool>(widget.controller.text.trim().isNotEmpty);
+    _textDirNotifier = ValueNotifier<TextDirection?>(_detectStrongDirection(widget.controller.text));
     widget.controller.addListener(_onText);
   }
 
@@ -85,22 +89,38 @@ class _ChatComposerState extends State<ChatComposer> {
       oldWidget.controller.removeListener(_onText);
       widget.controller.addListener(_onText);
       _committedText = _withoutNewlines(widget.controller.text);
+      _syncTextNotifiers();
     }
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onText);
+    _hasTextNotifier.dispose();
+    _textDirNotifier.dispose();
     super.dispose();
   }
 
+  void _syncTextNotifiers() {
+    final text = widget.controller.text;
+    final nextHasText = text.trim().isNotEmpty;
+    if (_hasTextNotifier.value != nextHasText) {
+      _hasTextNotifier.value = nextHasText;
+    }
+    final nextDir = _detectStrongDirection(text);
+    if (_textDirNotifier.value != nextDir) {
+      _textDirNotifier.value = nextDir;
+    }
+  }
+
   void _onText() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _syncTextNotifiers();
   }
 
   String _withoutNewlines(String value) => value.replaceAll('\n', '');
 
-  bool get _hasText => widget.controller.text.trim().isNotEmpty;
+  bool get _hasText => _hasTextNotifier.value;
 
   static ButtonStyle get _flatIconStyle => IconButton.styleFrom(
     overlayColor: Colors.transparent,
@@ -130,9 +150,6 @@ class _ChatComposerState extends State<ChatComposer> {
   @override
   Widget build(BuildContext context) {
     final muted = HasimTokens.mutedColor(context);
-    final canSend = widget.sendEnabled && _hasText;
-    final canRecord =
-        widget.sendEnabled && widget.onRecord != null && !_hasText;
     final isDark = HasimTokens.isDark(context);
     final barColor = isDark ? const Color(0xFF20292B) : Colors.white;
     final micBackground = isDark
@@ -144,6 +161,13 @@ class _ChatComposerState extends State<ChatComposer> {
       return _recordingBar(context, barColor);
     }
 
+    final baseTheme = Theme.of(context);
+    final inputTheme = baseTheme.copyWith(
+      hoverColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      splashColor: Colors.transparent,
+    );
+    final fallbackDirection = Directionality.of(context);
     final replyPreview = widget.replyPreview;
     return SafeArea(
       top: false,
@@ -168,25 +192,33 @@ class _ChatComposerState extends State<ChatComposer> {
               textDirection: TextDirection.ltr,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Material(
-                  color: micBackground,
-                  shape: const CircleBorder(),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    key: const Key('chat-send-button'),
-                    onTap: canSend
-                        ? widget.onSend
-                        : (canRecord ? widget.onRecord : null),
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: Icon(
-                        canSend ? Icons.send_rounded : Icons.mic_none_rounded,
-                        size: 22,
-                        color: canSend || canRecord ? micForeground : muted,
+                ValueListenableBuilder<bool>(
+                  valueListenable: _hasTextNotifier,
+                  builder: (_, hasText, _) {
+                    final canSend = widget.sendEnabled && hasText;
+                    final canRecord =
+                        widget.sendEnabled && widget.onRecord != null && !hasText;
+                    return Material(
+                      color: micBackground,
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        key: const Key('chat-send-button'),
+                        onTap: canSend
+                            ? widget.onSend
+                            : (canRecord ? widget.onRecord : null),
+                        child: SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: Icon(
+                            canSend ? Icons.send_rounded : Icons.mic_none_rounded,
+                            size: 22,
+                            color: canSend || canRecord ? micForeground : muted,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -214,22 +246,17 @@ class _ChatComposerState extends State<ChatComposer> {
                           ),
                           Expanded(
                             child: Theme(
-                              data: Theme.of(context).copyWith(
-                                hoverColor: Colors.transparent,
-                                highlightColor: Colors.transparent,
-                                splashColor: Colors.transparent,
-                              ),
-                              child: TextField(
-                                controller: widget.controller,
-                                focusNode: widget.focusNode,
-                                minLines: 1,
-                                maxLines: 4,
-                                textAlign: TextAlign.start,
-                                textDirection: _detectInputDirection(
-                                  widget.controller.text,
-                                  Directionality.of(context),
-                                ),
-                                textInputAction: TextInputAction.send,
+                              data: inputTheme,
+                              child: ValueListenableBuilder<TextDirection?>(
+                                valueListenable: _textDirNotifier,
+                                builder: (_, detectedDir, _) => TextField(
+                                  controller: widget.controller,
+                                  focusNode: widget.focusNode,
+                                  minLines: 1,
+                                  maxLines: 4,
+                                  textAlign: TextAlign.start,
+                                  textDirection: detectedDir ?? fallbackDirection,
+                                  textInputAction: TextInputAction.send,
                                   onChanged: (value) {
                                     if (!value.contains('\n')) {
                                       _committedText = value;
@@ -254,7 +281,9 @@ class _ChatComposerState extends State<ChatComposer> {
                                     }
                                   },
                                   onSubmitted: (_) {
-                                    if (canSend) widget.onSend();
+                                    if (widget.sendEnabled && _hasText) {
+                                      widget.onSend();
+                                    }
                                   },
                                   decoration: InputDecoration(
                                     hintText: 'الرسالة',
@@ -276,6 +305,7 @@ class _ChatComposerState extends State<ChatComposer> {
                                     disabledBorder: InputBorder.none,
                                   ),
                                 ),
+                              ),
                             ),
                           ),
                           _iconAction(
@@ -652,7 +682,7 @@ class _ReplyBar extends StatelessWidget {
   }
 }
 
-TextDirection _detectInputDirection(String text, TextDirection fallback) {
+TextDirection? _detectStrongDirection(String text) {
   for (final rune in text.runes) {
     if ((rune >= 0x0600 && rune <= 0x06FF) ||
         (rune >= 0x0750 && rune <= 0x077F) ||
@@ -668,5 +698,5 @@ TextDirection _detectInputDirection(String text, TextDirection fallback) {
       return TextDirection.ltr;
     }
   }
-  return fallback;
+  return null;
 }

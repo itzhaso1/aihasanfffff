@@ -17,11 +17,17 @@ use App\Models\User;
 use App\Models\Worker\WorkerEngagement;
 use App\Models\Workspace;
 use App\Services\Audit\AuditLogService;
+use App\Services\Conversation\Exceptions\HandoffConflictException;
 use App\Services\Conversation\Exceptions\InvalidHandoffTransitionException;
 use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Worker\WorkerActivityEventService;
 use App\Services\Worker\WorkerEngagementAuthorization;
 use App\Services\Worker\WorkerInboxService;
+use App\Support\Tenancy\WorkspaceContext;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -232,12 +238,15 @@ final class ConversationHandoffService
         ?WorkerEngagement $workerEngagement = null,
         ?User $actor = null,
     ): Conversation {
-        $fresh = DB::transaction(fn (): Conversation => $this->performAssign(
-            $conversation->fresh() ?? $conversation,
-            $assignee,
-            $workerEngagement,
-            $actor,
-        ));
+        $fresh = app(WorkspaceContext::class)->runForId(
+            (int) $conversation->workspace_id,
+            fn (): Conversation => DB::transaction(fn (): Conversation => $this->performAssign(
+                $conversation->fresh() ?? $conversation,
+                $assignee,
+                $workerEngagement,
+                $actor,
+            )),
+        );
 
         return $this->publishAndReturn($fresh);
     }
@@ -330,136 +339,356 @@ final class ConversationHandoffService
         return $fresh->fresh() ?? $fresh;
     }
 
-    public function takeover(Conversation $conversation, User $actor): Conversation
-    {
-        $fresh = DB::transaction(function () use ($conversation, $actor): Conversation {
-            $fresh = $conversation->fresh() ?? $conversation;
-            $this->assertOpen($fresh);
-            $this->assertWorkspaceMember($fresh, $actor);
+    public function takeover(
+        Conversation $conversation,
+        User $actor,
+        ?int $expectedHandoffVersion = null,
+    ): Conversation {
+        $didMutate = false;
 
-            if ($this->currentStatus($fresh) === ConversationHandoffStatus::Active
+        $fresh = DB::transaction(function () use ($conversation, $actor, $expectedHandoffVersion, &$didMutate): Conversation {
+            $fresh = Conversation::withoutGlobalScopes()
+                ->whereKey($conversation->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $this->assertOpen($fresh);
+
+            $actorContext = $this->resolveHandoffActorContext($fresh, $actor);
+            $currentVersion = (int) ($fresh->handoff_version ?? 1);
+            $currentStatus = $this->currentStatus($fresh);
+
+            if ($expectedHandoffVersion !== null && $expectedHandoffVersion > 0 && $currentVersion !== $expectedHandoffVersion) {
+                throw new HandoffConflictException(
+                    'تغيرت حالة المحادثة للتو بواسطة إجراء آخر. يرجى تحديث الحالة والمحاولة مرة أخرى.',
+                    $currentVersion,
+                    $fresh->assigned_user_id ? (int) $fresh->assigned_user_id : null,
+                    $this->resolveCurrentOwnerName($fresh),
+                );
+            }
+
+            if ($currentStatus === ConversationHandoffStatus::Active
                 && (int) $fresh->assigned_user_id === (int) $actor->id) {
                 return $fresh;
             }
 
-            $status = $this->currentStatus($fresh);
-            if ($status === ConversationHandoffStatus::None) {
-                $fresh = $this->performRequest(
-                    $fresh,
-                    ConversationHandoffReason::AgentRequested,
-                    $this->baseContext($fresh, 'staff'),
-                    queueImmediately: true,
+            if (in_array($currentStatus, [ConversationHandoffStatus::Active, ConversationHandoffStatus::Assigned], true)
+                && $fresh->assigned_user_id !== null
+                && (int) $fresh->assigned_user_id !== (int) $actor->id
+                && ! $actorContext['isSupervisor']) {
+                $ownerName = $this->resolveCurrentOwnerName($fresh) ?? 'موظف آخر';
+
+                throw new HandoffConflictException(
+                    "المحادثة قيد المتابعة حالياً من قِبل {$ownerName}.",
+                    $currentVersion,
+                    (int) $fresh->assigned_user_id,
+                    $ownerName,
                 );
-            } elseif ($fresh->handoff_reason === null) {
-                $fresh = $this->applyHandoffPayload($fresh, ConversationHandoffReason::AgentRequested, $this->baseContext($fresh, 'staff'));
             }
 
-            if (in_array($this->currentStatus($fresh), [ConversationHandoffStatus::Requested, ConversationHandoffStatus::Queued], true)) {
-                $fresh = $this->performAssign($fresh, $actor, actor: $actor);
-            } elseif ($fresh->assigned_user_id !== $actor->id) {
-                $fresh = $this->performAssign($fresh, $actor, actor: $actor);
-            }
+            $didMutate = true;
+            $now = now();
+            $previousWorkerEngagementId = $fresh->assigned_worker_engagement_id;
+            $workerEngagement = $actorContext['engagement'];
+            $displayName = $actorContext['displayName'];
+            $reason = $fresh->handoff_reason instanceof ConversationHandoffReason
+                ? $fresh->handoff_reason
+                : ConversationHandoffReason::AgentRequested;
 
-            $fresh = $this->transition($fresh->fresh() ?? $fresh, ConversationHandoffStatus::Active);
-            $fresh->update(['ai_enabled' => false]);
-            $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
+            $metadata = is_array($fresh->metadata) ? $fresh->metadata : [];
+            $handoffMeta = is_array($metadata['handoff'] ?? null) ? $metadata['handoff'] : [];
+            if (! isset($handoffMeta['reason']) || $fresh->handoff_reason === null) {
+                $handoffMeta = array_merge($handoffMeta, [
+                    'reason' => $reason->value,
+                    'requested_by' => $actorContext['actorType'] === 'worker' ? 'worker' : 'staff',
+                    'source' => 'chat',
+                    'updated_at' => $now->toIso8601String(),
+                ]);
+            }
+            $handoffMeta['updated_at'] = $now->toIso8601String();
+            $this->syncLegacyHandoffFlags($metadata, ConversationHandoffStatus::Active);
+
+            $fresh->fill([
+                'handoff_status' => ConversationHandoffStatus::Active->value,
+                'handoff_reason' => $reason->value,
+                'handoff_requested_at' => $fresh->handoff_requested_at ?? $now,
+                'handoff_assigned_at' => $fresh->handoff_assigned_at ?? $now,
+                'handoff_resolved_at' => null,
+                'handoff_version' => $currentVersion + 1,
+                'ai_enabled' => false,
+                'assigned_user_id' => $actor->id,
+                'assigned_worker_engagement_id' => $workerEngagement?->id,
+                'responder_type' => ConversationResponderService::TYPE_HUMAN,
+                'responder_name' => $displayName,
+                'responder_assigned_at' => $now,
+            ]);
+
+            $handoffMeta['structured'] = $this->summaryBuilder->build($fresh);
+            $metadata['handoff'] = $handoffMeta;
+            $fresh->metadata = $metadata;
+            $fresh->save();
+
+            Cache::forget("conversation:{$fresh->id}:ai_generating");
 
             $this->responderService->recordTransition(
                 $fresh,
                 ConversationResponderService::TYPE_HUMAN,
                 $actor,
                 'takeover',
-                'user',
+                $actorContext['actorType'],
                 $actor,
                 'تولى الموظف الرد على المحادثة',
+                skipConversationUpdate: true,
+                resolvedNewName: $displayName,
             );
+
+            if ($workerEngagement instanceof WorkerEngagement) {
+                $this->auditLog->log(
+                    action: 'worker.inbox.conversation.assigned',
+                    entityType: Conversation::class,
+                    entityId: $fresh->id,
+                    oldValues: [
+                        'assigned_user_id' => $fresh->getOriginal('assigned_user_id'),
+                        'assigned_worker_engagement_id' => $previousWorkerEngagementId,
+                    ],
+                    newValues: [
+                        'assigned_user_id' => $actor->id,
+                        'assigned_worker_engagement_id' => $workerEngagement->id,
+                        'handoff_status' => ConversationHandoffStatus::Active->value,
+                    ],
+                    actor: $actor,
+                    meta: [
+                        'conversation_id' => $fresh->id,
+                        'worker_engagement_id' => $workerEngagement->id,
+                        'worker_profile_id' => $workerEngagement->worker_profile_id,
+                        'handoff' => 'takeover',
+                    ],
+                    workspaceId: $fresh->workspace_id,
+                );
+
+                if ((int) $previousWorkerEngagementId !== (int) $workerEngagement->id) {
+                    $this->workerActivity->recordOperationalEvent(
+                        $workerEngagement,
+                        $actor,
+                        WorkerActivityEventType::ConversationAssigned,
+                        Conversation::class,
+                        (int) $fresh->id,
+                        [
+                            'conversation_id' => $fresh->id,
+                            'handoff' => 'takeover',
+                        ],
+                    );
+                }
+            } elseif ($previousWorkerEngagementId !== null) {
+                $this->auditLog->log(
+                    action: 'worker.inbox.conversation.unassigned',
+                    entityType: Conversation::class,
+                    entityId: $fresh->id,
+                    oldValues: [
+                        'assigned_worker_engagement_id' => (int) $previousWorkerEngagementId,
+                    ],
+                    newValues: [
+                        'assigned_user_id' => $actor->id,
+                    ],
+                    actor: $actor,
+                    meta: [
+                        'conversation_id' => $fresh->id,
+                        'worker_engagement_id' => (int) $previousWorkerEngagementId,
+                        'handoff' => 'takeover',
+                    ],
+                    workspaceId: $fresh->workspace_id,
+                );
+            }
 
             event(new ConversationHandoffActivated($fresh, $actor));
 
-            return $fresh->fresh() ?? $fresh;
+            return $fresh;
         });
 
-        return $this->publishAndReturn($fresh);
+        if (! $didMutate) {
+            return $fresh;
+        }
+
+        return $this->publishAndReturn($fresh, alreadyFresh: true);
     }
 
-    public function resolve(Conversation $conversation, User $actor): Conversation
-    {
-        $fresh = DB::transaction(function () use ($conversation, $actor): Conversation {
-            $fresh = $conversation->fresh() ?? $conversation;
+    public function resolve(
+        Conversation $conversation,
+        User $actor,
+        ?int $expectedHandoffVersion = null,
+    ): Conversation {
+        $fresh = DB::transaction(function () use ($conversation, $actor, $expectedHandoffVersion): Conversation {
+            $fresh = Conversation::withoutGlobalScopes()
+                ->whereKey($conversation->id)
+                ->lockForUpdate()
+                ->firstOrFail();
             $this->assertOpen($fresh);
-            $this->assertWorkspaceMember($fresh, $actor);
+            $actorContext = $this->resolveHandoffActorContext($fresh, $actor);
 
-            if ($this->currentStatus($fresh) === ConversationHandoffStatus::None) {
+            $currentVersion = (int) ($fresh->handoff_version ?? 1);
+            if ($expectedHandoffVersion !== null && $expectedHandoffVersion > 0 && $currentVersion !== $expectedHandoffVersion) {
+                throw new HandoffConflictException(
+                    'تغيرت حالة المحادثة للتو. يرجى المحاولة مرة أخرى.',
+                    $currentVersion,
+                    $fresh->assigned_user_id ? (int) $fresh->assigned_user_id : null,
+                    $this->resolveCurrentOwnerName($fresh),
+                );
+            }
+
+            $currentStatus = $this->currentStatus($fresh);
+            if ($currentStatus === ConversationHandoffStatus::None) {
                 throw new InvalidHandoffTransitionException('No active handoff to resolve.');
             }
 
-            $fresh = $this->transition($fresh, ConversationHandoffStatus::Resolved);
+            if (in_array($currentStatus, [ConversationHandoffStatus::Active, ConversationHandoffStatus::Assigned], true)
+                && $fresh->assigned_user_id !== null
+                && (int) $fresh->assigned_user_id !== (int) $actor->id
+                && ! $actorContext['isSupervisor']) {
+                $ownerName = $this->resolveCurrentOwnerName($fresh) ?? 'موظف آخر';
+
+                throw new HandoffConflictException(
+                    "المحادثة قيد المتابعة حالياً من قِبل {$ownerName}.",
+                    $currentVersion,
+                    (int) $fresh->assigned_user_id,
+                    $ownerName,
+                );
+            }
+
+            $now = now();
             $metadata = is_array($fresh->metadata) ? $fresh->metadata : [];
             $this->syncLegacyHandoffFlags($metadata, ConversationHandoffStatus::Resolved);
-            $fresh->update([
-                'handoff_resolved_at' => now(),
+
+            $fresh->fill([
+                'handoff_status' => ConversationHandoffStatus::Resolved->value,
+                'handoff_resolved_at' => $now,
+                'handoff_version' => $currentVersion + 1,
                 'ai_enabled' => false,
+                'responder_type' => ConversationResponderService::TYPE_NONE,
+                'responder_name' => '—',
+                'responder_assigned_at' => $now,
                 'metadata' => $metadata,
             ]);
-            $fresh = $this->appendHistory($fresh);
-            $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
+
+            $history = is_array($metadata['handoff_history'] ?? null) ? $metadata['handoff_history'] : [];
+            $history[] = array_merge(
+                $this->summaryBuilder->build($fresh),
+                ['archived_at' => $now->toIso8601String()],
+            );
+            $metadata['handoff_history'] = array_slice($history, -20);
+            $handoffMeta = is_array($metadata['handoff'] ?? null) ? $metadata['handoff'] : [];
+            $handoffMeta['structured'] = $this->summaryBuilder->build($fresh);
+            $metadata['handoff'] = $handoffMeta;
+            $fresh->metadata = $metadata;
+            $fresh->save();
 
             $this->responderService->recordTransition(
                 $fresh,
                 ConversationResponderService::TYPE_NONE,
                 null,
                 'resolved',
-                'user',
+                $actorContext['actorType'],
                 $actor,
                 'إنهاء متابعة الموظف',
+                skipConversationUpdate: true,
+                resolvedNewName: '—',
             );
 
             event(new ConversationHandoffResolved($fresh, $actor));
 
-            return $fresh->fresh() ?? $fresh;
+            return $fresh;
         });
 
-        return $this->publishAndReturn($fresh);
+        return $this->publishAndReturn($fresh, alreadyFresh: true);
     }
 
-    public function resumeAi(Conversation $conversation, User $actor): Conversation
-    {
-        $fresh = DB::transaction(function () use ($conversation, $actor): Conversation {
-            $fresh = $conversation->fresh() ?? $conversation;
-            $this->assertOpen($fresh);
-            $this->assertWorkspaceMember($fresh, $actor);
+    public function resumeAi(
+        Conversation $conversation,
+        User $actor,
+        ?int $expectedHandoffVersion = null,
+    ): Conversation {
+        $didMutate = false;
 
-            $currentStatus = $this->currentStatus($fresh);
-            if ($currentStatus !== ConversationHandoffStatus::None) {
-                $fresh = $this->transition($fresh, ConversationHandoffStatus::None);
+        $fresh = DB::transaction(function () use ($conversation, $actor, $expectedHandoffVersion, &$didMutate): Conversation {
+            $fresh = Conversation::withoutGlobalScopes()
+                ->whereKey($conversation->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $this->assertOpen($fresh);
+            $actorContext = $this->resolveHandoffActorContext($fresh, $actor);
+
+            $currentVersion = (int) ($fresh->handoff_version ?? 1);
+            if ($expectedHandoffVersion !== null && $expectedHandoffVersion > 0 && $currentVersion !== $expectedHandoffVersion) {
+                throw new HandoffConflictException(
+                    'تغيرت حالة المحادثة للتو بواسطة إجراء آخر. يرجى تحديث الحالة والمحاولة مرة أخرى.',
+                    $currentVersion,
+                    $fresh->assigned_user_id ? (int) $fresh->assigned_user_id : null,
+                    $this->resolveCurrentOwnerName($fresh),
+                );
             }
 
+            $currentStatus = $this->currentStatus($fresh);
+            if ($currentStatus === ConversationHandoffStatus::None
+                && (bool) $fresh->ai_enabled
+                && $fresh->assigned_user_id === null
+                && $fresh->assigned_worker_engagement_id === null) {
+                return $fresh;
+            }
+
+            if (in_array($currentStatus, [ConversationHandoffStatus::Active, ConversationHandoffStatus::Assigned], true)
+                && $fresh->assigned_user_id !== null
+                && (int) $fresh->assigned_user_id !== (int) $actor->id
+                && ! $actorContext['isSupervisor']) {
+                $ownerName = $this->resolveCurrentOwnerName($fresh) ?? 'موظف آخر';
+
+                throw new HandoffConflictException(
+                    "لا يمكن تحويل المحادثة للذكاء الاصطناعي لأنها قيد المتابعة من قِبل {$ownerName}.",
+                    $currentVersion,
+                    (int) $fresh->assigned_user_id,
+                    $ownerName,
+                );
+            }
+
+            $didMutate = true;
+            $now = now();
             $previousWorkerEngagementId = $fresh->assigned_worker_engagement_id;
             $metadata = is_array($fresh->metadata) ? $fresh->metadata : [];
-            $metadata['handoff_resumed_at'] = now()->toIso8601String();
+            $metadata['handoff_resumed_at'] = $now->toIso8601String();
             $this->syncLegacyHandoffFlags($metadata, ConversationHandoffStatus::None);
 
-            $fresh->update([
+            $aiName = $fresh->ai_employee_id !== null
+                ? ($fresh->aiEmployee?->name ?? 'مشعل').' AI'
+                : 'مشعل AI';
+
+            $fresh->fill([
+                'handoff_status' => ConversationHandoffStatus::None->value,
                 'ai_enabled' => true,
                 'handoff_reason' => null,
                 'handoff_requested_at' => null,
                 'handoff_assigned_at' => null,
                 'handoff_resolved_at' => null,
+                'handoff_version' => $currentVersion + 1,
                 'assigned_user_id' => null,
                 'assigned_worker_engagement_id' => null,
-                'metadata' => $metadata,
+                'responder_type' => ConversationResponderService::TYPE_AI,
+                'responder_name' => $aiName,
+                'responder_assigned_at' => $now,
             ]);
 
-            $fresh = $this->refreshSummary($fresh->fresh() ?? $fresh);
+            $handoffMeta = is_array($metadata['handoff'] ?? null) ? $metadata['handoff'] : [];
+            $handoffMeta['structured'] = $this->summaryBuilder->build($fresh);
+            $metadata['handoff'] = $handoffMeta;
+            $fresh->metadata = $metadata;
+            $fresh->save();
 
             $this->responderService->recordTransition(
                 $fresh,
                 ConversationResponderService::TYPE_AI,
                 null,
                 'returned_to_ai',
-                'user',
+                $actorContext['actorType'],
                 $actor,
                 'إعادة المحادثة إلى مشعل AI',
+                skipConversationUpdate: true,
+                resolvedNewName: $aiName,
             );
 
             event(new ConversationAiResumed($fresh, $actor));
@@ -484,12 +713,32 @@ final class ConversationHandoffService
                     ],
                     workspaceId: $fresh->workspace_id,
                 );
+            } elseif ($actorContext['engagement'] instanceof WorkerEngagement) {
+                $this->auditLog->log(
+                    action: 'worker.inbox.conversation.returned_to_ai',
+                    entityType: Conversation::class,
+                    entityId: $fresh->id,
+                    newValues: [
+                        'assigned_user_id' => null,
+                        'ai_enabled' => true,
+                    ],
+                    actor: $actor,
+                    meta: [
+                        'conversation_id' => $fresh->id,
+                        'worker_engagement_id' => $actorContext['engagement']->id,
+                    ],
+                    workspaceId: $fresh->workspace_id,
+                );
             }
 
-            return $fresh->fresh() ?? $fresh;
+            return $fresh;
         });
 
-        return $this->publishAndReturn($fresh);
+        if (! $didMutate) {
+            return $fresh;
+        }
+
+        return $this->publishAndReturn($fresh, alreadyFresh: true);
     }
 
     public function disableAi(Conversation $conversation, User $actor): Conversation
@@ -757,16 +1006,128 @@ final class ConversationHandoffService
         }
     }
 
-    private function publishAndReturn(Conversation $conversation): Conversation
+    /**
+     * @return array{
+     *     workspace: Workspace,
+     *     isMember: bool,
+     *     isSupervisor: bool,
+     *     engagement: ?WorkerEngagement,
+     *     displayName: string,
+     *     actorType: string
+     * }
+     */
+    private function resolveHandoffActorContext(Conversation $conversation, User $actor): array
     {
-        $fresh = $conversation->fresh() ?? $conversation;
-        $this->publishConversation($fresh);
+        $workspace = Workspace::query()->find($conversation->workspace_id);
+        if (! $workspace instanceof Workspace) {
+            throw new InvalidArgumentException('Workspace not found.');
+        }
+
+        $membership = $workspace->users()
+            ->where('users.id', $actor->id)
+            ->wherePivot('status', 'active')
+            ->first(['users.id', 'users.name']);
+
+        if ($membership instanceof User) {
+            $role = strtolower(trim((string) ($membership->pivot?->membership_role ?? '')));
+            $isSupervisor = in_array($role, ['owner', 'admin', 'manager'], true)
+                || $actor->can('workspace.manage')
+                || $actor->can('conversations.manage')
+                || (int) $workspace->owner_user_id === (int) $actor->id;
+
+            return [
+                'workspace' => $workspace,
+                'isMember' => true,
+                'isSupervisor' => $isSupervisor,
+                'engagement' => null,
+                'displayName' => $actor->name ?: 'موظف خدمة العملاء',
+                'actorType' => 'user',
+            ];
+        }
+
+        if ($conversation->status === 'archived') {
+            throw (new ModelNotFoundException)->setModel(Conversation::class, [$conversation->id]);
+        }
+
+        $engagements = WorkerEngagement::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->where('status', WorkerEngagementStatus::Active->value)
+            ->whereHas('workerProfile', function (Builder $query) use ($actor): void {
+                $query
+                    ->where('user_id', $actor->id)
+                    ->where('verification_status', 'approved')
+                    ->where('lifecycle_status', 'verified');
+            })
+            ->with('workerProfile:id,user_id,display_name')
+            ->orderBy('id')
+            ->get();
+
+        $readEngagement = $engagements->first(fn (WorkerEngagement $engagement): bool => $this->workerAuthorization->workerCan(
+            $actor,
+            $workspace,
+            $engagement,
+            WorkerInboxService::READ_CAPABILITY,
+        ));
+
+        if (! $readEngagement instanceof WorkerEngagement) {
+            throw (new ModelNotFoundException)->setModel(Conversation::class, [$conversation->id]);
+        }
+
+        $sendEngagement = $engagements->first(fn (WorkerEngagement $engagement): bool => $this->workerAuthorization->workerCan(
+            $actor,
+            $workspace,
+            $engagement,
+            WorkerInboxService::READ_CAPABILITY,
+        ) && $this->workerAuthorization->workerCan(
+            $actor,
+            $workspace,
+            $engagement,
+            WorkerInboxService::SEND_CAPABILITY,
+        ));
+
+        if (! $sendEngagement instanceof WorkerEngagement) {
+            throw new AuthorizationException('لا تملك صلاحية تنفيذ هذا الإجراء.');
+        }
+
+        $displayName = $sendEngagement->workerProfile?->display_name
+            ?: $actor->name
+            ?: 'موظف مستقل';
+
+        return [
+            'workspace' => $workspace,
+            'isMember' => false,
+            'isSupervisor' => false,
+            'engagement' => $sendEngagement,
+            'displayName' => $displayName,
+            'actorType' => 'worker',
+        ];
+    }
+
+    private function resolveCurrentOwnerName(Conversation $conversation): ?string
+    {
+        if (is_string($conversation->responder_name) && $conversation->responder_name !== '') {
+            return $conversation->responder_name;
+        }
+
+        if ($conversation->assigned_user_id !== null) {
+            return $conversation->relationLoaded('assignedUser')
+                ? $conversation->assignedUser?->name
+                : $conversation->assignedUser()->value('name');
+        }
+
+        return null;
+    }
+
+    private function publishAndReturn(Conversation $conversation, bool $alreadyFresh = false): Conversation
+    {
+        $fresh = $alreadyFresh ? $conversation : ($conversation->fresh() ?? $conversation);
+        $this->publishConversation($fresh, alreadyFresh: true);
 
         return $fresh;
     }
 
-    private function publishConversation(Conversation $conversation): void
+    private function publishConversation(Conversation $conversation, bool $alreadyFresh = false): void
     {
-        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation);
+        app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation, alreadyFresh: $alreadyFresh);
     }
 }

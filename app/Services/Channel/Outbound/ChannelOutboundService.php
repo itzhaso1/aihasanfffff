@@ -251,6 +251,23 @@ final class ChannelOutboundService
                 return;
             }
 
+            if ((bool) $message->ai_generated && (
+                ! $conversation->isOpen()
+                || ! (bool) $conversation->ai_enabled
+                || ! $conversation->handoffStatusEnum()->allowsAiAutoReply()
+                || $conversation->assigned_user_id !== null
+            )) {
+                $reason = 'تم إلغاء إرسال رد الذكاء الاصطناعي لتولي موظف المحادثة.';
+                $delivery->forceFill([
+                    'status' => ChannelOutboundDelivery::STATUS_FAILED,
+                    'last_error' => $reason,
+                    'failed_at' => now(),
+                ])->save();
+                app(InboxRealtimePublisher::class)->recordMessageDeliveryStatus($message, 'failed', $reason);
+
+                return;
+            }
+
             if ($delivery->channel === 'instagram') {
                 app(InstagramOutboundService::class)->deliverTextForMessage(
                     $conversation,

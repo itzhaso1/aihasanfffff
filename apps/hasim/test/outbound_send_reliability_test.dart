@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,7 @@ import 'package:hasim/core/local_db/inbox_local_store.dart';
 import 'package:hasim/core/local_db/outbox_worker.dart';
 import 'package:hasim/core/logging/messaging_logger.dart';
 import 'package:hasim/core/models/models.dart';
+import 'package:hasim/core/network/api_client.dart';
 import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/storage/inbox_scope.dart';
 import 'package:hasim/core/storage/inbox_session.dart';
@@ -24,6 +27,7 @@ import 'package:hasim/features/conversations/presentation/chat_screen.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_message_bubble.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
 import 'package:hasim/l10n/app_localizations.dart';
+import 'package:hasim/realtime/hybrid_realtime_service.dart';
 import 'package:hasim/realtime/realtime_service.dart';
 import 'package:hasim/realtime/reverb_websocket_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -204,7 +208,7 @@ class _StubRealtime implements RealtimeService {
   @override
   void updateWorkspace(int? workspaceId) {}
   @override
-  void watchConversation(int? conversationId) {
+  void watchConversation(int? conversationId, {int? workspaceId}) {
     if (conversationId != null) _watched.add(conversationId);
   }
   @override
@@ -750,4 +754,144 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     h.container.dispose();
   });
+
+  test('polling fallback updates accepted clock message to sent and 402 fails immediately', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = PrefsStore(await SharedPreferences.getInstance());
+    await prefs.setWorkspaceId(1);
+    final db = InboxDatabase.memory();
+    final store = InboxLocalStore(db);
+    final session = InboxSession()..beginWorkspace(1);
+
+    final dio = Dio(BaseOptions(baseUrl: 'http://127.0.0.1:8000/api/mobile/v1/'));
+    dio.httpClientAdapter = _MockAdapter((options) async {
+      if (options.uri.path.endsWith('/conversations/1/messages') &&
+          options.method == 'GET') {
+        return ResponseBody.fromString(
+          jsonEncode({
+            'success': true,
+            'data': <Object>[],
+            'meta': {
+              'count': 0,
+              'has_more': false,
+              'polled': true,
+              'status_updates': [
+                {
+                  'id': 501,
+                  'conversation_id': 1,
+                  'workspace_id': 1,
+                  'client_id': 'c-poll-501',
+                  'delivery_status': 'sent',
+                },
+              ],
+            },
+          }),
+          200,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
+        );
+      }
+      if (options.uri.path.endsWith('/realtime/config')) {
+        return ResponseBody.fromString(
+          jsonEncode({'success': true, 'data': {'enabled': false}}),
+          200,
+          headers: {
+            Headers.contentTypeHeader: ['application/json'],
+          },
+        );
+      }
+      return ResponseBody.fromString('{}', 404);
+    });
+
+    final api = ApiClient(
+      secureStore: _MemSecure(),
+      prefsStore: prefs,
+      dio: dio,
+    );
+    final repo = ConversationRepository(api, local: store);
+    await store.upsertMessages(1, 1, [
+      const MessageModel(
+        id: 501,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'رسالة موظف',
+        deliveryStatus: 'pending',
+        clientId: 'c-poll-501',
+      ),
+    ]);
+
+    final polling = PollingRealtimeService(repo, workspaceIdOf: () => 1);
+    final hybrid = HybridRealtimeService(
+      polling,
+      apiClient: api,
+      workspaceIdOf: () => 1,
+      repository: repo,
+    );
+
+    final updates = <MessageStatusUpdate>[];
+    final statusSub = hybrid.messageStatusUpdated.listen(updates.add);
+    polling.watchConversation(1);
+    polling.setSeedMaxMessageId(1, 501);
+    polling.triggerPoll();
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    expect(updates, hasLength(1));
+    expect(updates.first.id, 501);
+    expect(updates.first.deliveryStatus, 'sent');
+    final refreshed = await store.getMessages(1, 1);
+    expect(refreshed.first.outboundPhase, OutboundPhase.sent);
+
+    await statusSub.cancel();
+    hybrid.dispose();
+
+    // OutboxWorker treats 402 (plan/feature unavailable) as permanent rather than staying on timer.
+    final failRepo = _ScriptedRepo(api, local: store)
+      ..nextError = ApiException(
+        'هذه الميزة غير متاحة في الباقة الحالية.',
+        statusCode: 402,
+        errorCode: 'feature_not_available',
+      );
+    final worker = OutboxWorker(store: store, repository: failRepo, session: session);
+    await store.enqueueTextSend(
+      workspaceId: 1,
+      conversationId: 1,
+      message: MessageModel(
+        id: -900,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'رسالة معطلة بالخطة',
+        deliveryStatus: 'pending',
+        localPending: true,
+        clientId: 'c-402',
+      ),
+    );
+    await worker.flush(workspaceId: 1);
+    final after402 = (await store.getMessages(1, 1)).firstWhere(
+      (m) => m.clientId == 'c-402',
+    );
+    expect(after402.outboundPhase, OutboundPhase.failed);
+    expect(after402.localFailed, isTrue);
+
+    worker.dispose();
+    await db.close();
+  });
+}
+
+class _MockAdapter implements HttpClientAdapter {
+  _MockAdapter(this.handler);
+
+  final Future<ResponseBody> Function(RequestOptions options) handler;
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? requestStream,
+    Future<void>? cancelFuture,
+  ) => handler(options);
 }

@@ -4,10 +4,8 @@ namespace App\Services\Inbox;
 
 use App\Jobs\Push\SendPushNotificationJob;
 use App\Models\Conversation;
-use App\Models\ConversationUserState;
-use App\Models\DevicePushToken;
 use App\Models\Message;
-use App\Models\Workspace;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
@@ -39,34 +37,22 @@ final class CompanyInboxPushDispatcher
 
     private function dispatch(Message $message, ?Conversation $conversation, int $workspaceId): void
     {
-        $memberIds = Workspace::query()
-            ->whereKey($workspaceId)
-            ->first()
-            ?->users()
-            ->wherePivot('status', 'active')
-            ->pluck('users.id')
-            ->map(fn ($id): int => (int) $id)
-            ->all() ?? [];
-
-        if ($memberIds === []) {
-            return;
-        }
-
-        $mutedUserIds = ConversationUserState::withoutGlobalScopes()
-            ->where('workspace_id', $workspaceId)
-            ->where('conversation_id', $message->conversation_id)
-            ->whereNotNull('muted_at')
-            ->pluck('user_id')
-            ->map(fn ($id): int => (int) $id)
-            ->all();
-
-        $recipientIds = DevicePushToken::query()
-            ->where('workspace_id', $workspaceId)
-            ->whereNull('revoked_at')
-            ->whereIn('user_id', $memberIds)
-            ->when($mutedUserIds !== [], fn ($query) => $query->whereNotIn('user_id', $mutedUserIds))
+        $recipientIds = DB::table('device_push_tokens as dpt')
+            ->join('workspace_users as wu', function ($join) use ($workspaceId): void {
+                $join->on('wu.user_id', '=', 'dpt.user_id')
+                    ->where('wu.workspace_id', '=', $workspaceId)
+                    ->where('wu.status', '=', 'active');
+            })
+            ->leftJoin('conversation_user_states as cus', function ($join) use ($workspaceId, $message): void {
+                $join->on('cus.user_id', '=', 'dpt.user_id')
+                    ->where('cus.workspace_id', '=', $workspaceId)
+                    ->where('cus.conversation_id', '=', $message->conversation_id);
+            })
+            ->where('dpt.workspace_id', '=', $workspaceId)
+            ->whereNull('dpt.revoked_at')
+            ->whereNull('cus.muted_at')
             ->distinct()
-            ->pluck('user_id')
+            ->pluck('dpt.user_id')
             ->map(fn ($id): int => (int) $id)
             ->all();
 

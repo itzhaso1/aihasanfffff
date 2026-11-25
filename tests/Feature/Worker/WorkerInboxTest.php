@@ -58,7 +58,7 @@ class WorkerInboxTest extends TestCase
             ->assertOk()
             ->assertDontSee('عامل مستقل', false)
             ->assertDontSee('موظف الشركة', false)
-            ->assertDontSee('Independent Assignee', false);
+            ->assertSee('Independent Assignee', false);
     }
 
     public function test_worker_with_read_capability_can_read_a_conversation_in_the_workspace(): void

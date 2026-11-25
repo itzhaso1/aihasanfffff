@@ -12,7 +12,9 @@ use App\Models\Worker\WorkerEngagement;
 use App\Models\Worker\WorkerProfile;
 use App\Models\Workspace;
 use App\Services\Audit\AuditLogService;
+use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Conversation\ConversationService;
+use App\Support\Observability\CorrelationContext;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
@@ -91,6 +93,26 @@ final class WorkerInboxService
     }
 
     /**
+     * Resolve and authorize a conversation for an independent worker inside the given workspace.
+     *
+     * @param  list<string>  $additionalCapabilities
+     * @return array{0: Conversation, 1: WorkerEngagement}
+     */
+    public function resolveConversationForWorker(
+        User $worker,
+        Workspace $workspace,
+        int $conversationId,
+        array $additionalCapabilities = [],
+    ): array {
+        return $this->workspaceContext->runFor($workspace, fn (): array => $this->resolveConversation(
+            $worker,
+            $workspace,
+            $conversationId,
+            $additionalCapabilities,
+        ));
+    }
+
+    /**
      * @param  array{content:string, message_type?:string, idempotency_key?:string|null}  $data
      */
     public function sendMessage(
@@ -114,10 +136,11 @@ final class WorkerInboxService
                 [self::SEND_CAPABILITY],
             );
 
-            $idempotencyKey = trim((string) ($data['idempotency_key'] ?? ''));
+            $clientId = trim((string) ($data['client_id'] ?? $data['idempotency_key'] ?? ''));
+            $idempotencyKey = trim((string) ($data['idempotency_key'] ?? $clientId));
 
             /** @var array{message: Message, recentlyCreated: bool, conversation: Conversation, payload: array<string, mixed>} $txResult */
-            $txResult = DB::transaction(function () use ($conversation, $engagement, $worker, $data, $idempotencyKey): array {
+            $txResult = DB::transaction(function () use ($conversation, $engagement, $worker, $data, $idempotencyKey, $clientId): array {
                 Conversation::withoutGlobalScopes()->whereKey($conversation->id)->lockForUpdate()->first();
 
                 if ($idempotencyKey !== '') {
@@ -140,14 +163,23 @@ final class WorkerInboxService
                     throw WorkerInboxException::conversationNotOpen();
                 }
 
+                $direction = in_array(($data['direction'] ?? 'outbound'), ['outbound', 'internal_note'], true)
+                    ? (string) ($data['direction'] ?? 'outbound')
+                    : 'outbound';
+                $metadata = array_filter([
+                    'idempotency_key' => $idempotencyKey !== '' ? $idempotencyKey : null,
+                    'client_id' => $clientId !== '' ? $clientId : ($idempotencyKey !== '' ? $idempotencyKey : null),
+                    'correlation_id' => CorrelationContext::id(),
+                ], fn ($v) => $v !== null);
+
                 $payload = [
                     'customer_id' => $conversation->customer_id,
-                    'direction' => $data['direction'] ?? 'outbound',
+                    'direction' => $direction,
                     'message_type' => $data['message_type'] ?? 'text',
                     'content' => $data['content'],
                     'ai_generated' => false,
                     'worker_engagement_id' => $engagement->id,
-                    'metadata' => $idempotencyKey === '' ? [] : ['idempotency_key' => $idempotencyKey],
+                    'metadata' => $metadata,
                 ];
 
                 $created = $this->conversationService->addMessage(
@@ -167,6 +199,13 @@ final class WorkerInboxService
 
             $message = $txResult['message'];
             if (! $txResult['recentlyCreated']) {
+                if ($message->direction === 'outbound' && $message->delivery_status === 'pending') {
+                    app(ChannelOutboundService::class)->ensureQueuedForMessage(
+                        $txResult['conversation'],
+                        $message,
+                    );
+                }
+
                 return $message;
             }
 
@@ -332,6 +371,10 @@ final class WorkerInboxService
                         'message_type',
                         'content',
                         'ai_generated',
+                        'delivery_status',
+                        'delivered_at',
+                        'read_at',
+                        'metadata',
                         'created_at',
                     ])
                     ->with([
