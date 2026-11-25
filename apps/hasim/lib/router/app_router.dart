@@ -269,7 +269,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/emails/:id',
             builder: (context, state) {
-              final id = int.parse(state.pathParameters['id']!);
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) return const _InvalidRouteScreen();
               final extra = state.extra;
               return EmailDetailScreen(
                 messageId: id,
@@ -333,12 +334,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/customers/:id',
-            builder: (context, state) => CustomerProfileScreen(
-              customerId: int.parse(state.pathParameters['id']!),
-              initialCustomer: state.extra is CustomerModel
-                  ? state.extra as CustomerModel
-                  : null,
-            ),
+            builder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) return const _InvalidRouteScreen();
+              return CustomerProfileScreen(
+                customerId: id,
+                initialCustomer: state.extra is CustomerModel
+                    ? state.extra as CustomerModel
+                    : null,
+              );
+            },
           ),
           GoRoute(
             path: '/customers/:id/edit',
@@ -354,23 +359,60 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/orders/:id',
-            builder: (context, state) => OrderDetailScreen(
-              orderId: int.parse(state.pathParameters['id']!),
-              initialOrder: state.extra is CommerceOrderModel
-                  ? state.extra as CommerceOrderModel
-                  : null,
-            ),
+            builder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) return const _InvalidRouteScreen();
+              return OrderDetailScreen(
+                orderId: id,
+                initialOrder: state.extra is CommerceOrderModel
+                    ? state.extra as CommerceOrderModel
+                    : null,
+              );
+            },
           ),
           GoRoute(
             path: '/conversations/:id',
-            pageBuilder: (context, state) => NoTransitionPage(
-              child: ChatEntryScreen(
-                conversationId: int.parse(state.pathParameters['id']!),
-                initialConversation: state.extra is ConversationModel
-                    ? state.extra as ConversationModel
-                    : null,
-              ),
-            ),
+            pageBuilder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              final child = id == null
+                  ? const _InvalidRouteScreen()
+                  : ChatEntryScreen(
+                      conversationId: id,
+                      initialConversation: state.extra is ConversationModel
+                          ? state.extra as ConversationModel
+                          : null,
+                    );
+              final disableAnim =
+                  MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+              if (disableAnim) {
+                return NoTransitionPage(child: child);
+              }
+              final rtl = Directionality.maybeOf(context) == TextDirection.rtl;
+              final beginOffset = Offset(rtl ? -0.06 : 0.06, 0);
+              return CustomTransitionPage<void>(
+                key: state.pageKey,
+                child: child,
+                transitionDuration: const Duration(milliseconds: 180),
+                reverseTransitionDuration: const Duration(milliseconds: 150),
+                transitionsBuilder: (context, animation, secondaryAnimation, c) {
+                  final curved = CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                    reverseCurve: Curves.easeInCubic,
+                  );
+                  return FadeTransition(
+                    opacity: curved,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: beginOffset,
+                        end: Offset.zero,
+                      ).animate(curved),
+                      child: c,
+                    ),
+                  );
+                },
+              );
+            },
           ),
           GoRoute(
             path: '/stories/create',
@@ -451,8 +493,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/contacts/:id',
-            builder: (context, state) =>
-                ContactDetailScreen(id: int.parse(state.pathParameters['id']!)),
+            builder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              if (id == null) return const _InvalidRouteScreen();
+              return ContactDetailScreen(id: id);
+            },
           ),
           GoRoute(
             path: '/contact-groups',
@@ -493,7 +538,51 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
 class _AuthListenable extends ChangeNotifier {
   _AuthListenable(this.ref) {
-    ref.listen(authControllerProvider, (previous, next) => notifyListeners());
+    _lastSig = _sig(ref.read(authControllerProvider));
+    ref.listen(authControllerProvider, (previous, next) {
+      final nextSig = _sig(next);
+      if (nextSig != _lastSig) {
+        _lastSig = nextSig;
+        notifyListeners();
+      }
+    });
   }
+
   final Ref ref;
+  late String _lastSig;
+
+  static String _sig(AuthState auth) =>
+      '${auth.bootstrapping}:${auth.isAuthenticated}:${auth.isIndependentWorker}:${auth.workspace?.id}:${auth.workspace?.isOwner == true}';
+}
+
+class _InvalidRouteScreen extends StatelessWidget {
+  const _InvalidRouteScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.link_off_rounded, size: 42),
+            const SizedBox(height: 12),
+            const Text('العنصر المطلوب غير صالح أو غير موجود.'),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/conversations');
+                }
+              },
+              child: const Text('العودة'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

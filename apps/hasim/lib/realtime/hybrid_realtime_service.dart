@@ -58,6 +58,7 @@ class HybridRealtimeService
 
   Timer? _configRetryTimer;
   Timer? _catchUpDebounce;
+  Future<void>? _configInFlight;
   int _configRetryAttempts = 0;
   bool _started = false;
   bool _disposed = false;
@@ -67,12 +68,15 @@ class HybridRealtimeService
   bool _explicitlyDisabled = false;
   String? _lastConnectivityKey;
   int? _activeConversationId;
+  int? _lastWorkspaceId;
   final Set<int> _fetchingConversationIds = <int>{};
 
   final _messageController = StreamController<MessageModel>.broadcast();
   final _conversationController =
       StreamController<ConversationModel>.broadcast();
   final _statusController = StreamController<MessageStatusUpdate>.broadcast();
+  final _connectionStateController =
+      StreamController<RealtimeConnectionState>.broadcast();
   final _listController = StreamController<void>.broadcast();
   final _reconnectController = StreamController<void>.broadcast();
   final LinkedHashMap<String, String> _seenSignatures =
@@ -91,6 +95,14 @@ class HybridRealtimeService
   @override
   Stream<MessageStatusUpdate> get messageStatusUpdated =>
       _statusController.stream;
+
+  @override
+  Stream<RealtimeConnectionState> get connectionStateStream =>
+      _connectionStateController.stream;
+
+  @override
+  RealtimeConnectionState get currentConnectionState =>
+      _wsClient?.state ?? RealtimeConnectionState.disconnected;
 
   @override
   Stream<void> get conversationsChanged => _listController.stream;
@@ -113,14 +125,56 @@ class HybridRealtimeService
 
   @override
   Future<void> start() async {
+    if (_disposed) return;
+    final alreadyStarted = _started;
     _started = true;
     _explicitlyDisabled = false;
+    _lastWorkspaceId = _workspaceIdOf?.call();
     _listenToPolling();
     _attachLifecycleObserver();
     _attachConnectivityObserver();
 
-    await _polling.start();
+    if (!alreadyStarted) {
+      await _polling.start();
+    }
     await _attemptConfigAndConnect();
+  }
+
+  @override
+  void updateWorkspace(int? workspaceId) {
+    if (_disposed) return;
+    if (workspaceId != _lastWorkspaceId) {
+      _lastWorkspaceId = workspaceId;
+      _seenSignatures.clear();
+      _polling.updateWorkspace(workspaceId);
+      _wsClient?.updateWorkspace(workspaceId);
+      if (_started && workspaceId != null && workspaceId > 0) {
+        _needsCatchUpSync = true;
+        if (isWebSocketConnected) {
+          _scheduleCatchUpSync();
+        } else if (!_disposed) {
+          _reconnectController.add(null);
+        }
+      }
+      return;
+    }
+    _wsClient?.updateWorkspace(workspaceId);
+  }
+
+  @override
+  Future<void> catchUpConversation(int conversationId, {int afterId = 0}) async {
+    if (!_started || _disposed || conversationId <= 0) return;
+    var resolvedAfter = afterId;
+    final wsId = _workspaceIdOf?.call();
+    if (resolvedAfter <= 0 && wsId != null && _repository != null) {
+      try {
+        resolvedAfter = await _repository.maxCachedServerMessageId(
+          wsId,
+          conversationId,
+        );
+      } catch (_) {}
+    }
+    await _polling.catchUpConversation(conversationId, afterId: resolvedAfter);
   }
 
   void _attachLifecycleObserver() {
@@ -138,46 +192,50 @@ class HybridRealtimeService
     final conn = _connectivity ?? _safeDefaultConnectivity();
     if (conn == null) return;
     try {
-      _connectivitySub = conn.onConnectivityChanged.listen((results) {
-        if (!_started || _disposed) return;
-        final active = results
-            .where((r) => r != ConnectivityResult.none)
-            .map((r) => r.name)
-            .toList()
-          ..sort();
-        final nextKey = active.join(',');
-        final wasOffline = _lastConnectivityKey == '';
-        final interfaceSwitched =
-            _lastConnectivityKey != null &&
-            _lastConnectivityKey != nextKey &&
-            nextKey.isNotEmpty;
-        _lastConnectivityKey = nextKey;
+      _connectivitySub = conn.onConnectivityChanged.listen(
+        (results) {
+          if (!_started || _disposed) return;
+          final active = results
+              .where((r) => r != ConnectivityResult.none)
+              .map((r) => r.name)
+              .toList()
+            ..sort();
+          final nextKey = active.join(',');
+          final wasOffline = _lastConnectivityKey == '';
+          final interfaceSwitched =
+              _lastConnectivityKey != null &&
+              _lastConnectivityKey != nextKey &&
+              nextKey.isNotEmpty;
+          _lastConnectivityKey = nextKey;
 
-        if (nextKey.isEmpty) {
-          _polling.paused = false;
-          return;
-        }
+          if (nextKey.isEmpty) {
+            _polling.paused = false;
+            return;
+          }
 
-        if (!_websocketConfigured && !_explicitlyDisabled) {
-          _configRetryTimer?.cancel();
-          _configRetryTimer = null;
-          _configRetryAttempts = 0;
-          unawaited(_attemptConfigAndConnect());
-          return;
-        }
+          if (!_websocketConfigured && !_explicitlyDisabled) {
+            _configRetryTimer?.cancel();
+            _configRetryTimer = null;
+            _configRetryAttempts = 0;
+            unawaited(_attemptConfigAndConnect());
+            return;
+          }
 
-        if (_wsClient != null) {
-          if (kDebugMode) {
-            debugPrint(
-              '[HYBRID_REALTIME] Connectivity changed ($nextKey); verifying WebSocket...',
+          if (_wsClient != null) {
+            if (kDebugMode) {
+              debugPrint(
+                '[HYBRID_REALTIME] Connectivity changed ($nextKey); verifying WebSocket...',
+              );
+            }
+            _needsCatchUpSync = true;
+            _wsClient!.verifyConnectionOrReconnect(
+              forceCycle: interfaceSwitched && !wasOffline,
             );
           }
-          _needsCatchUpSync = true;
-          _wsClient!.verifyConnectionOrReconnect(
-            forceCycle: interfaceSwitched && !wasOffline,
-          );
-        }
-      });
+        },
+        onError: (_) {},
+        cancelOnError: true,
+      );
     } catch (_) {
       // Tests / missing platform channel.
     }
@@ -220,11 +278,25 @@ class HybridRealtimeService
     }
   }
 
-  Future<void> _attemptConfigAndConnect() async {
+  Future<void> _attemptConfigAndConnect() {
+    if (!_started || _disposed || _websocketConfigured) {
+      return Future<void>.value();
+    }
+    final existing = _configInFlight;
+    if (existing != null) return existing;
+
+    final future = _performConfigAndConnect().whenComplete(() {
+      _configInFlight = null;
+    });
+    _configInFlight = future;
+    return future;
+  }
+
+  Future<void> _performConfigAndConnect() async {
     if (!_started || _disposed || _websocketConfigured) return;
 
     final result = await _loadRemoteConfig();
-    if (!_started || _disposed) return;
+    if (!_started || _disposed || _websocketConfigured) return;
 
     final config = result.config;
     if (result.explicitDisabled) {
@@ -310,6 +382,9 @@ class HybridRealtimeService
     _wsStatusSub = client.messageStatusUpdated.listen(_onStatusUpdated);
 
     _wsStateSub = client.connectionState.listen((state) {
+      if (!_disposed && !_connectionStateController.isClosed) {
+        _connectionStateController.add(state);
+      }
       if (state == RealtimeConnectionState.connected) {
         if (kDebugMode) {
           debugPrint('[HYBRID_REALTIME] WebSocket connected. Pausing polling.');
@@ -359,10 +434,12 @@ class HybridRealtimeService
       }
       await _polling.catchUpConversation(activeId, afterId: seedMax);
     }
+    if (_disposed) return;
     _reconnectController.add(null);
   }
 
   void _onIncomingMessage(MessageModel message) {
+    if (_disposed) return;
     final sigKey = message.id > 0
         ? 's:${message.id}'
         : 'c:${message.clientId ?? message.id}';
@@ -378,6 +455,12 @@ class HybridRealtimeService
     }
 
     _messageController.add(message);
+    if (kDebugMode) {
+      debugPrint(
+        '[REALTIME_OBS] Delivered conv=${message.conversationId} msg=${message.id} '
+        'sender=${message.senderUserId ?? 0} client=${message.clientId ?? '-'}',
+      );
+    }
     unawaited(_persistRealtimeMessage(message));
   }
 
@@ -414,6 +497,7 @@ class HybridRealtimeService
   }
 
   void _onConversationUpdated(ConversationModel conversation) {
+    if (_disposed) return;
     _conversationController.add(conversation);
     unawaited(_persistRealtimeConversation(conversation));
   }
@@ -451,6 +535,7 @@ class HybridRealtimeService
   }
 
   void _onStatusUpdated(MessageStatusUpdate update) {
+    if (_disposed) return;
     _statusController.add(update);
     final repo = _repository;
     final wsId = _workspaceIdOf?.call();
@@ -555,10 +640,13 @@ class HybridRealtimeService
 
   bool get websocketConfigured => _websocketConfigured;
   @override
+  int? get activeConversationId => _activeConversationId;
+  @override
   bool get isWebSocketConnected => _wsClient?.isConnected ?? false;
 
   @override
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
     if (_lifecycleObserved) {
       try {
@@ -572,6 +660,7 @@ class HybridRealtimeService
     _messageController.close();
     _conversationController.close();
     _statusController.close();
+    _connectionStateController.close();
     _listController.close();
     _reconnectController.close();
   }

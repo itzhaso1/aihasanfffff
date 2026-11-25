@@ -9,6 +9,38 @@ class AppTheme {
   static const Color brand = HasimTokens.primary;
   static const Color brandDark = HasimTokens.accentDark;
 
+  static const List<String> cairoFallback = [
+    'Cairo',
+    'Segoe UI',
+    'Arial',
+    'Tahoma',
+    'sans-serif',
+  ];
+
+  static String? _cairoFamilyCache;
+  static String? get cairoFamily =>
+      _cairoFamilyCache ??= GoogleFonts.cairo().fontFamily;
+
+  static ThemeData? _lightCache;
+  static ThemeData? _darkCache;
+
+  static TextStyle cairoStyle({
+    double? fontSize,
+    FontWeight? fontWeight,
+    double? height,
+    Color? color,
+  }) {
+    return TextStyle(
+      fontFamily: cairoFamily,
+      fontFamilyFallback: cairoFallback,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      height: height,
+      color: color,
+      letterSpacing: 0,
+    );
+  }
+
   static ColorScheme lightScheme() {
     final base = Color(AppConfig.brand.primary);
     return ColorScheme.fromSeed(
@@ -64,15 +96,11 @@ class AppTheme {
       double height = 1.45,
       Color? override,
     }) {
-      return GoogleFonts.cairo(
-        textStyle: const TextStyle(
-          fontFamilyFallback: ['Segoe UI', 'Arial', 'Tahoma', 'sans-serif'],
-        ),
+      return cairoStyle(
         color: override ?? color,
         fontSize: size,
         fontWeight: weight,
         height: height,
-        letterSpacing: 0,
       );
     }
 
@@ -105,20 +133,16 @@ class AppTheme {
     );
   }
 
-  static ThemeData light() {
+  static ThemeData light() => _lightCache ??= _buildLight();
+
+  static ThemeData _buildLight() {
     final scheme = lightScheme();
     final textTheme = cairoTheme(
       color: HasimTokens.text,
       muted: HasimTokens.muted,
     );
-    final cairoFamily = GoogleFonts.cairo().fontFamily;
-    const cairoFallback = [
-      'Cairo',
-      'Segoe UI',
-      'Arial',
-      'Tahoma',
-      'sans-serif',
-    ];
+    final cairoFamily = AppTheme.cairoFamily;
+    const cairoFallback = AppTheme.cairoFallback;
 
     return ThemeData(
       useMaterial3: true,
@@ -323,20 +347,16 @@ class AppTheme {
     );
   }
 
-  static ThemeData dark() {
+  static ThemeData dark() => _darkCache ??= _buildDark();
+
+  static ThemeData _buildDark() {
     final scheme = darkScheme();
     final textTheme = cairoTheme(
       color: Colors.white,
       muted: const Color(0xFF9E9E9E),
     );
-    final cairoFamily = GoogleFonts.cairo().fontFamily;
-    const cairoFallback = [
-      'Cairo',
-      'Segoe UI',
-      'Arial',
-      'Tahoma',
-      'sans-serif',
-    ];
+    final cairoFamily = AppTheme.cairoFamily;
+    const cairoFallback = AppTheme.cairoFallback;
 
     return ThemeData(
       useMaterial3: true,

@@ -12,6 +12,7 @@ class PrefsStore {
   static const _workspaceKey = 'workspace_id';
   static const _apiBaseKey = 'api_base_override';
   static const _themeModeKey = 'theme_mode';
+  static const _localeKey = 'app_locale';
   static const _chatWallpaperKey = 'chat_wallpaper';
   static const _chatOutgoingBubbleColorKey = 'chat_outgoing_bubble_color';
   static const _conversationThemesKey = 'conversation_chat_themes';
@@ -92,6 +93,13 @@ class PrefsStore {
 
   Future<void> setThemeMode(String mode) async {
     await _prefs.setString(_themeModeKey, mode);
+  }
+
+  /// `ar` | `en`
+  String get localeCode => _prefs.getString(_localeKey) == 'en' ? 'en' : 'ar';
+
+  Future<void> setLocaleCode(String code) async {
+    await _prefs.setString(_localeKey, code == 'en' ? 'en' : 'ar');
   }
 
   /// معرّف خلفية شاشة المحادثة (يُطبَّع عند القراءة في [ChatWallpaperController]).

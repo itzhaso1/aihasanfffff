@@ -6,61 +6,120 @@ class SkeletonBox extends StatelessWidget {
     this.height = 16,
     this.width,
     this.radius = 10,
+    this.color,
   });
 
   final double height;
   final double? width;
   final double radius;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final base = Theme.of(context).brightness == Brightness.dark
-        ? Colors.white12
-        : Colors.black.withValues(alpha: 0.06);
-    return Container(
-      height: height,
-      width: width,
+    final base =
+        color ??
+        (Theme.of(context).brightness == Brightness.dark
+            ? Colors.white12
+            : Colors.black.withValues(alpha: 0.06));
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: base,
         borderRadius: BorderRadius.circular(radius),
       ),
+      child: SizedBox(height: height, width: width),
     );
   }
 }
 
-class SkeletonList extends StatelessWidget {
+class SkeletonList extends StatefulWidget {
   const SkeletonList({super.key, this.itemCount = 6, this.padding});
 
   final int itemCount;
   final EdgeInsetsGeometry? padding;
 
   @override
+  State<SkeletonList> createState() => _SkeletonListState();
+}
+
+class _SkeletonListState extends State<SkeletonList>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+  bool _animating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final disableAnimations =
+        MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (disableAnimations && _animating) {
+      _pulse.stop();
+      _animating = false;
+    } else if (!disableAnimations && !_animating) {
+      _animating = true;
+      _pulse.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: padding ?? const EdgeInsets.all(16),
-      itemCount: itemCount,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        return Row(
-          children: [
-            const SkeletonBox(height: 48, width: 48, radius: 24),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final titleWidth = MediaQuery.sizeOf(context).width * 0.45;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fromColor = dark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.045);
+    final toColor = dark
+        ? Colors.white.withValues(alpha: 0.15)
+        : Colors.black.withValues(alpha: 0.09);
+
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _pulse,
+        builder: (context, _) {
+          final fill = Color.lerp(fromColor, toColor, _pulse.value) ?? fromColor;
+          return ListView.separated(
+            padding: widget.padding ?? const EdgeInsets.all(16),
+            itemCount: widget.itemCount,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              return Row(
                 children: [
-                  SkeletonBox(
-                    height: 14,
-                    width: MediaQuery.sizeOf(context).width * 0.45,
+                  SkeletonBox(height: 48, width: 48, radius: 24, color: fill),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonBox(height: 14, width: titleWidth, color: fill),
+                        const SizedBox(height: 8),
+                        SkeletonBox(
+                          height: 12,
+                          width: double.infinity,
+                          color: fill,
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  const SkeletonBox(height: 12, width: double.infinity),
                 ],
-              ),
-            ),
-          ],
-        );
-      },
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

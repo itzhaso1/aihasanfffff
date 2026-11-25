@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:hasim/core/models/models.dart';
@@ -108,12 +109,11 @@ class ReverbWebSocketClient {
 
   void watchConversation(int? conversationId) {
     final prev = _watchingConversationId;
-    if (prev == conversationId) return;
     _watchingConversationId = conversationId;
     _rebuildDesiredChannels();
     if (!isConnected || _workspaceId == null) return;
 
-    if (prev != null && prev > 0) {
+    if (prev != null && prev > 0 && prev != conversationId) {
       final oldChannel = _conversationChannelName(_workspaceId!, prev);
       _unsubscribe(oldChannel);
     }
@@ -122,7 +122,9 @@ class ReverbWebSocketClient {
         _workspaceId!,
         conversationId,
       );
-      unawaited(_subscribePrivate(newChannel));
+      if (!_confirmedChannels.contains(newChannel)) {
+        unawaited(_subscribePrivate(newChannel));
+      }
     }
   }
 
@@ -246,6 +248,7 @@ class ReverbWebSocketClient {
   }
 
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
     unawaited(disconnect());
     _messageController.close();
@@ -258,7 +261,7 @@ class ReverbWebSocketClient {
   }
 
   void _onMessage(WebSocket socket, dynamic raw) {
-    if (!identical(_socket, socket) || raw == null) return;
+    if (_disposed || !identical(_socket, socket) || raw == null) return;
     _pingTimeoutTimer?.cancel();
     _pingTimeoutTimer = null;
     try {
@@ -453,6 +456,14 @@ class ReverbWebSocketClient {
     _scheduleReconnect();
   }
 
+  static final _jitterRng = math.Random();
+
+  static Duration _backoffWithJitter(int baseSeconds, {int maxSeconds = 15}) {
+    final cappedMs = baseSeconds.clamp(1, maxSeconds) * 1000;
+    final jitterFactor = 0.75 + _jitterRng.nextDouble() * 0.5;
+    return Duration(milliseconds: (cappedMs * jitterFactor).round());
+  }
+
   void _scheduleReconnect() {
     if (_disposed || _manualDisconnect) return;
     if (_reconnectTimer != null) return;
@@ -468,17 +479,17 @@ class ReverbWebSocketClient {
     _inFlightAuthChannels.clear();
     _setState(RealtimeConnectionState.reconnecting);
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, max 12s
-    final delaySeconds = (1 << _reconnectAttempts).clamp(1, 12);
+    // Exponential backoff with jitter: 1s..12s (±25%) prevents reconnect storms
+    final delay = _backoffWithJitter(1 << _reconnectAttempts, maxSeconds: 12);
     _reconnectAttempts = (_reconnectAttempts + 1).clamp(0, 5);
 
     if (kDebugMode) {
       debugPrint(
-        '[REALTIME_WS] Reconnecting in ${delaySeconds}s (attempt $_reconnectAttempts)...',
+        '[REALTIME_WS] Reconnecting in ${delay.inMilliseconds}ms (attempt $_reconnectAttempts)...',
       );
     }
 
-    _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
+    _reconnectTimer = Timer(delay, () {
       _reconnectTimer = null;
       if (!_disposed && !_manualDisconnect) {
         unawaited(connect());
@@ -575,7 +586,7 @@ class ReverbWebSocketClient {
     final attempts = (_subscribeRetryAttempts[channel] ?? 0) + 1;
     if (attempts > 5) return;
     _subscribeRetryAttempts[channel] = attempts;
-    final delay = Duration(seconds: (1 << (attempts - 1)).clamp(1, 15));
+    final delay = _backoffWithJitter(1 << (attempts - 1), maxSeconds: 15);
     _subscribeRetryTimers[channel] = Timer(delay, () {
       _subscribeRetryTimers.remove(channel);
       if (!_disposed && isConnected && _desiredChannels.contains(channel)) {
@@ -694,7 +705,9 @@ class ReverbWebSocketClient {
   }
 
   void _setState(RealtimeConnectionState next) {
-    if (_state == next) return;
+    if (_disposed || _connectionStateController.isClosed || _state == next) {
+      return;
+    }
     _state = next;
     _connectionStateController.add(next);
   }

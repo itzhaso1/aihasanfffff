@@ -16,10 +16,15 @@ class MessageStatusUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
+    public ?string $correlationId;
+
     public function __construct(
         public Message $message,
         public ?string $errorReason = null,
-    ) {}
+        ?string $correlationId = null,
+    ) {
+        $this->correlationId = $correlationId ?? CorrelationContext::id();
+    }
 
     public function broadcastConnection(): ?string
     {
@@ -64,7 +69,7 @@ class MessageStatusUpdated implements ShouldBroadcastNow
             'delivered_at' => optional($this->message->delivered_at)?->toIso8601String(),
             'read_at' => optional($this->message->read_at)?->toIso8601String(),
             'error_reason' => $this->errorReason,
-            'correlation_id' => CorrelationContext::id(),
+            'correlation_id' => $this->correlationId ?? CorrelationContext::id(),
             'broadcast_at' => now()->toIso8601String(),
         ];
     }

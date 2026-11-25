@@ -17,13 +17,20 @@ class HasimApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Ensure auth controller is created (wires 401 handler) even on splash.
-    final auth = ref.watch(authControllerProvider);
+    final showNavigation = ref.watch(
+      authControllerProvider.select(
+        (auth) =>
+            auth.isAuthenticated &&
+            (auth.isIndependentWorker || auth.workspace != null),
+      ),
+    );
     final themeMode = ref.watch(themeModeControllerProvider);
+    final locale = ref.watch(localeControllerProvider);
     final router = ref.watch(appRouterProvider);
     final chromeLocation = ref.watch(appChromeLocationProvider);
-    final showNavigation =
-        auth.isAuthenticated &&
-        (auth.isIndependentWorker || auth.workspace != null);
+    final direction = locale.languageCode == 'en'
+        ? TextDirection.ltr
+        : TextDirection.rtl;
 
     return MaterialApp.router(
       title: 'حاسم',
@@ -31,7 +38,7 @@ class HasimApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
-      locale: const Locale('ar'),
+      locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -49,7 +56,7 @@ class HasimApp extends ConsumerWidget {
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: overlay,
           child: Directionality(
-            textDirection: TextDirection.rtl,
+            textDirection: direction,
             child: DesktopWindowFrame(
               showTitleBar: chromeLocation != '/splash',
               showNavRail: showNavigation,

@@ -34,14 +34,16 @@ class OutboxWorker {
 
   void start() {
     try {
-      _connectivitySub ??= _connectivity.onConnectivityChanged.listen((
-        results,
-      ) {
-        final online = results.any((r) => r != ConnectivityResult.none);
-        if (online) {
-          unawaited(flush(workspaceId: _session.workspaceId));
-        }
-      });
+      _connectivitySub ??= _connectivity.onConnectivityChanged.listen(
+        (results) {
+          final online = results.any((r) => r != ConnectivityResult.none);
+          if (online) {
+            unawaited(flush(workspaceId: _session.workspaceId));
+          }
+        },
+        onError: (_) {},
+        cancelOnError: true,
+      );
     } catch (_) {
       // Tests / missing plugin: connectivity is only a hint.
     }

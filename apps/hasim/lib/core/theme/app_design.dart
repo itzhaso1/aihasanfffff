@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 
 /// أسماء نظام التصميم. القيم نفسها في [HasimTokens] حتى لا يتكرر اللون.
@@ -30,7 +30,7 @@ abstract final class AppRadius {
 
 abstract final class AppTextStyles {
   static TextStyle screenTitle({Color color = AppColors.text}) =>
-      GoogleFonts.cairo(
+      AppTheme.cairoStyle(
         fontSize: 20,
         fontWeight: FontWeight.w700,
         height: 1.25,
@@ -38,14 +38,14 @@ abstract final class AppTextStyles {
       );
 
   static TextStyle sectionTitle({Color color = AppColors.text}) =>
-      GoogleFonts.cairo(
+      AppTheme.cairoStyle(
         fontSize: 16,
         fontWeight: FontWeight.w700,
         height: 1.35,
         color: color,
       );
 
-  static TextStyle body({Color color = AppColors.text}) => GoogleFonts.cairo(
+  static TextStyle body({Color color = AppColors.text}) => AppTheme.cairoStyle(
     fontSize: 16,
     fontWeight: FontWeight.w600,
     height: 1.35,
@@ -53,7 +53,7 @@ abstract final class AppTextStyles {
   );
 
   static TextStyle secondary({Color color = AppColors.secondary}) =>
-      GoogleFonts.cairo(
+      AppTheme.cairoStyle(
         fontSize: 13,
         fontWeight: FontWeight.w500,
         height: 1.4,

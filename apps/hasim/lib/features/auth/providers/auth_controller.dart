@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/local_db/inbox_local_store.dart';
@@ -646,7 +647,12 @@ class AuthController extends StateNotifier<AuthState> {
     await _ref.read(prefsStoreProvider).setCompanyPushAllowed(false);
     await _ref.read(prefsStoreProvider).setWorkspaceId(null);
     if (!mounted || epoch != _bootstrapEpoch) return;
+    _ref.read(apiClientProvider).clearPendingDedups();
     _ref.read(apiClientProvider).resetUnauthorizedGate();
+    try {
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+    } catch (_) {}
     state = const AuthState(bootstrapping: false);
     _syncWorkerProfileId();
   }

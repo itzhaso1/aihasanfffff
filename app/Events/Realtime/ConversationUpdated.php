@@ -108,7 +108,7 @@ class ConversationUpdated implements ShouldBroadcastNow
                     'phone' => $customer->phone,
                 ] : null,
                 'broadcast_at' => now()->toIso8601String(),
-                'correlation_id' => CorrelationContext::id(),
+                'correlation_id' => $this->correlationId ?? CorrelationContext::id(),
             ];
         });
     }

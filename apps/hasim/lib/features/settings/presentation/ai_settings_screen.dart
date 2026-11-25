@@ -4,10 +4,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/config/app_config.dart';
 import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
@@ -27,14 +27,14 @@ import 'package:hasim/l10n/app_localizations.dart';
 part 'ai_employees_tab.dart';
 part 'company_workers_section.dart';
 
-TextStyle _aiTitle(BuildContext context) => GoogleFonts.cairo(
+TextStyle _aiTitle(BuildContext context) => AppTheme.cairoStyle(
   fontSize: 14,
   fontWeight: FontWeight.w600,
   height: 1.2,
   color: HasimTokens.inkColor(context),
 );
 
-TextStyle _aiMuted(BuildContext context) => GoogleFonts.cairo(
+TextStyle _aiMuted(BuildContext context) => AppTheme.cairoStyle(
   fontSize: 11,
   fontWeight: FontWeight.w500,
   height: 1.2,
@@ -46,7 +46,7 @@ TabBar _aiTabs(
   TabController controller,
   List<Widget> tabs,
 ) {
-  final label = GoogleFonts.cairo(
+  final label = AppTheme.cairoStyle(
     fontSize: 13,
     fontWeight: FontWeight.w600,
     height: 1.35,

@@ -272,6 +272,41 @@ const formatTimeNow = () => {
     return `${hours}:${minutes} ${ampm}`;
 };
 
+const generateClientTempId = (prefix = 'temp') =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const renderDeliveryStatusSvg = (status) => {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'failed') {
+        return `<svg class="h-3 w-3 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`;
+    }
+    if (normalized === 'pending' || normalized === 'sending') {
+        return `<svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"/></svg>`;
+    }
+    if (normalized === 'delivered') {
+        return `<svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5"/></svg>`;
+    }
+    if (normalized === 'read') {
+        return `<svg class="h-3 w-3 text-[#06C2A4]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5"/></svg>`;
+    }
+    return `<svg class="h-3 w-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7"/></svg>`;
+};
+
+const updateMessageDeliveryStatus = (update) => {
+    const list = document.getElementById('inbox-message-list');
+    if (!list || !update) return;
+    let node = update.id ? list.querySelector(`[data-message-id="${update.id}"]`) : null;
+    const cid = update.client_id || update.idempotency_key;
+    if (!node && cid) {
+        node = list.querySelector(`[data-temp-id="${cid}"]`);
+    }
+    if (!node) return;
+    const tick = node.querySelector('[data-delivery-tick]');
+    if (tick) {
+        tick.innerHTML = renderDeliveryStatusSvg(update.delivery_status);
+    }
+};
+
 const appendInboxMessage = (payload, { optimistic = false } = {}) => {
     const list = document.getElementById('inbox-message-list');
     if (!list || !payload) {
@@ -286,10 +321,32 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
 
     const existingId = payload.id ? list.querySelector(`[data-message-id="${payload.id}"]`) : null;
     if (existingId) {
+        if (Array.isArray(payload.attachments) && payload.attachments.length > 0 && !existingId.querySelector('[data-attachments-wrap], [data-media-viewer]')) {
+            const bubble = existingId.querySelector('.hs-inbox-message-bubble');
+            if (bubble) {
+                const attachmentsWrap = document.createElement('div');
+                attachmentsWrap.className = 'mb-2';
+                attachmentsWrap.dataset.attachmentsWrap = '1';
+                attachmentsWrap.innerHTML = renderAttachmentsGridHtml(payload.attachments, payload);
+                bubble.prepend(attachmentsWrap);
+            }
+        }
+        if (payload.delivery_status) {
+            const tick = existingId.querySelector('[data-delivery-tick]');
+            if (tick) {
+                tick.innerHTML = renderDeliveryStatusSvg(payload.delivery_status);
+            }
+        }
         return existingId;
     }
 
     const tempId = payload.temp_id || payload.client_id || payload.idempotency_key;
+    if (tempId && payload.id) {
+        const uploadPreview = list.querySelector(`[data-upload-temp-id="${tempId}"]`);
+        if (uploadPreview) {
+            uploadPreview.remove();
+        }
+    }
     if (tempId && !payload.id) {
         const tempNode = list.querySelector(`[data-temp-id="${tempId}"]`);
         if (tempNode) {
@@ -303,7 +360,7 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
         if (tempId) {
             matchingTemp = list.querySelector(`[data-temp-id="${tempId}"]`);
         }
-        if (!matchingTemp) {
+        if (!matchingTemp && !tempId) {
             const pendingNodes = list.querySelectorAll('[data-temp-id]:not([data-message-id])');
             for (const p of pendingNodes) {
                 const txt = p.querySelector('.whitespace-pre-wrap');
@@ -319,6 +376,10 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
             const timeEl = matchingTemp.querySelector('.mt-1 span');
             if (timeEl && payload.created_at_time) {
                 timeEl.textContent = payload.created_at_time;
+            }
+            const tick = matchingTemp.querySelector('[data-delivery-tick]');
+            if (tick) {
+                tick.innerHTML = renderDeliveryStatusSvg(payload.delivery_status || 'sent');
             }
             return matchingTemp;
         }
@@ -389,7 +450,10 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
     if (outbound && !isInternalNote) {
         const checkmark = document.createElement('span');
         checkmark.className = 'inline-flex items-center';
-        checkmark.innerHTML = `<svg class="h-3 w-3 text-[#06C2A4]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m4.5 12.75 4 4 9.5-9.5m-5 9.5 4 4 9.5-9.5" /></svg>`;
+        checkmark.dataset.deliveryTick = '1';
+        checkmark.innerHTML = renderDeliveryStatusSvg(
+            optimistic ? 'pending' : (payload.delivery_status || 'sent')
+        );
         footer.appendChild(checkmark);
     }
 
@@ -866,7 +930,7 @@ const bindComposeForm = () => {
             submitButton.disabled = true;
         }
 
-        const tempId = `temp-${Date.now()}`;
+        const tempId = generateClientTempId('temp');
         const formData = new FormData(form);
         const direction = formData.get('direction') || 'outbound';
         const content = String(formData.get('content') || '').trim();
@@ -1128,7 +1192,7 @@ const uploadMediaBatch = (files, caption = '') => {
     if (!form || files.length === 0) return;
 
     const actionUrl = form.action;
-    const tempId = `temp-upload-${Date.now()}`;
+    const tempId = generateClientTempId('temp-upload');
     const firstFile = files[0];
     const isImage = firstFile.type.startsWith('image/');
 
@@ -1142,7 +1206,7 @@ const uploadMediaBatch = (files, caption = '') => {
 
     const wrap = document.createElement('div');
     wrap.className = 'hs-inbox-message-row hs-inbox-message-row--sent';
-    wrap.dataset.tempId = tempId;
+    wrap.dataset.uploadTempId = tempId;
 
     const bubble = document.createElement('div');
     bubble.className = 'hs-inbox-message-bubble max-w-[88%] sm:max-w-[75%] rounded-2xl px-3.5 py-2.5 rounded-bl-xs bg-[#E8FAF6] text-slate-900 border border-[#C9F0E8] shadow-2xs space-y-2';
@@ -1200,6 +1264,8 @@ const uploadMediaBatch = (files, caption = '') => {
     formData.delete('content');
     formData.append('content', caption);
     formData.set('message_type', files.some((f) => f.type.startsWith('image/')) ? 'image' : 'file');
+    formData.set('client_id', tempId);
+    formData.set('metadata_json', JSON.stringify({ client_id: tempId, idempotency_key: tempId }));
 
     files.forEach((f) => {
         formData.append('attachments[]', f);
@@ -1753,6 +1819,7 @@ const bootInbox = (event) => {
 
     window.__INBOX_UI__ = {
         appendInboxMessage,
+        updateMessageDeliveryStatus,
         scrollMessagesToBottom,
         isNearBottom,
         updateConversationInSidebar,

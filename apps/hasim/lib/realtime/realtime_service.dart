@@ -2,21 +2,31 @@ import 'dart:async';
 
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/features/conversations/data/conversation_repository.dart';
+import 'package:hasim/realtime/reverb_websocket_client.dart';
 
 abstract class RealtimeService {
   Stream<MessageModel> get messageCreated;
   Stream<ConversationModel> get conversationUpdated => const Stream.empty();
   Stream<MessageStatusUpdate> get messageStatusUpdated => const Stream.empty();
+  Stream<RealtimeConnectionState> get connectionStateStream =>
+      const Stream.empty();
   Stream<void> get conversationsChanged;
   Stream<void> get reconnectSyncRequested => const Stream.empty();
   Stream<Map<String, dynamic>> get typingActivity;
   Stream<Map<String, dynamic>> get presenceActivity;
   bool get isWebSocketConnected => false;
+  RealtimeConnectionState get currentConnectionState =>
+      isWebSocketConnected
+      ? RealtimeConnectionState.connected
+      : RealtimeConnectionState.disconnected;
+  int? get activeConversationId => null;
   Future<void> start();
   Future<void> stop();
+  void updateWorkspace(int? workspaceId) {}
   void watchConversation(int? conversationId);
   void unwatchConversation(int conversationId);
   void setSeedMaxMessageId(int conversationId, int maxServerId) {}
+  Future<void> catchUpConversation(int conversationId, {int afterId = 0}) async {}
   void triggerPoll();
   void dispose();
 }
@@ -43,6 +53,7 @@ class PollingRealtimeService implements RealtimeService {
   final Set<int> _deliveredMessageIds = <int>{};
   int _lastMaxMessageId = 0;
   int _pollGeneration = 0;
+  bool _disposed = false;
 
   /// When true (e.g. WebSocket is active and streaming), periodic poll calls are skipped
   /// to save CPU, network, and prevent constant SQLite re-reads.
@@ -75,6 +86,17 @@ class PollingRealtimeService implements RealtimeService {
   bool get isWebSocketConnected => false;
 
   @override
+  Stream<RealtimeConnectionState> get connectionStateStream =>
+      const Stream.empty();
+
+  @override
+  RealtimeConnectionState get currentConnectionState =>
+      RealtimeConnectionState.disconnected;
+
+  @override
+  int? get activeConversationId => _watchingConversationId;
+
+  @override
   void setSeedMaxMessageId(int conversationId, int maxServerId) {
     if (_watchingConversationId == conversationId &&
         maxServerId > _lastMaxMessageId) {
@@ -97,6 +119,18 @@ class PollingRealtimeService implements RealtimeService {
     _pollGeneration++;
     _listTimer?.cancel();
     _chatTimer?.cancel();
+  }
+
+  @override
+  void updateWorkspace(int? workspaceId) {
+    _pollGeneration++;
+    _deliveredMessageIds.clear();
+    _lastMaxMessageId = 0;
+    if (_watchingConversationId != null && !paused) {
+      _pollChat();
+    } else if (!paused) {
+      _listController.add(null);
+    }
   }
 
   @override
@@ -183,6 +217,7 @@ class PollingRealtimeService implements RealtimeService {
   }
 
   /// Run an explicit incremental catch-up using known [afterId] without flipping polling timers.
+  @override
   Future<void> catchUpConversation(int conversationId, {int afterId = 0}) async {
     if (_watchingConversationId != conversationId) return;
     setSeedMaxMessageId(conversationId, afterId);
@@ -191,6 +226,8 @@ class PollingRealtimeService implements RealtimeService {
 
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     stop();
     _messageController.close();
     _conversationController.close();
@@ -231,10 +268,26 @@ class NoopRealtimeService implements RealtimeService {
   Stream<Map<String, dynamic>> get presenceActivity => _presenceController.stream;
   @override
   bool get isWebSocketConnected => false;
+
+  @override
+  Stream<RealtimeConnectionState> get connectionStateStream =>
+      const Stream.empty();
+
+  @override
+  RealtimeConnectionState get currentConnectionState =>
+      RealtimeConnectionState.disconnected;
+
+  @override
+  int? get activeConversationId => null;
   @override
   Future<void> start() async {}
   @override
   Future<void> stop() async {}
+  @override
+  void updateWorkspace(int? workspaceId) {}
+  @override
+  Future<void> catchUpConversation(int conversationId, {int afterId = 0}) async {}
+
   @override
   void watchConversation(int? conversationId) {}
   @override

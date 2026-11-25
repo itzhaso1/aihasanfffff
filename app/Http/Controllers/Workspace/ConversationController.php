@@ -355,7 +355,14 @@ class ConversationController extends Controller
         }
 
         try {
-            $sentMessage = $this->conversationService->addMessage($conversation, $payload, $request->user(), $uploadedFiles);
+            $dispatchInline = ! ($payload['direction'] === 'outbound' && $request->user() !== null);
+            $sentMessage = $this->conversationService->addMessage(
+                $conversation,
+                $payload,
+                $request->user(),
+                $uploadedFiles,
+                dispatchSideEffects: $dispatchInline,
+            );
         } catch (InvalidArgumentException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
@@ -403,8 +410,18 @@ class ConversationController extends Controller
                     'أرسل الموظف رسالة جديدة',
                 );
             }
+
+            if ($sentMessage->wasRecentlyCreated) {
+                $this->conversationService->dispatchPostCommitSideEffects(
+                    $conversation,
+                    $sentMessage,
+                    $actor,
+                    $payload,
+                );
+            } else {
+                app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation);
+            }
             $conversation = $conversation->fresh() ?? $conversation;
-            app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation);
         }
 
         if ($sentMessage->wasRecentlyCreated
@@ -561,6 +578,9 @@ class ConversationController extends Controller
             'message_type' => $message->message_type,
             'content' => $message->content,
             'ai_generated' => (bool) $message->ai_generated,
+            'delivery_status' => $message->delivery_status,
+            'delivered_at' => optional($message->delivered_at)?->toIso8601String(),
+            'read_at' => optional($message->read_at)?->toIso8601String(),
             'is_internal_note' => $isInternalNote,
             'sender_name' => $senderName,
             'created_at_time' => optional($message->created_at)?->format('h:i A'),

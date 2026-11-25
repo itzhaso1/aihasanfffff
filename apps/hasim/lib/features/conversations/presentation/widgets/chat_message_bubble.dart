@@ -137,7 +137,7 @@ class ChatMessageBubble extends StatelessWidget {
     );
     final failed = message.localFailed;
     final bg = failed
-        ? Colors.red.shade50
+        ? HasimTokens.dangerSoftColor(context)
         : (mine
               ? ChatBubbleColorCatalog.outgoingBubble(
                   context,
@@ -150,6 +150,45 @@ class ChatMessageBubble extends StatelessWidget {
 
     final openMenu = onContextMenu;
     final bubbleTap = selectionMode ? onToggleSelected : onRetry;
+
+    final Widget decoratedBubble = DecoratedBox(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: onPhysicalLeft ? _outboundRadius : _inboundRadius,
+        border: failed
+            ? Border.all(
+                color: HasimTokens.danger.withValues(alpha: 0.45),
+                width: 0.9,
+              )
+            : null,
+        boxShadow: _bubbleShadow,
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          compact ? 8 : 10,
+          compact ? 5 : 6,
+          compact ? 8 : 10,
+          compact ? 4 : 5,
+        ),
+        child: AbsorbPointer(
+          absorbing: selectionMode,
+          child: _BubbleBody(
+            message: message,
+            mine: mine,
+            failed: failed,
+            showCaption: showCaption,
+            fg: fg,
+            meta: meta,
+            l10n: l10n,
+            pinned: pinned,
+            starred: starred,
+            onImageTap: onImageTap,
+            onMediaUrlExpired: onMediaUrlExpired,
+            onOpenFailed: onOpenFailed,
+          ),
+        ),
+      ),
+    );
 
     final row = SizedBox(
       width: double.infinity,
@@ -177,43 +216,9 @@ class ChatMessageBubble extends StatelessWidget {
                       maxWidth ??
                       MediaQuery.sizeOf(context).width * bubbleMaxFraction,
                 ),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: onPhysicalLeft
-                        ? _outboundRadius
-                        : _inboundRadius,
-                    boxShadow: _bubbleShadow,
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      compact ? 8 : 10,
-                      compact ? 5 : 6,
-                      compact ? 8 : 10,
-                      compact ? 4 : 5,
-                    ),
-                    child: Directionality(
-                      textDirection: TextDirection.rtl,
-                      child: AbsorbPointer(
-                        absorbing: selectionMode,
-                        child: _BubbleBody(
-                          message: message,
-                          mine: mine,
-                          failed: failed,
-                          showCaption: showCaption,
-                          fg: fg,
-                          meta: meta,
-                          l10n: l10n,
-                          pinned: pinned,
-                          starred: starred,
-                          onImageTap: onImageTap,
-                          onMediaUrlExpired: onMediaUrlExpired,
-                          onOpenFailed: onOpenFailed,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                child: message.attachments.isNotEmpty || message.localPending
+                    ? RepaintBoundary(child: decoratedBubble)
+                    : decoratedBubble,
               ),
             ),
           ),

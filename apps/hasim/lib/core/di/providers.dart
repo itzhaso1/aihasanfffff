@@ -7,6 +7,7 @@ import 'package:hasim/core/local_db/inbox_database.dart';
 import 'package:hasim/core/local_db/inbox_local_store.dart';
 import 'package:hasim/core/local_db/outbox_worker.dart';
 import 'package:hasim/core/network/api_client.dart';
+import 'package:hasim/core/storage/inbox_scope.dart';
 import 'package:hasim/core/storage/inbox_session.dart';
 import 'package:hasim/core/storage/prefs_store.dart';
 import 'package:hasim/core/storage/secure_store.dart';
@@ -30,6 +31,7 @@ import 'package:hasim/push/push_service.dart';
 import 'package:hasim/push/push_token_source.dart';
 import 'package:hasim/realtime/hybrid_realtime_service.dart';
 import 'package:hasim/realtime/realtime_service.dart';
+import 'package:hasim/realtime/reverb_websocket_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final sharedPrefsProvider = Provider<SharedPreferences>((ref) {
@@ -216,8 +218,19 @@ final realtimeServiceProvider = Provider<RealtimeService>((ref) {
     repository: repo,
     onLocalInboxChange: () => bumpInboxLocalRevision(ref),
   );
+  ref.listen<int?>(activeWorkspaceIdProvider, (_, next) {
+    service.updateWorkspace(next);
+  });
   ref.onDispose(service.dispose);
   return service;
+});
+
+final realtimeConnectionStateProvider = StreamProvider<RealtimeConnectionState>((
+  ref,
+) async* {
+  final service = ref.watch(realtimeServiceProvider);
+  yield service.currentConnectionState;
+  yield* service.connectionStateStream;
 });
 
 final outboxWorkerProvider = Provider<OutboxWorker>((ref) {

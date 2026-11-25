@@ -1001,6 +1001,14 @@ class ConversationModel extends Equatable {
 
   /// Keep list/chat fields that classification/handoff responses omit, while accepting server updates.
   ConversationModel applyingServerWrites(ConversationModel remote) {
+    final existingLastId = lastMessage?.id ?? 0;
+    final remoteLastId = remote.lastMessage?.id ?? 0;
+    final keepExistingLast =
+        existingLastId > 0 &&
+        remoteLastId < existingLastId &&
+        (lastMessageAt == null ||
+            remote.lastMessageAt == null ||
+            !remote.lastMessageAt!.isAfter(lastMessageAt!));
     return ConversationModel(
       id: remote.id,
       channel: remote.channel,
@@ -1008,10 +1016,14 @@ class ConversationModel extends Equatable {
       externalId: remote.externalId ?? externalId,
       aiEnabled: remote.aiEnabled,
       aiReplying: remote.aiReplying ?? aiReplying,
-      lastMessageAt: remote.lastMessageAt ?? lastMessageAt,
+      lastMessageAt: keepExistingLast
+          ? (lastMessageAt ?? remote.lastMessageAt)
+          : (remote.lastMessageAt ?? lastMessageAt),
       customer: remote.customer ?? customer,
       unreadCount: unreadCount,
-      lastMessage: remote.lastMessage ?? lastMessage,
+      lastMessage: keepExistingLast
+          ? lastMessage
+          : (remote.lastMessage ?? lastMessage),
       muted: muted,
       archived: archived,
       customerPriority: remote.customerPriority,

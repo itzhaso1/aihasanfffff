@@ -10,6 +10,13 @@ import 'package:hasim/core/storage/prefs_store.dart';
 import 'package:hasim/core/storage/secure_store.dart';
 import 'package:hasim/core/utils/idempotency.dart';
 
+Map<String, dynamic> _decodeJsonMapIsolate(String raw) {
+  final decoded = jsonDecode(raw);
+  if (decoded is Map<String, dynamic>) return decoded;
+  if (decoded is Map) return Map<String, dynamic>.from(decoded);
+  throw FormatException('Expected JSON object map, got ${decoded.runtimeType}');
+}
+
 typedef UnauthorizedCallback = void Function();
 
 /// Broadcast stream for 401 responses — avoids circular Riverpod DI.
@@ -99,8 +106,13 @@ class ApiClient {
   UnauthorizedCallback? _onUnauthorized;
   late final Dio _dio;
   bool _unauthorizedEmitted = false;
+  final Map<String, Future<Map<String, dynamic>>> _inFlightGets = {};
 
   Dio get raw => _dio;
+
+  void clearPendingDedups() {
+    _inFlightGets.clear();
+  }
 
   void setOnUnauthorized(UnauthorizedCallback? callback) {
     _onUnauthorized = callback;
@@ -153,32 +165,97 @@ class ApiClient {
     throw ApiException('استجابة غير صالحة ($context): ${raw.runtimeType}');
   }
 
+  Future<Map<String, dynamic>> _asStringKeyedMapAsync(
+    dynamic raw, {
+    required String context,
+  }) async {
+    if (raw == null) return <String, dynamic>{};
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      if (!kIsWeb && raw.length > 24576) {
+        return compute(_decodeJsonMapIsolate, raw);
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    }
+    throw ApiException('استجابة غير صالحة ($context): ${raw.runtimeType}');
+  }
+
+  static String _canonicalQuery(Map<String, dynamic>? query) {
+    if (query == null || query.isEmpty) return '';
+    final keys = query.keys.toList()..sort();
+    return keys.map((k) => '$k=${query[k]}').join('&');
+  }
+
   Future<ApiResponse<T>> get<T>(
     String path, {
     Map<String, dynamic>? query,
+    CancelToken? cancelToken,
     T Function(dynamic raw)? mapData,
   }) async {
-    DioException? lastDioError;
-    for (var attempt = 0; attempt < 2; attempt++) {
-      try {
-        final res = await _dio.get<dynamic>(_rel(path), queryParameters: query);
-        final map = _asStringKeyedMap(res.data, context: 'GET $path');
+    final normalizedPath = _rel(path);
+    final dedupKey = cancelToken == null
+        ? '${_dio.options.baseUrl}|$normalizedPath?${_canonicalQuery(query)}|w=${_prefsStore.workspaceId ?? 0}'
+        : null;
+
+    if (dedupKey != null) {
+      final existing = _inFlightGets[dedupKey];
+      if (existing != null) {
+        final map = await existing;
         return ApiResponse.fromJson(map, mapData);
-      } on ApiException {
-        rethrow;
-      } on DioException catch (e) {
-        lastDioError = e;
-        final isTransientNetwork =
-            e.type == DioExceptionType.connectionTimeout ||
-            e.type == DioExceptionType.connectionError;
-        if (attempt == 0 && isTransientNetwork) {
-          await Future<void>.delayed(const Duration(milliseconds: 600));
-          continue;
-        }
-        throw _mapDio(e);
       }
     }
-    throw _mapDio(lastDioError!);
+
+    Future<Map<String, dynamic>> execute() async {
+      DioException? lastDioError;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+          final res = await _dio.get<dynamic>(
+            normalizedPath,
+            queryParameters: query,
+            cancelToken: cancelToken,
+          );
+          return await _asStringKeyedMapAsync(res.data, context: 'GET $path');
+        } on ApiException {
+          rethrow;
+        } on DioException catch (e) {
+          lastDioError = e;
+          if (e.type == DioExceptionType.cancel || CancelToken.isCancel(e)) {
+            throw ApiException('تم إلغاء الطلب.', isCancelled: true);
+          }
+          final isTransientNetwork =
+              e.type == DioExceptionType.connectionTimeout ||
+              e.type == DioExceptionType.connectionError;
+          if (attempt == 0 &&
+              isTransientNetwork &&
+              cancelToken?.isCancelled != true) {
+            await Future<void>.delayed(const Duration(milliseconds: 250));
+            continue;
+          }
+          throw _mapDio(e);
+        }
+      }
+      throw _mapDio(lastDioError!);
+    }
+
+    if (dedupKey == null) {
+      final map = await execute();
+      return ApiResponse.fromJson(map, mapData);
+    }
+
+    final future = execute();
+    _inFlightGets[dedupKey] = future;
+    try {
+      final map = await future;
+      return ApiResponse.fromJson(map, mapData);
+    } finally {
+      if (identical(_inFlightGets[dedupKey], future)) {
+        _inFlightGets.remove(dedupKey);
+      }
+    }
   }
 
   Future<ApiResponse<T>> post<T>(
@@ -186,6 +263,7 @@ class ApiClient {
     Object? body,
     Map<String, dynamic>? query,
     Map<String, dynamic>? headers,
+    CancelToken? cancelToken,
     bool idempotent = false,
     T Function(dynamic raw)? mapData,
   }) async {
@@ -198,13 +276,17 @@ class ApiClient {
         _rel(path),
         data: body,
         queryParameters: query,
+        cancelToken: cancelToken,
         options: Options(headers: requestHeaders),
       );
-      final map = _asStringKeyedMap(res.data, context: 'POST $path');
+      final map = await _asStringKeyedMapAsync(res.data, context: 'POST $path');
       return ApiResponse.fromJson(map, mapData);
     } on ApiException {
       rethrow;
     } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel || CancelToken.isCancel(e)) {
+        throw ApiException('تم إلغاء الطلب.', isCancelled: true);
+      }
       throw _mapDio(e);
     }
   }
@@ -470,7 +552,9 @@ class ApiClient {
     try {
       if (raw is Map) {
         final copy = Map<String, dynamic>.from(raw);
-        if (copy['data'] is Map) {
+        if (copy['data'] is List && (copy['data'] as List).length > 20) {
+          copy['data'] = '[List(${(copy['data'] as List).length} items)]';
+        } else if (copy['data'] is Map) {
           final data = Map<String, dynamic>.from(copy['data'] as Map);
           if (data.containsKey('token')) data['token'] = '[REDACTED]';
           if (data.containsKey('access_token')) {

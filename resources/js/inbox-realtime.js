@@ -51,15 +51,38 @@ const leaveAll = () => {
     joined = [];
 };
 
+const resolveShellContext = (config = {}) => {
+    const shell = document.getElementById('inbox-shell');
+    const dsWorkspace = shell?.dataset?.workspaceId;
+    const dsConv = shell?.dataset?.activeConversationId;
+    const workspaceId = dsWorkspace !== undefined && dsWorkspace !== ''
+        ? Number(dsWorkspace)
+        : (config.workspaceId ? Number(config.workspaceId) : null);
+    const activeConversationId = dsConv !== undefined
+        ? (dsConv !== '' ? Number(dsConv) : null)
+        : (config.activeConversationId ? Number(config.activeConversationId) : null);
+    if (window.__INBOX_REALTIME__) {
+        window.__INBOX_REALTIME__.workspaceId = workspaceId;
+        window.__INBOX_REALTIME__.activeConversationId = activeConversationId;
+    }
+    return { shell, workspaceId, activeConversationId };
+};
+
 const bindRealtime = () => {
     leaveAll();
 
-    if (!document.getElementById('inbox-shell')) {
+    const shell = document.getElementById('inbox-shell');
+    if (!shell) {
         return;
     }
 
     const config = window.__INBOX_REALTIME__ ?? null;
     if (!config?.enabled || !config.key) {
+        return;
+    }
+
+    const { workspaceId, activeConversationId } = resolveShellContext(config);
+    if (!workspaceId) {
         return;
     }
 
@@ -81,13 +104,16 @@ const bindRealtime = () => {
                 },
             },
         });
+    } else if (echo?.connector?.pusher?.config?.auth?.headers) {
+        echo.connector.pusher.config.auth.headers['X-CSRF-TOKEN'] =
+            document.querySelector('meta[name="csrf-token"]')?.content ?? '';
     }
 
-    const workspaceId = config.workspaceId;
-    const activeConversationId = config.activeConversationId ?? null;
-    const seenMessageIds = new Set(
-        [...document.querySelectorAll('#inbox-message-list [data-message-id]')].map((el) => Number(el.dataset.messageId)),
-    );
+    const seenMessageSignatures = new Map();
+    document.querySelectorAll('#inbox-message-list [data-message-id]').forEach((el) => {
+        const id = Number(el.dataset.messageId);
+        if (id > 0) seenMessageSignatures.set(id, 'dom');
+    });
 
     const appendMessage = (payload) => {
         if (!payload?.id) {
@@ -97,13 +123,22 @@ const bindRealtime = () => {
         if (!messageList) {
             return;
         }
-        if (messageList.querySelector(`[data-message-id="${payload.id}"]`) || seenMessageIds.has(payload.id)) {
+        const attachCount = Array.isArray(payload.attachments) ? payload.attachments.length : 0;
+        const sig = `${payload.content ?? ''}:${attachCount}:${payload.delivery_status ?? ''}`;
+        if (
+            seenMessageSignatures.get(payload.id) === sig &&
+            messageList.querySelector(`[data-message-id="${payload.id}"]`)
+        ) {
             return;
         }
-        seenMessageIds.add(payload.id);
+        seenMessageSignatures.set(payload.id, sig);
 
         if (window.__INBOX_UI__?.appendInboxMessage) {
             window.__INBOX_UI__.appendInboxMessage(payload);
+            return;
+        }
+
+        if (messageList.querySelector(`[data-message-id="${payload.id}"]`)) {
             return;
         }
 
@@ -131,7 +166,7 @@ const bindRealtime = () => {
     };
 
     const syncMissedState = async () => {
-        const activeId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        const { activeConversationId: activeId } = resolveShellContext(config);
         if (activeId) {
             const messageList = document.getElementById('inbox-message-list');
             const ids = [...(messageList?.querySelectorAll('[data-message-id]') || [])]
@@ -151,7 +186,7 @@ const bindRealtime = () => {
                     if (data?.conversation) {
                         window.__INBOX_UI__?.updateConversationInSidebar?.(data.conversation, { moveToTop: true });
                         if (data.conversation.responder) {
-                            window.__INBOX_UI__?.updateTopResponderBar?.(data.conversation.responder);
+                            window.__INBOX_UI__?.updateTopResponderBar?.(data.conversation.responder, data.conversation);
                         }
                     }
                 }
@@ -194,15 +229,17 @@ const bindRealtime = () => {
     const handleIncomingMessage = (payload) => {
         if (!payload?.conversation_id) return;
 
-        const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        const { activeConversationId: currentId } = resolveShellContext(config);
         if (currentId && Number(payload.conversation_id) === Number(currentId)) {
             appendMessage(payload);
             window.__INBOX_UI__?.hideTypingIndicator?.();
         }
 
+        const hasAttachments = Array.isArray(payload.attachments) && payload.attachments.length > 0;
+        const preview = payload.content || (hasAttachments ? '📎 مرفق' : '');
         const convUpdate = {
             id: payload.conversation_id,
-            last_message: payload.content,
+            last_message: preview,
             last_message_at: payload.created_at_time || 'الآن',
             last_message_at_human: 'الآن',
             customer: payload.customer,
@@ -220,12 +257,20 @@ const bindRealtime = () => {
         }
     };
 
+    const handleMessageStatusUpdated = (payload) => {
+        if (!payload?.id) return;
+        const { activeConversationId: currentId } = resolveShellContext(config);
+        if (currentId && Number(payload.conversation_id) === Number(currentId)) {
+            window.__INBOX_UI__?.updateMessageDeliveryStatus?.(payload);
+        }
+    };
+
     const handleConversationUpdated = (payload) => {
         if (!payload?.id) return;
         if (window.__INBOX_UI__?.updateConversationInSidebar) {
             window.__INBOX_UI__.updateConversationInSidebar(payload, { moveToTop: false });
         }
-        const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        const { activeConversationId: currentId } = resolveShellContext(config);
         if (currentId && Number(payload.id) === Number(currentId)) {
             if (payload.responder) {
                 window.__INBOX_UI__?.updateTopResponderBar?.(payload.responder, payload);
@@ -238,7 +283,7 @@ const bindRealtime = () => {
 
     const handleTypingActivity = (payload) => {
         if (!payload?.conversation_id) return;
-        const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        const { activeConversationId: currentId } = resolveShellContext(config);
         if (currentId && Number(payload.conversation_id) === Number(currentId)) {
             const currentUserId = window.__INBOX_REALTIME__?.userId;
             if (currentUserId && payload.user_id && Number(payload.user_id) === Number(currentUserId)) {
@@ -259,7 +304,7 @@ const bindRealtime = () => {
 
     const handlePresenceUpdated = (payload) => {
         if (!payload?.conversation_id) return;
-        const currentId = window.__INBOX_REALTIME__?.activeConversationId ?? null;
+        const { activeConversationId: currentId } = resolveShellContext(config);
         if (currentId && Number(payload.conversation_id) === Number(currentId)) {
             window.__INBOX_UI__?.updatePresenceUI?.(payload);
         }
@@ -269,6 +314,7 @@ const bindRealtime = () => {
     const workspaceChannel = `workspace.${workspaceId}.conversations`;
     echo.private(workspaceChannel)
         .listen('.message.created', handleIncomingMessage)
+        .listen('.message.status_updated', handleMessageStatusUpdated)
         .listen('.conversation.updated', handleConversationUpdated);
     joined.push(workspaceChannel);
 
@@ -277,6 +323,7 @@ const bindRealtime = () => {
         const conversationChannel = `workspace.${workspaceId}.conversation.${activeConversationId}`;
         echo.private(conversationChannel)
             .listen('.message.created', handleIncomingMessage)
+            .listen('.message.status_updated', handleMessageStatusUpdated)
             .listen('.conversation.updated', handleConversationUpdated)
             .listen('.typing.activity', handleTypingActivity)
             .listen('.employee.joined', handlePresenceUpdated)

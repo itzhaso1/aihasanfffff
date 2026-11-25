@@ -92,6 +92,21 @@ abstract final class HasimTokens {
   static Color conversationSelected(BuildContext context) =>
       isDark(context) ? const Color(0xFF1D1D1D) : conversationSelectedLight;
 
+  static Color warningBannerBg(BuildContext context) =>
+      isDark(context) ? const Color(0xFF2B1F11) : const Color(0xFFFFF7ED);
+
+  static Color warningBannerInk(BuildContext context) =>
+      isDark(context) ? const Color(0xFFFCD34D) : const Color(0xFF78350F);
+
+  static Color floatingPillBg(BuildContext context) =>
+      isDark(context) ? const Color(0xFF1A2226) : card;
+
+  static Color floatingPillBorder(BuildContext context) =>
+      isDark(context) ? darkLine : const Color(0xFFE2E8F0);
+
+  static Color composerBarBg(BuildContext context) =>
+      isDark(context) ? const Color(0xFF20292B) : Colors.white;
+
   static List<BoxShadow> softShadow(BuildContext context) {
     if (isDark(context)) return const [];
     return const [

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -11,6 +12,28 @@ import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/utils/idempotency.dart';
 import 'package:hasim/features/conversations/data/chat_attachment_policy.dart';
 import 'package:http_parser/http_parser.dart';
+
+List<ConversationModel> _parseConversationsIsolate(
+  List<Map<String, dynamic>> rawRows,
+) {
+  final items = <ConversationModel>[];
+  for (final raw in rawRows) {
+    try {
+      items.add(ConversationModel.fromJson(raw));
+    } catch (_) {}
+  }
+  return items;
+}
+
+List<MessageModel> _parseMessagesIsolate(List<Map<String, dynamic>> rawRows) {
+  final items = <MessageModel>[];
+  for (final row in rawRows) {
+    try {
+      items.add(MessageModel.fromJson(row));
+    } catch (_) {}
+  }
+  return items;
+}
 
 class ConversationRepository {
   ConversationRepository(this._api, {InboxLocalStore? local}) : _local = local;
@@ -157,6 +180,18 @@ class ConversationRepository {
         Future.value();
   }
 
+  static const Object _cancelTokenZoneKey = Object();
+
+  static Future<R> runWithCancelToken<R>(
+    CancelToken token,
+    Future<R> Function() fn,
+  ) {
+    return runZoned(fn, zoneValues: {_cancelTokenZoneKey: token});
+  }
+
+  static CancelToken? get _zoneCancelToken =>
+      Zone.current[_cancelTokenZoneKey] as CancelToken?;
+
   Future<({List<ConversationModel> items, String? nextCursor})> list({
     String filter = 'all',
     String? channel,
@@ -177,6 +212,7 @@ class ConversationRepository {
     reviewStatus: reviewStatus,
     cursor: cursor,
     workspaceId: workspaceId,
+    cancelToken: _zoneCancelToken,
   );
 
   Future<({List<ConversationModel> items, String? nextCursor})> deltaList({
@@ -199,6 +235,7 @@ class ConversationRepository {
     reviewStatus: reviewStatus,
     updatedAfter: updatedAfter,
     workspaceId: workspaceId,
+    cancelToken: _zoneCancelToken,
   );
 
   Future<({List<ConversationModel> items, String? nextCursor})>
@@ -213,11 +250,13 @@ class ConversationRepository {
     DateTime? updatedAfter,
     String? cursor,
     int? workspaceId,
+    CancelToken? cancelToken,
   }) async {
     try {
       lastReadFromCache = false;
       final res = await _api.get(
         '/conversations',
+        cancelToken: cancelToken,
         query: {
           'filter': filter,
           if (channel != null && channel.isNotEmpty) 'channel': channel,
@@ -235,12 +274,18 @@ class ConversationRepository {
           'per_page': 20,
         },
       );
-      final items = <ConversationModel>[];
-      for (final raw in asMapList(res.data)) {
-        try {
-          items.add(ConversationModel.fromJson(raw));
-        } catch (e, st) {
-          debugPrint('[Hasim] Skipping malformed conversation: $e\n$st');
+      final rawList = asMapList(res.data);
+      final List<ConversationModel> items;
+      if (!kIsWeb && rawList.length >= 60) {
+        items = await compute(_parseConversationsIsolate, rawList);
+      } else {
+        items = <ConversationModel>[];
+        for (final raw in rawList) {
+          try {
+            items.add(ConversationModel.fromJson(raw));
+          } catch (e, st) {
+            debugPrint('[Hasim] Skipping malformed conversation: $e\n$st');
+          }
         }
       }
       if (workspaceId != null) {
@@ -264,6 +309,7 @@ class ConversationRepository {
       }
       return (items: items, nextCursor: res.nextCursor);
     } catch (e, st) {
+      if (e is ApiException && e.isCancelled) rethrow;
       debugPrint('[Hasim] ConversationRepository.list failed: $e\n$st');
       if (workspaceId != null && (cursor == null || cursor.isEmpty)) {
         try {
@@ -325,18 +371,25 @@ class ConversationRepository {
       lastReadFromCache = false;
       final res = await _api.get(
         '/conversations/$conversationId/messages',
+        cancelToken: _zoneCancelToken,
         query: {
           if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
           if (afterId != null && afterId > 0) 'after_id': afterId,
           'per_page': (afterId != null && afterId > 0) ? 100 : 30,
         },
       );
-      final items = <MessageModel>[];
-      for (final row in asMapList(res.data)) {
-        try {
-          items.add(MessageModel.fromJson(row));
-        } catch (_) {
-          // One malformed row must not discard the customer messages beside it.
+      final rawList = asMapList(res.data);
+      final List<MessageModel> items;
+      if (!kIsWeb && rawList.length >= 60) {
+        items = await compute(_parseMessagesIsolate, rawList);
+      } else {
+        items = <MessageModel>[];
+        for (final row in rawList) {
+          try {
+            items.add(MessageModel.fromJson(row));
+          } catch (_) {
+            // One malformed row must not discard the customer messages beside it.
+          }
         }
       }
       if (workspaceId != null && items.isNotEmpty) {

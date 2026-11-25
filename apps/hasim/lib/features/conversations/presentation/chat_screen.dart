@@ -40,6 +40,8 @@ import 'package:hasim/features/privacy/presentation/locked_chats_navigation.dart
 import 'package:hasim/features/privacy/presentation/pin_prompt.dart';
 import 'package:hasim/features/privacy/providers/chat_lock_controller.dart';
 import 'package:hasim/l10n/app_localizations.dart';
+import 'package:hasim/realtime/realtime_service.dart';
+import 'package:hasim/realtime/reverb_websocket_client.dart';
 import 'package:image_picker/image_picker.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -88,20 +90,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// مفاتيح الرسائل المحددة بعد اختيار «تحديد».
   final Set<String> _selectedMessageKeys = <String>{};
 
+  late final RealtimeService _realtime;
+  late ChatController _chatController;
+
   @override
   void initState() {
     super.initState();
+    _realtime = ref.read(realtimeServiceProvider);
+    _chatController = ref.read(
+      chatControllerProvider(widget.conversationId).notifier,
+    );
     _scroll.addListener(_onScroll);
     _controller.addListener(_onComposerTextChanged);
     final initial = widget.initialConversation;
-    if (initial != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ref
-            .read(chatControllerProvider(widget.conversationId).notifier)
-            .seedConversation(initial);
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (initial != null) {
+        _chatController.seedConversation(initial);
+      }
+      _chatController.onActivated();
+    });
   }
 
   DateTime? _lastTypingSent;
@@ -123,13 +131,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
+      _chatController.onDeactivated();
+      _chatController = ref.read(
+        chatControllerProvider(widget.conversationId).notifier,
+      );
       _suggestGeneration++;
       _openedAtBottom = false;
       _stickToBottom = true;
+      _unseenBelowCount = 0;
       _emojiPickerOpen = false;
       _attachMenuOpen = false;
       _replyTo = null;
       _selectedMessageKeys.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _chatController.onActivated();
+      });
     }
   }
 
@@ -156,6 +173,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    if (_chatController.mounted) {
+      _chatController.onDeactivated();
+    } else {
+      _realtime.unwatchConversation(widget.conversationId);
+    }
     _voiceTick?.cancel();
     _voiceAmplitudeSub?.cancel();
     unawaited(_voiceRecorder?.cancel());
@@ -196,6 +218,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _cachedRowsQuery;
   Set<String>? _cachedHiddenKeys;
   List<_ChatRow> _cachedRows = const [];
+  Map<String, int> _cachedKeyToIndex = const {};
 
   Future<void> _send() async {
     final currentConversation =
@@ -1087,7 +1110,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? 'تم إغلاق المحادثة.'
                 : 'تمت إعادة فتح المحادثة.'),
             backgroundColor: selected == 'close'
-                ? Colors.grey.shade700
+                ? HasimTokens.muted
                 : HasimTokens.chatGreen,
           ),
         );
@@ -1572,6 +1595,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return rows;
   }
 
+  static String _rowKeyFor(_ChatRow row) {
+    if (row.date != null) {
+      return 'chat-date-${row.date!.millisecondsSinceEpoch}';
+    }
+    final m = row.message!;
+    final base = m.id > 0 ? 's-${m.id}' : 'c-${m.clientId ?? m.id}';
+    return 'chat-msg-$base';
+  }
+
   List<_ChatRow> _rowsFor(
     List<MessageModel> messages,
     String query,
@@ -1594,7 +1626,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _cachedRowsSource = messages;
     _cachedRowsQuery = query;
     _cachedHiddenKeys = hiddenKeys;
-    _cachedRows = _rows(visibleMessages);
+    final rows = _rows(visibleMessages);
+    _cachedRows = rows;
+    _cachedKeyToIndex = <String, int>{
+      for (var i = 0; i < rows.length; i++)
+        _rowKeyFor(rows[rows.length - 1 - i]): i,
+    };
     return _cachedRows;
   }
 
@@ -1895,23 +1932,57 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 const LinearProgressIndicator(minHeight: 2),
               if (state.aiBusy || state.mutating)
                 const LinearProgressIndicator(minHeight: 2),
+              if (ref.watch(realtimeConnectionStateProvider).valueOrNull ==
+                  RealtimeConnectionState.reconnecting)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 5,
+                  ),
+                  color: HasimTokens.warningBannerBg(context),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            HasimTokens.warningBannerInk(context),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'جاري إعادة الاتصال بالتحديث المباشر...',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: HasimTokens.warningBannerInk(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               if (!HasimLayout.isCompact(context) &&
                   conversation?.isHumanHandoffActive == true)
-                const Material(
-                  color: Color(0xFFFFF7ED),
+                ColoredBox(
+                  color: HasimTokens.warningBannerBg(context),
                   child: SizedBox(
                     width: double.infinity,
                     child: Padding(
-                      padding: EdgeInsets.symmetric(
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 8,
                       ),
                       child: Text(
                         'تحتاج مراجعة من الفريق',
-                        key: Key('chat-team-review'),
+                        key: const Key('chat-team-review'),
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Color(0xFF78350F),
+                          color: HasimTokens.warningBannerInk(context),
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
                         ),
@@ -1922,9 +1993,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               if (conversation != null)
                 _LiveResponderHeaderBar(
                   conversation: conversation,
-                  isWorker: ref
-                      .watch(authControllerProvider)
-                      .isIndependentWorker,
+                  isWorker: ref.watch(
+                    authControllerProvider.select((s) => s.isIndependentWorker),
+                  ),
                   onTakeover: () async {
                     final err = await ref
                         .read(
@@ -2025,93 +2096,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             final emojiDock = _phoneEmojiDock(context);
                             final composerPad =
                                 _composerHeight + 8 + attachDock + emojiDock;
-                            final keyToIndex = <String, int>{};
-                            String rowKey(_ChatRow row) {
-                              if (row.date != null) {
-                                return 'chat-date-${row.date!.millisecondsSinceEpoch}';
-                              }
-                              final m = row.message!;
-                              final base = m.id > 0
-                                  ? 's-${m.id}'
-                                  : 'c-${m.clientId ?? m.id}';
-                              return 'chat-msg-$base';
-                            }
-
-                            for (var i = 0; i < rows.length; i++) {
-                              keyToIndex[rowKey(rows[rows.length - 1 - i])] = i;
-                            }
-                            final list = ListView.builder(
-                              controller: _scroll,
-                              reverse: true,
-                              findChildIndexCallback: (Key key) {
-                                if (key is ValueKey<String>) {
-                                  return keyToIndex[key.value];
-                                }
-                                return null;
-                              },
-                              scrollCacheExtent: const ScrollCacheExtent.pixels(
-                                600,
-                              ),
-                              padding: EdgeInsets.fromLTRB(
-                                compact ? 10 : 16,
-                                8,
-                                compact ? 10 : 16,
-                                composerPad,
-                              ),
-                              itemCount: rows.length,
-                              itemBuilder: (context, index) {
-                                final row = rows[rows.length - 1 - index];
-                                final keyStr = rowKey(row);
-                                if (row.date != null) {
-                                  return ChatDateChip(
+                            final keyToIndex = _cachedKeyToIndex;
+                            final list = RepaintBoundary(
+                              child: ListView.builder(
+                                controller: _scroll,
+                                reverse: true,
+                                findChildIndexCallback: (Key key) {
+                                  if (key is ValueKey<String>) {
+                                    return keyToIndex[key.value];
+                                  }
+                                  return null;
+                                },
+                                scrollCacheExtent:
+                                    const ScrollCacheExtent.pixels(600),
+                                padding: EdgeInsets.fromLTRB(
+                                  compact ? 10 : 16,
+                                  8,
+                                  compact ? 10 : 16,
+                                  composerPad,
+                                ),
+                                itemCount: rows.length,
+                                itemBuilder: (context, index) {
+                                  final row = rows[rows.length - 1 - index];
+                                  final keyStr = _rowKeyFor(row);
+                                  if (row.date != null) {
+                                    return ChatDateChip(
+                                      key: ValueKey(keyStr),
+                                      date: row.date!,
+                                    );
+                                  }
+                                  final m = row.message!;
+                                  return SizedBox(
                                     key: ValueKey(keyStr),
-                                    date: row.date!,
-                                  );
-                                }
-                                final m = row.message!;
-                                return SizedBox(
-                                  key: ValueKey(keyStr),
-                                  width: double.infinity,
-                                  child: ChatMessageBubble(
-                                    message: m,
-                                    maxWidth: bubbleCap,
-                                    bubbleColorId: activeBubbleColorId,
-                                    onRetry: m.localFailed
-                                        ? () => ref
-                                              .read(
-                                                chatControllerProvider(
-                                                  widget.conversationId,
-                                                ).notifier,
-                                              )
-                                              .retryFailed(m)
-                                        : null,
-                                    onImageTap: _openImage,
-                                    onMediaUrlExpired: _refreshMessages,
-                                    onOpenFailed: () {
-                                      if (!mounted) return;
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            l10n.chatAttachmentOpenFailed,
+                                    width: double.infinity,
+                                    child: ChatMessageBubble(
+                                      message: m,
+                                      maxWidth: bubbleCap,
+                                      bubbleColorId: activeBubbleColorId,
+                                      onRetry: m.localFailed
+                                          ? () => ref
+                                                .read(
+                                                  chatControllerProvider(
+                                                    widget.conversationId,
+                                                  ).notifier,
+                                                )
+                                                .retryFailed(m)
+                                          : null,
+                                      onImageTap: _openImage,
+                                      onMediaUrlExpired: _refreshMessages,
+                                      onOpenFailed: () {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              l10n.chatAttachmentOpenFailed,
+                                            ),
                                           ),
-                                        ),
-                                      );
-                                    },
-                                    pinned: marks.isMessagePinned(m),
-                                    starred: marks.isMessageStarred(m),
-                                    selected: _selectedMessageKeys.contains(
-                                      ConversationMarks.messageKey(m),
+                                        );
+                                      },
+                                      pinned: marks.isMessagePinned(m),
+                                      starred: marks.isMessageStarred(m),
+                                      selected: _selectedMessageKeys.contains(
+                                        ConversationMarks.messageKey(m),
+                                      ),
+                                      selectionMode: selectingMessages,
+                                      onToggleSelected: () =>
+                                          _toggleMessageSelection(m),
+                                      onContextMenu: (position) =>
+                                          _showMessageMenu(m, position),
                                     ),
-                                    selectionMode: selectingMessages,
-                                    onToggleSelected: () =>
-                                        _toggleMessageSelection(m),
-                                    onContextMenu: (position) =>
-                                        _showMessageMenu(m, position),
-                                  ),
-                                );
-                              },
+                                  );
+                                },
+                              ),
                             );
                             return list;
                           },
@@ -2132,16 +2190,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: HasimTokens.floatingPillBg(context),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x0F000000),
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
+                  border: Border.all(
+                    color: HasimTokens.floatingPillBorder(context),
+                  ),
+                  boxShadow: HasimTokens.softShadow(context),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2151,16 +2205,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       height: 12,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF06C2A4)),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          HasimTokens.accent,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       state.typingIndicator!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: Color(0xFF64748B),
+                        color: HasimTokens.mutedColor(context),
                       ),
                     ),
                   ],

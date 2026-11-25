@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 
 /// صف قائمة للموبايل فقط — أسلوب بسيط (WhatsApp-like). لا تستخدمه في Desktop.
@@ -53,7 +53,7 @@ class HasimMobileListRow extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.cairo(
+                      style: AppTheme.cairoStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                         height: 1.35,
@@ -67,7 +67,7 @@ class HasimMobileListRow extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         textDirection: subtitleTextDirection,
-                        style: GoogleFonts.cairo(
+                        style: AppTheme.cairoStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                           height: 1.35,

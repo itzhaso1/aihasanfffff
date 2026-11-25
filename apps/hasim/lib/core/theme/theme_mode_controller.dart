@@ -51,3 +51,23 @@ final themeModeControllerProvider =
     StateNotifierProvider<ThemeModeController, ThemeMode>((ref) {
       return ThemeModeController(ref.watch(prefsStoreProvider));
     });
+
+class LocaleController extends StateNotifier<Locale> {
+  LocaleController(this._prefs) : super(Locale(_prefs.localeCode));
+
+  final PrefsStore _prefs;
+
+  Future<void> setLocale(Locale locale) async {
+    final code = locale.languageCode == 'en' ? 'en' : 'ar';
+    state = Locale(code);
+    await _prefs.setLocaleCode(code);
+  }
+
+  Future<void> toggle() =>
+      setLocale(Locale(state.languageCode == 'en' ? 'ar' : 'en'));
+}
+
+final localeControllerProvider =
+    StateNotifierProvider<LocaleController, Locale>((ref) {
+      return LocaleController(ref.watch(prefsStoreProvider));
+    });

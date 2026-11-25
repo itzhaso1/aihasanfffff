@@ -66,27 +66,41 @@ class AppRootShell extends ConsumerWidget {
       });
     }
 
-    final auth = ref.watch(authControllerProvider);
+    final authAccess = ref.watch(
+      authControllerProvider.select(
+        (s) => (
+          isAuthenticated: s.isAuthenticated,
+          isIndependentWorker: s.isIndependentWorker,
+          hasWorkspace: s.workspace != null,
+          canSeeSpecial: s.canSeeSpecialInboxSections,
+        ),
+      ),
+    );
     final canShowNavigation =
-        auth.isAuthenticated &&
-        (auth.isIndependentWorker || auth.workspace != null);
+        authAccess.isAuthenticated &&
+        (authAccess.isIndependentWorker || authAccess.hasWorkspace);
     if (!canShowNavigation ||
         location == '/splash' ||
         WorkerNav.isWorkerLocation(location)) {
       return child;
     }
 
-    return _buildNavigation(context, ref, location);
+    return _buildNavigation(
+      context,
+      ref,
+      location,
+      isIndependentWorker: authAccess.isIndependentWorker,
+      showSpecialInboxSections: authAccess.canSeeSpecial,
+    );
   }
 
   Widget _buildNavigation(
     BuildContext context,
     WidgetRef ref,
-    String location,
-  ) {
-    final auth = ref.watch(authControllerProvider);
-    final isIndependentWorker = auth.isIndependentWorker;
-    final showSpecialInboxSections = auth.canSeeSpecialInboxSections;
+    String location, {
+    required bool isIndependentWorker,
+    required bool showSpecialInboxSections,
+  }) {
     final isInboxLocation =
         location == '/conversations' || location.startsWith('/conversations/');
     final unreadConversationsBadge = isIndependentWorker

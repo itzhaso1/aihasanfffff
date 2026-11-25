@@ -25,6 +25,7 @@ use App\Services\AI\Inbox\AiReplyEligibility;
 use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Conversation\ConversationHandoffService;
 use App\Services\WhatsApp\WhatsAppService;
+use App\Support\Inbox\InboxBroadcastConfig;
 use App\Support\Observability\CorrelationContext;
 use Database\Seeders\FoundationSeeder;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -406,6 +407,118 @@ final class RealtimeMessagingPipelineTest extends TestCase
 
         $handoff->resumeAi($conversation->fresh(), $owner);
         Event::assertDispatched(ConversationUpdated::class, 2);
+    }
+
+    public function test_web_dashboard_store_message_commits_before_broadcasting_to_all_user_sessions(): void
+    {
+        Event::fake([MessageCreated::class, ConversationUpdated::class]);
+        Queue::fake([SendChannelOutboundMessage::class, ProcessAIResponse::class]);
+
+        [$owner, $workspace, $conversation] = $this->createWhatsAppConversation('pn-web-flutter-sync');
+
+        $response = $this->actingAs($owner, 'web')
+            ->withSession(['current_workspace_id' => $workspace->id])
+            ->postJson(route('workspace.conversations.messages.store', $conversation), [
+                'conversation_id' => $conversation->id,
+                'direction' => 'outbound',
+                'message_type' => 'text',
+                'content' => 'Web dashboard to Flutter sync',
+                'client_id' => 'web-temp-sync-1',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('message.content', 'Web dashboard to Flutter sync')
+            ->assertJsonPath('message.user_id', $owner->id)
+            ->assertJsonPath('message.client_id', 'web-temp-sync-1');
+
+        $persistedId = (int) $response->json('message.id');
+        $this->assertTrue(
+            Message::withoutGlobalScopes()->whereKey($persistedId)->exists(),
+            'Message must be committed before broadcast dispatch verification.',
+        );
+
+        Event::assertDispatched(MessageCreated::class, 1);
+        Event::assertDispatched(ConversationUpdated::class, 1);
+
+        Event::assertDispatched(MessageCreated::class, function (MessageCreated $event) use ($workspace, $conversation, $owner, $persistedId): bool {
+            $channels = array_map(static fn ($ch): string => $ch->name, $event->broadcastOn());
+            $payload = $event->broadcastWith();
+
+            return $event->broadcastAs() === 'message.created'
+                && $event->socket === null
+                && in_array("private-workspace.{$workspace->id}.conversations", $channels, true)
+                && in_array("private-workspace.{$workspace->id}.conversation.{$conversation->id}", $channels, true)
+                && (int) ($payload['id'] ?? 0) === $persistedId
+                && (int) ($payload['user_id'] ?? 0) === $owner->id
+                && ($payload['client_id'] ?? null) === 'web-temp-sync-1'
+                && ($payload['content'] ?? null) === 'Web dashboard to Flutter sync'
+                && array_key_exists('delivery_status', $payload);
+        });
+
+        Event::assertDispatched(ConversationUpdated::class, function (ConversationUpdated $event) use ($workspace, $conversation, $owner, $persistedId): bool {
+            $channels = array_map(static fn ($ch): string => $ch->name, $event->broadcastOn());
+            $payload = $event->broadcastWith();
+
+            return $event->broadcastAs() === 'conversation.updated'
+                && $event->socket === null
+                && in_array("private-workspace.{$workspace->id}.conversations", $channels, true)
+                && in_array("private-workspace.{$workspace->id}.conversation.{$conversation->id}", $channels, true)
+                && (int) ($payload['last_message_data']['id'] ?? 0) === $persistedId
+                && (int) ($payload['responder']['user_id'] ?? 0) === $owner->id
+                && ($payload['last_message_preview'] ?? null) === 'Web dashboard to Flutter sync';
+        });
+    }
+
+    public function test_same_user_multiple_web_and_mobile_sessions_authorize_private_channels(): void
+    {
+        [$owner, $workspace, $conversation] = $this->createWhatsAppConversation('pn-multi-device-auth');
+
+        $channels = [
+            "private-workspace.{$workspace->id}.conversations",
+            "private-workspace.{$workspace->id}.conversation.{$conversation->id}",
+        ];
+
+        foreach ($channels as $index => $channel) {
+            $this->actingAs($owner, 'web')
+                ->withSession(['current_workspace_id' => $workspace->id])
+                ->postJson('/broadcasting/auth', [
+                    'socket_id' => '200.'.($index + 1),
+                    'channel_name' => $channel,
+                ])
+                ->assertOk()
+                ->assertJsonStructure(['auth']);
+        }
+
+        $tokenDeviceA = $owner->createToken('flutter-device-a')->plainTextToken;
+        $tokenDeviceB = $owner->createToken('flutter-device-b')->plainTextToken;
+
+        foreach ([$tokenDeviceA, $tokenDeviceB] as $deviceIdx => $token) {
+            foreach ($channels as $chIdx => $channel) {
+                $this->withToken($token)
+                    ->withHeader('X-Workspace-Id', (string) $workspace->id)
+                    ->postJson('/api/mobile/v1/broadcasting/auth', [
+                        'socket_id' => ($deviceIdx + 301).'.'.($chIdx + 1),
+                        'channel_name' => $channel,
+                    ])
+                    ->assertOk()
+                    ->assertJsonStructure(['auth']);
+            }
+        }
+    }
+
+    public function test_inbox_broadcast_config_honors_inbox_realtime_broadcast_connection(): void
+    {
+        config([
+            'broadcasting.default' => 'log',
+            'inbox.realtime.broadcast_connection' => 'reverb',
+            'broadcasting.connections.reverb.key' => 'reverb-override-key',
+        ]);
+
+        $payload = InboxBroadcastConfig::clientPayload();
+
+        $this->assertTrue($payload['enabled']);
+        $this->assertSame('reverb', $payload['driver']);
+        $this->assertSame('reverb-override-key', $payload['key']);
     }
 
     /**

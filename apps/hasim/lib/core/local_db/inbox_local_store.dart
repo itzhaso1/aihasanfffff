@@ -265,10 +265,10 @@ class InboxLocalStore {
       if (existingLastId != null &&
           incomingLastId != null &&
           incomingLastId < existingLastId &&
-          existingLastAtMs != null &&
-          incomingLast != null &&
-          incomingLast < existingLastAtMs) {
-        // Ignore stale out-of-order conversation snapshot behind already-persisted state.
+          (existingLastAtMs == null ||
+              incomingLast == null ||
+              incomingLast <= existingLastAtMs)) {
+        // Ignore stale out-of-order conversation snapshot (including same-second Carbon timestamps).
         return;
       }
     }
@@ -1083,6 +1083,28 @@ class InboxLocalStore {
     }
 
     final existing = existingRows.first;
+    final existingLastId = (existing['last_message_server_id'] as num?)?.toInt() ?? 0;
+    final existingLastAt = _fromMs(existing['last_message_at']);
+    final incomingLastId = item.lastMessage?.id ?? 0;
+    final keepExistingLastMessage = existingLastId > 0 && incomingLastId < existingLastId;
+    final existingLastPreview = existing['last_message_preview']?.toString();
+    final effectiveLastMessage = keepExistingLastMessage
+        ? (existingLastPreview == null || existingLastPreview.isEmpty
+              ? item.lastMessage
+              : MessageModel(
+                  id: existingLastId,
+                  conversationId: item.id,
+                  direction:
+                      existing['last_message_direction']?.toString() ?? 'inbound',
+                  messageType: 'text',
+                  content: existingLastPreview,
+                  createdAt: existingLastAt,
+                ))
+        : item.lastMessage;
+    final effectiveLastAt = keepExistingLastMessage
+        ? (existingLastAt ?? item.lastMessageAt)
+        : (item.lastMessageAt ?? existingLastAt);
+
     final preserved = ConversationModel(
       id: item.id,
       channel: item.channel,
@@ -1090,14 +1112,14 @@ class InboxLocalStore {
       externalId: item.externalId ?? existing['external_id']?.toString(),
       aiEnabled: item.aiEnabled,
       aiReplying: item.aiReplying,
-      lastMessageAt: item.lastMessageAt ?? _fromMs(existing['last_message_at']),
+      lastMessageAt: effectiveLastAt,
       customer: item.customer,
       unreadCount: isConversationOpen
           ? 0
           : (item.hasUnreadCount
                 ? item.unreadCount
                 : ((existing['unread_count'] as num?)?.toInt() ?? 0)),
-      lastMessage: item.lastMessage,
+      lastMessage: effectiveLastMessage,
       muted: _asBool(existing['muted']),
       archived: item.status == 'archived' || _asBool(existing['archived']),
       customerPriority: item.customerPriority != 'normal'

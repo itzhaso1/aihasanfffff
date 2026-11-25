@@ -33,75 +33,85 @@ class AnalyticsScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () => ref.read(analyticsControllerProvider.notifier).load(state.range),
         color: HasimTokens.chatGreen,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // Range selector
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: ['today', 'week', 'month', 'year'].map((r) {
-                  final selected = state.range == r;
-                  return Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: ChoiceChip(
-                      label: Text(_rangeLabel(r)),
-                      selected: selected,
-                      selectedColor: HasimTokens.primary.withValues(alpha: 0.15),
-                      labelStyle: TextStyle(
-                        color: selected ? HasimTokens.primary : Colors.black87,
-                        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+        child: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              sliver: SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: ['today', 'week', 'month', 'year'].map((r) {
+                          final selected = state.range == r;
+                          return Padding(
+                            padding: const EdgeInsetsDirectional.only(end: 8),
+                            child: ChoiceChip(
+                              label: Text(_rangeLabel(r)),
+                              selected: selected,
+                              selectedColor: HasimTokens.primary.withValues(alpha: 0.15),
+                              labelStyle: TextStyle(
+                                color: selected
+                                    ? HasimTokens.primary
+                                    : HasimTokens.inkColor(context),
+                                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                              ),
+                              onSelected: (_) =>
+                                  ref.read(analyticsControllerProvider.notifier).load(r),
+                            ),
+                          );
+                        }).toList(),
                       ),
-                      onSelected: (_) =>
-                          ref.read(analyticsControllerProvider.notifier).load(r),
                     ),
-                  );
-                }).toList(),
+                    const SizedBox(height: 16),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 16),
-
             if (state.loading && data == null)
-              const SkeletonList()
+              const SliverFillRemaining(
+                hasScrollBody: true,
+                child: SkeletonList(),
+              )
             else if (state.error != null && data == null)
-              Center(
-                child: Column(
-                  children: [
-                    Text(state.error!),
-                    const SizedBox(height: 8),
-                    FilledButton(
-                      onPressed: () => ref
-                          .read(analyticsControllerProvider.notifier)
-                          .load(state.range),
-                      child: const Text('إعادة المحاولة'),
-                    ),
-                  ],
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(state.error!),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: () => ref
+                            .read(analyticsControllerProvider.notifier)
+                            .load(state.range),
+                        child: const Text('إعادة المحاولة'),
+                      ),
+                    ],
+                  ),
                 ),
               )
             else if (data != null) ...[
-              // KPI Cards Grid
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth > 550;
-                  return GridView.count(
-                    crossAxisCount: isWide ? 4 : 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                    childAspectRatio: isWide ? 1.4 : 1.3,
-                    children: [
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverLayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.crossAxisExtent > 550;
+                    final kpis = [
                       _KpiCard(
                         title: 'إجمالي المبيعات',
                         value: '${data.revenue.toStringAsFixed(2)} ر.س',
                         icon: Icons.payments_outlined,
-                        color: Colors.green,
+                        color: HasimTokens.success,
                       ),
                       _KpiCard(
                         title: 'عدد الطلبات',
                         value: '${data.ordersCount}',
                         icon: Icons.shopping_bag_outlined,
-                        color: Colors.blue,
+                        color: HasimTokens.primary,
                       ),
                       _KpiCard(
                         title: 'معدل التحويل',
@@ -125,126 +135,145 @@ class AnalyticsScreen extends ConsumerWidget {
                         title: 'ردود الذكاء الاصطناعي',
                         value: '${data.aiResponsesCount}',
                         icon: Icons.smart_toy_outlined,
-                        color: Colors.amber.shade800,
+                        color: HasimTokens.warning,
                       ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-
-              // Top Products
-              Card(
-                elevation: 0,
-                color: HasimTokens.cardBg(context),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: HasimTokens.lineColor(context)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.leaderboard_outlined, color: HasimTokens.primary),
-                          SizedBox(width: 8),
-                          Text(
-                            'المنتجات الأكثر مبيعاً وطلباً',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                        ],
+                    ];
+                    return SliverGrid(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: isWide ? 4 : 2,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        childAspectRatio: isWide ? 1.4 : 1.3,
                       ),
-                      const SizedBox(height: 12),
-                      if (data.topProducts.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(
-                            child: Text(
-                              'لا توجد مبيعات مسجلة في هذا النطاق الزمني.',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                        )
-                      else
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: data.topProducts.length,
-                          separatorBuilder: (_, _) => const Divider(),
-                          itemBuilder: (context, idx) {
-                            final prod = data.topProducts[idx];
-                            return ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: CircleAvatar(
-                                backgroundColor: HasimTokens.mintSoft,
-                                child: Text('${idx + 1}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: HasimTokens.primary,
-                                    )),
-                              ),
-                              title: Text(prod.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text('الكمية المباعة: ${prod.quantity.toInt()}'),
-                              trailing: Text(
-                                '${prod.revenue.toStringAsFixed(2)} ر.س',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                    ],
-                  ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, idx) => kpis[idx],
+                        childCount: kpis.length,
+                      ),
+                    );
+                  },
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Timeline summary card
-              if (data.timeline.isNotEmpty)
-                Card(
-                  elevation: 0,
-                  color: HasimTokens.cardBg(context),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: HasimTokens.lineColor(context)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                sliver: SliverList.list(
+                  children: [
+                    Card(
+                      elevation: 0,
+                      color: HasimTokens.cardBg(context),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(color: HasimTokens.lineColor(context)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.timeline, color: HasimTokens.primary),
-                            SizedBox(width: 8),
-                            Text(
-                              'السجل الزمني للأداء',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            const Row(
+                              children: [
+                                Icon(Icons.leaderboard_outlined, color: HasimTokens.primary),
+                                SizedBox(width: 8),
+                                Text(
+                                  'المنتجات الأكثر مبيعاً وطلباً',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 12),
+                            if (data.topProducts.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: Text(
+                                    'لا توجد مبيعات مسجلة في هذا النطاق الزمني.',
+                                    style: TextStyle(color: HasimTokens.mutedColor(context)),
+                                  ),
+                                ),
+                              )
+                            else
+                              for (var idx = 0; idx < data.topProducts.length; idx++) ...[
+                                if (idx > 0) const Divider(),
+                                Builder(
+                                  builder: (context) {
+                                    final prod = data.topProducts[idx];
+                                    return ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: CircleAvatar(
+                                        backgroundColor: HasimTokens.mintFill(context),
+                                        child: Text(
+                                          '${idx + 1}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: HasimTokens.primary,
+                                          ),
+                                        ),
+                                      ),
+                                      title: Text(prod.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      subtitle: Text('الكمية المباعة: ${prod.quantity.toInt()}'),
+                                      trailing: Text(
+                                        '${prod.revenue.toStringAsFixed(2)} ر.س',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: HasimTokens.success,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        ...data.timeline.map((entry) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (data.timeline.isNotEmpty)
+                      Card(
+                        elevation: 0,
+                        color: HasimTokens.cardBg(context),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: HasimTokens.lineColor(context)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(entry.label, style: const TextStyle(color: Colors.grey)),
-                              Text(
-                                '${entry.orders} طلبات • ${entry.revenue.toStringAsFixed(2)} ر.س',
-                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              const Row(
+                                children: [
+                                  Icon(Icons.timeline, color: HasimTokens.primary),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'السجل الزمني للأداء',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(height: 12),
+                              for (final entry in data.timeline)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        entry.label,
+                                        style: TextStyle(color: HasimTokens.mutedColor(context)),
+                                      ),
+                                      Text(
+                                        '${entry.orders} طلبات • ${entry.revenue.toStringAsFixed(2)} ر.س',
+                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                             ],
                           ),
-                        )),
-                      ],
-                    ),
-                  ),
+                        ),
+                      ),
+                  ],
                 ),
+              ),
             ],
           ],
         ),
@@ -287,7 +316,10 @@ class _KpiCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: HasimTokens.mutedColor(context),
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

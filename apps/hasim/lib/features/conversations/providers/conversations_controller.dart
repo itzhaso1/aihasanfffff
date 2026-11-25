@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
@@ -103,6 +104,9 @@ class ConversationsController extends StateNotifier<ConversationsState> {
         _scheduleRealtimeRefresh();
       }
     });
+    _msgSub = realtime.messageCreated.listen(_onRealtimeMessage);
+    _convSub = realtime.conversationUpdated.listen(_onRealtimeConversation);
+    _statusSub = realtime.messageStatusUpdated.listen(_onRealtimeMessageStatus);
     _reconnectSub = realtime.reconnectSyncRequested.listen((_) {
       _scheduleDeltaSync();
     });
@@ -134,14 +138,19 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   final String? fixedFilter;
 
   StreamSubscription? _sub;
+  StreamSubscription<MessageModel>? _msgSub;
+  StreamSubscription<ConversationModel>? _convSub;
+  StreamSubscription<MessageStatusUpdate>? _statusSub;
   StreamSubscription? _reconnectSub;
   StreamSubscription<List<ConversationModel>>? _localSub;
+  final Set<int> _fetchingNewConvIds = <int>{};
   ProviderSubscription<int?>? _workspaceSub;
   ProviderSubscription<Set<int>>? _lockSub;
   Timer? _realtimeRefreshTimer;
   Timer? _deltaSyncTimer;
   Timer? _searchDebounce;
   Timer? _prefetchTimer;
+  CancelToken? _activeListCancel;
   int? _boundWorkspaceId;
   final Set<int> _prefetchedIds = <int>{};
 
@@ -202,7 +211,26 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     }
     if (!_canCommit(scope)) return;
     if (!append) {
-      _publishLocal(fetched, loading: false);
+      final byId = <int, ConversationModel>{
+        for (final item in state.items) item.id: item,
+      };
+      final fetchedById = <int, ConversationModel>{
+        for (final item in fetched) item.id: item,
+      };
+      final merged = <ConversationModel>[
+        for (final item in fetched)
+          byId[item.id] == null ? item : byId[item.id]!.applyingServerWrites(item),
+      ];
+      final preservedNewerLocalTime = merged.any((item) {
+        final raw = fetchedById[item.id];
+        return raw != null && item.lastMessageAt != raw.lastMessageAt;
+      });
+      _publishLocal(
+        preservedNewerLocalTime
+            ? ConversationReconciler.sortServerOrder(merged)
+            : merged,
+        loading: false,
+      );
       return;
     }
     final seen = <int>{};
@@ -226,12 +254,17 @@ class ConversationsController extends StateNotifier<ConversationsState> {
   @override
   void dispose() {
     _sub?.cancel();
+    _msgSub?.cancel();
+    _convSub?.cancel();
+    _statusSub?.cancel();
     _reconnectSub?.cancel();
     _localSub?.cancel();
     _realtimeRefreshTimer?.cancel();
     _deltaSyncTimer?.cancel();
     _searchDebounce?.cancel();
     _prefetchTimer?.cancel();
+    _activeListCancel?.cancel('disposed');
+    _activeListCancel = null;
     _workspaceSub?.close();
     _lockSub?.close();
     super.dispose();
@@ -426,18 +459,27 @@ class ConversationsController extends StateNotifier<ConversationsState> {
         nextCursor: null,
       );
     }
+    _activeListCancel?.cancel('superseded');
+    final cancelToken = CancelToken();
+    _activeListCancel = cancelToken;
     try {
       final repo = _ref.read(conversationRepositoryProvider);
-      final page = await repo.list(
-        filter: _remoteFilter,
-        channel: state.channel,
-        handoff: _handoffQuery,
-        search: state.search,
-        customerPriority: state.customerPriority,
-        paymentStatus: state.paymentStatus,
-        reviewStatus: state.reviewStatus,
-        workspaceId: scope.workspaceId,
+      final page = await ConversationRepository.runWithCancelToken(
+        cancelToken,
+        () => repo.list(
+          filter: _remoteFilter,
+          channel: state.channel,
+          handoff: _handoffQuery,
+          search: state.search,
+          customerPriority: state.customerPriority,
+          paymentStatus: state.paymentStatus,
+          reviewStatus: state.reviewStatus,
+          workspaceId: scope.workspaceId,
+        ),
       );
+      if (identical(_activeListCancel, cancelToken)) {
+        _activeListCancel = null;
+      }
       if (!_canCommit(scope)) {
         if (mounted &&
             _boundWorkspaceId != null &&
@@ -460,6 +502,10 @@ class ConversationsController extends StateNotifier<ConversationsState> {
         _prefetchOpenThreads(state.items);
       }
     } on ApiException catch (e) {
+      if (identical(_activeListCancel, cancelToken)) {
+        _activeListCancel = null;
+      }
+      if (e.isCancelled) return;
       debugPrint('[Hasim] refresh ApiException: ${e.message} (status: ${e.statusCode})');
       if (!_canCommit(scope)) {
         if (mounted &&
@@ -650,21 +696,134 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     }
   }
 
-  void applyRemoteConversation(ConversationModel conversation) {
+  void applyRemoteConversation(
+    ConversationModel conversation, {
+    bool acceptRemoteUnread = false,
+  }) {
     final exists = state.items.any((item) => item.id == conversation.id);
+    if (!exists &&
+        conversation.customer == null &&
+        conversation.lastMessage == null) {
+      return;
+    }
+    final isViewing =
+        _ref.read(realtimeServiceProvider).activeConversationId ==
+        conversation.id;
     final updatedList = exists
         ? [
             for (final item in state.items)
               if (item.id == conversation.id)
-                item.applyingServerWrites(conversation)
+                () {
+                  var next = item.applyingServerWrites(conversation);
+                  if (isViewing) {
+                    next = next.copyWith(unreadCount: 0);
+                  } else if (acceptRemoteUnread &&
+                      conversation.hasUnreadCount) {
+                    next = next.copyWith(unreadCount: conversation.unreadCount);
+                  }
+                  return next;
+                }()
               else
                 item,
           ]
-        : [...state.items, conversation];
+        : [
+            ...state.items,
+            isViewing ? conversation.copyWith(unreadCount: 0) : conversation,
+          ];
     final filtered = ConversationReconciler.sortServerOrder(
       updatedList.where(_matchesCurrentFilter).toList(),
     );
     state = state.copyWith(items: filtered);
+  }
+
+  void _onRealtimeMessage(MessageModel msg) {
+    if (!mounted) return;
+    final index = state.items.indexWhere((c) => c.id == msg.conversationId);
+    if (index < 0) {
+      if (msg.conversationId > 0 &&
+          _fetchingNewConvIds.add(msg.conversationId)) {
+        unawaited(_fetchMissingConversation(msg.conversationId));
+      }
+      return;
+    }
+
+    final existing = state.items[index];
+    final prevLastId = existing.lastMessage?.id ?? 0;
+    final isSameMessage = prevLastId > 0 && msg.id == prevLastId;
+    final isNewer =
+        (msg.id > 0 && msg.id >= prevLastId) ||
+        (prevLastId <= 0 &&
+            (msg.createdAt == null ||
+                existing.lastMessageAt == null ||
+                !msg.createdAt!.isBefore(existing.lastMessageAt!)));
+    if (!isNewer && !isSameMessage) {
+      return;
+    }
+
+    final isViewing =
+        _ref.read(realtimeServiceProvider).activeConversationId ==
+        msg.conversationId;
+    final nextUnread = isViewing
+        ? 0
+        : ((!isSameMessage && !msg.isOutbound && !msg.isInternalNote)
+              ? existing.unreadCount + 1
+              : existing.unreadCount);
+
+    final updated = existing.copyWith(
+      lastMessage: msg,
+      lastMessageAt: msg.createdAt ?? existing.lastMessageAt ?? DateTime.now(),
+      unreadCount: nextUnread,
+    );
+    final nextList = [...state.items];
+    nextList[index] = updated;
+    final sorted = ConversationReconciler.sortServerOrder(
+      nextList.where(_matchesCurrentFilter).toList(),
+    );
+    state = state.copyWith(items: sorted);
+  }
+
+  void _onRealtimeConversation(ConversationModel conv) {
+    if (!mounted) return;
+    applyRemoteConversation(conv, acceptRemoteUnread: conv.hasUnreadCount);
+  }
+
+  void _onRealtimeMessageStatus(MessageStatusUpdate update) {
+    if (!mounted) return;
+    final index = state.items.indexWhere((c) => c.id == update.conversationId);
+    if (index < 0) return;
+    final existing = state.items[index];
+    final last = existing.lastMessage;
+    if (last == null) return;
+    final matchById = update.id > 0 && last.id == update.id;
+    final matchByClient =
+        update.clientId != null &&
+        update.clientId!.isNotEmpty &&
+        last.clientId == update.clientId;
+    if (!matchById && !matchByClient) return;
+    final nextList = [...state.items];
+    nextList[index] = existing.copyWith(
+      lastMessage: last.copyWith(
+        deliveryStatus: update.deliveryStatus,
+        deliveredAt: update.deliveredAt ?? last.deliveredAt,
+        readAt: update.readAt ?? last.readAt,
+      ),
+    );
+    state = state.copyWith(items: nextList);
+  }
+
+  Future<void> _fetchMissingConversation(int conversationId) async {
+    final scope = captureInboxScope(_ref);
+    try {
+      final fetched = await _ref
+          .read(conversationRepositoryProvider)
+          .getById(conversationId, workspaceId: scope.workspaceId);
+      if (!_canCommit(scope)) return;
+      applyRemoteConversation(fetched, acceptRemoteUnread: true);
+    } catch (_) {
+      // Delta sync or local watcher will populate when available.
+    } finally {
+      _fetchingNewConvIds.remove(conversationId);
+    }
   }
 
   /// «إبلاغ» من قائمة المحادثة: يعلّمها «يحتاج مراجعة» عبر واجهة التصنيف.
@@ -810,8 +969,41 @@ class ChatController extends StateNotifier<ChatState> {
   Timer? _presenceTimer;
   int? _boundWorkspaceId;
   List<MessageModel> _olderMessages = const [];
+  bool _needsActivationSync = false;
+
+  /// Ensures WebSocket channel subscription and missed-message catch-up stay live
+  /// even when revisiting a previously cached [ChatController] family instance.
+  void onActivated() {
+    if (!mounted || conversationId <= 0) return;
+    _realtime.watchConversation(conversationId);
+    var maxId = 0;
+    for (final m in state.messages) {
+      if (m.id > maxId) maxId = m.id;
+    }
+    if (maxId > 0) {
+      _realtime.setSeedMaxMessageId(conversationId, maxId);
+    }
+    if (_needsActivationSync) {
+      _needsActivationSync = false;
+      unawaited(_catchUpOnActivation(maxId));
+    }
+  }
+
+  void onDeactivated() {
+    if (conversationId <= 0) return;
+    _needsActivationSync = true;
+    _realtime.unwatchConversation(conversationId);
+  }
+
+  Future<void> _catchUpOnActivation(int afterId) async {
+    final scope = captureInboxScope(_ref);
+    await _realtime.catchUpConversation(conversationId, afterId: afterId);
+    if (!mounted || !_canCommit(scope)) return;
+    await refresh(silent: true);
+  }
 
   Future<void> _init() async {
+    _needsActivationSync = false;
     await _sub?.cancel();
     _sub = null;
     await _convUpdatedSub?.cancel();
@@ -985,6 +1177,35 @@ class ChatController extends StateNotifier<ChatState> {
     } catch (_) {}
   }
 
+  static int _deliveryRank(String? status) => switch (status?.toLowerCase()) {
+    'pending' || 'sending' => 0,
+    'sent' => 1,
+    'delivered' => 2,
+    'read' => 3,
+    'failed' => 4,
+    _ => -1,
+  };
+
+  MessageModel _mergeServerMessage(MessageModel older, MessageModel newer) {
+    final olderRank = _deliveryRank(older.deliveryStatus);
+    final newerRank = _deliveryRank(newer.deliveryStatus);
+    final keepOlderStatus =
+        olderRank == 3 && newerRank != 3 ||
+        (newerRank <= olderRank &&
+            older.deliveryStatus != null &&
+            newer.deliveryStatus != 'failed');
+    final attachments = newer.attachments.length >= older.attachments.length
+        ? newer.attachments
+        : older.attachments;
+    return newer.copyWith(
+      deliveryStatus: keepOlderStatus ? older.deliveryStatus : newer.deliveryStatus,
+      deliveredAt: newer.deliveredAt ?? older.deliveredAt,
+      readAt: newer.readAt ?? older.readAt,
+      attachments: attachments,
+      clientId: newer.clientId ?? older.clientId,
+    );
+  }
+
   List<MessageModel> _mergeMessages(
     List<MessageModel> older,
     List<MessageModel> latest,
@@ -995,7 +1216,9 @@ class ChatController extends StateNotifier<ChatState> {
       if (message.id > 0) {
         // A saved customer message and the AI reply are different rows.
         // client_id is only for an optimistic send that has no server id yet.
-        server[message.id] = message;
+        final prev = server[message.id];
+        server[message.id] =
+            prev == null ? message : _mergeServerMessage(prev, message);
         continue;
       }
       final clientId = message.clientId;
@@ -1138,14 +1361,16 @@ class ChatController extends StateNotifier<ChatState> {
       if (!_canCommit(scope)) return;
       final workspaceId = scope.workspaceId;
       final fetched = page.items.reversed.toList();
-      var messages = fetched;
+      var messages = _mergeMessages(state.messages, fetched);
       if (workspaceId != null) {
         final cached = await repo.cachedMessages(workspaceId, conversationId);
         if (!_canCommit(scope)) return;
         messages = _mergeMessages(
           _olderMessages,
-          _mergeMessages(cached, fetched),
+          _mergeMessages(state.messages, _mergeMessages(cached, fetched)),
         );
+      } else {
+        messages = _mergeMessages(_olderMessages, messages);
       }
       if (messages.isEmpty && state.messages.isNotEmpty) {
         messages = state.messages;

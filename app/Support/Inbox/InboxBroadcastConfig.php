@@ -11,6 +11,12 @@ final class InboxBroadcastConfig
     {
         $driver = (string) config('broadcasting.default', 'null');
         if (! in_array($driver, ['reverb', 'pusher'], true)) {
+            $inboxDriver = config('inbox.realtime.broadcast_connection');
+            if (is_string($inboxDriver) && in_array($inboxDriver, ['reverb', 'pusher'], true)) {
+                $driver = $inboxDriver;
+            }
+        }
+        if (! in_array($driver, ['reverb', 'pusher'], true)) {
             return [
                 'enabled' => false,
                 'driver' => $driver,

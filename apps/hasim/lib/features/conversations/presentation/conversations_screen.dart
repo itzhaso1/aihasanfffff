@@ -38,6 +38,7 @@ import 'package:hasim/features/privacy/presentation/locked_chats_navigation.dart
 import 'package:hasim/features/privacy/presentation/pin_prompt.dart';
 import 'package:hasim/features/privacy/providers/chat_lock_controller.dart';
 import 'package:hasim/l10n/app_localizations.dart';
+import 'package:hasim/realtime/reverb_websocket_client.dart';
 import 'package:hasim/router/worker_nav.dart';
 
 /// الشاشة الأولى بعد الدخول — محادثات فقط (بحث + فلاتر + قائمة).
@@ -86,6 +87,7 @@ String _folderEmptySubtitle(String? folder) {
 }
 
 class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
+  static bool _wallpaperPrecached = false;
   final _search = TextEditingController();
   int? _folderSelectedId;
   int? _actionConversationId;
@@ -118,15 +120,18 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      precacheImage(
-        ChatWallpaperCatalog.decorationImage(
-          ChatWallpaperCatalog.defaultId,
-        ).image,
-        context,
-      );
-    });
+    if (!_wallpaperPrecached) {
+      _wallpaperPrecached = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        precacheImage(
+          ChatWallpaperCatalog.decorationImage(
+            ChatWallpaperCatalog.defaultId,
+          ).image,
+          context,
+        );
+      });
+    }
     if (_isFolder) return;
     final initial = widget.initialSelectedId;
     if (initial != null) {
@@ -536,7 +541,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('مسح', style: TextStyle(color: Colors.red)),
+            child: const Text('مسح', style: TextStyle(color: HasimTokens.danger)),
           ),
         ],
       ),
@@ -660,10 +665,14 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(authControllerProvider);
-    final showSpecialInboxSections = auth.canSeeSpecialInboxSections;
+    final isIndependentWorker = ref.watch(
+      authControllerProvider.select((s) => s.isIndependentWorker),
+    );
+    final showSpecialInboxSections = ref.watch(
+      authControllerProvider.select((s) => s.canSeeSpecialInboxSections),
+    );
     final activeWorkspaceId = ref.watch(activeWorkspaceIdProvider);
-    final workerWorkspaceState = auth.isIndependentWorker && !_isFolder
+    final workerWorkspaceState = isIndependentWorker && !_isFolder
         ? ref.watch(workerInboxWorkspaceControllerProvider)
         : const WorkerInboxWorkspaceState();
     final inboxState = _isFolder
@@ -672,7 +681,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     // Without a company the worker Inbox has nothing to request, so the list
     // follows the company list load instead of waiting forever.
     final workerWithoutInbox =
-        auth.isIndependentWorker && !_isFolder && activeWorkspaceId == null;
+        isIndependentWorker && !_isFolder && activeWorkspaceId == null;
     final state = workerWithoutInbox
         ? ConversationsState(
             loading: workerWorkspaceState.loading,
@@ -680,7 +689,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
           )
         : inboxState;
     final canStartConversation =
-        widget.folder == null && !auth.isIndependentWorker;
+        widget.folder == null && !isIndependentWorker;
     final emptySubtitle = workerWithoutInbox
         ? 'لا توجد شركة متاحة للمحادثات'
         : _folderEmptySubtitle(widget.folder);
@@ -833,7 +842,10 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
               filters: bulkFilters,
             ),
           );
+    final realtimeConn = ref.watch(realtimeConnectionStateProvider).valueOrNull;
     final panel = _ConversationsPanel(
+      reconnectingRealtime:
+          realtimeConn == RealtimeConnectionState.reconnecting,
       search: _search,
       state: state,
       notifier: notifier,
@@ -857,13 +869,13 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       onToggleSelection: _toggleConversationSelection,
       onDesktopAction: _handleDesktopChatAction,
       onRefresh: () async {
-        if (auth.isIndependentWorker && !_isFolder) {
+        if (isIndependentWorker && !_isFolder) {
           await ref
               .read(workerInboxWorkspaceControllerProvider.notifier)
               .load(force: true);
         }
         await notifier.refresh();
-        if (!auth.isIndependentWorker) {
+        if (!isIndependentWorker) {
           await ref.read(homeControllerProvider.notifier).refresh();
         }
       },
@@ -978,14 +990,14 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
       );
     }
 
-    if (_isFolder || !auth.isIndependentWorker) {
+    if (_isFolder || !isIndependentWorker) {
       return scaffold;
     }
 
     return PopScope(
-      canPop: !auth.isIndependentWorker || context.canPop(),
+      canPop: !isIndependentWorker || context.canPop(),
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop || !auth.isIndependentWorker) {
+        if (didPop || !isIndependentWorker) {
           return;
         }
         if (context.canPop()) {
@@ -1316,6 +1328,7 @@ class _ConversationsPanel extends StatelessWidget {
     required this.canStartConversation,
     required this.emptySubtitle,
     required this.onRetry,
+    this.reconnectingRealtime = false,
     this.onNewConversation,
     this.folder,
   });
@@ -1331,6 +1344,7 @@ class _ConversationsPanel extends StatelessWidget {
   final Set<int> selectedIds;
   final bool selectionMode;
   final bool compactEmpty;
+  final bool reconnectingRealtime;
   final ValueChanged<int> onOpen;
   final ValueChanged<int> onToggleSelection;
   final void Function(
@@ -1385,9 +1399,41 @@ class _ConversationsPanel extends StatelessWidget {
       _ => null,
     };
 
+    final indexById = <int, int>{
+      for (var i = 0; i < visibleItems.length; i++) visibleItems[i].id: i,
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (reconnectingRealtime)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            color: HasimTokens.warningBannerBg(context),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      HasimTokens.warningBannerInk(context),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'جاري إعادة الاتصال بالتحديث المباشر...',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: HasimTokens.warningBannerInk(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
         if ((!isMobile || folder != null) && !selectionMode)
           Padding(
             key: folder == null ? null : const Key('inbox-folder-header'),
@@ -1709,11 +1755,7 @@ class _ConversationsPanel extends StatelessWidget {
                                   final val = key.value;
                                   if (val.startsWith('conversation-item-')) {
                                     final id = int.tryParse(val.substring(18));
-                                    if (id != null) {
-                                      for (var i = 0; i < visibleItems.length; i++) {
-                                        if (visibleItems[i].id == id) return i;
-                                      }
-                                    }
+                                    if (id != null) return indexById[id];
                                   }
                                 }
                                 return null;
@@ -1732,351 +1774,37 @@ class _ConversationsPanel extends StatelessWidget {
                                   );
                                 }
                                 final c = visibleItems[index];
-                                final time = inboxListTimeAr(c.lastMessageAt);
                                 final selected =
                                     (selectedId != null &&
                                         selectedId == c.id) ||
                                     actionSelectedId == c.id ||
                                     selectedIds.contains(c.id);
-                                final unread = c.unreadCount > 0 && !selected;
-                                final titleInitial = c.title.isNotEmpty
-                                    ? c.title.characters.first
-                                    : '#';
-                                return Material(
+                                return RepaintBoundary(
                                   key: ValueKey('conversation-item-${c.id}'),
-                                  color: selected
-                                      ? HasimTokens.conversationSelected(
-                                          context,
-                                        )
-                                      : Colors.transparent,
-                                  child: Builder(
-                                    builder: (rowContext) => InkWell(
-                                      onTap: selectionMode
-                                          ? () => onToggleSelection(c.id)
-                                          : () => onOpen(c.id),
-                                      onLongPress: () {
-                                        HapticFeedback.mediumImpact();
-                                        onToggleSelection(c.id);
-                                      },
-                                      onSecondaryTapUp: (details) =>
-                                          onContextMenu(
-                                            rowContext,
-                                            c,
-                                            details.globalPosition,
-                                          ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 12,
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Stack(
-                                              clipBehavior: Clip.none,
-                                              children: [
-                                                CircleAvatar(
-                                                  radius: 22,
-                                                  backgroundColor:
-                                                      selectedIds.contains(c.id)
-                                                      ? HasimTokens.chatGreen
-                                                      : HasimTokens.chatGreen
-                                                            .withValues(
-                                                              alpha: 0.14,
-                                                            ),
-                                                  child:
-                                                      selectedIds.contains(c.id)
-                                                      ? const Icon(
-                                                          Icons.check_rounded,
-                                                          color: Colors.white,
-                                                          size: 22,
-                                                        )
-                                                      : Text(
-                                                          titleInitial,
-                                                          style: const TextStyle(
-                                                            color: HasimTokens
-                                                                .chatGreen,
-                                                            fontWeight:
-                                                                FontWeight.w800,
-                                                            fontSize: 16,
-                                                          ),
-                                                        ),
-                                                ),
-                                                if (selectionMode)
-                                                  Positioned.fill(
-                                                    child: Opacity(
-                                                      opacity: 0,
-                                                      child: Checkbox(
-                                                        key: Key(
-                                                          'conversation-selection-checkbox-${c.id}',
-                                                        ),
-                                                        value: selectedIds
-                                                            .contains(c.id),
-                                                        onChanged: (_) =>
-                                                            onToggleSelection(
-                                                              c.id,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    children: [
-                                                      Expanded(
-                                                        child: Row(
-                                                          children: [
-                                                            Flexible(
-                                                              child: Text(
-                                                                c.title,
-                                                                maxLines: 1,
-                                                                overflow:
-                                                                    TextOverflow
-                                                                        .ellipsis,
-                                                                style: theme
-                                                                    .textTheme
-                                                                    .titleMedium
-                                                                    ?.copyWith(
-                                                                      fontWeight:
-                                                                          unread
-                                                                          ? FontWeight.w800
-                                                                          : FontWeight.w700,
-                                                                      fontSize:
-                                                                          14.5,
-                                                                      color: theme
-                                                                          .colorScheme
-                                                                          .onSurface,
-                                                                    ),
-                                                              ),
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 4,
-                                                            ),
-                                                            ConversationChannelIcon(
-                                                              channel:
-                                                                  c.channel,
-                                                              tooltip: c
-                                                                  .channelLabel,
-                                                            ),
-                                                            if (marks.isPinned(
-                                                              c.id,
-                                                            ))
-                                                              Padding(
-                                                                padding:
-                                                                    const EdgeInsetsDirectional.only(
-                                                                      start: 4,
-                                                                    ),
-                                                                child: Icon(
-                                                                  Icons
-                                                                      .push_pin,
-                                                                  key: Key(
-                                                                    'conversation-pinned-${c.id}',
-                                                                  ),
-                                                                  size: 14,
-                                                                  color: theme
-                                                                      .colorScheme
-                                                                      .onSurfaceVariant,
-                                                                ),
-                                                              ),
-                                                            if (marks.isStarred(
-                                                              c.id,
-                                                            ))
-                                                              Padding(
-                                                                padding:
-                                                                    const EdgeInsetsDirectional.only(
-                                                                      start: 4,
-                                                                    ),
-                                                                child: Icon(
-                                                                  Icons
-                                                                      .star_rounded,
-                                                                  key: Key(
-                                                                    'conversation-starred-${c.id}',
-                                                                  ),
-                                                                  size: 15,
-                                                                  color: HasimTokens
-                                                                      .warning,
-                                                                ),
-                                                              ),
-                                                            if (c.muted)
-                                                              Padding(
-                                                                padding:
-                                                                    const EdgeInsetsDirectional.only(
-                                                                      start: 4,
-                                                                    ),
-                                                                child: Icon(
-                                                                  Icons
-                                                                      .notifications_off_outlined,
-                                                                  size: 14,
-                                                                  color: theme
-                                                                      .colorScheme
-                                                                      .onSurfaceVariant,
-                                                                ),
-                                                              ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        time,
-                                                        style: theme
-                                                            .textTheme
-                                                            .labelSmall
-                                                            ?.copyWith(
-                                                              color: unread
-                                                                  ? theme
-                                                                        .colorScheme
-                                                                        .primary
-                                                                  : theme
-                                                                        .colorScheme
-                                                                        .onSurfaceVariant,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w500,
-                                                            ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Wrap(
-                                                    spacing: 4,
-                                                    runSpacing: 4,
-                                                    children: [
-                                                      _ResponderBadge(
-                                                        responder: c
-                                                            .effectiveResponder,
-                                                        key: Key(
-                                                          'responder-badge-${c.id}',
-                                                        ),
-                                                      ),
-                                                      if (c.customerPriority ==
-                                                          'important')
-                                                        _ClassBadge(
-                                                          label: 'مهم',
-                                                          key: Key(
-                                                            'priority-${c.id}',
-                                                          ),
-                                                        ),
-                                                      if (c.customerPriority ==
-                                                          'not_important')
-                                                        _ClassBadge(
-                                                          label: 'غير مهم',
-                                                          key: Key(
-                                                            'priority-${c.id}',
-                                                          ),
-                                                        ),
-                                                      if (c.paymentStatus ==
-                                                          'paid')
-                                                        _ClassBadge(
-                                                          label: 'مدفوع',
-                                                          key: Key(
-                                                            'paid-${c.id}',
-                                                          ),
-                                                        ),
-                                                      if (c.reviewStatus ==
-                                                          'needs_review')
-                                                        _ClassBadge(
-                                                          label: 'يحتاج مراجعة',
-                                                          key: Key(
-                                                            'review-${c.id}',
-                                                          ),
-                                                        ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    children: [
-                                                      Expanded(
-                                                        child: Text(
-                                                          c.preview,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
-                                                          style: theme
-                                                              .textTheme
-                                                              .bodyMedium
-                                                              ?.copyWith(
-                                                                fontSize: 13,
-                                                                color: theme
-                                                                    .colorScheme
-                                                                    .onSurfaceVariant,
-                                                                fontWeight:
-                                                                    unread
-                                                                    ? FontWeight
-                                                                          .w600
-                                                                    : FontWeight
-                                                                          .w400,
-                                                                height: 1.35,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                      if (unread)
-                                                        Padding(
-                                                          padding:
-                                                              const EdgeInsetsDirectional.only(
-                                                                start: 8,
-                                                              ),
-                                                          child: CircleAvatar(
-                                                            radius: 10.5,
-                                                            backgroundColor:
-                                                                HasimTokens
-                                                                    .chatGreen,
-                                                            child: Text(
-                                                              '${c.unreadCount}',
-                                                              style: theme
-                                                                  .textTheme
-                                                                  .labelSmall
-                                                                  ?.copyWith(
-                                                                    color: Colors
-                                                                        .white,
-                                                                    fontSize:
-                                                                        10.5,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w700,
-                                                                    height: 1.1,
-                                                                  ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            if (!isMobile) ...[
-                                              if (state
-                                                      .mutatingConversationId ==
-                                                  c.id)
-                                                const SizedBox(
-                                                  key: Key(
-                                                    'conversation-actions-progress',
-                                                  ),
-                                                  width: 20,
-                                                  height: 20,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                      ),
-                                                )
-                                              else
-                                                _DesktopConversationActionsButton(
-                                                  conversation: c,
-                                                  marks: marks,
-                                                  onAction: (action) =>
-                                                      onDesktopAction(
-                                                        action,
-                                                        c,
-                                                      ),
-                                                ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                  child: _ConversationListTile(
+                                    conversation: c,
+                                    theme: theme,
+                                    selected: selected,
+                                    multiSelected: selectedIds.contains(c.id),
+                                    selectionMode: selectionMode,
+                                    isMobile: isMobile,
+                                    isPinned: marks.isPinned(c.id),
+                                    isStarred: marks.isStarred(c.id),
+                                    mutating: state.mutatingConversationId == c.id,
+                                    marks: marks,
+                                    onTap: selectionMode
+                                        ? () => onToggleSelection(c.id)
+                                        : () => onOpen(c.id),
+                                    onLongPress: () {
+                                      HapticFeedback.mediumImpact();
+                                      onToggleSelection(c.id);
+                                    },
+                                    onContextMenu: (ctx, pos) =>
+                                        onContextMenu(ctx, c, pos),
+                                    onToggleSelection: () =>
+                                        onToggleSelection(c.id),
+                                    onDesktopAction: (action) =>
+                                        onDesktopAction(action, c),
                                   ),
                                 );
                               },
@@ -2086,6 +1814,267 @@ class _ConversationsPanel extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _ConversationListTile extends StatelessWidget {
+  const _ConversationListTile({
+    required this.conversation,
+    required this.theme,
+    required this.selected,
+    required this.multiSelected,
+    required this.selectionMode,
+    required this.isMobile,
+    required this.isPinned,
+    required this.isStarred,
+    required this.mutating,
+    required this.marks,
+    required this.onTap,
+    required this.onLongPress,
+    required this.onContextMenu,
+    required this.onToggleSelection,
+    required this.onDesktopAction,
+  });
+
+  final ConversationModel conversation;
+  final ThemeData theme;
+  final bool selected;
+  final bool multiSelected;
+  final bool selectionMode;
+  final bool isMobile;
+  final bool isPinned;
+  final bool isStarred;
+  final bool mutating;
+  final ConversationMarks marks;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final void Function(BuildContext anchor, Offset globalPosition) onContextMenu;
+  final VoidCallback onToggleSelection;
+  final ValueChanged<DesktopChatMenuAction> onDesktopAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = conversation;
+    final time = inboxListTimeAr(c.lastMessageAt);
+    final unread = c.unreadCount > 0 && !selected;
+    final titleInitial = c.title.isNotEmpty ? c.title.characters.first : '#';
+
+    return Material(
+      color: selected
+          ? HasimTokens.conversationSelected(context)
+          : Colors.transparent,
+      child: Builder(
+        builder: (rowContext) => InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          onSecondaryTapUp: (details) =>
+              onContextMenu(rowContext, details.globalPosition),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: multiSelected
+                          ? HasimTokens.chatGreen
+                          : HasimTokens.chatGreen.withValues(alpha: 0.14),
+                      child: multiSelected
+                          ? const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            )
+                          : Text(
+                              titleInitial,
+                              style: const TextStyle(
+                                color: HasimTokens.chatGreen,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                    ),
+                    if (selectionMode)
+                      Offstage(
+                        offstage: true,
+                        child: Checkbox(
+                          key: Key('conversation-selection-checkbox-${c.id}'),
+                          value: multiSelected,
+                          onChanged: (_) => onToggleSelection(),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    c.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight:
+                                          unread ? FontWeight.w800 : FontWeight.w700,
+                                      fontSize: 14.5,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                ConversationChannelIcon(
+                                  channel: c.channel,
+                                  tooltip: c.channelLabel,
+                                ),
+                                if (isPinned)
+                                  Padding(
+                                    padding: const EdgeInsetsDirectional.only(
+                                      start: 4,
+                                    ),
+                                    child: Icon(
+                                      Icons.push_pin,
+                                      key: Key('conversation-pinned-${c.id}'),
+                                      size: 14,
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                if (isStarred)
+                                  Padding(
+                                    padding: const EdgeInsetsDirectional.only(
+                                      start: 4,
+                                    ),
+                                    child: Icon(
+                                      Icons.star_rounded,
+                                      key: Key('conversation-starred-${c.id}'),
+                                      size: 15,
+                                      color: HasimTokens.warning,
+                                    ),
+                                  ),
+                                if (c.muted)
+                                  Padding(
+                                    padding: const EdgeInsetsDirectional.only(
+                                      start: 4,
+                                    ),
+                                    child: Icon(
+                                      Icons.notifications_off_outlined,
+                                      size: 14,
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            time,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: unread
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          _ResponderBadge(
+                            responder: c.effectiveResponder,
+                            key: Key('responder-badge-${c.id}'),
+                          ),
+                          if (c.customerPriority == 'important')
+                            _ClassBadge(
+                              label: 'مهم',
+                              key: Key('priority-${c.id}'),
+                            ),
+                          if (c.customerPriority == 'not_important')
+                            _ClassBadge(
+                              label: 'غير مهم',
+                              key: Key('priority-${c.id}'),
+                            ),
+                          if (c.paymentStatus == 'paid')
+                            _ClassBadge(
+                              label: 'مدفوع',
+                              key: Key('paid-${c.id}'),
+                            ),
+                          if (c.reviewStatus == 'needs_review')
+                            _ClassBadge(
+                              label: 'يحتاج مراجعة',
+                              key: Key('review-${c.id}'),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              c.preview,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontSize: 13,
+                                color: theme.colorScheme.onSurfaceVariant,
+                                fontWeight:
+                                    unread ? FontWeight.w600 : FontWeight.w400,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                          if (unread)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 8),
+                              child: CircleAvatar(
+                                radius: 10.5,
+                                backgroundColor: HasimTokens.chatGreen,
+                                child: Text(
+                                  '${c.unreadCount}',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: Colors.white,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (!isMobile) ...[
+                  if (mutating)
+                    const SizedBox(
+                      key: Key('conversation-actions-progress'),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    _DesktopConversationActionsButton(
+                      conversation: c,
+                      marks: marks,
+                      onAction: onDesktopAction,
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

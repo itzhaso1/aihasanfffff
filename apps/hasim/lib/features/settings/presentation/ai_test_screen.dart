@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:hasim/core/network/api_exception.dart';
+import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
@@ -97,7 +97,7 @@ class _AiTestScreenState extends ConsumerState<AiTestScreen> {
                 _result == null
                     ? 'لم يُختبر الاتصال بعد'
                     : (_result!.failed ? 'غير متصل' : 'متصل'),
-                style: GoogleFonts.cairo(
+                style: AppTheme.cairoStyle(
                   fontWeight: FontWeight.w800,
                   color: _result == null
                       ? HasimTokens.inkColor(context)
@@ -126,12 +126,12 @@ class _AiTestScreenState extends ConsumerState<AiTestScreen> {
                       children: [
                         Text(
                           check.label,
-                          style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+                          style: AppTheme.cairoStyle(fontWeight: FontWeight.w700),
                         ),
                         if (check.detail.isNotEmpty)
                           Text(
                             check.detail,
-                            style: GoogleFonts.cairo(
+                            style: AppTheme.cairoStyle(
                               fontSize: 12,
                               color: HasimTokens.mutedColor(context),
                             ),
@@ -141,12 +141,12 @@ class _AiTestScreenState extends ConsumerState<AiTestScreen> {
                   ),
                   Text(
                     check.elapsedMs > 0 ? '${check.elapsedMs} ms' : '—',
-                    style: GoogleFonts.cairo(fontSize: 12),
+                    style: AppTheme.cairoStyle(fontSize: 12),
                   ),
                   const SizedBox(width: 8),
                   Text(
                     _result == null ? 'بانتظار' : _checkLabel(check),
-                    style: GoogleFonts.cairo(
+                    style: AppTheme.cairoStyle(
                       fontWeight: FontWeight.w700,
                       color: _result == null
                           ? HasimTokens.mutedColor(context)
@@ -160,7 +160,7 @@ class _AiTestScreenState extends ConsumerState<AiTestScreen> {
         const SizedBox(height: 8),
         TextField(
           controller: _message,
-          style: GoogleFonts.cairo(),
+          style: AppTheme.cairoStyle(),
           decoration: const InputDecoration(
             labelText: 'اكتب رسالة للاختبار',
             hintText: 'مرحبا، عرفني بنفسك',
@@ -184,7 +184,7 @@ class _AiTestScreenState extends ConsumerState<AiTestScreen> {
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),
-          Text(_error!, style: GoogleFonts.cairo(color: HasimTokens.danger)),
+          Text(_error!, style: AppTheme.cairoStyle(color: HasimTokens.danger)),
         ],
         if (_result != null) ...[
           const SizedBox(height: 12),
@@ -194,24 +194,24 @@ class _AiTestScreenState extends ConsumerState<AiTestScreen> {
               children: [
                 Text(
                   'نتيجة الاختبار',
-                  style: GoogleFonts.cairo(fontWeight: FontWeight.w800),
+                  style: AppTheme.cairoStyle(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   (_result!.text ?? '').isEmpty
                       ? (_result!.error ?? 'لا يوجد رد.')
                       : _result!.text!,
-                  style: GoogleFonts.cairo(height: 1.4),
+                  style: AppTheme.cairoStyle(height: 1.4),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'زمن الاستجابة: ${_result!.elapsedMs} ms',
-                  style: GoogleFonts.cairo(fontSize: 13),
+                  style: AppTheme.cairoStyle(fontSize: 13),
                 ),
                 if (_result!.tokens != null)
                   Text(
                     'Tokens: ${_result!.tokens}',
-                    style: GoogleFonts.cairo(fontSize: 13),
+                    style: AppTheme.cairoStyle(fontSize: 13),
                   ),
               ],
             ),
@@ -221,7 +221,7 @@ class _AiTestScreenState extends ConsumerState<AiTestScreen> {
             _ProbeCard(
               child: Text(
                 'الذكاء الاصطناعي جاهز للعمل ✓',
-                style: GoogleFonts.cairo(
+                style: AppTheme.cairoStyle(
                   fontWeight: FontWeight.w800,
                   color: const Color(0xFF067E6B),
                 ),
