@@ -38,6 +38,7 @@ class _SlowSendRepository extends ConversationRepository {
     String content,
     String key, {
     String direction = 'outbound',
+    String? correlationId,
   }) async {
     calls++;
     if (!started.isCompleted) started.complete();
@@ -67,6 +68,7 @@ class _RecordingSendRepository extends ConversationRepository {
     String content,
     String key, {
     String direction = 'outbound',
+    String? correlationId,
   }) async {
     calls++;
     keys.add(key);

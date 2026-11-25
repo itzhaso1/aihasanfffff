@@ -11,6 +11,7 @@ use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Mobile\MessageAttachmentService;
+use App\Support\Observability\OpsLogger;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
@@ -189,6 +190,16 @@ class ConversationService
 
                 return $message->load('attachments');
             });
+
+            if ($message->wasRecentlyCreated) {
+                OpsLogger::info('DATABASE_MESSAGE_PERSISTED', [
+                    'workspace_id' => $message->workspace_id,
+                    'conversation_id' => $message->conversation_id,
+                    'message_id' => $message->id,
+                    'direction' => $message->direction,
+                    'delivery_status' => $message->delivery_status,
+                ]);
+            }
 
             if (! $message->wasRecentlyCreated || ! $dispatchSideEffects) {
                 return $message;

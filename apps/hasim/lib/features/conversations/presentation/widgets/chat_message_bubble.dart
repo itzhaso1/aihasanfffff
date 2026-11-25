@@ -28,6 +28,8 @@ class ChatMessageBubble extends StatelessWidget {
     this.selectionMode = false,
     this.onToggleSelected,
     this.bubbleColorId,
+    this.groupedWithPrevious = false,
+    this.groupedWithNext = false,
   });
 
   final MessageModel message;
@@ -47,63 +49,123 @@ class ChatMessageBubble extends StatelessWidget {
   final bool selectionMode;
   final VoidCallback? onToggleSelected;
   final String? bubbleColorId;
+  final bool groupedWithPrevious;
+  final bool groupedWithNext;
 
-  static const _outboundRadius = BorderRadius.only(
-    topLeft: Radius.circular(12),
-    topRight: Radius.circular(12),
-    bottomLeft: Radius.circular(4),
-    bottomRight: Radius.circular(12),
-  );
-
-  static const _inboundRadius = BorderRadius.only(
-    topLeft: Radius.circular(12),
-    topRight: Radius.circular(12),
-    bottomLeft: Radius.circular(12),
-    bottomRight: Radius.circular(4),
-  );
-
-  static const _bubbleShadow = [
-    BoxShadow(color: Color(0x0A000000), blurRadius: 1, offset: Offset(0, 1)),
+  static const _bubbleShadowLight = [
+    BoxShadow(color: Color(0x09000000), blurRadius: 3, offset: Offset(0, 1)),
   ];
+
+  static const _bubbleShadowDark = [
+    BoxShadow(color: Color(0x28000000), blurRadius: 3, offset: Offset(0, 1)),
+  ];
+
+  static BorderRadius _bubbleRadius({
+    required bool onPhysicalLeft,
+    required bool groupedPrev,
+    required bool groupedNext,
+  }) {
+    const r = Radius.circular(16);
+    const stacked = Radius.circular(6);
+    const tail = Radius.circular(4);
+    if (onPhysicalLeft) {
+      return BorderRadius.only(
+        topLeft: groupedPrev ? stacked : r,
+        topRight: r,
+        bottomLeft: groupedNext ? stacked : tail,
+        bottomRight: r,
+      );
+    }
+    return BorderRadius.only(
+      topLeft: r,
+      topRight: groupedPrev ? stacked : r,
+      bottomLeft: r,
+      bottomRight: groupedNext ? stacked : tail,
+    );
+  }
+
+  static TextDirection? _detectBidiDirection(String text) {
+    for (final rune in text.runes) {
+      if ((rune >= 0x0600 && rune <= 0x06FF) ||
+          (rune >= 0x0750 && rune <= 0x077F) ||
+          (rune >= 0x08A0 && rune <= 0x08FF) ||
+          (rune >= 0xFB50 && rune <= 0xFDFF) ||
+          (rune >= 0xFE70 && rune <= 0xFEFF) ||
+          (rune >= 0x0590 && rune <= 0x05FF)) {
+        return TextDirection.rtl;
+      }
+      if ((rune >= 0x0041 && rune <= 0x005A) ||
+          (rune >= 0x0061 && rune <= 0x007A) ||
+          (rune >= 0x00C0 && rune <= 0x024F)) {
+        return TextDirection.ltr;
+      }
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final dark = HasimTokens.isDark(context);
     if (message.isInternalNote) {
+      final noteBg = dark ? const Color(0xFF28200D) : const Color(0xFFFFFBEB);
+      final noteBorder = dark
+          ? const Color(0xFFF59E0B).withValues(alpha: 0.42)
+          : const Color(0xFFFCD34D);
+      final noteLabelColor =
+          dark ? const Color(0xFFFBBF24) : const Color(0xFF92400E);
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 20),
         child: Center(
-          child: DecoratedBox(
-            key: const Key('chat-internal-note'),
-            decoration: BoxDecoration(
-              color: HasimTokens.cardBg(context),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: HasimTokens.lineColor(context)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'ملاحظة داخلية',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: HasimTokens.mutedColor(context),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth ?? 360),
+            child: DecoratedBox(
+              key: const Key('chat-internal-note'),
+              decoration: BoxDecoration(
+                color: noteBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: noteBorder, width: 0.9),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.lock_outline_rounded,
+                          size: 12,
+                          color: noteLabelColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'ملاحظة داخلية',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            color: noteLabelColor,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    message.content,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      height: 1.35,
-                      fontWeight: FontWeight.w600,
-                      color: HasimTokens.inkColor(context),
+                    const SizedBox(height: 2),
+                    Text(
+                      message.content,
+                      textAlign: TextAlign.center,
+                      textDirection: _detectBidiDirection(message.content),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                        color: HasimTokens.inkColor(context),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -121,32 +183,69 @@ class ChatMessageBubble extends StatelessWidget {
     final alignment = onPhysicalLeft
         ? Alignment.centerLeft
         : Alignment.centerRight;
-    final bubbleMaxFraction = compact ? 0.78 : 0.72;
-    final laneWidth = maxWidth != null
-        ? maxWidth! / bubbleMaxFraction
-        : MediaQuery.sizeOf(context).width;
-    // Mobile: tighter lanes; desktop: scale gutter to chat pane width for balanced lanes.
-    final innerGutter = compact ? 52.0 : (laneWidth * 0.18).clamp(72.0, 132.0);
-    final outerGutter = compact ? 6.0 : 14.0;
-    final verticalGap = compact ? 4.0 : 4.0;
+    final bubbleMaxFraction = compact ? 0.80 : 0.68;
+    final outerGutter = compact ? 8.0 : 14.0;
+    final oppositeBreathing = compact ? 24.0 : 48.0;
+    final topGap = groupedWithPrevious ? 1.5 : 3.5;
+    final bottomGap = groupedWithNext ? 1.5 : 3.5;
     final bubblePadding = EdgeInsets.fromLTRB(
-      onPhysicalLeft ? outerGutter : innerGutter,
-      verticalGap,
-      onPhysicalLeft ? innerGutter : outerGutter,
-      verticalGap,
+      onPhysicalLeft ? outerGutter : oppositeBreathing,
+      topGap,
+      onPhysicalLeft ? oppositeBreathing : outerGutter,
+      bottomGap,
     );
-    final failed = message.localFailed;
-    final bg = failed
-        ? HasimTokens.dangerSoftColor(context)
-        : (mine
-              ? ChatBubbleColorCatalog.outgoingBubble(
-                  context,
-                  activeBubbleColor,
-                )
-              : HasimTokens.cardBg(context));
+    final failed = message.outboundPhase == OutboundPhase.failed;
+    final isAiBubble = message.isFromAi;
+    final isWorkerBubble = message.isFromWorker;
+
+    final Color bg;
+    final Border? bubbleBorder;
+    if (failed) {
+      bg = HasimTokens.dangerSoftColor(context);
+      bubbleBorder = Border.all(
+        color: HasimTokens.danger.withValues(alpha: 0.45),
+        width: 0.9,
+      );
+    } else if (isAiBubble && activeBubbleColor == 'default') {
+      bg = dark ? const Color(0xFF1A2236) : const Color(0xFFEEF4FF);
+      bubbleBorder = Border.all(
+        color: (dark ? const Color(0xFF818CF8) : const Color(0xFF6366F1))
+            .withValues(alpha: dark ? 0.42 : 0.28),
+        width: 0.9,
+      );
+    } else if (mine) {
+      bg = ChatBubbleColorCatalog.outgoingBubble(context, activeBubbleColor);
+      if (isWorkerBubble) {
+        bubbleBorder = Border.all(
+          color: const Color(0xFFD97706).withValues(alpha: dark ? 0.45 : 0.30),
+          width: 0.8,
+        );
+      } else if (activeBubbleColor == 'default') {
+        bubbleBorder = Border.all(
+          color: dark
+              ? Colors.white.withValues(alpha: 0.08)
+              : const Color(0xFFC9F0E8),
+          width: 0.7,
+        );
+      } else {
+        bubbleBorder = null;
+      }
+    } else {
+      bg = HasimTokens.cardBg(context);
+      bubbleBorder = Border.all(
+        color: HasimTokens.lineColor(context).withValues(alpha: dark ? 0.85 : 0.9),
+        width: 0.7,
+      );
+    }
+
     final fg = HasimTokens.inkColor(context);
     final meta = HasimTokens.mutedColor(context);
     final showCaption = message.content.isNotEmpty && message.content != '📎';
+    final radius = _bubbleRadius(
+      onPhysicalLeft: onPhysicalLeft,
+      groupedPrev: groupedWithPrevious,
+      groupedNext: groupedWithNext,
+    );
 
     final openMenu = onContextMenu;
     final bubbleTap = selectionMode ? onToggleSelected : onRetry;
@@ -154,20 +253,15 @@ class ChatMessageBubble extends StatelessWidget {
     final Widget decoratedBubble = DecoratedBox(
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: onPhysicalLeft ? _outboundRadius : _inboundRadius,
-        border: failed
-            ? Border.all(
-                color: HasimTokens.danger.withValues(alpha: 0.45),
-                width: 0.9,
-              )
-            : null,
-        boxShadow: _bubbleShadow,
+        borderRadius: radius,
+        border: bubbleBorder,
+        boxShadow: dark ? _bubbleShadowDark : _bubbleShadowLight,
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(
-          compact ? 8 : 10,
+          compact ? 10 : 12,
           compact ? 5 : 6,
-          compact ? 8 : 10,
+          compact ? 10 : 12,
           compact ? 4 : 5,
         ),
         child: AbsorbPointer(
@@ -177,6 +271,7 @@ class ChatMessageBubble extends StatelessWidget {
             mine: mine,
             failed: failed,
             showCaption: showCaption,
+            showSenderHeader: !groupedWithPrevious,
             fg: fg,
             meta: meta,
             l10n: l10n,
@@ -209,7 +304,7 @@ class ChatMessageBubble extends StatelessWidget {
                 : (details) => openMenu(details.globalPosition),
             child: InkWell(
               onTap: bubbleTap,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: radius,
               child: ConstrainedBox(
                 constraints: BoxConstraints(
                   maxWidth:
@@ -249,6 +344,7 @@ class _BubbleBody extends StatelessWidget {
     required this.mine,
     required this.failed,
     required this.showCaption,
+    required this.showSenderHeader,
     required this.fg,
     required this.meta,
     required this.l10n,
@@ -263,6 +359,7 @@ class _BubbleBody extends StatelessWidget {
   final bool mine;
   final bool failed;
   final bool showCaption;
+  final bool showSenderHeader;
   final Color fg;
   final Color meta;
   final AppLocalizations l10n;
@@ -273,8 +370,8 @@ class _BubbleBody extends StatelessWidget {
   final VoidCallback? onOpenFailed;
 
   static const _textStyle = TextStyle(
-    height: 1.4,
-    fontSize: 14.5,
+    height: 1.36,
+    fontSize: 14,
     fontWeight: FontWeight.w500,
   );
 
@@ -288,7 +385,7 @@ class _BubbleBody extends StatelessWidget {
           Icon(
             Icons.push_pin,
             key: const Key('chat-message-pinned'),
-            size: 12,
+            size: 11.5,
             color: meta,
           ),
           const SizedBox(width: 3),
@@ -297,7 +394,7 @@ class _BubbleBody extends StatelessWidget {
           Icon(
             Icons.star_rounded,
             key: const Key('chat-message-starred'),
-            size: 13,
+            size: 12.5,
             color: meta,
           ),
           const SizedBox(width: 3),
@@ -308,64 +405,73 @@ class _BubbleBody extends StatelessWidget {
               : _timeFormat.format(message.createdAt!.toLocal()),
           style: TextStyle(
             color: meta,
-            fontSize: 11,
+            fontSize: 10.5,
             height: 1.1,
             fontWeight: FontWeight.w500,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
         if (mine) ...[
           const SizedBox(width: 3),
-          if (failed || message.deliveryStatus == 'failed') ...[
-            Icon(Icons.error_outline_rounded, size: 13, color: Colors.red.shade400),
-            const SizedBox(width: 2),
-            Icon(Icons.refresh, size: 12, color: Colors.red.shade400),
-            const SizedBox(width: 2),
-            Text(
-              l10n.chatAttachmentRetry,
-              style: TextStyle(
-                fontSize: 10,
-                height: 1.1,
-                color: Colors.red.shade400,
-              ),
+          switch (message.outboundPhase) {
+            OutboundPhase.failed => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  size: 13,
+                  color: HasimTokens.danger,
+                ),
+                const SizedBox(width: 2),
+                const Icon(Icons.refresh, size: 12, color: HasimTokens.danger),
+                const SizedBox(width: 2),
+                Text(
+                  l10n.chatAttachmentRetry,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    color: HasimTokens.danger,
+                  ),
+                ),
+              ],
             ),
-          ] else if (message.localPending ||
-              message.deliveryStatus == 'pending' ||
-              message.deliveryStatus == 'sending') ...[
-            if (message.localUploading ||
-                message.localAttachmentPath != null ||
-                (message.localPending && message.attachments.isNotEmpty))
-              SizedBox(
-                width: 11,
-                height: 11,
-                child: CircularProgressIndicator(strokeWidth: 1.5, color: meta),
-              )
-            else
-              Icon(
-                Icons.access_time_rounded,
-                size: 12,
-                color: meta,
-              ),
-          ] else if (message.id <= 0 ||
-              message.deliveryStatus == null ||
-              message.deliveryStatus == 'sent') ...[
-            Icon(
+            OutboundPhase.sending => SizedBox(
+              width: 11,
+              height: 11,
+              child: CircularProgressIndicator(strokeWidth: 1.5, color: meta),
+            ),
+            OutboundPhase.pending => Icon(
+              Icons.access_time_rounded,
+              size: 12,
+              color: meta,
+            ),
+            OutboundPhase.accepted => Icon(
+              Icons.schedule_send_outlined,
+              size: 12.5,
+              color: meta,
+            ),
+            OutboundPhase.sent => Icon(
               Icons.done_rounded,
               size: 14,
               color: meta,
             ),
-          ] else if (message.deliveryStatus == 'delivered') ...[
-            Icon(
+            OutboundPhase.delivered => Icon(
               Icons.done_all_rounded,
               size: 14,
               color: meta,
             ),
-          ] else ...[
-            const Icon(
+            OutboundPhase.read => const Icon(
               Icons.done_all_rounded,
               size: 14,
               color: HasimTokens.readReceipt,
             ),
-          ],
+            OutboundPhase.unknown => Icon(
+              Icons.help_outline_rounded,
+              size: 12.5,
+              color: meta,
+            ),
+          },
         ],
       ],
     );
@@ -380,17 +486,24 @@ class _BubbleBody extends StatelessWidget {
     final hasAttachments = message.attachments.isNotEmpty;
     final textOnly = showCaption && !hasAttachments && !pendingUpload;
 
-    final header = _SenderHeader(message: message, mine: mine);
+    final header = showSenderHeader
+        ? _SenderHeader(message: message, mine: mine)
+        : const SizedBox.shrink();
 
     if (textOnly) {
       final quoted = splitQuotedReply(message.content);
+      final bodyDirection = ChatMessageBubble._detectBidiDirection(quoted.body);
       final textRow = Wrap(
         spacing: 6,
         runSpacing: 2,
         crossAxisAlignment: WrapCrossAlignment.end,
         alignment: WrapAlignment.end,
         children: [
-          Text(quoted.body, style: _textStyle.copyWith(color: fg)),
+          Text(
+            quoted.body,
+            textDirection: bodyDirection,
+            style: _textStyle.copyWith(color: fg),
+          ),
           _metaRow(),
         ],
       );
@@ -401,9 +514,22 @@ class _BubbleBody extends StatelessWidget {
           header,
           if (quoted.quote != null) ...[
             _QuotedReplyBlock(text: quoted.quote!, mine: mine),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
           ],
           textRow,
+          if (failed && (message.localError?.trim().isNotEmpty ?? false))
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text(
+                message.localError!.trim(),
+                style: const TextStyle(
+                  fontSize: 11,
+                  height: 1.2,
+                  color: HasimTokens.danger,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
         ],
       );
     }
@@ -470,9 +596,15 @@ class _BubbleBody extends StatelessWidget {
         if (showCaption)
           Padding(
             padding: EdgeInsets.only(
-              top: (hasAttachments || pendingUpload) ? 6 : 0,
+              top: (hasAttachments || pendingUpload) ? 5 : 0,
             ),
-            child: Text(message.content, style: _textStyle.copyWith(color: fg)),
+            child: Text(
+              message.content,
+              textDirection: ChatMessageBubble._detectBidiDirection(
+                message.content,
+              ),
+              style: _textStyle.copyWith(color: fg),
+            ),
           ),
         if (pendingUpload)
           Padding(
@@ -515,6 +647,7 @@ class _SenderHeader extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final dark = HasimTokens.isDark(context);
     final isEmployee = message.isFromEmployee;
     final isAi = message.isFromAi;
     final isWorker = message.isFromWorker;
@@ -523,69 +656,70 @@ class _SenderHeader extends StatelessWidget {
     final Color color;
     final Color badgeBg;
     final String roleLabel;
-    final String name;
+    final String name = message.senderDisplayName;
 
     if (isAi) {
       icon = Icons.smart_toy_outlined;
-      color = const Color(0xFF6366F1);
-      badgeBg = const Color(0x1F6366F1);
+      color = dark ? const Color(0xFFA5B4FC) : const Color(0xFF4F46E5);
+      badgeBg = color.withValues(alpha: dark ? 0.18 : 0.11);
       roleLabel = 'ذكاء اصطناعي';
-      name = message.senderDisplayName;
     } else if (isWorker) {
       icon = Icons.work_outline;
-      color = Colors.amber.shade900;
-      badgeBg = Colors.amber.shade100;
+      color = dark ? const Color(0xFFFBBF24) : const Color(0xFFB45309);
+      badgeBg = color.withValues(alpha: dark ? 0.18 : 0.12);
       roleLabel = 'موظف مستقل';
-      name = message.senderDisplayName;
     } else if (isEmployee) {
       icon = Icons.badge_outlined;
-      color = HasimTokens.accentDark;
-      badgeBg = HasimTokens.mintSoft;
+      color = dark ? HasimTokens.chatGreen : HasimTokens.accentDark;
+      badgeBg = color.withValues(alpha: dark ? 0.18 : 0.11);
       roleLabel = 'موظف';
-      name = message.senderDisplayName;
     } else {
       icon = Icons.person_outline;
       color = HasimTokens.mutedColor(context);
-      badgeBg = HasimTokens.lineColor(context);
+      badgeBg = HasimTokens.lineColor(context).withValues(alpha: dark ? 0.45 : 0.6);
       roleLabel = 'عميل';
-      name = message.senderDisplayName;
     }
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
           Flexible(
             child: Text(
               name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w700,
                 color: color,
                 height: 1.1,
               ),
             ),
           ),
-          const SizedBox(width: 5),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          const SizedBox(width: 4),
+          DecoratedBox(
             decoration: BoxDecoration(
               color: badgeBg,
               borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: color.withValues(alpha: 0.25), width: 0.5),
+              border: Border.all(
+                color: color.withValues(alpha: 0.25),
+                width: 0.5,
+              ),
             ),
-            child: Text(
-              roleLabel,
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                color: color,
-                height: 1.1,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
+              child: Text(
+                roleLabel,
+                style: TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                  height: 1.15,
+                ),
               ),
             ),
           ),

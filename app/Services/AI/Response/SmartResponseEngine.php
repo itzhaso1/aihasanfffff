@@ -33,13 +33,19 @@ final class SmartResponseEngine
                 'anti_repetition_delivery' => ($facts['delivery_clarified'] ?? false)
                     ? 'Delivery was already clarified. Do not repeat delivery terms unless asked.'
                     : 'Provide delivery info directly if asked.',
-                'pronoun_resolution' => 'Words like (أبغاه, نعم, تمام, كم؟, الثاني, نفسه, خلاص) refer to the active product in context. Do not ask which product.',
-                'catalog_truth' => 'Chat catalog is the sole source of truth. Never hallucinate products, prices, or variants.',
-                'anti_repetition_identical_answer' => 'Do NOT repeat the exact same sentence or response as the previous AI turn. If the customer is reiterating their query, acknowledge politely and provide a more specific follow-up or options.',
+                'pronoun_resolution' => 'Words like (أبغاه, نعم, تمام, كم؟, الثاني, نفسه, خلاص, في منه) refer to the active product in context. Do not ask which product.',
+                'catalog_truth' => 'Chat catalog and verified tool outputs are the sole source of truth. Never hallucinate products, prices, discounts, stock, shipping fees, or store policies.',
+                'multi_intent_coverage' => 'If the customer asks multiple questions in one message (e.g. price + delivery + warranty), answer every part clearly in the same reply without dropping any point.',
+                'anti_repetition_identical_answer' => 'Do NOT repeat the exact same sentence, opening phrase, or closing question used in previous AI turns.',
                 'no_boilerplate_closings' => 'Do not add unsolicited closing questions (e.g. هل ترغب في معرفة المزيد من التفاصيل؟) to simple answers.',
+                'varied_openings' => ! empty($facts['recent_ai_openings'])
+                    ? 'Do NOT start your reply with any of these recently used openings: '.implode(' | ', array_slice((array) $facts['recent_ai_openings'], -3))
+                    : 'Keep openings varied, natural, and direct.',
             ],
             'facts_summary' => [
                 'active_product' => $facts['interested_product_name'] ?? null,
+                'selected_variant' => $facts['selected_variant'] ?? null,
+                'budget' => $facts['budget'] ?? null,
                 'price_already_clarified' => (bool) ($facts['price_clarified'] ?? false),
                 'delivery_already_clarified' => (bool) ($facts['delivery_clarified'] ?? false),
                 'purchase_intent' => (bool) ($facts['purchase_intent'] ?? false),
@@ -93,31 +99,52 @@ final class SmartResponseEngine
     }
 
     /**
-     * Prevents Meshal from outputting the exact same boilerplate reply twice in a row.
+     * Prevents repeating the exact same reply verbatim across recent AI turns
+     * without stripping factual product/price content into generic filler.
      */
     public function diversifyConsecutiveIdenticalReply(
         string $reply,
         Conversation $conversation,
         Message $incomingMessage,
     ): string {
-        $lastAiReply = Message::withoutGlobalScopes()
+        $recentAiReplies = Message::withoutGlobalScopes()
             ->where('workspace_id', $conversation->workspace_id)
             ->where('conversation_id', $conversation->id)
             ->where('direction', 'outbound')
             ->where('ai_generated', true)
             ->where('id', '<', $incomingMessage->id ?? PHP_INT_MAX)
             ->latest('id')
-            ->first();
+            ->limit(3)
+            ->get();
 
-        if (! $lastAiReply) {
+        if ($recentAiReplies->isEmpty()) {
             return $reply;
         }
 
-        $normLast = $this->normalizeArabicComparison((string) $lastAiReply->content);
         $normCurrent = $this->normalizeArabicComparison($reply);
+        if ($normCurrent === '') {
+            return $reply;
+        }
 
-        if ($normLast !== '' && $normLast === $normCurrent) {
-            return 'أهلاً بك مجدداً، بخصوص استفسارك، يسعدني توضيح التفاصيل أو الخيارات اللي تحتاجها لمساعدتك بشكل مباشر.';
+        $isVerbatimRepeat = false;
+        foreach ($recentAiReplies as $priorReply) {
+            $normPrior = $this->normalizeArabicComparison((string) $priorReply->content);
+            if ($normPrior !== '' && $normPrior === $normCurrent) {
+                $isVerbatimRepeat = true;
+                break;
+            }
+        }
+
+        if ($isVerbatimRepeat) {
+            $trimmed = ltrim($reply);
+            $trimmed = $this->cleanRepetitiveGreetings($trimmed);
+            if ($this->normalizeArabicComparison($trimmed) !== $normCurrent && trim($trimmed) !== '') {
+                return trim($trimmed);
+            }
+
+            if (! str_starts_with($trimmed, 'للتوضيح') && ! str_starts_with($trimmed, 'تأكيداً')) {
+                return "تأكيداً لك:\n".$trimmed;
+            }
         }
 
         return $reply;

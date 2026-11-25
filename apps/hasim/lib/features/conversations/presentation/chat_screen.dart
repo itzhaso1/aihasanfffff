@@ -212,15 +212,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  DateTime? _lastSendAt;
-  String? _lastSendText;
   List<MessageModel>? _cachedRowsSource;
   String? _cachedRowsQuery;
   Set<String>? _cachedHiddenKeys;
   List<_ChatRow> _cachedRows = const [];
   Map<String, int> _cachedKeyToIndex = const {};
+  bool _sendingComposer = false;
 
   Future<void> _send() async {
+    if (_sendingComposer) return;
     final currentConversation =
         ref.read(chatControllerProvider(widget.conversationId)).conversation ??
         widget.initialConversation;
@@ -229,50 +229,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     final text = _controller.text;
     if (text.trim().isEmpty) return;
-    unawaited(
-      ref
-          .read(chatControllerProvider(widget.conversationId).notifier)
-          .sendTyping(false),
-    );
-    final now = DateTime.now();
-    if (_lastSendText == text &&
-        _lastSendAt != null &&
-        now.difference(_lastSendAt!) < const Duration(milliseconds: 400)) {
-      return;
-    }
-    _lastSendAt = now;
-    _lastSendText = text;
-    final reply = _replyTo;
-    final outgoing = reply == null
-        ? text
-        : composeQuotedReply(quoted: _messageText(reply), reply: text);
-    _controller.clear();
-    if (reply != null) {
-      setState(() => _replyTo = null);
-    }
-    _keepComposerFocus();
-    _stickToBottom = true;
-    _scrollToLatest();
-    final accepted = await ref
-        .read(chatControllerProvider(widget.conversationId).notifier)
-        .send(outgoing);
-    if (!mounted) return;
-    if (!accepted) {
-      _controller.value = TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
+    _sendingComposer = true;
+    try {
+      unawaited(
+        ref
+            .read(chatControllerProvider(widget.conversationId).notifier)
+            .sendTyping(false),
       );
-      if (reply != null && _replyTo == null) {
-        setState(() => _replyTo = reply);
+      final reply = _replyTo;
+      final outgoing = reply == null
+          ? text
+          : composeQuotedReply(quoted: _messageText(reply), reply: text);
+      _controller.clear();
+      if (reply != null) {
+        setState(() => _replyTo = null);
       }
-      final message =
-          ref.read(chatControllerProvider(widget.conversationId)).error ??
-          'تعذر إرسال الرسالة.';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      _keepComposerFocus();
+      _stickToBottom = true;
+      _scrollToLatest();
+      final accepted = await ref
+          .read(chatControllerProvider(widget.conversationId).notifier)
+          .send(outgoing);
+      if (!mounted) return;
+      if (!accepted) {
+        if (_controller.text.isEmpty) {
+          _controller.value = TextEditingValue(
+            text: text,
+            selection: TextSelection.collapsed(offset: text.length),
+          );
+        }
+        if (reply != null && _replyTo == null) {
+          setState(() => _replyTo = reply);
+        }
+      }
+      _keepComposerFocus();
+    } finally {
+      _sendingComposer = false;
     }
-    _keepComposerFocus();
   }
 
   double get _composerHeight =>
@@ -1595,6 +1588,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return rows;
   }
 
+  static bool _sameSenderGroup(MessageModel? a, MessageModel? b) {
+    if (a == null || b == null) return false;
+    if (a.isInternalNote || b.isInternalNote) return false;
+    if (a.localFailed || b.localFailed) return false;
+    if (a.direction != b.direction) return false;
+    if (a.isFromAi != b.isFromAi) return false;
+    if (a.participantType != b.participantType) return false;
+    if (a.senderDisplayName != b.senderDisplayName) return false;
+    if (a.createdAt != null && b.createdAt != null) {
+      return b.createdAt!.difference(a.createdAt!).inMinutes.abs() <= 3;
+    }
+    return true;
+  }
+
   static String _rowKeyFor(_ChatRow row) {
     if (row.date != null) {
       return 'chat-date-${row.date!.millisecondsSinceEpoch}';
@@ -1654,6 +1661,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ref.listen(chatControllerProvider(widget.conversationId), (previous, next) {
       if (previous?.sending == true && !next.sending) {
         _keepComposerFocus();
+      }
+      if (next.sendFailureSeq != (previous?.sendFailureSeq ?? 0) &&
+          next.lastSendFailureMessage != null &&
+          next.lastSendFailureMessage!.isNotEmpty &&
+          mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next.lastSendFailureMessage!),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
       if (next.messages.isEmpty) return;
 
@@ -1932,7 +1950,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 const LinearProgressIndicator(minHeight: 2),
               if (state.aiBusy || state.mutating)
                 const LinearProgressIndicator(minHeight: 2),
-              if (ref.watch(realtimeConnectionStateProvider).valueOrNull ==
+              if ((ref.watch(realtimeConnectionStateProvider).valueOrNull ??
+                      ref
+                          .watch(realtimeServiceProvider)
+                          .currentConnectionState) ==
                   RealtimeConnectionState.reconnecting)
                 Container(
                   width: double.infinity,
@@ -1955,12 +1976,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'جاري إعادة الاتصال بالتحديث المباشر...',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: HasimTokens.warningBannerInk(context),
+                      Flexible(
+                        child: Text(
+                          'جاري إعادة الاتصال بالتحديث المباشر...',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: HasimTokens.warningBannerInk(context),
+                          ),
                         ),
                       ),
                     ],
@@ -2117,7 +2142,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 ),
                                 itemCount: rows.length,
                                 itemBuilder: (context, index) {
-                                  final row = rows[rows.length - 1 - index];
+                                  final rowIdx = rows.length - 1 - index;
+                                  final row = rows[rowIdx];
+                                  final prevRow =
+                                      rowIdx > 0 ? rows[rowIdx - 1] : null;
+                                  final nextRow = rowIdx + 1 < rows.length
+                                      ? rows[rowIdx + 1]
+                                      : null;
                                   final keyStr = _rowKeyFor(row);
                                   if (row.date != null) {
                                     return ChatDateChip(
@@ -2126,6 +2157,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     );
                                   }
                                   final m = row.message!;
+                                  final groupedPrev = _sameSenderGroup(
+                                    prevRow?.message,
+                                    m,
+                                  );
+                                  final groupedNext = _sameSenderGroup(
+                                    m,
+                                    nextRow?.message,
+                                  );
                                   return SizedBox(
                                     key: ValueKey(keyStr),
                                     width: double.infinity,
@@ -2133,7 +2172,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                       message: m,
                                       maxWidth: bubbleCap,
                                       bubbleColorId: activeBubbleColorId,
-                                      onRetry: m.localFailed
+                                      groupedWithPrevious: groupedPrev,
+                                      groupedWithNext: groupedNext,
+                                      onRetry: m.outboundPhase == OutboundPhase.failed
                                           ? () => ref
                                                 .read(
                                                   chatControllerProvider(

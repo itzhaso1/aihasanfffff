@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\Observability\OpsMetricsRecorder;
 use App\Support\Observability\CorrelationContext;
+use App\Support\Observability\OpsLogger;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -116,6 +117,7 @@ final class InboxRealtimePublisher
         string $status,
         ?string $errorReason = null,
         ?\DateTimeInterface $occurredAt = null,
+        bool $allowRetryReset = false,
     ): void {
         $normalized = strtolower(trim($status));
         if (! in_array($normalized, ['pending', 'sent', 'delivered', 'read', 'failed'], true)) {
@@ -131,18 +133,35 @@ final class InboxRealtimePublisher
             'failed' => 4,
         ];
 
-        $currentRank = $rank[strtolower((string) ($message->delivery_status ?? ''))] ?? -1;
+        $currentStatus = strtolower((string) ($message->delivery_status ?? ''));
+        $currentRank = $rank[$currentStatus] ?? -1;
         $nextRank = $rank[$normalized];
 
-        if ($currentRank === 3 && $nextRank !== 3) {
-            return;
-        }
-        if ($nextRank <= $currentRank && $normalized !== 'failed') {
-            return;
+        if ($allowRetryReset && $currentStatus === 'failed' && $normalized === 'pending') {
+            // Explicit manual retry resets a failed outbound message back to pending.
+        } else {
+            if ($currentRank === 3 && $nextRank !== 3) {
+                return;
+            }
+            if ($nextRank <= $currentRank && $normalized !== 'failed') {
+                return;
+            }
         }
 
         $at = $occurredAt ?? now();
-        $updates = ['delivery_status' => $normalized];
+        $metadata = is_array($message->metadata) ? $message->metadata : [];
+        if ($normalized === 'failed') {
+            if ($errorReason !== null && trim($errorReason) !== '') {
+                $metadata['delivery_error'] = trim($errorReason);
+            }
+        } else {
+            unset($metadata['delivery_error']);
+        }
+
+        $updates = [
+            'delivery_status' => $normalized,
+            'metadata' => $metadata,
+        ];
         if ($normalized === 'delivered') {
             $updates['delivered_at'] = $message->delivered_at ?? $at;
         } elseif ($normalized === 'read') {
@@ -203,7 +222,16 @@ final class InboxRealtimePublisher
         $durationMs = (int) round((microtime(true) - $started) * 1000);
         Log::info('inbox.realtime.published', $this->logContext($message, $freshConversation, $origin, $context, $started, [
             'status' => 'ok',
+            'stage' => 'BROADCAST_DISPATCHED',
         ]));
+        OpsLogger::info('BROADCAST_DISPATCHED', [
+            'workspace_id' => $message->workspace_id,
+            'conversation_id' => $message->conversation_id,
+            'message_id' => $message->id,
+            'direction' => $message->direction,
+            'delivery_status' => $message->delivery_status,
+            'duration_ms' => $durationMs,
+        ]);
         app(OpsMetricsRecorder::class)->timing('realtime.publish_ms', $durationMs, [
             'origin' => $origin,
         ]);

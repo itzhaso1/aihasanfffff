@@ -58,7 +58,7 @@ class ProcessIncomingTelegramMessage implements ShouldBeUnique, ShouldQueue
                     && $message->wasRecentlyCreated
                     && app(ConversationAiEligibilityService::class)->shouldDispatchAiJob($conversation, $message)
                 ) {
-                    ProcessAIResponse::dispatch($conversation->id, $message->id, $this->workspaceId, CorrelationContext::id());
+                    ProcessAIResponse::dispatchForInbound($conversation->id, $message->id, $this->workspaceId, CorrelationContext::id());
                 }
 
                 WebhookEvent::withoutGlobalScopes()

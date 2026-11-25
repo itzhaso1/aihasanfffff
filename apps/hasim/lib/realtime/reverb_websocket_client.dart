@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:hasim/core/logging/messaging_logger.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_client.dart';
 import 'package:hasim/core/network/api_exception.dart';
@@ -325,6 +326,15 @@ class ReverbWebSocketClient {
           if (data.isNotEmpty) {
             try {
               final message = MessageModel.fromJson(data);
+              MessagingLogger.log(
+                'WEBSOCKET_EVENT_RECEIVED',
+                correlationId: data['correlation_id']?.toString(),
+                workspaceId: (data['workspace_id'] as num?)?.toInt(),
+                conversationId: message.conversationId,
+                clientId: message.clientId,
+                messageId: message.id,
+                deliveryStatus: message.deliveryStatus,
+              );
               _logEventLatency(
                 event: event,
                 conversationId: message.conversationId,
@@ -366,6 +376,16 @@ class ReverbWebSocketClient {
           if (data.isNotEmpty) {
             try {
               final update = MessageStatusUpdate.fromJson(data);
+              MessagingLogger.log(
+                'WEBSOCKET_EVENT_RECEIVED',
+                correlationId: data['correlation_id']?.toString(),
+                workspaceId: update.workspaceId,
+                conversationId: update.conversationId,
+                clientId: update.clientId,
+                messageId: update.id,
+                deliveryStatus: update.deliveryStatus,
+                errorCode: update.errorReason,
+              );
               _logEventLatency(
                 event: event,
                 conversationId: update.conversationId,

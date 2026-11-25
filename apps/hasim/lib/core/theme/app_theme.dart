@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -18,8 +21,13 @@ class AppTheme {
   ];
 
   static String? _cairoFamilyCache;
-  static String? get cairoFamily =>
-      _cairoFamilyCache ??= GoogleFonts.cairo().fontFamily;
+  static String? get cairoFamily {
+    if (_cairoFamilyCache != null) return _cairoFamilyCache;
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      return _cairoFamilyCache = 'Cairo';
+    }
+    return _cairoFamilyCache = GoogleFonts.cairo().fontFamily;
+  }
 
   static ThemeData? _lightCache;
   static ThemeData? _darkCache;
@@ -215,7 +223,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
         ),
         backgroundColor: HasimTokens.ink,
-        contentTextStyle: GoogleFonts.cairo(
+        contentTextStyle: AppTheme.cairoStyle(
           color: Colors.white,
           fontWeight: FontWeight.w600,
           fontSize: 13.5,
@@ -224,12 +232,12 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: HasimTokens.card,
-        labelStyle: GoogleFonts.cairo(
+        labelStyle: AppTheme.cairoStyle(
           fontWeight: FontWeight.w600,
           fontSize: 14,
           color: HasimTokens.muted,
         ),
-        hintStyle: GoogleFonts.cairo(
+        hintStyle: AppTheme.cairoStyle(
           color: HasimTokens.mutedSoft,
           fontSize: 14,
           fontWeight: FontWeight.w500,
@@ -261,7 +269,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size(64, 48),
           elevation: 0,
-          textStyle: GoogleFonts.cairo(
+          textStyle: AppTheme.cairoStyle(
             fontWeight: FontWeight.w700,
             fontSize: 15,
           ),
@@ -275,7 +283,7 @@ class AppTheme {
           foregroundColor: HasimTokens.primary,
           backgroundColor: Colors.white,
           side: const BorderSide(color: HasimTokens.primary),
-          textStyle: GoogleFonts.cairo(
+          textStyle: AppTheme.cairoStyle(
             fontWeight: FontWeight.w700,
             fontSize: 15,
           ),
@@ -288,7 +296,7 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: HasimTokens.primary,
-          textStyle: GoogleFonts.cairo(
+          textStyle: AppTheme.cairoStyle(
             fontWeight: FontWeight.w700,
             fontSize: 14,
           ),
@@ -296,7 +304,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: HasimTokens.card,
-        labelStyle: GoogleFonts.cairo(
+        labelStyle: AppTheme.cairoStyle(
           color: HasimTokens.text,
           fontWeight: FontWeight.w600,
           fontSize: 13,
@@ -307,7 +315,7 @@ class AppTheme {
       popupMenuTheme: PopupMenuThemeData(
         color: HasimTokens.card,
         surfaceTintColor: Colors.transparent,
-        textStyle: GoogleFonts.cairo(
+        textStyle: AppTheme.cairoStyle(
           color: HasimTokens.text,
           fontSize: 14,
           fontWeight: FontWeight.w600,
@@ -335,7 +343,7 @@ class AppTheme {
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
-          return GoogleFonts.cairo(
+          return AppTheme.cairoStyle(
             fontSize: 11,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: selected
@@ -426,7 +434,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(HasimTokens.radiusMd),
         ),
         backgroundColor: HasimTokens.darkCard,
-        contentTextStyle: GoogleFonts.cairo(
+        contentTextStyle: AppTheme.cairoStyle(
           color: Colors.white,
           fontWeight: FontWeight.w600,
           fontSize: 13.5,
@@ -435,12 +443,12 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: HasimTokens.darkCard,
-        labelStyle: GoogleFonts.cairo(
+        labelStyle: AppTheme.cairoStyle(
           fontWeight: FontWeight.w600,
           fontSize: 14,
           color: const Color(0xFF9E9E9E),
         ),
-        hintStyle: GoogleFonts.cairo(
+        hintStyle: AppTheme.cairoStyle(
           color: const Color(0xFF6E6E6E),
           fontSize: 14,
           fontWeight: FontWeight.w500,
@@ -471,7 +479,7 @@ class AppTheme {
           backgroundColor: HasimTokens.primary,
           foregroundColor: Colors.white,
           minimumSize: const Size(64, 48),
-          textStyle: GoogleFonts.cairo(
+          textStyle: AppTheme.cairoStyle(
             fontWeight: FontWeight.w700,
             fontSize: 15,
           ),
@@ -485,7 +493,7 @@ class AppTheme {
           foregroundColor: HasimTokens.primary,
           backgroundColor: Colors.transparent,
           side: const BorderSide(color: HasimTokens.primary),
-          textStyle: GoogleFonts.cairo(
+          textStyle: AppTheme.cairoStyle(
             fontWeight: FontWeight.w700,
             fontSize: 15,
           ),
@@ -498,7 +506,7 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: HasimTokens.chatGreen,
-          textStyle: GoogleFonts.cairo(
+          textStyle: AppTheme.cairoStyle(
             fontWeight: FontWeight.w700,
             fontSize: 14,
           ),
@@ -507,7 +515,7 @@ class AppTheme {
       iconTheme: const IconThemeData(color: Colors.white),
       chipTheme: ChipThemeData(
         backgroundColor: HasimTokens.darkCard,
-        labelStyle: GoogleFonts.cairo(
+        labelStyle: AppTheme.cairoStyle(
           color: Colors.white,
           fontWeight: FontWeight.w600,
           fontSize: 13,
@@ -518,7 +526,7 @@ class AppTheme {
       popupMenuTheme: PopupMenuThemeData(
         color: HasimTokens.darkCard,
         surfaceTintColor: Colors.transparent,
-        textStyle: GoogleFonts.cairo(
+        textStyle: AppTheme.cairoStyle(
           color: Colors.white,
           fontSize: 14,
           fontWeight: FontWeight.w600,
@@ -546,7 +554,7 @@ class AppTheme {
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
-          return GoogleFonts.cairo(
+          return AppTheme.cairoStyle(
             fontSize: 11,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: selected

@@ -13,8 +13,10 @@ use App\Support\Chat\ArabicSearchTokenExpander;
 use App\Support\Chat\CatalogAvailabilityFact;
 use App\Support\Chat\CatalogBrowseQueryDetector;
 use App\Support\Chat\GulfArabicInterpreter;
+use App\Support\Money\Money;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -51,9 +53,166 @@ class ChatCatalogRetrievalService
         );
     }
 
+    /**
+     * Structured filtered search for AI commerce tools (category, brand, budget, offers, stock, sorting).
+     *
+     * @param  array{
+     *     category?: ?string,
+     *     brand?: ?string,
+     *     in_stock_only?: bool,
+     *     on_sale_only?: bool,
+     *     min_price?: float|int|string|null,
+     *     max_price?: float|int|string|null,
+     *     sort_by?: ?string
+     * }  $filters
+     * @return list<array<string, mixed>>
+     */
+    public function searchForAiFiltered(Workspace $workspace, string $query, array $filters = [], int $limit = 12): array
+    {
+        return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $query, $filters, $limit): array {
+            $catalog = $this->catalogRoot->forWorkspace($workspace);
+            $trimmed = trim($query);
+            $hasFilters = ! empty($filters['category'])
+                || ! empty($filters['brand'])
+                || ! empty($filters['in_stock_only'])
+                || ! empty($filters['on_sale_only'])
+                || ($filters['min_price'] ?? null) !== null
+                || ($filters['max_price'] ?? null) !== null
+                || ! empty($filters['sort_by']);
+
+            if ($trimmed !== '') {
+                $rows = $this->searchForPromptInWorkspace($workspace, $trimmed, max(12, $limit * 2), 'chat', forAi: true);
+                if ($rows === [] && $hasFilters) {
+                    $rows = $this->listDiscoverableForPrompt($workspace, $catalog, 40, 'chat', null, true);
+                }
+            } elseif ($hasFilters) {
+                $rows = $this->listDiscoverableForPrompt($workspace, $catalog, 40, 'chat', null, true);
+            } else {
+                $rows = [];
+            }
+
+            $rows = $this->applyStructuredFilters($rows, $filters);
+
+            return array_slice($rows, 0, max(1, min(20, $limit)));
+        });
+    }
+
+    /**
+     * Authoritative single-item lookup by ID, exact SKU, or fuzzy product name inside workspace.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findItemForAi(
+        Workspace $workspace,
+        ?int $itemId = null,
+        ?string $productName = null,
+        ?string $sku = null,
+    ): ?array {
+        return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $itemId, $productName, $sku): ?array {
+            $catalog = $this->catalogRoot->forWorkspace($workspace);
+
+            if ($itemId !== null && $itemId > 0) {
+                $item = $this->discoverableItemsQuery($workspace, $catalog, true)
+                    ->whereKey($itemId)
+                    ->first();
+
+                if ($item instanceof ChatCatalogItem) {
+                    $row = $this->toPromptRow($catalog, $item, true);
+
+                    return $row !== [] ? $row : null;
+                }
+            }
+
+            if ($sku !== null && trim($sku) !== '') {
+                $trimmedSku = trim($sku);
+                $bySku = $this->discoverableItemsQuery($workspace, $catalog, true)
+                    ->where(function ($q) use ($trimmedSku): void {
+                        $q->where('sku', $trimmedSku)
+                            ->orWhereHas('variants', fn ($v) => $v->where('sku', $trimmedSku));
+                    })
+                    ->first();
+
+                if ($bySku instanceof ChatCatalogItem) {
+                    $row = $this->toPromptRow($catalog, $bySku, true, [$trimmedSku]);
+
+                    return $row !== [] ? $row : null;
+                }
+            }
+
+            if ($productName !== null && trim($productName) !== '') {
+                $rows = $this->searchForPromptInWorkspace($workspace, trim($productName), 1, 'chat', forAi: true);
+
+                return $rows[0] ?? null;
+            }
+
+            return null;
+        });
+    }
+
+    /**
+     * List items in workspace that have an active sale/discount offer.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function activeOffersForAi(
+        Workspace $workspace,
+        ?string $query = null,
+        ?string $category = null,
+        int $limit = 10,
+    ): array {
+        return $this->searchForAiFiltered($workspace, (string) $query, [
+            'category' => $category,
+            'on_sale_only' => true,
+            'sort_by' => 'discount_desc',
+        ], $limit);
+    }
+
+    /**
+     * Side-by-side comparison payload for 2-4 workspace catalog items.
+     *
+     * @param  list<int>  $itemIds
+     * @param  list<string>  $names
+     * @return list<array<string, mixed>>
+     */
+    public function compareItemsForAi(Workspace $workspace, array $itemIds = [], array $names = []): array
+    {
+        $resolved = [];
+        $seenIds = [];
+
+        if ($itemIds !== []) {
+            foreach ($this->rowsForAssistantIds($workspace, $itemIds) as $row) {
+                $id = (int) ($row['catalog_item_id'] ?? 0);
+                if ($id > 0 && ! isset($seenIds[$id])) {
+                    $seenIds[$id] = true;
+                    $resolved[] = $row;
+                }
+            }
+        }
+
+        foreach ($names as $name) {
+            if (count($resolved) >= 4) {
+                break;
+            }
+            $row = $this->findItemForAi($workspace, productName: trim($name));
+            if (is_array($row)) {
+                $id = (int) ($row['catalog_item_id'] ?? 0);
+                if ($id > 0 && ! isset($seenIds[$id])) {
+                    $seenIds[$id] = true;
+                    $resolved[] = $row;
+                }
+            }
+        }
+
+        return $resolved;
+    }
+
     public function shouldLookupForAssistant(string $query): bool
     {
         $tokens = $this->tokens($query);
+        $browseMode = $this->browseQueries->browseMode($query, $tokens);
+        if ($browseMode === 'non_catalog_info') {
+            return false;
+        }
 
         return $tokens !== [] || $this->browseQueries->isBrowseCatalogQuery($query, $tokens);
     }
@@ -123,9 +282,10 @@ class ChatCatalogRetrievalService
      * Rehydrate previously referenced products for a short follow-up.
      *
      * @param  list<int>  $ids
+     * @param  list<string>  $queryTokens
      * @return list<array<string, mixed>>
      */
-    public function rowsForAssistantIds(Workspace $workspace, array $ids): array
+    public function rowsForAssistantIds(Workspace $workspace, array $ids, array $queryTokens = []): array
     {
         $ids = array_values(array_unique(array_filter(
             array_map(static fn (mixed $id): int => (int) $id, $ids),
@@ -135,7 +295,7 @@ class ChatCatalogRetrievalService
             return [];
         }
 
-        return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $ids): array {
+        return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $ids, $queryTokens): array {
             $catalog = $this->catalogRoot->forWorkspace($workspace);
             $items = $this->discoverableItemsQuery($workspace, $catalog, true)
                 ->whereIn('id', $ids)
@@ -143,15 +303,24 @@ class ChatCatalogRetrievalService
                 ->sortBy(fn (ChatCatalogItem $item): int => array_search((int) $item->id, $ids, true))
                 ->values();
 
-            return $items
-                ->map(fn (ChatCatalogItem $item): array => $this->toPromptRow(
+            $resolved = [];
+            foreach ($items as $item) {
+                $row = $this->toPromptRow(
                     $catalog,
                     $item,
                     forAi: true,
-                ))
-                ->filter(fn (array $row): bool => $row !== [])
-                ->values()
-                ->all();
+                    queryTokens: $queryTokens,
+                );
+                if ($row === []) {
+                    continue;
+                }
+                $assistant = $this->assistantItem($row, $queryTokens);
+                if ($assistant !== null) {
+                    $resolved[] = $assistant;
+                }
+            }
+
+            return $resolved;
         });
     }
 
@@ -194,6 +363,17 @@ class ChatCatalogRetrievalService
         }
         if (is_scalar($row['price'] ?? null) && (string) $row['price'] !== '') {
             $item['price'] = (string) $row['price'];
+        }
+        foreach (['base_price', 'sale_price', 'compare_at_price', 'brand', 'category'] as $optionalTextKey) {
+            if (is_scalar($row[$optionalTextKey] ?? null) && trim((string) $row[$optionalTextKey]) !== '') {
+                $item[$optionalTextKey] = (string) $row[$optionalTextKey];
+            }
+        }
+        if (($row['has_active_offer'] ?? false) === true) {
+            $item['has_active_offer'] = true;
+            if (is_int($row['discount_percent'] ?? null)) {
+                $item['discount_percent'] = $row['discount_percent'];
+            }
         }
         if (is_string($row['currency'] ?? null) && trim($row['currency']) !== '') {
             $item['currency'] = trim($row['currency']);
@@ -390,6 +570,8 @@ class ChatCatalogRetrievalService
             'متاحه', 'موجود', 'موجوده', 'الحين', 'الان', 'عند', 'عندك',
             'عندكم', 'عندنا', 'ابي', 'ابغى', 'اريد', 'ممكن',
             'نعم', 'اي', 'ايه', 'ايوه', 'هو', 'هي', 'هذا', 'هذه', 'ذا',
+            'منه', 'منها', 'منهم', 'منهن', 'فيه', 'فيها', 'عليه', 'عليها', 'له', 'لها', 'به', 'بها',
+            'وش', 'ايش', 'شنو', 'شو', 'طيب',
             'بس', 'الي', 'اللي', 'الذي', 'التي', 'احتاج', 'احتاجه', 'فقط',
             'من', 'على', 'في', 'مع', 'ل', 'لي', 'لك', 'لكم', 'لنا',
             'ي', 'ه',
@@ -669,11 +851,12 @@ class ChatCatalogRetrievalService
         }
 
         $tokens = $this->tokens($query);
+        $browseMode = $this->browseQueries->browseMode($query, $tokens);
         if ($this->browseQueries->isBrowseCatalogQuery($query, $tokens)) {
             $itemKind = $this->browseQueries->browseItemKindFilter($query, $tokens);
             $entityTokens = $this->browseQueries->browseEntityTokens($query, $tokens);
 
-            return $this->listDiscoverableForPrompt($workspace, $catalog, $limit, $channel, $itemKind, $forAi, $entityTokens);
+            return $this->listDiscoverableForPrompt($workspace, $catalog, $limit, $channel, $itemKind, $forAi, $entityTokens, $browseMode);
         }
 
         if ($tokens === []) {
@@ -768,6 +951,9 @@ class ChatCatalogRetrievalService
             ->get();
 
         $contentTokens = $this->contentTokens($searchTokens);
+        if ($items->isEmpty() && $forAi) {
+            $items = $this->fuzzyCandidateItems($workspace, $catalog);
+        }
         $languageTokens = array_values(array_filter(
             $searchTokens,
             fn (string $token): bool => $this->isLanguageQualifier($token),
@@ -787,15 +973,30 @@ class ChatCatalogRetrievalService
                 fn (array $row): bool => $row['variant_match'] === true,
             );
         }
+        $distinctInputContent = array_values(array_unique(array_filter(
+            $tokens,
+            fn (string $token): bool => ! $this->isLanguageQualifier($token)
+                && ! $this->isGenericProductWord($token)
+                && ! $this->isVariantQualifier($token)
+                && ! $this->isVariantQueryFiller($token),
+        )));
         $bestContentHits = (int) $matched->max('content_hits');
         if ($bestContentHits > 0) {
-            $matched = $matched->filter(fn (array $row): bool => $row['content_hits'] === $bestContentHits);
-            if ($languageTokens !== [] && (int) $matched->max('language_hits') > 0) {
-                $matched = $matched->filter(fn (array $row): bool => $row['language_hits'] > 0);
+            if (count($distinctInputContent) >= 3 && $bestContentHits < (int) ceil(count($distinctInputContent) / 2)) {
+                $matched = collect();
+            } else {
+                $matched = $matched->filter(fn (array $row): bool => $row['content_hits'] === $bestContentHits);
+                if ($languageTokens !== [] && (int) $matched->max('language_hits') > 0) {
+                    $matched = $matched->filter(fn (array $row): bool => $row['language_hits'] > 0);
+                }
             }
         } else {
             if ($contentTokens !== []) {
-                $matched = collect();
+                if ($forAi) {
+                    $matched = $this->fuzzyScoreFallback($catalog, $items, $tokens, $weights);
+                } else {
+                    $matched = collect();
+                }
             } else {
                 $bestTokenHits = (int) $matched->max('token_hits');
                 if ($bestTokenHits > 0) {
@@ -845,6 +1046,7 @@ class ChatCatalogRetrievalService
         ?string $itemKind,
         bool $forAi = false,
         array $entityTokens = [],
+        string $browseMode = 'default',
     ): array {
         unset($channel);
 
@@ -881,12 +1083,18 @@ class ChatCatalogRetrievalService
                 continue;
             }
             $ordered[] = $row;
-            if (count($ordered) >= $limit) {
-                break;
-            }
         }
 
-        return $ordered;
+        if ($forAi && $browseMode !== 'default') {
+            $ordered = match ($browseMode) {
+                'offers' => $this->applyStructuredFilters($ordered, ['on_sale_only' => true, 'sort_by' => 'discount_desc']),
+                'cheapest' => $this->applyStructuredFilters($ordered, ['in_stock_only' => true, 'sort_by' => 'price_asc']),
+                'recommended' => $this->applyStructuredFilters($ordered, ['sort_by' => 'recommended']),
+                default => $ordered,
+            };
+        }
+
+        return array_slice($ordered, 0, $limit);
     }
 
     /**
@@ -1332,14 +1540,16 @@ class ChatCatalogRetrievalService
         }
 
         $display = is_array($catalog->display_settings) ? $catalog->display_settings : [];
-        $price = $this->prices->forItem($catalog, $item);
+        $price = $forAi
+            ? $this->prices->forAiItem($catalog, $item)
+            : $this->prices->forItem($catalog, $item);
 
         $row = [
             'catalog_item_id' => $item->id,
             'name' => $item->name,
             'has_image' => $item->hasImage(),
             'description' => $item->customer_description ?? $item->short_description ?? $item->description,
-            'sku' => ($display['show_sku'] ?? false) ? $item->sku : null,
+            'sku' => ($display['show_sku'] ?? false) || $forAi ? $item->sku : null,
             'barcode' => null,
             'brand' => ($display['show_brand'] ?? true) ? $item->brand : null,
             'item_kind' => $item->item_kind,
@@ -1356,11 +1566,15 @@ class ChatCatalogRetrievalService
                 'recommended' => $item->is_recommended,
             ],
             'price' => $price['amount'],
+            'base_price' => $forAi ? ($price['base_amount'] ?? $price['amount']) : null,
             'display_price' => $price['formatted'],
             'price_display' => $price['is_from_price'] ? 'from_price' : 'standard',
             'currency' => $price['currency'],
-            'compare_at_price' => null,
-            'sale_price' => null,
+            'compare_at_price' => $forAi ? ($price['compare_at_amount'] ?? null) : null,
+            'sale_price' => $forAi ? ($price['sale_amount'] ?? null) : null,
+            'has_active_offer' => $forAi ? ($price['has_active_offer'] ?? false) : false,
+            'discount_percent' => $forAi ? ($price['discount_percent'] ?? null) : null,
+            'price_valid_until' => $forAi ? ($price['price_valid_until'] ?? null) : null,
             'tax_presentation' => $price['tax_presentation'],
             'inquiry_mode' => $catalog->customer_service_policy['inquiry_mode'] ?? 'enabled',
             'availability' => $availability,
@@ -1391,7 +1605,7 @@ class ChatCatalogRetrievalService
         if (($display['show_variants'] ?? true) && $catalog->discoveryEnabled('variant_discovery')) {
             $row['variants'] = $item->variants
                 ->map(function (ChatCatalogItemVariant $variant) use ($catalog, $item, $forAi, $queryTokens): array {
-                    $variantRow = $this->variantRow($catalog, $item, $variant);
+                    $variantRow = $this->variantRow($catalog, $item, $variant, $forAi);
                     if ($variantRow !== [] && $forAi && $queryTokens !== []) {
                         $variantRow['matches_question'] = $this->variantMatchesQuestion(
                             $item,
@@ -1469,21 +1683,26 @@ class ChatCatalogRetrievalService
     /**
      * @return array<string, mixed>
      */
-    private function variantRow(ChatCatalog $catalog, ChatCatalogItem $item, ChatCatalogItemVariant $variant): array
+    private function variantRow(ChatCatalog $catalog, ChatCatalogItem $item, ChatCatalogItemVariant $variant, bool $forAi = false): array
     {
         $availability = $this->inventory->forVariant($catalog, $variant);
         $display = is_array($catalog->display_settings) ? $catalog->display_settings : [];
-        $price = $this->prices->forVariant($catalog, $variant);
+        $price = $forAi
+            ? $this->prices->forAiVariant($catalog, $item, $variant)
+            : $this->prices->forVariant($catalog, $variant);
 
         $row = [
             'id' => (int) $variant->id,
             'name' => $variant->name,
-            'sku' => ($display['show_sku'] ?? false) ? $variant->sku : null,
+            'sku' => ($display['show_sku'] ?? false) || $forAi ? $variant->sku : null,
             'price' => $price['amount'],
+            'base_price' => $forAi ? ($price['base_amount'] ?? $price['amount']) : null,
             'display_price' => $price['formatted'],
             'currency' => $price['currency'],
-            'compare_at_price' => null,
-            'sale_price' => null,
+            'compare_at_price' => $forAi ? ($price['compare_at_amount'] ?? null) : null,
+            'sale_price' => $forAi ? ($price['sale_amount'] ?? null) : null,
+            'has_active_offer' => $forAi ? ($price['has_active_offer'] ?? false) : false,
+            'discount_percent' => $forAi ? ($price['discount_percent'] ?? null) : null,
             'availability' => $availability,
             'attributes' => $this->safeVariantAttributes($item, $variant),
         ];
@@ -1561,5 +1780,195 @@ class ChatCatalogRetrievalService
     private function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $filters
+     * @return list<array<string, mixed>>
+     */
+    private function applyStructuredFilters(array $rows, array $filters): array
+    {
+        $categoryFilter = isset($filters['category']) && is_string($filters['category'])
+            ? $this->normalizer->normalize($filters['category'])
+            : '';
+        $brandFilter = isset($filters['brand']) && is_string($filters['brand'])
+            ? $this->normalizer->normalize($filters['brand'])
+            : '';
+        $inStockOnly = (bool) ($filters['in_stock_only'] ?? false);
+        $onSaleOnly = (bool) ($filters['on_sale_only'] ?? false);
+        $minMinor = is_numeric($filters['min_price'] ?? null) ? Money::minor((string) $filters['min_price']) : null;
+        $maxMinor = is_numeric($filters['max_price'] ?? null) ? Money::minor((string) $filters['max_price']) : null;
+        $sortBy = is_string($filters['sort_by'] ?? null) ? strtolower(trim($filters['sort_by'])) : null;
+
+        $filtered = array_values(array_filter($rows, function (array $row) use (
+            $categoryFilter,
+            $brandFilter,
+            $inStockOnly,
+            $onSaleOnly,
+            $minMinor,
+            $maxMinor,
+        ): bool {
+            if ($categoryFilter !== '') {
+                $cat = $this->normalizer->normalize((string) ($row['category'] ?? ''));
+                if ($cat === '' || (! str_contains($cat, $categoryFilter) && ! $this->normalizer->isFuzzyTokenMatch($categoryFilter, $cat))) {
+                    return false;
+                }
+            }
+
+            if ($brandFilter !== '') {
+                $brand = $this->normalizer->normalize((string) ($row['brand'] ?? ''));
+                if ($brand === '' || (! str_contains($brand, $brandFilter) && ! $this->normalizer->isFuzzyTokenMatch($brandFilter, $brand))) {
+                    return false;
+                }
+            }
+
+            if ($inStockOnly && CatalogAvailabilityFact::token($row['availability'] ?? null) !== 'in_stock') {
+                return false;
+            }
+
+            if ($onSaleOnly) {
+                $hasOffer = ($row['has_active_offer'] ?? false) === true;
+                if (! $hasOffer) {
+                    $variantOffer = false;
+                    foreach ($row['variants'] ?? [] as $v) {
+                        if (is_array($v) && ($v['has_active_offer'] ?? false) === true) {
+                            $variantOffer = true;
+                            break;
+                        }
+                    }
+                    if (! $variantOffer) {
+                        return false;
+                    }
+                }
+            }
+
+            $priceMinor = is_scalar($row['price'] ?? null) && is_numeric($row['price'])
+                ? Money::minor((string) $row['price'])
+                : null;
+            if ($minMinor !== null && ($priceMinor === null || $priceMinor < $minMinor)) {
+                return false;
+            }
+            if ($maxMinor !== null && ($priceMinor === null || $priceMinor > $maxMinor)) {
+                return false;
+            }
+
+            return true;
+        }));
+
+        if ($sortBy === null || $sortBy === 'relevance') {
+            return $filtered;
+        }
+
+        usort($filtered, static function (array $a, array $b) use ($sortBy): int {
+            $priceA = is_numeric($a['price'] ?? null) ? Money::minor((string) $a['price']) : PHP_INT_MAX;
+            $priceB = is_numeric($b['price'] ?? null) ? Money::minor((string) $b['price']) : PHP_INT_MAX;
+
+            return match ($sortBy) {
+                'price_asc' => $priceA <=> $priceB,
+                'price_desc' => ($priceB === PHP_INT_MAX ? -1 : $priceB) <=> ($priceA === PHP_INT_MAX ? -1 : $priceA),
+                'discount_desc' => ((int) ($b['discount_percent'] ?? 0)) <=> ((int) ($a['discount_percent'] ?? 0)),
+                'recommended', 'bestseller', 'featured' => self::merchandisingRank($b) <=> self::merchandisingRank($a),
+                'newest' => ((int) ($b['catalog_item_id'] ?? 0)) <=> ((int) ($a['catalog_item_id'] ?? 0)),
+                default => 0,
+            };
+        });
+
+        return $filtered;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private static function merchandisingRank(array $row): int
+    {
+        $m = is_array($row['merchandising'] ?? null) ? $row['merchandising'] : [];
+
+        return (((bool) ($m['recommended'] ?? false)) ? 4 : 0)
+            + (((bool) ($m['bestseller'] ?? false)) ? 3 : 0)
+            + (((bool) ($m['featured'] ?? false)) ? 2 : 0)
+            + (((bool) ($m['new'] ?? false)) ? 1 : 0);
+    }
+
+    /**
+     * Bounded workspace items for typo-tolerant fallback when SQL LIKE finds zero hits.
+     *
+     * @return Collection<int, ChatCatalogItem>
+     */
+    private function fuzzyCandidateItems(Workspace $workspace, ChatCatalog $catalog)
+    {
+        return $this->discoverableItemsQuery($workspace, $catalog, true)
+            ->limit(80)
+            ->get();
+    }
+
+    /**
+     * Bounded typo-tolerant scoring over item names, aliases, brands, categories, and variants.
+     * Strictly requires strong content-token coverage so unrelated products never false-match.
+     *
+     * @param  Collection<int, ChatCatalogItem>  $items
+     * @param  list<string>  $tokens
+     * @param  array<string, int>  $weights
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function fuzzyScoreFallback(ChatCatalog $catalog, $items, array $tokens, array $weights)
+    {
+        $contentTokens = array_values(array_filter(
+            $tokens,
+            fn (string $token): bool => mb_strlen($this->normalizer->normalize($token)) >= 3
+                && ! $this->isLanguageQualifier($token)
+                && ! $this->isGenericProductWord($token),
+        ));
+        if ($contentTokens === []) {
+            return collect();
+        }
+
+        $matches = collect();
+        foreach ($items as $item) {
+            $haystack = $this->itemSearchHaystack($item).' '.$this->normalizer->normalize(implode(' ', [
+                (string) $item->description,
+                (string) $item->short_description,
+                (string) $item->customer_description,
+            ]));
+            $words = preg_split('/[^\p{L}\p{N}]+/u', $haystack) ?: [];
+            $words = array_values(array_unique(array_filter($words, static fn (string $w): bool => mb_strlen($w) >= 3)));
+            if ($words === []) {
+                continue;
+            }
+
+            $matchedTokens = 0;
+            $score = 0;
+            foreach ($contentTokens as $needle) {
+                $tokenHit = false;
+                foreach ($this->matchingForms($needle) as $form) {
+                    foreach ($words as $candidateWord) {
+                        if ($this->normalizer->isFuzzyTokenMatch($form, $candidateWord)) {
+                            $tokenHit = true;
+                            break 2;
+                        }
+                    }
+                }
+                if ($tokenHit) {
+                    $matchedTokens++;
+                    $score += (int) ($weights['exact_name'] ?? 3);
+                }
+            }
+
+            $coverageRequired = count($contentTokens) === 1
+                ? 1
+                : (int) ceil(count($contentTokens) * 0.7);
+            if ($matchedTokens >= $coverageRequired && $score >= 2) {
+                $matches->push([
+                    'score' => $score,
+                    'token_hits' => $matchedTokens,
+                    'content_hits' => $matchedTokens,
+                    'language_hits' => 0,
+                    'variant_match' => $this->variantQueryProfile($item, $tokens)['matched'],
+                    'item' => $item,
+                ]);
+            }
+        }
+
+        return $matches;
     }
 }

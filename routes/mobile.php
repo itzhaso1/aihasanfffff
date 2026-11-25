@@ -157,6 +157,7 @@ Route::middleware(['auth:sanctum', 'throttle:mobile-api'])->group(function (): v
 });
 
 Route::middleware([
+    'assign.correlation',
     'auth:sanctum',
     'workspace.resolve',
     'inbox.actor',
@@ -169,6 +170,8 @@ Route::middleware([
     Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy'])->middleware('throttle:mobile-write');
     Route::get('/conversations/{conversation}/messages', [ConversationController::class, 'messages']);
     Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])
+        ->middleware('throttle:mobile-messages');
+    Route::post('/conversations/{conversation}/messages/{message}/retry', [ConversationController::class, 'retryMessage'])
         ->middleware('throttle:mobile-messages');
     Route::post('/conversations/bulk-messages', [ConversationBulkMessageController::class, 'store'])
         ->middleware('throttle:mobile-write');

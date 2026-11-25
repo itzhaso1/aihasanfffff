@@ -25,19 +25,38 @@ class ToolPolicyTest extends TestCase
     {
         $this->assertSame(
             [
+                CanonicalTools::CHECK_PRODUCT_AVAILABILITY,
+                CanonicalTools::COMPARE_PRODUCTS,
                 CanonicalTools::CREATE_CUSTOMER_ORDER,
                 CanonicalTools::EVALUATE_PRODUCT_SUITABILITY,
+                CanonicalTools::GET_ACTIVE_OFFERS,
+                CanonicalTools::GET_CURRENT_PRICE,
+                CanonicalTools::GET_ORDER_STATUS,
+                CanonicalTools::GET_PRODUCT_DETAILS,
                 CanonicalTools::GET_PRODUCT_INTELLIGENCE,
+                CanonicalTools::GET_PRODUCT_VARIANTS,
+                CanonicalTools::GET_SHIPPING_INFORMATION,
+                CanonicalTools::GET_STORE_INFORMATION,
                 CanonicalTools::SAVE_CUSTOMER_COMMERCE_CONTEXT,
                 CanonicalTools::SEARCH_PRODUCTS,
                 CanonicalTools::SEND_PRODUCT_IMAGE,
+                CanonicalTools::TRANSFER_TO_HUMAN_AGENT,
             ],
             $this->offered(AiRunMode::Live, ['sales'], []),
         );
         $this->assertSame(
             [
+                CanonicalTools::CHECK_PRODUCT_AVAILABILITY,
+                CanonicalTools::COMPARE_PRODUCTS,
                 CanonicalTools::EVALUATE_PRODUCT_SUITABILITY,
+                CanonicalTools::GET_ACTIVE_OFFERS,
+                CanonicalTools::GET_CURRENT_PRICE,
+                CanonicalTools::GET_ORDER_STATUS,
+                CanonicalTools::GET_PRODUCT_DETAILS,
                 CanonicalTools::GET_PRODUCT_INTELLIGENCE,
+                CanonicalTools::GET_PRODUCT_VARIANTS,
+                CanonicalTools::GET_SHIPPING_INFORMATION,
+                CanonicalTools::GET_STORE_INFORMATION,
                 CanonicalTools::SEARCH_PRODUCTS,
             ],
             $this->offered(AiRunMode::Preview, ['sales'], []),
@@ -55,7 +74,18 @@ class ToolPolicyTest extends TestCase
     public function test_explicit_deny_wins_over_skill_allowance(): void
     {
         $this->assertSame(
-            [CanonicalTools::GET_PRODUCT_INTELLIGENCE],
+            [
+                CanonicalTools::CHECK_PRODUCT_AVAILABILITY,
+                CanonicalTools::COMPARE_PRODUCTS,
+                CanonicalTools::GET_ACTIVE_OFFERS,
+                CanonicalTools::GET_CURRENT_PRICE,
+                CanonicalTools::GET_ORDER_STATUS,
+                CanonicalTools::GET_PRODUCT_DETAILS,
+                CanonicalTools::GET_PRODUCT_INTELLIGENCE,
+                CanonicalTools::GET_PRODUCT_VARIANTS,
+                CanonicalTools::GET_SHIPPING_INFORMATION,
+                CanonicalTools::GET_STORE_INFORMATION,
+            ],
             $this->offered(AiRunMode::Preview, ['customer_support'], [
                 new EmployeeToolGrant(CanonicalTools::SEARCH_PRODUCTS, false),
             ]),

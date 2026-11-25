@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -242,6 +243,9 @@ class HybridRealtimeService
   }
 
   Connectivity? _safeDefaultConnectivity() {
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      return null;
+    }
     try {
       return Connectivity();
     } catch (_) {

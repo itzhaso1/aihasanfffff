@@ -25,8 +25,9 @@ class InboxDatabase implements QueryExecutorUser {
   /// v9: commerce orders and customers local-first read/write models.
   /// v10: ensure `inbox_conversations.last_message_direction` exists on upgraded DBs.
   /// v11: add `delivery_status`, `delivered_at`, `read_at` to `inbox_messages`.
+  /// v12: add `local_error`, `correlation_id` to `inbox_messages` and `correlation_id` to `inbox_outbox`.
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   Future<void> ensureReady() async {
     if (_closed || _opened) return;
@@ -85,8 +86,32 @@ class InboxDatabase implements QueryExecutorUser {
       if (from < 11) {
         await _upgradeV10ToV11(e);
       }
+      if (from < 12) {
+        await _upgradeV11ToV12(e);
+      }
     }
     await _createIndexes(e);
+  }
+
+  Future<void> _upgradeV11ToV12(QueryExecutor e) async {
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'local_error',
+      'local_error TEXT NULL',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'correlation_id',
+      'correlation_id TEXT NULL',
+    );
+    await _ensureColumn(
+      e,
+      'inbox_outbox',
+      'correlation_id',
+      'correlation_id TEXT NULL',
+    );
   }
 
   Future<void> _upgradeV9ToV10(QueryExecutor e) async {
@@ -174,6 +199,8 @@ class InboxDatabase implements QueryExecutorUser {
         delivery_status TEXT NULL,
         delivered_at INTEGER NULL,
         read_at INTEGER NULL,
+        local_error TEXT NULL,
+        correlation_id TEXT NULL,
         created_at INTEGER,
         user_name TEXT,
         customer_name TEXT,
@@ -200,6 +227,7 @@ class InboxDatabase implements QueryExecutorUser {
         attempts INTEGER NOT NULL DEFAULT 0,
         next_attempt_at INTEGER NOT NULL,
         last_error TEXT,
+        correlation_id TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )

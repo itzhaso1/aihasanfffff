@@ -10,6 +10,7 @@ use App\Models\WorkspaceMetaConnection;
 use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Observability\OpsMetricsRecorder;
 use App\Support\Meta\MetaConnectionKind;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -59,19 +60,34 @@ class FacebookOutboundService
         $version = $this->graphApiVersion($connection);
         $started = microtime(true);
 
-        $response = Http::acceptJson()
-            ->withToken($token)
-            ->timeout(20)
-            ->post('https://graph.facebook.com/'.$version.'/'.$pageId.'/messages', [
-                'recipient' => ['id' => $recipientPsid],
-                'message' => ['text' => $body],
-                'messaging_type' => 'RESPONSE',
+        try {
+            $response = Http::acceptJson()
+                ->withToken($token)
+                ->timeout(20)
+                ->post('https://graph.facebook.com/'.$version.'/'.$pageId.'/messages', [
+                    'recipient' => ['id' => $recipientPsid],
+                    'message' => ['text' => $body],
+                    'messaging_type' => 'RESPONSE',
+                ]);
+        } catch (ConnectionException $exception) {
+            $durationMs = (int) round((microtime(true) - $started) * 1000);
+            Log::warning('facebook.outbound.connection_error', [
+                'conversation_id' => $conversation->id,
+                'message_id' => $message->id,
+                'workspace_id' => $conversation->workspace_id,
+                'duration_ms' => $durationMs,
+                'reason' => $exception->getMessage(),
             ]);
+            $this->markFailed($delivery, 'facebook_connection_error', retryable: true);
+
+            return;
+        }
 
         $durationMs = (int) round((microtime(true) - $started) * 1000);
 
         $graphError = $response->json('error');
         if ($response->failed() || is_array($graphError)) {
+            $graphErrorCode = is_array($graphError) ? (int) ($graphError['code'] ?? 0) : 0;
             Log::warning('facebook.outbound.failed', [
                 'http_status' => $response->status(),
                 'conversation_id' => $conversation->id,
@@ -85,7 +101,9 @@ class FacebookOutboundService
                 'http_status' => $response->status(),
             ]);
 
-            $retryable = $response->serverError() || $response->status() === 429;
+            $retryable = $response->serverError()
+                || $response->status() === 429
+                || in_array($graphErrorCode, [1, 2, 4, 17, 341, 613], true);
             $this->markFailed($delivery, 'facebook_http_'.$response->status(), retryable: $retryable);
 
             return;

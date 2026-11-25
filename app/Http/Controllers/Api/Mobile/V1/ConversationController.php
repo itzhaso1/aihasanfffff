@@ -9,6 +9,7 @@ use App\Http\Resources\Mobile\MessageResource;
 use App\Models\Conversation;
 use App\Models\ConversationUserState;
 use App\Models\Message;
+use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Conversation\ConversationClassificationService;
 use App\Services\Conversation\ConversationPresenceService;
 use App\Services\Conversation\ConversationService;
@@ -18,6 +19,7 @@ use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Mobile\ConversationInboxService;
 use App\Services\Mobile\MobileInboxActor;
 use App\Services\Worker\WorkerInboxException;
+use App\Support\Observability\OpsLogger;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -176,26 +178,40 @@ class ConversationController extends MobileController
             'direction' => ['nullable', 'string', 'in:outbound,internal_note'],
             'message_type' => ['nullable', 'string', 'max:32'],
             'idempotency_key' => ['nullable', 'string', 'max:128'],
+            'client_id' => ['nullable', 'string', 'max:128'],
         ]);
 
         $headerKey = trim((string) $request->header('Idempotency-Key', ''));
+        $idempotencyKey = $validated['idempotency_key']
+            ?? $validated['client_id']
+            ?? ($headerKey !== '' ? $headerKey : null);
 
         try {
             $message = $this->conversationInboxService->sendMessage($conversation, $request->user(), [
                 'direction' => $validated['direction'] ?? 'outbound',
                 'content' => $validated['content'],
                 'message_type' => $validated['message_type'] ?? 'text',
-                'idempotency_key' => $validated['idempotency_key'] ?? ($headerKey !== '' ? $headerKey : null),
+                'idempotency_key' => $idempotencyKey,
+                'client_id' => $validated['client_id'] ?? $idempotencyKey,
             ], $request);
         } catch (ModelNotFoundException) {
             return $this->fail('غير موجود.', 404);
-        } catch (WorkerInboxException $exception) {
+        } catch (InvalidArgumentException|WorkerInboxException $exception) {
             return $this->fail($exception->getMessage(), 422);
         } catch (AuthorizationException) {
             return $this->fail('لا تملك صلاحية تنفيذ هذا الإجراء.', 403);
         }
 
         Cache::forget("conversation:{$conversation->id}:active_typing");
+
+        OpsLogger::info('HTTP_RESPONSE_RECEIVED', [
+            'workspace_id' => $conversation->workspace_id,
+            'conversation_id' => $conversation->id,
+            'user_id' => $request->user()?->id,
+            'message_id' => $message->id,
+            'delivery_status' => $message->delivery_status,
+            'http_status' => 201,
+        ]);
 
         Log::info('chat.send_message', [
             'created' => true,
@@ -207,6 +223,37 @@ class ConversationController extends MobileController
         ]);
 
         return $this->ok(new MessageResource($message), message: 'تم إرسال الرسالة بنجاح.', status: 201);
+    }
+
+    public function retryMessage(Request $request, Conversation $conversation, Message $message): JsonResponse
+    {
+        if ((int) $message->conversation_id !== (int) $conversation->id
+            || (int) $message->workspace_id !== (int) $conversation->workspace_id) {
+            return $this->fail('غير موجود.', 404);
+        }
+
+        try {
+            $this->inboxActor->assertSendable($request->user(), $conversation);
+        } catch (AuthorizationException) {
+            return $this->fail('لا تملك صلاحية تنفيذ هذا الإجراء.', 403);
+        } catch (ModelNotFoundException) {
+            return $this->fail('غير موجود.', 404);
+        }
+
+        if ($message->direction !== 'outbound') {
+            return $this->fail('يمكن إعادة إرسال الرسائل الصادرة فقط.', 422);
+        }
+
+        OpsLogger::info('MESSAGE_RETRY', [
+            'workspace_id' => $conversation->workspace_id,
+            'conversation_id' => $conversation->id,
+            'message_id' => $message->id,
+            'user_id' => $request->user()?->id,
+        ]);
+
+        $retried = app(ChannelOutboundService::class)->retryOutboundForMessage($conversation, $message);
+
+        return $this->ok(new MessageResource($retried), message: 'تمت إعادة محاولة الإرسال.');
     }
 
     public function read(Request $request, Conversation $conversation): JsonResponse

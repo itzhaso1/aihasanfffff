@@ -146,26 +146,36 @@ final class AiContextRenderer
             return [];
         }
 
-        return [
+        $payload = [
             'product_ids' => $ids,
             'product_names' => array_values(array_unique($names)),
             'last_intent' => $context->conversationState->lastIntent,
             'instruction' => 'The latest customer message continues this thread. Use the active product and intent; do not ask which product unless multiple products were discussed recently or the current message explicitly names a new one.',
         ];
+        if (! empty($context->conversationFacts['selected_variant'])) {
+            $payload['selected_variant'] = $context->conversationFacts['selected_variant'];
+        }
+        if (! empty($context->conversationFacts['budget'])) {
+            $payload['budget'] = $context->conversationFacts['budget'];
+        }
+
+        return $payload;
     }
 
     private function catalogInstruction(ReferenceResolution $references): string
     {
+        $toolHint = ' When the customer asks about offers, variants, full details, shipping, store hours/policies, payment, product comparisons, or order status and the context does not already prove it, call the appropriate read-only tool before answering.';
+
         return match ($references->retrievalStatus) {
             'listed' => ($references->hasMore
                 ? 'The items below are a partial list of eligible catalog rows. More eligible items exist. Do not say this is the complete catalog.'
                 : 'The items below are the complete list of eligible catalog rows for this question. Do not invent additional items.')
-                .' Present the available items clearly and directly to the customer when they ask what is available or ask about products/books. State each item\'s name, price, and key details immediately. Do not ask what they need instead of listing the items. Do not open with filler greetings or repetitive pleasantries. Each item may include variants. A variant price, currency, stock, and availability belongs only to that exact variant. Do not copy the parent price or stock onto a variant, and do not invent a variant that is not listed. If two or more variant rows are listed, never say the product has one size or one variant. If has_more_variants is true, the variant list is partial. When variant_match_status is matched, requested_copies and any variant with matches_question true are the exact requested combinations: use only those rows for the answer. Listed copies exist even when availability is out_of_stock. If that exact copy is out_of_stock, say it is listed and currently out of stock. When variant_match_status is not_found, the requested size, color, length, or type was not verified in one listed variant: do not claim the parent or another variant satisfies it; say the requested combination is not listed or could not be confirmed and offer only the listed alternatives by name. When variant_match_status is not_requested, answer the parent product question without inventing a specific option. Do not say you will check later, do not invent another language, and never say the product is English-only when an Arabic copy is listed. Parent availability and an English word in the product title are not a language.',
-            'no_matching_type' => 'The catalog has eligible items, but none of the requested type. Do not say the catalog is empty and do not invent items of the requested type.',
-            'catalog_empty' => 'No eligible catalog items are available to show. Do not invent products, services, prices, or availability.',
-            'name_not_found' => 'The requested name or product was not found in the catalog. State honestly and directly that the item is currently unavailable or not in stock, without inventing items or prices. Eligible catalog items may still exist. Do not say the catalog is empty.',
+                .' Present the available items clearly and directly to the customer when they ask what is available or ask about products/books. State each item\'s name, price (mention active sale/discount and original price if has_active_offer is true), and key details immediately. Do not ask what they need instead of listing the items. Do not open with filler greetings or repetitive pleasantries. Each item may include variants. A variant price, currency, stock, and availability belongs only to that exact variant. Do not copy the parent price or stock onto a variant, and do not invent a variant that is not listed. If two or more variant rows are listed, never say the product has one size or one variant. If has_more_variants is true, the variant list is partial. When variant_match_status is matched, requested_copies and any variant with matches_question true are the exact requested combinations: use only those rows for the answer. Listed copies exist even when availability is out_of_stock. If that exact copy is out_of_stock, say it is listed and currently out of stock. When variant_match_status is not_found, the requested size, color, length, or type was not verified in one listed variant: do not claim the parent or another variant satisfies it; say the requested combination is not listed or could not be confirmed and offer only the listed alternatives by name. When variant_match_status is not_requested, answer the parent product question without inventing a specific option. Do not say you will check later, do not invent another language, and never say the product is English-only when an Arabic copy is listed. Parent availability and an English word in the product title are not a language.'.$toolHint,
+            'no_matching_type' => 'The catalog has eligible items, but none of the requested type. Do not say the catalog is empty and do not invent items of the requested type.'.$toolHint,
+            'catalog_empty' => 'No eligible catalog items are available to show. Do not invent products, services, prices, or availability.'.$toolHint,
+            'name_not_found' => 'The requested name or product was not found in the catalog. State honestly and directly that the item is currently unavailable or not in stock, without inventing items or prices. You may call search_products with broader terms or get_active_offers if helpful. Eligible catalog items may still exist. Do not say the catalog is empty.'.$toolHint,
             'search_failed' => 'Catalog lookup failed due to a system issue. Politely state that you cannot check inventory right now. Do not invent items or prices.',
-            default => '',
+            default => trim($toolHint),
         };
     }
 

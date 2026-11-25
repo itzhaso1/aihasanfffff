@@ -36,6 +36,7 @@ class OutboxRecord {
     required this.attempts,
     required this.nextAttemptAt,
     this.lastError,
+    this.correlationId,
   });
 
   final int id;
@@ -48,6 +49,7 @@ class OutboxRecord {
   final int attempts;
   final DateTime nextAttemptAt;
   final String? lastError;
+  final String? correlationId;
 
   String get content {
     try {
@@ -516,10 +518,18 @@ class InboxLocalStore {
         existing?['delivery_status']?.toString();
     final deliveredAtMs = _ms(item.deliveredAt) ?? existing?['delivered_at'];
     final readAtMs = _ms(item.readAt) ?? existing?['read_at'];
+    final isFailed = localState == MessageLocalState.failed ||
+        deliveryStatus == 'failed';
+    final localError = isFailed
+        ? (item.localError ?? existing?['local_error']?.toString())
+        : null;
+    final correlationId =
+        item.correlationId ?? existing?['correlation_id']?.toString();
     final participantType = _participantType(item);
     final clientCreatedAt =
         existing?['client_created_at'] ??
-        (localState == MessageLocalState.pending
+        (localState == MessageLocalState.pending ||
+                localState == MessageLocalState.sending
             ? _ms(item.createdAt ?? now)
             : null);
     final attachments = jsonEncode(
@@ -554,6 +564,8 @@ class InboxLocalStore {
           delivery_status = COALESCE(?, delivery_status),
           delivered_at = COALESCE(?, delivered_at),
           read_at = COALESCE(?, read_at),
+          local_error = ?,
+          correlation_id = COALESCE(?, correlation_id),
           created_at = COALESCE(?, created_at),
           user_name = COALESCE(?, user_name),
           customer_name = COALESCE(?, customer_name),
@@ -579,6 +591,8 @@ class InboxLocalStore {
           deliveryStatus,
           deliveredAtMs,
           readAtMs,
+          localError,
+          correlationId,
           _ms(item.createdAt),
           item.userName,
           item.customerName,
@@ -602,10 +616,11 @@ class InboxLocalStore {
       INSERT INTO inbox_messages (
         workspace_id, conversation_server_id, server_id, client_id, direction,
         message_type, content, ai_generated, delivery_status, delivered_at, read_at,
+        local_error, correlation_id,
         created_at, user_name, customer_name, attachments_json, local_state,
         worker_engagement_id, sender_user_id, participant_type, sync_state,
         client_created_at, cached_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''',
       [
         workspaceId,
@@ -619,6 +634,8 @@ class InboxLocalStore {
         deliveryStatus,
         deliveredAtMs,
         readAtMs,
+        localError,
+        correlationId,
         _ms(item.createdAt),
         item.userName,
         item.customerName,
@@ -652,8 +669,8 @@ class InboxLocalStore {
         '''
         INSERT OR IGNORE INTO inbox_outbox (
           workspace_id, client_id, operation_type, conversation_server_id,
-          payload, state, attempts, next_attempt_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+          payload, state, attempts, next_attempt_at, correlation_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
         ''',
         [
           workspaceId,
@@ -666,6 +683,7 @@ class InboxLocalStore {
           }),
           OutboxOpState.pending,
           _ms(now),
+          message.correlationId,
           _ms(now),
           _ms(now),
         ],
@@ -674,6 +692,7 @@ class InboxLocalStore {
         '''
         UPDATE inbox_conversations
         SET last_message_preview = ?,
+            last_message_direction = 'outbound',
             last_message_at = ?,
             unread_count = 0,
             local_read_at = ?,
@@ -726,14 +745,42 @@ class InboxLocalStore {
     return _outboxFromRow(rows.first);
   }
 
-  Future<bool> claimOutbox(int id) async {
-    final due = _ms(DateTime.now());
+  Future<bool> claimOutbox(
+    int id, {
+    int? workspaceId,
+    String? clientId,
+  }) async {
+    final now = DateTime.now();
+    final due = _ms(now);
     final changed = await _db.update(
       "UPDATE inbox_outbox SET state = ?, updated_at = ? "
       "WHERE id = ? AND state = ? AND next_attempt_at <= ?",
       [OutboxOpState.sending, due, id, OutboxOpState.pending, due],
     );
+    if (changed > 0 && workspaceId != null && clientId != null) {
+      await _db.update(
+        'UPDATE inbox_messages SET local_state = ?, cached_at = ?, updated_at = ? '
+        'WHERE workspace_id = ? AND client_id = ?',
+        [MessageLocalState.sending, due, due, workspaceId, clientId],
+      );
+      _changed();
+    }
     return changed > 0;
+  }
+
+  Future<DateTime?> nextPendingOutboxAt({int? workspaceId}) async {
+    final rows = workspaceId == null
+        ? await _db.select(
+            'SELECT MIN(next_attempt_at) AS min_at FROM inbox_outbox WHERE state = ?',
+            [OutboxOpState.pending],
+          )
+        : await _db.select(
+            'SELECT MIN(next_attempt_at) AS min_at FROM inbox_outbox '
+            'WHERE workspace_id = ? AND state = ?',
+            [workspaceId, OutboxOpState.pending],
+          );
+    if (rows.isEmpty) return null;
+    return _fromMs(rows.first['min_at']);
   }
 
   Future<void> completeOutbox({
@@ -760,7 +807,9 @@ class InboxLocalStore {
         server.conversationId,
         server.copyWith(
           localPending: false,
+          localSending: false,
           localFailed: false,
+          clearLocalError: server.deliveryStatus != 'failed',
           clientId: clientId,
         ),
         now,
@@ -823,10 +872,11 @@ class InboxLocalStore {
         ],
       );
       await tx.runCustom(
-        'UPDATE inbox_messages SET local_state = ?, cached_at = ?, updated_at = ? '
+        'UPDATE inbox_messages SET local_state = ?, local_error = ?, cached_at = ?, updated_at = ? '
         'WHERE workspace_id = ? AND client_id = ?',
         [
           permanent ? MessageLocalState.failed : MessageLocalState.pending,
+          permanent ? error : null,
           _ms(now),
           _ms(now),
           workspaceId,
@@ -849,7 +899,8 @@ class InboxLocalStore {
         [OutboxOpState.pending, _ms(now), _ms(now), workspaceId, clientId],
       );
       await tx.runCustom(
-        'UPDATE inbox_messages SET local_state = ?, cached_at = ?, updated_at = ? '
+        'UPDATE inbox_messages SET local_state = ?, delivery_status = NULL, '
+        'local_error = NULL, cached_at = ?, updated_at = ? '
         'WHERE workspace_id = ? AND client_id = ?',
         [MessageLocalState.pending, _ms(now), _ms(now), workspaceId, clientId],
       );
@@ -893,12 +944,50 @@ class InboxLocalStore {
     return (rows.first['c'] as num?)?.toInt() ?? 0;
   }
 
-  Future<void> reclaimSendingOutbox() async {
-    final now = _ms(DateTime.now());
-    await _db.update(
-      'UPDATE inbox_outbox SET state = ?, next_attempt_at = ?, updated_at = ? WHERE state = ?',
-      [OutboxOpState.pending, now, now, OutboxOpState.sending],
-    );
+  Future<int> reclaimSendingOutbox({Duration staleAfter = Duration.zero}) async {
+    final now = DateTime.now();
+    final nowMs = _ms(now)!;
+    final cutoffMs = _ms(now.subtract(staleAfter))!;
+    final staleRows = staleAfter <= Duration.zero
+        ? await _db.select(
+            'SELECT workspace_id, client_id FROM inbox_outbox WHERE state = ?',
+            [OutboxOpState.sending],
+          )
+        : await _db.select(
+            'SELECT workspace_id, client_id FROM inbox_outbox WHERE state = ? AND updated_at <= ?',
+            [OutboxOpState.sending, cutoffMs],
+          );
+    if (staleRows.isEmpty) return 0;
+    await _db.transaction((tx) async {
+      if (staleAfter <= Duration.zero) {
+        await tx.runCustom(
+          'UPDATE inbox_outbox SET state = ?, next_attempt_at = ?, updated_at = ? WHERE state = ?',
+          [OutboxOpState.pending, nowMs, nowMs, OutboxOpState.sending],
+        );
+      } else {
+        await tx.runCustom(
+          'UPDATE inbox_outbox SET state = ?, next_attempt_at = ?, updated_at = ? '
+          'WHERE state = ? AND updated_at <= ?',
+          [OutboxOpState.pending, nowMs, nowMs, OutboxOpState.sending, cutoffMs],
+        );
+      }
+      for (final row in staleRows) {
+        await tx.runCustom(
+          'UPDATE inbox_messages SET local_state = ?, cached_at = ?, updated_at = ? '
+          'WHERE workspace_id = ? AND client_id = ? AND local_state = ?',
+          [
+            MessageLocalState.pending,
+            nowMs,
+            nowMs,
+            row['workspace_id'],
+            row['client_id'],
+            MessageLocalState.sending,
+          ],
+        );
+      }
+    });
+    _changed();
+    return staleRows.length;
   }
 
   Future<void> markMessageSending(int workspaceId, String clientId) async {
@@ -1149,61 +1238,83 @@ class InboxLocalStore {
     return false;
   }
 
+  static int _deliveryRank(String? status) => switch (status?.toLowerCase()) {
+    'pending' || 'sending' => 0,
+    'sent' => 1,
+    'delivered' => 2,
+    'read' => 3,
+    'failed' => 4,
+    _ => -1,
+  };
+
+  static bool _canTransitionDeliveryStatus(String? current, String incoming) {
+    final cur = current?.toLowerCase().trim();
+    final next = incoming.toLowerCase().trim();
+    if (next == 'failed') return cur != 'read';
+    if (cur == 'failed' &&
+        (next == 'pending' || next == 'sent' || next == 'delivered' || next == 'read')) {
+      return true;
+    }
+    final curRank = _deliveryRank(cur);
+    final nextRank = _deliveryRank(next);
+    if (curRank == 3 && nextRank != 3) return false;
+    if (curRank >= 0 && nextRank <= curRank) return false;
+    return true;
+  }
+
   /// Apply a real-time `message.status_updated` payload cleanly to SQLite.
   Future<void> updateMessageDeliveryStatus({
     required int workspaceId,
     required MessageStatusUpdate update,
   }) async {
     final now = DateTime.now();
-    var changed = 0;
+    var existingRow = <Map<String, Object?>>[];
     if (update.id > 0) {
-      changed = await _db.update(
-        '''
-        UPDATE inbox_messages SET
-          delivery_status = ?,
-          delivered_at = COALESCE(?, delivered_at),
-          read_at = COALESCE(?, read_at),
-          local_state = CASE WHEN ? = 'failed' THEN 'failed' ELSE 'sent' END,
-          cached_at = ?,
-          updated_at = ?
-        WHERE workspace_id = ? AND server_id = ?
-        ''',
-        [
-          update.deliveryStatus,
-          _ms(update.deliveredAt),
-          _ms(update.readAt),
-          update.deliveryStatus,
-          _ms(now),
-          _ms(now),
-          workspaceId,
-          update.id,
-        ],
+      existingRow = await _db.select(
+        'SELECT id, delivery_status FROM inbox_messages WHERE workspace_id = ? AND server_id = ? LIMIT 1',
+        [workspaceId, update.id],
       );
     }
-    if (changed == 0 && update.clientId != null && update.clientId!.isNotEmpty) {
-      await _db.update(
-        '''
-        UPDATE inbox_messages SET
-          delivery_status = ?,
-          delivered_at = COALESCE(?, delivered_at),
-          read_at = COALESCE(?, read_at),
-          local_state = CASE WHEN ? = 'failed' THEN 'failed' ELSE 'sent' END,
-          cached_at = ?,
-          updated_at = ?
-        WHERE workspace_id = ? AND client_id = ?
-        ''',
-        [
-          update.deliveryStatus,
-          _ms(update.deliveredAt),
-          _ms(update.readAt),
-          update.deliveryStatus,
-          _ms(now),
-          _ms(now),
-          workspaceId,
-          update.clientId,
-        ],
+    if (existingRow.isEmpty &&
+        update.clientId != null &&
+        update.clientId!.isNotEmpty) {
+      existingRow = await _db.select(
+        'SELECT id, delivery_status FROM inbox_messages WHERE workspace_id = ? AND client_id = ? LIMIT 1',
+        [workspaceId, update.clientId],
       );
     }
+    if (existingRow.isEmpty) return;
+
+    final row = existingRow.first;
+    final currentStatus = row['delivery_status']?.toString();
+    if (!_canTransitionDeliveryStatus(currentStatus, update.deliveryStatus)) {
+      return;
+    }
+
+    await _db.update(
+      '''
+      UPDATE inbox_messages SET
+        delivery_status = ?,
+        delivered_at = COALESCE(?, delivered_at),
+        read_at = COALESCE(?, read_at),
+        local_error = CASE WHEN ? = 'failed' THEN COALESCE(?, local_error) ELSE NULL END,
+        local_state = CASE WHEN ? = 'failed' THEN 'failed' ELSE 'sent' END,
+        cached_at = ?,
+        updated_at = ?
+      WHERE id = ?
+      ''',
+      [
+        update.deliveryStatus,
+        _ms(update.deliveredAt),
+        _ms(update.readAt),
+        update.deliveryStatus,
+        update.errorReason,
+        update.deliveryStatus,
+        _ms(now),
+        _ms(now),
+        row['id'],
+      ],
+    );
     _changed();
   }
 
@@ -1436,8 +1547,11 @@ class InboxLocalStore {
       localPending:
           state == MessageLocalState.pending ||
           state == MessageLocalState.sending,
+      localSending: state == MessageLocalState.sending,
       localFailed: state == MessageLocalState.failed,
+      localError: row['local_error']?.toString(),
       clientId: row['client_id']?.toString(),
+      correlationId: row['correlation_id']?.toString(),
       workerEngagementId: (row['worker_engagement_id'] as num?)?.toInt(),
       senderUserId: (row['sender_user_id'] as num?)?.toInt(),
       participantType: row['participant_type']?.toString(),
@@ -1631,6 +1745,7 @@ class InboxLocalStore {
           _fromMs(row['next_attempt_at']) ??
           DateTime.fromMillisecondsSinceEpoch(0),
       lastError: row['last_error']?.toString(),
+      correlationId: row['correlation_id']?.toString(),
     );
   }
 

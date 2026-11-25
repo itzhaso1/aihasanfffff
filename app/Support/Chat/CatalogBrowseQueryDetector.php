@@ -76,6 +76,10 @@ final class CatalogBrowseQueryDetector
 
         $normalizedTokens = $this->meaningfulListingTokens($searchTokens);
 
+        if ($this->browseMode($query, $searchTokens) !== 'default' && $this->browseMode($query, $searchTokens) !== 'non_catalog_info') {
+            return true;
+        }
+
         if ($normalizedTokens !== []) {
             $nonGeneric = array_diff($normalizedTokens, $this->genericSurfaceForms());
 
@@ -85,6 +89,41 @@ final class CatalogBrowseQueryDetector
         $listingHits = array_intersect($intents, self::LISTING_INTENTS);
 
         return count($listingHits) >= 2;
+    }
+
+    /**
+     * Classify browse mode so specialized discovery (offers, budget, recommendations, or non-catalog info)
+     * uses the appropriate sort/filter without triggering false "name_not_found" catalog lookups.
+     *
+     * @param  list<string>  $searchTokens
+     */
+    public function browseMode(string $query, array $searchTokens): string
+    {
+        $gulf = $this->gulfArabic->interpret($query);
+        $intents = $gulf['intents'];
+        $meaningful = $this->meaningfulListingTokens($searchTokens);
+        $nonGeneric = array_diff($meaningful, $this->genericSurfaceForms());
+
+        if (in_array('offers', $intents, true) && $nonGeneric === []) {
+            return 'offers';
+        }
+
+        if (in_array('budget', $intents, true) && $nonGeneric === []) {
+            return 'cheapest';
+        }
+
+        if (in_array('recommended', $intents, true) && $nonGeneric === []) {
+            return 'recommended';
+        }
+
+        $nonCatalogIntents = ['shipping', 'returns', 'payment', 'store_info', 'order_status', 'complaint'];
+        $nonCatalogFillers = ['مدة', 'مده', 'رسوم', 'سياسه', 'سياسة', 'طريقه', 'طريقة', 'وسائل', 'حاله', 'حالة', 'رقم', 'ساعات', 'اوقات', 'عمل', 'العمل', 'دوام', 'الدوام', 'شركه', 'شركة', 'وين', 'كم', 'متى'];
+        $remainingAfterInfoFillers = array_diff($nonGeneric, $nonCatalogFillers);
+        if (array_intersect($intents, $nonCatalogIntents) !== [] && $remainingAfterInfoFillers === []) {
+            return 'non_catalog_info';
+        }
+
+        return 'default';
     }
 
     /**

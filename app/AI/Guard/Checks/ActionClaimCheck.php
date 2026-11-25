@@ -48,8 +48,14 @@ final class ActionClaimCheck implements GuardCheck
             $claims[] = CanonicalTools::SAVE_CUSTOMER_COMMERCE_CONTEXT;
         }
         if ($this->matches($text, [
+            '/\bI(?:\'ve| have)? (?:just )?(?:transferred|escalated|handed (?:you|this) over)\b/i',
+            '/(?:حولت(?:ك|كم|ها|ه)?|تم\s+تحويل(?:ك|كم|المحادثة|الطلب)?)\s+(?:ل|إلى|الى|على)\s*(?:الفريق|الموظف|موظف|خدمة\s+العملاء|الدعم|شخص)/u',
+        ])) {
+            $claims[] = CanonicalTools::TRANSFER_TO_HUMAN_AGENT;
+        }
+        if ($this->matches($text, [
             '/\bI(?:\'ve| have)? (?:just )?(?:refunded|cancelled|canceled|charged|posted|placed the order)\b/i',
-            '/ألغيت|رجعت المبلغ|حولت|تم الاسترجاع|تم الإلغاء|أرسلت الفاتورة|أنشأت فاتورة/u',
+            '/ألغيت|رجعت المبلغ|حولت\s+(?:المبلغ|الفلوس|الرصيد|الحوالة)|تم الاسترجاع|تم الإلغاء|أرسلت الفاتورة|أنشأت فاتورة/u',
         ])) {
             $claims[] = 'forbidden_mutation';
         }

@@ -66,6 +66,10 @@ class MessageStatusUpdated implements ShouldBroadcastNow
             'client_id' => $clientId,
             'idempotency_key' => $clientId,
             'delivery_status' => $this->message->delivery_status,
+            'delivery_error' => $this->errorReason
+                ?? ($this->message->delivery_status === 'failed' && is_string($metadata['delivery_error'] ?? null)
+                    ? $metadata['delivery_error']
+                    : null),
             'delivered_at' => optional($this->message->delivered_at)?->toIso8601String(),
             'read_at' => optional($this->message->read_at)?->toIso8601String(),
             'error_reason' => $this->errorReason,

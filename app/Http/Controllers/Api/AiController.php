@@ -10,6 +10,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\AI\AIService;
 use App\Services\AI\AiSettingManagementService;
+use App\Services\Conversation\ConversationService;
 use App\Services\Feature\FeatureAccessService;
 use App\Support\Authorization\WorkspaceAccess;
 use App\Support\Tenancy\WorkspaceContext;
@@ -21,6 +22,7 @@ class AiController extends Controller
     public function __construct(
         private readonly AIService $aiService,
         private readonly AiSettingManagementService $aiSettings,
+        private readonly ConversationService $conversationService,
         private readonly FeatureAccessService $featureAccess,
         private readonly WorkspaceContext $workspaceContext,
         private readonly WorkspaceAccess $workspaceAccess,
@@ -68,15 +70,17 @@ class AiController extends Controller
 
         $reply = $this->aiService->generateReply($conversation, $message);
 
-        $outbound = Message::query()->create([
-            'workspace_id' => $conversation->workspace_id,
-            'conversation_id' => $conversation->id,
-            'customer_id' => $conversation->customer_id,
-            'direction' => 'outbound',
-            'message_type' => 'text',
-            'content' => $reply,
-            'ai_generated' => true,
-        ]);
+        $outbound = $this->conversationService->addMessage(
+            $conversation,
+            [
+                'customer_id' => $conversation->customer_id,
+                'direction' => 'outbound',
+                'message_type' => 'text',
+                'content' => $reply,
+                'ai_generated' => true,
+            ],
+            $user,
+        );
 
         return response()->json([
             'data' => [

@@ -8,6 +8,8 @@ use App\Models\Message;
 use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Observability\OpsMetricsRecorder;
+use App\Support\Observability\CorrelationContext;
+use App\Support\Observability\OpsLogger;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,6 +33,7 @@ class SendChannelOutboundMessage implements ShouldBeUnique, ShouldQueue
     public function __construct(
         public readonly int $deliveryId,
         public readonly int $workspaceId,
+        public readonly ?string $correlationId = null,
     ) {
         $this->onQueue((string) config('inbox.queues.outbound', 'outbound'));
         $this->afterCommit();
@@ -44,84 +47,112 @@ class SendChannelOutboundMessage implements ShouldBeUnique, ShouldQueue
     public function handle(ChannelOutboundService $channelOutboundService): void
     {
         $started = microtime(true);
+        CorrelationContext::set($this->correlationId);
 
-        app(WorkspaceContext::class)->runForId($this->workspaceId, function () use ($channelOutboundService, $started): void {
+        try {
+            app(WorkspaceContext::class)->runForId($this->workspaceId, function () use ($channelOutboundService, $started): void {
+                $delivery = ChannelOutboundDelivery::withoutGlobalScopes()
+                    ->whereKey($this->deliveryId)
+                    ->where('workspace_id', $this->workspaceId)
+                    ->first();
+
+                if (! $delivery) {
+                    throw new \RuntimeException("Channel outbound delivery [{$this->deliveryId}] not found in database yet.");
+                }
+
+                if ($delivery->status === ChannelOutboundDelivery::STATUS_SENT) {
+                    return;
+                }
+
+                try {
+                    $channelOutboundService->deliverQueuedDelivery($delivery);
+                } catch (ChannelOutboundRetryableException $exception) {
+                    Log::warning('channel.outbound.retryable_failure', [
+                        'workspace_id' => $this->workspaceId,
+                        'delivery_id' => $this->deliveryId,
+                        'message_id' => $delivery->message_id,
+                        'provider' => $delivery->channel,
+                        'attempt' => $delivery->fresh()?->attempts,
+                        'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+                        'reason' => $exception->getMessage(),
+                    ]);
+                    OpsLogger::warning('PROVIDER_DISPATCH_FAILED', [
+                        'workspace_id' => $this->workspaceId,
+                        'conversation_id' => $delivery->conversation_id,
+                        'message_id' => $delivery->message_id,
+                        'provider' => $delivery->channel,
+                        'retryable' => true,
+                        'reason' => $exception->getMessage(),
+                    ]);
+
+                    throw $exception;
+                }
+
+                $durationMs = (int) round((microtime(true) - $started) * 1000);
+                $status = $delivery->fresh()?->status;
+
+                Log::info('channel.outbound.job_complete', [
+                    'workspace_id' => $this->workspaceId,
+                    'delivery_id' => $this->deliveryId,
+                    'message_id' => $delivery->message_id,
+                    'provider' => $delivery->channel,
+                    'status' => $status,
+                    'duration_ms' => $durationMs,
+                ]);
+
+                app(OpsMetricsRecorder::class)->timing('outbound.job_complete_ms', $durationMs, [
+                    'provider' => $delivery->channel,
+                ]);
+                app(OpsMetricsRecorder::class)->increment('outbound.job_complete', [
+                    'provider' => $delivery->channel,
+                    'status' => $status ?? 'unknown',
+                ]);
+            });
+        } finally {
+            CorrelationContext::reset();
+        }
+    }
+
+    public function failed(?Throwable $exception): void
+    {
+        CorrelationContext::set($this->correlationId);
+
+        try {
             $delivery = ChannelOutboundDelivery::withoutGlobalScopes()
                 ->whereKey($this->deliveryId)
                 ->where('workspace_id', $this->workspaceId)
                 ->first();
 
-            if (! $delivery) {
-                throw new \RuntimeException("Channel outbound delivery [{$this->deliveryId}] not found in database yet.");
-            }
-
-            if ($delivery->status === ChannelOutboundDelivery::STATUS_SENT) {
+            if (! $delivery || $delivery->status === ChannelOutboundDelivery::STATUS_SENT) {
                 return;
             }
 
-            try {
-                $channelOutboundService->deliverQueuedDelivery($delivery);
-            } catch (ChannelOutboundRetryableException $exception) {
-                Log::warning('channel.outbound.retryable_failure', [
+            app(WorkspaceContext::class)->runForId($this->workspaceId, function () use ($delivery, $exception): void {
+                $reason = $exception?->getMessage() ?: $delivery->last_error;
+                $delivery->forceFill([
+                    'status' => ChannelOutboundDelivery::STATUS_FAILED,
+                    'last_error' => $reason,
+                    'failed_at' => $delivery->failed_at ?? now(),
+                ])->save();
+
+                OpsLogger::warning('PROVIDER_DISPATCH_FAILED', [
                     'workspace_id' => $this->workspaceId,
-                    'delivery_id' => $this->deliveryId,
+                    'conversation_id' => $delivery->conversation_id,
                     'message_id' => $delivery->message_id,
                     'provider' => $delivery->channel,
-                    'attempt' => $delivery->fresh()?->attempts,
-                    'duration_ms' => (int) round((microtime(true) - $started) * 1000),
-                    'reason' => $exception->getMessage(),
+                    'retryable' => false,
+                    'reason' => $reason,
                 ]);
 
-                throw $exception;
-            }
-
-            $durationMs = (int) round((microtime(true) - $started) * 1000);
-            $status = $delivery->fresh()?->status;
-
-            Log::info('channel.outbound.job_complete', [
-                'workspace_id' => $this->workspaceId,
-                'delivery_id' => $this->deliveryId,
-                'message_id' => $delivery->message_id,
-                'provider' => $delivery->channel,
-                'status' => $status,
-                'duration_ms' => $durationMs,
-            ]);
-
-            app(OpsMetricsRecorder::class)->timing('outbound.job_complete_ms', $durationMs, [
-                'provider' => $delivery->channel,
-            ]);
-            app(OpsMetricsRecorder::class)->increment('outbound.job_complete', [
-                'provider' => $delivery->channel,
-                'status' => $status ?? 'unknown',
-            ]);
-        });
-    }
-
-    public function failed(?Throwable $exception): void
-    {
-        $delivery = ChannelOutboundDelivery::withoutGlobalScopes()
-            ->whereKey($this->deliveryId)
-            ->where('workspace_id', $this->workspaceId)
-            ->first();
-
-        if (! $delivery || $delivery->status === ChannelOutboundDelivery::STATUS_SENT) {
-            return;
+                $message = Message::withoutGlobalScopes()
+                    ->where('workspace_id', $this->workspaceId)
+                    ->find($delivery->message_id);
+                if ($message) {
+                    app(InboxRealtimePublisher::class)->recordMessageDeliveryStatus($message, 'failed', $reason);
+                }
+            });
+        } finally {
+            CorrelationContext::reset();
         }
-
-        app(WorkspaceContext::class)->runForId($this->workspaceId, function () use ($delivery, $exception): void {
-            $reason = $exception?->getMessage() ?: $delivery->last_error;
-            $delivery->forceFill([
-                'status' => ChannelOutboundDelivery::STATUS_FAILED,
-                'last_error' => $reason,
-                'failed_at' => $delivery->failed_at ?? now(),
-            ])->save();
-
-            $message = Message::withoutGlobalScopes()
-                ->where('workspace_id', $this->workspaceId)
-                ->find($delivery->message_id);
-            if ($message) {
-                app(InboxRealtimePublisher::class)->recordMessageDeliveryStatus($message, 'failed', $reason);
-            }
-        });
     }
 }

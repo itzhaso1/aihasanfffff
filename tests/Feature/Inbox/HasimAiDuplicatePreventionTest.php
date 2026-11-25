@@ -534,8 +534,9 @@ class HasimAiDuplicatePreventionTest extends TestCase
             $newInbound,
         );
 
-        // Assert Meshal diversified the response rather than repeating the identical canned words
+        // Assert Meshal diversified the response cleanly without repeating verbatim or falling back to canned greeting fluff
         $this->assertNotSame('أكيد، خبرني شو تحتاج وبساعدك.', $diversified);
-        $this->assertStringContainsString('أهلاً بك مجدداً', $diversified);
+        $this->assertStringNotContainsString('أهلاً بك مجدداً', $diversified);
+        $this->assertStringContainsString('خبرني شو تحتاج', $diversified);
     }
 }

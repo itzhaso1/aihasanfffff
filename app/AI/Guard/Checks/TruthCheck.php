@@ -21,7 +21,13 @@ final class TruthCheck implements GuardCheck
     public function inspect(GuardInput $input, string $text): GuardFinding
     {
         $claimedPrices = $this->claimedPrices($text);
-        $trustedPrices = $this->trustedValues($input->facts, 'price');
+        $trustedPrices = array_values(array_unique([
+            ...$this->trustedValues($input->facts, 'price'),
+            ...$this->trustedValues($input->facts, 'base_price'),
+            ...$this->trustedValues($input->facts, 'sale_price'),
+            ...$this->trustedValues($input->facts, 'compare_at_price'),
+            ...$this->trustedValues($input->facts, 'total_amount'),
+        ]));
         if ($claimedPrices !== []) {
             if ($trustedPrices === []) {
                 return GuardFinding::rejected(self::NAME, 'invented_price');

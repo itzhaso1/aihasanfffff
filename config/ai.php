@@ -56,6 +56,8 @@ return [
     ],
     'inbox_agent' => [
         'tools_enabled' => (bool) env('AI_INBOX_AGENT_TOOLS_ENABLED', true),
+        'batch_window_seconds' => (int) env('AI_INBOX_AGENT_BATCH_WINDOW_SECONDS', 0),
+        'burst_coalesce_seconds' => (int) env('AI_INBOX_AGENT_BURST_COALESCE_SECONDS', 30),
         'security' => [
             'max_tool_argument_chars' => (int) env('AI_INBOX_AGENT_SECURITY_MAX_TOOL_ARGUMENT_CHARS', 2000),
             'max_tool_result_chars' => (int) env('AI_INBOX_AGENT_SECURITY_MAX_TOOL_RESULT_CHARS', 8000),

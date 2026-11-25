@@ -4,6 +4,7 @@ namespace App\Services\AI\Inbox;
 
 use App\Models\Workspace;
 use App\Services\Chat\ChatCatalogRetrievalService;
+use App\Services\Chat\ChatCatalogWorkspaceInfoService;
 use App\Support\Chat\CatalogBrowseQueryDetector;
 use App\Support\Chat\GulfArabicInterpreter;
 
@@ -23,6 +24,7 @@ final class InboxHonestReplyFallback
         private readonly GulfArabicInterpreter $gulfArabic,
         private readonly CatalogBrowseQueryDetector $browseQueries,
         private readonly ChatCatalogRetrievalService $catalogRetrieval,
+        private readonly ?ChatCatalogWorkspaceInfoService $workspaceInfo = null,
     ) {}
 
     public function forInbound(string $content, ?Workspace $workspace = null): string
@@ -43,7 +45,40 @@ final class InboxHonestReplyFallback
             }
         }
 
-        $tokens = $this->gulfArabic->interpret($query)['search_tokens'];
+        $gulf = $this->gulfArabic->interpret($query);
+        $tokens = $gulf['search_tokens'];
+        $intents = $gulf['intents'];
+
+        if ($workspace !== null && in_array('shipping', $intents, true)) {
+            $shipping = $this->workspaceInfo()?->shippingInfo($workspace);
+            if (($shipping['status'] ?? null) === 'configured' && ! empty($shipping['shipping'])) {
+                $parts = array_filter(array_map(
+                    static fn (mixed $v): string => is_scalar($v) ? (string) $v : '',
+                    $shipping['shipping'],
+                ));
+                if ($parts !== []) {
+                    return implode("\n", array_slice($parts, 0, 3));
+                }
+            }
+
+            return 'تفاصيل الشحن غير محددة في النظام حالياً، أقدر أوجهك لفريقنا أو تتأكد من تفاصيل الطلب.';
+        }
+
+        if ($workspace !== null && in_array('offers', $intents, true)) {
+            $offers = $this->catalogRetrieval->activeOffersForAi($workspace, limit: 5);
+            if ($offers !== []) {
+                $lines = array_map(static function (array $item): string {
+                    $name = (string) ($item['name'] ?? '');
+                    $price = (string) ($item['price'] ?? '');
+                    $currency = (string) ($item['currency'] ?? 'SAR');
+
+                    return "• {$name} ({$price} {$currency})";
+                }, $offers);
+
+                return "العروض المتوفرة حالياً:\n".implode("\n", $lines);
+            }
+        }
+
         if ($this->asksAboutOfferings($query)) {
             return self::OFFERINGS;
         }
@@ -60,6 +95,13 @@ final class InboxHonestReplyFallback
         }
 
         return self::GENERIC;
+    }
+
+    private function workspaceInfo(): ?ChatCatalogWorkspaceInfoService
+    {
+        return $this->workspaceInfo ?? (app()->bound(ChatCatalogWorkspaceInfoService::class)
+            ? app(ChatCatalogWorkspaceInfoService::class)
+            : null);
     }
 
     private function catalogProductListingFallback(Workspace $workspace, string $query): ?string

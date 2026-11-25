@@ -12,6 +12,17 @@ final class IntentResolver
     private const DIRECT_MAP = [
         'price' => 'price_question',
         'availability' => 'availability_question',
+        'offers' => 'discount_request',
+        'budget' => 'price_question',
+        'recommended' => 'recommendation_request',
+        'comparison' => 'product_comparison',
+        'shipping' => 'shipping_question',
+        'returns' => 'return_policy',
+        'payment' => 'payment_question',
+        'order_status' => 'order_status',
+        'complaint' => 'complaint',
+        'store_info' => 'store_info',
+        'human_request' => 'human_request',
     ];
 
     /** @var list<string> */
@@ -20,7 +31,8 @@ final class IntentResolver
         'الاول', 'الأول', 'طيب', 'تمام', 'اوكي', 'موجود', 'والأسود', 'والاسود',
         'ابي', 'ابغى', 'كم', 'كم حقه', 'ابغاه', 'أبغاه', 'ابيه', 'باخذه',
         'باخذها', 'شريت', 'خلاص', 'نفسه', 'نفسها', 'احجزه', 'احجزلي', 'اعتمد',
-        'اريده',
+        'اريده', 'منه', 'في منه', 'فيه منه', 'غيره', 'ارخص', 'تفاصيل', 'تفاصيله',
+        'صورته', 'صوره',
     ];
 
     public function __construct(private readonly GulfArabicInterpreter $interpreter) {}
@@ -32,11 +44,15 @@ final class IntentResolver
     ): ResolvedIntent {
         $reading = $this->interpreter->interpret($message);
         $rawIntents = $reading['intents'];
-        $canonical = $this->directIntent($rawIntents);
+        $matchedCanonicals = $this->allDirectIntents($rawIntents);
+        $canonical = $matchedCanonicals[0] ?? null;
+        $secondaryIntents = array_slice($matchedCanonicals, 1);
         $usedState = false;
 
         if ($canonical === null && in_array('request', $rawIntents, true) && $hasProductContext) {
             $canonical = 'purchase_intent';
+        } elseif (in_array('request', $rawIntents, true) && $hasProductContext && $canonical !== 'purchase_intent') {
+            $secondaryIntents[] = 'purchase_intent';
         }
 
         if ($canonical === null && $this->isContextualFollowUp(
@@ -55,21 +71,27 @@ final class IntentResolver
             searchTokens: $reading['search_tokens'],
             dialectHint: $reading['dialect_hint'],
             usedConversationState: $usedState,
+            secondaryIntents: $secondaryIntents,
         );
     }
 
     /**
      * @param  list<string>  $rawIntents
+     * @return list<string>
      */
-    private function directIntent(array $rawIntents): ?string
+    private function allDirectIntents(array $rawIntents): array
     {
+        $resolved = [];
         foreach ($rawIntents as $raw) {
             if (isset(self::DIRECT_MAP[$raw])) {
-                return self::DIRECT_MAP[$raw];
+                $mapped = self::DIRECT_MAP[$raw];
+                if (! in_array($mapped, $resolved, true)) {
+                    $resolved[] = $mapped;
+                }
             }
         }
 
-        return null;
+        return $resolved;
     }
 
     /**

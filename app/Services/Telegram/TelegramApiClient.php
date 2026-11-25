@@ -2,6 +2,8 @@
 
 namespace App\Services\Telegram;
 
+use App\Exceptions\ChannelOutboundRetryableException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -71,14 +73,24 @@ final class TelegramApiClient
     private function call(string $botToken, string $method, array $params = []): array
     {
         $base = rtrim((string) config('telegram.api_base', 'https://api.telegram.org'), '/');
-        $response = Http::acceptJson()
-            ->asJson()
-            ->timeout(30)
-            ->post($base.'/bot'.$botToken.'/'.$method, array_filter($params, fn ($v) => $v !== null));
+
+        try {
+            $response = Http::acceptJson()
+                ->asJson()
+                ->timeout(30)
+                ->post($base.'/bot'.$botToken.'/'.$method, array_filter($params, fn ($v) => $v !== null));
+        } catch (ConnectionException $exception) {
+            throw new ChannelOutboundRetryableException('Telegram connection error: '.$exception->getMessage(), 0, $exception);
+        }
 
         $payload = $response->json();
-        if (! is_array($payload) || ! ($payload['ok'] ?? false)) {
-            throw new RuntimeException('Telegram API error: '.((string) ($payload['description'] ?? 'unknown')));
+        $description = is_array($payload) ? (string) ($payload['description'] ?? 'unknown') : 'invalid response';
+        if ($response->serverError() || $response->status() === 429) {
+            throw new ChannelOutboundRetryableException('Telegram API error: '.$description);
+        }
+
+        if (! $response->successful() || ! is_array($payload) || ! ($payload['ok'] ?? false)) {
+            throw new RuntimeException('Telegram API error: '.$description);
         }
 
         $result = $payload['result'] ?? [];

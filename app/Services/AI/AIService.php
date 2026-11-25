@@ -15,6 +15,7 @@ use App\Models\Workspace;
 use App\Services\AI\Inbox\Memory\ConversationFactsMemory;
 use App\Services\AI\Response\SmartResponseEngine;
 use App\Services\Feature\FeatureAccessService;
+use App\Support\Observability\CorrelationContext;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -63,7 +64,9 @@ class AIService
         Conversation $conversation,
         Message $message,
     ): string {
+        $startedAt = microtime(true);
         $result = $this->hasimRuntime->reply($conversation, $message);
+        $latencyMs = (int) round((microtime(true) - $startedAt) * 1000);
         $reply = $result->reply;
         if ($result->deliverable && trim($reply) !== '') {
             $facts = app(ConversationFactsMemory::class)->get((int) $workspace->id, (int) $conversation->id);
@@ -77,6 +80,14 @@ class AIService
         $status = $result->deliverable ? 'success' : 'failed';
         $decision = $result->response?->decision;
         $failure = $decision?->failure;
+        $toolSummary = array_map(
+            static fn ($record): array => [
+                'tool' => $record->toolName,
+                'success' => $record->success,
+                'error_code' => $record->errorCode,
+            ],
+            $decision?->toolCalls ?? [],
+        );
 
         $logMeta = $this->safety->logMetadata(
             $usage?->provider ?? 'hasim',
@@ -89,6 +100,14 @@ class AIService
                 'employee_id' => $decision?->employeeId,
                 'constitution_version' => $decision?->constitutionVersion,
                 'intent' => $decision?->intent,
+                'tool_calls_count' => count($toolSummary),
+                'tool_calls' => $toolSummary,
+                'facts_count' => count($decision?->facts ?? []),
+                'references_count' => count($decision?->resolvedReferences ?? []),
+                'input_tokens' => $usage?->inputTokens ?? 0,
+                'output_tokens' => $usage?->outputTokens ?? 0,
+                'total_tokens' => $tokensUsed,
+                'latency_ms' => $latencyMs,
                 'evaluation_status' => $result->evaluation?->status->value,
                 'evaluation_score' => $result->evaluation?->score,
                 'failure_stage' => $failure?->stage->value,
@@ -99,6 +118,28 @@ class AIService
                 'conversation_id' => $conversation->id,
             ],
         );
+
+        Log::info('ai.reply.trace', array_merge(
+            CorrelationContext::logContext(),
+            [
+                'workspace_id' => (int) $workspace->id,
+                'conversation_id' => (int) $conversation->id,
+                'message_id' => $message->exists ? (int) $message->id : null,
+                'employee_id' => $decision?->employeeId,
+                'intent' => $decision?->intent,
+                'runtime_status' => $decision?->status->value,
+                'guard_verdict' => $decision?->metadata['guard_verdict'] ?? null,
+                'tool_calls' => $toolSummary,
+                'facts_count' => count($decision?->facts ?? []),
+                'references_count' => count($decision?->resolvedReferences ?? []),
+                'input_tokens' => $usage?->inputTokens ?? 0,
+                'output_tokens' => $usage?->outputTokens ?? 0,
+                'total_tokens' => $tokensUsed,
+                'latency_ms' => $latencyMs,
+                'deliverable' => $result->deliverable,
+                'failure_code' => $failure?->code->value,
+            ],
+        ));
 
         $this->writeLog(
             $conversation,

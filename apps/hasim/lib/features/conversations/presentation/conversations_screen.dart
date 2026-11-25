@@ -842,7 +842,9 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
               filters: bulkFilters,
             ),
           );
-    final realtimeConn = ref.watch(realtimeConnectionStateProvider).valueOrNull;
+    final realtimeConn =
+        ref.watch(realtimeConnectionStateProvider).valueOrNull ??
+        ref.watch(realtimeServiceProvider).currentConnectionState;
     final panel = _ConversationsPanel(
       reconnectingRealtime:
           realtimeConn == RealtimeConnectionState.reconnecting,
@@ -1423,12 +1425,16 @@ class _ConversationsPanel extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'جاري إعادة الاتصال بالتحديث المباشر...',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: HasimTokens.warningBannerInk(context),
+                Flexible(
+                  child: Text(
+                    'جاري إعادة الاتصال بالتحديث المباشر...',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: HasimTokens.warningBannerInk(context),
+                    ),
                   ),
                 ),
               ],

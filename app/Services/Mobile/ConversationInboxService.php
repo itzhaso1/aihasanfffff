@@ -7,11 +7,13 @@ use App\Models\ConversationUserState;
 use App\Models\Message;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Conversation\ConversationHandoffService;
 use App\Services\Conversation\ConversationService;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Worker\WorkerInboxService;
+use App\Support\Observability\CorrelationContext;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -239,6 +241,8 @@ class ConversationInboxService
             'metadata' => array_filter([
                 ...((array) ($data['metadata'] ?? [])),
                 'idempotency_key' => $data['idempotency_key'] ?? null,
+                'client_id' => $data['client_id'] ?? ($data['idempotency_key'] ?? null),
+                'correlation_id' => CorrelationContext::id(),
                 'channel' => $conversation->channel,
             ], fn ($v) => $v !== null),
         ];
@@ -280,6 +284,11 @@ class ConversationInboxService
                 $txResult['message'],
                 $actor,
                 $payload,
+            );
+        } elseif ($txResult['message']->direction === 'outbound' && $txResult['message']->delivery_status === 'pending') {
+            app(ChannelOutboundService::class)->ensureQueuedForMessage(
+                $txResult['conversation'],
+                $txResult['message'],
             );
         }
 

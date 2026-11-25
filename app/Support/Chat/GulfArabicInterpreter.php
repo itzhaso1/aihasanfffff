@@ -19,7 +19,7 @@ final class GulfArabicInterpreter
     public function interpret(string $original): array
     {
         $normalized = $this->normalizer->normalize($original);
-        $intents = [];
+        $intentPositions = [];
         $searchText = $normalized;
 
         $phrases = [];
@@ -35,8 +35,10 @@ final class GulfArabicInterpreter
         usort($phrases, fn (array $a, array $b): int => mb_strlen($b[0]) <=> mb_strlen($a[0]));
 
         foreach ($phrases as [$phrase, $intent]) {
-            if (str_contains($searchText, $phrase)) {
-                $intents[] = $intent;
+            $pos = mb_strpos($searchText, $phrase);
+            if ($pos !== false) {
+                $origPos = mb_strpos($normalized, $phrase);
+                $intentPositions[$intent] = min($intentPositions[$intent] ?? PHP_INT_MAX, $origPos !== false ? $origPos : $pos);
                 $searchText = str_replace($phrase, ' ', $searchText);
             }
         }
@@ -54,18 +56,27 @@ final class GulfArabicInterpreter
 
         $parts = preg_split('/[^\p{L}\p{N}]+/u', $searchText) ?: [];
         $tokens = [];
+        $cursor = 0;
         foreach ($parts as $part) {
             $token = trim((string) $part);
             if ($token === '' || mb_strlen($token) < 2) {
                 continue;
             }
+            $origPos = mb_strpos($normalized, $token, $cursor);
+            if ($origPos !== false) {
+                $cursor = $origPos + mb_strlen($token);
+            }
             if (isset($wordIntents[$token])) {
-                $intents[] = $wordIntents[$token];
+                $intentId = $wordIntents[$token];
+                $intentPositions[$intentId] = min($intentPositions[$intentId] ?? PHP_INT_MAX, $origPos !== false ? $origPos : $cursor);
 
                 continue;
             }
             $tokens[] = $token;
         }
+
+        asort($intentPositions, SORT_NUMERIC);
+        $intents = array_keys($intentPositions);
 
         return [
             'original' => $original,

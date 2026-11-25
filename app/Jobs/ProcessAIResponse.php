@@ -52,8 +52,31 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         public readonly int $messageId,
         public readonly ?int $workspaceId = null,
         public readonly ?string $correlationId = null,
+        public readonly int $coalesceAttempt = 0,
     ) {
         $this->onQueue((string) config('inbox.queues.ai', 'ai'));
+    }
+
+    /**
+     * Unified inbound dispatcher preserving correlation ID and optional async batching delay.
+     */
+    public static function dispatchForInbound(
+        int $conversationId,
+        int $messageId,
+        ?int $workspaceId = null,
+        ?string $correlationId = null,
+    ): void {
+        $pending = self::dispatch(
+            $conversationId,
+            $messageId,
+            $workspaceId,
+            $correlationId ?? CorrelationContext::id(),
+        );
+
+        $batchSeconds = max(0, (int) config('ai.inbox_agent.batch_window_seconds', 0));
+        if ($batchSeconds > 0 && config('queue.default') !== 'sync') {
+            $pending->delay(now()->addSeconds($batchSeconds));
+        }
     }
 
     public function uniqueId(): string
@@ -236,6 +259,33 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                     return;
                 }
 
+                // 4.5. Coalesce rapid multi-message customer burst inside the conversation lock
+                [$effectiveMessage, $targetMessage, $batchedIds] = $this->resolveRapidBurst(
+                    $fresh,
+                    $incomingMessage,
+                    $eligibility,
+                );
+                if ($targetMessage->id !== $incomingMessage->id) {
+                    if (app(InboxHumanHandoffService::class)->maybeHandoffFromInboundMessage($fresh, $targetMessage, onlyIfJustCreated: false)) {
+                        Log::info('ai.reply.skipped_handoff', [
+                            'workspace_id' => $conversation->workspace_id,
+                            'conversation_id' => $conversation->id,
+                            'incoming_message_id' => $targetMessage->id,
+                            'batched_inbound_ids' => $batchedIds,
+                            'job_id' => $this->job?->getJobId(),
+                            'ai_generation_id' => $generationId,
+                            'reason' => 'human_handoff_requested_in_burst',
+                        ]);
+
+                        return;
+                    }
+
+                    $targetExisting = $this->existingReply($fresh, $targetMessage);
+                    if ($targetExisting !== null) {
+                        return;
+                    }
+                }
+
                 // 5. Generate and store reply
                 $this->generateAndStoreReply(
                     $aiService,
@@ -243,9 +293,11 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                     $eligibility,
                     $outputValidator,
                     $conversation,
-                    $incomingMessage,
+                    $targetMessage,
                     $generationId,
                     $started,
+                    $effectiveMessage,
+                    $batchedIds,
                 );
             });
         } finally {
@@ -273,7 +325,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
 
     public function existingReply(Conversation $conversation, Message $incomingMessage): ?Message
     {
-        return Message::withoutGlobalScopes()
+        $direct = Message::withoutGlobalScopes()
             ->where('workspace_id', $conversation->workspace_id)
             ->where('conversation_id', $conversation->id)
             ->where('ai_generated', true)
@@ -282,8 +334,34 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                     ->orWhere('metadata->in_reply_to_message_id', $incomingMessage->id);
             })
             ->first();
+
+        if ($direct !== null) {
+            return $direct;
+        }
+
+        // Also treat messages covered inside a prior burst batch as already replied.
+        $recentReplies = Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', 'outbound')
+            ->where('ai_generated', true)
+            ->latest('id')
+            ->limit(8)
+            ->get();
+
+        foreach ($recentReplies as $reply) {
+            $batched = data_get($reply->metadata, 'batched_inbound_ids', []);
+            if (is_array($batched) && in_array((int) $incomingMessage->id, array_map('intval', $batched), true)) {
+                return $reply;
+            }
+        }
+
+        return null;
     }
 
+    /**
+     * @param  list<int>  $batchedIds
+     */
     private function generateAndStoreReply(
         AIService $aiService,
         ChannelOutboundService $channelOutbound,
@@ -293,7 +371,11 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         Message $incomingMessage,
         string $generationId,
         float $startedAt,
+        ?Message $effectiveMessage = null,
+        array $batchedIds = [],
     ): void {
+        $effectiveMessage ??= $incomingMessage;
+        $batchedIds = $batchedIds !== [] ? $batchedIds : [(int) $incomingMessage->id];
         $conversationFresh = $conversation->fresh() ?? $conversation;
         if (! $eligibility->mayGenerate($conversationFresh, $incomingMessage)) {
             Log::info('ai.reply.skipped_precheck', [
@@ -335,6 +417,8 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 $incomingMessage,
                 $generationId,
                 $startedAt,
+                $effectiveMessage,
+                $batchedIds,
             );
         } finally {
             Cache::forget("conversation:{$conversation->id}:ai_generating");
@@ -352,6 +436,9 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         }
     }
 
+    /**
+     * @param  list<int>  $batchedIds
+     */
     private function performReplyGeneration(
         AIService $aiService,
         ChannelOutboundService $channelOutbound,
@@ -361,13 +448,22 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         Message $incomingMessage,
         string $generationId,
         float $startedAt,
+        ?Message $effectiveMessage = null,
+        array $batchedIds = [],
     ): void {
+        $effectiveMessage ??= $incomingMessage;
+        $batchedIds = $batchedIds !== [] ? $batchedIds : [(int) $incomingMessage->id];
         $conversationFresh = $conversation->fresh() ?? $conversation;
+        $maxInboundIdBeforeGeneration = (int) (Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversationFresh->workspace_id)
+            ->where('conversation_id', $conversationFresh->id)
+            ->where('direction', 'inbound')
+            ->max('id') ?? $incomingMessage->id);
 
         $fallbackReason = null;
 
         try {
-            $reply = $aiService->generateReply($conversationFresh, $incomingMessage);
+            $reply = $aiService->generateReply($conversationFresh, $effectiveMessage);
         } catch (FeatureNotAvailableException $exception) {
             Log::info('ai.reply.skipped_limits', [
                 'workspace_id' => $conversation->workspace_id,
@@ -447,6 +543,33 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        // Discard stale reply if a brand-new inbound message arrived while generation was in flight
+        if ($this->coalesceAttempt < 1) {
+            $newerInbound = $this->newerInboundDuringGeneration($conversationFresh, $maxInboundIdBeforeGeneration);
+            if ($newerInbound !== null && $eligibility->mayGenerate($conversationFresh, $newerInbound)) {
+                Log::info('ai.reply.discarded_superseded_by_newer_inbound', array_merge(CorrelationContext::logContext(), [
+                    'workspace_id' => $conversationFresh->workspace_id,
+                    'conversation_id' => $conversationFresh->id,
+                    'superseded_message_id' => $incomingMessage->id,
+                    'newer_message_id' => $newerInbound->id,
+                    'ai_generation_id' => $generationId,
+                ]));
+                app(OpsMetricsRecorder::class)->increment('ai.reply.superseded');
+
+                if ($this->existingReply($conversationFresh, $newerInbound) === null) {
+                    self::dispatch(
+                        (int) $conversationFresh->id,
+                        (int) $newerInbound->id,
+                        (int) $conversationFresh->workspace_id,
+                        CorrelationContext::id(),
+                        coalesceAttempt: $this->coalesceAttempt + 1,
+                    );
+                }
+
+                return;
+            }
+        }
+
         $validated = $outputValidator->validateForOutbound($reply);
         if ($validated === null) {
             $fallbackReason ??= trim((string) $reply) === '' ? 'generation_empty' : 'output_rejected';
@@ -509,6 +632,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                 $validated,
                 $generationId,
                 $initialDeliveryStatus,
+                $batchedIds,
                 &$outboundMessage,
             ): void {
                 if ($this->existingReply($conversationFresh, $incomingMessage)) {
@@ -536,6 +660,7 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
                     'external_message_id' => 'ai_reply:'.$incomingMessage->id,
                     'metadata' => [
                         'in_reply_to_message_id' => $incomingMessage->id,
+                        'batched_inbound_ids' => $batchedIds,
                         'ai_generation_id' => $generationId,
                         'ai_employee_name' => 'مشعل',
                     ],
@@ -652,5 +777,93 @@ class ProcessAIResponse implements ShouldBeUnique, ShouldQueue
         }
 
         return $context;
+    }
+
+    /**
+     * Collect contiguous unanswered inbound text messages sent back-to-back within the coalesce window.
+     *
+     * @return array{0: Message, 1: Message, 2: list<int>}
+     */
+    private function resolveRapidBurst(
+        Conversation $conversation,
+        Message $incomingMessage,
+        AiReplyEligibility $eligibility,
+    ): array {
+        if ((int) config('ai.inbox_agent.batch_window_seconds', 0) <= 0) {
+            return [$incomingMessage, $incomingMessage, [(int) $incomingMessage->id]];
+        }
+
+        $windowSeconds = max(1, (int) config('ai.inbox_agent.burst_coalesce_seconds', 30));
+        $lastOutboundId = (int) (Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', 'outbound')
+            ->max('id') ?? 0);
+
+        $cutoff = ($incomingMessage->created_at ?? now())->copy()->subSeconds($windowSeconds);
+        $burst = Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', 'inbound')
+            ->where('message_type', '!=', 'system')
+            ->where('id', '>', $lastOutboundId)
+            ->where('id', '>=', $incomingMessage->id)
+            ->where('created_at', '>=', $cutoff)
+            ->orderBy('id')
+            ->limit(5)
+            ->get();
+
+        if ($burst->count() <= 1) {
+            return [$incomingMessage, $incomingMessage, [(int) $incomingMessage->id]];
+        }
+
+        $eligibleBurst = $burst->filter(
+            fn (Message $m): bool => trim((string) $m->content) !== '' && $eligibility->mayGenerate($conversation, $m),
+        )->values();
+
+        if ($eligibleBurst->count() <= 1) {
+            return [$incomingMessage, $incomingMessage, [(int) $incomingMessage->id]];
+        }
+
+        /** @var Message $target */
+        $target = $eligibleBurst->last();
+        $ids = $eligibleBurst->pluck('id')->map(static fn ($id): int => (int) $id)->values()->all();
+        $dedup = app(InboundMessageDeduplicationService::class);
+        $distinctLines = [];
+        $seenNormalized = [];
+
+        foreach ($eligibleBurst as $item) {
+            $raw = trim((string) $item->content);
+            $norm = $dedup->normalizeText($raw);
+            if ($norm !== '' && isset($seenNormalized[$norm])) {
+                continue;
+            }
+            $seenNormalized[$norm] = true;
+            $distinctLines[] = $raw;
+        }
+
+        if (count($distinctLines) <= 1) {
+            return [$target, $target, $ids];
+        }
+
+        $effective = $target->replicate();
+        $effective->id = $target->id;
+        $effective->exists = true;
+        $effective->created_at = $target->created_at;
+        $effective->content = implode("\n", $distinctLines);
+
+        return [$effective, $target, $ids];
+    }
+
+    private function newerInboundDuringGeneration(Conversation $conversation, int $baselineInboundId): ?Message
+    {
+        return Message::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where('conversation_id', $conversation->id)
+            ->where('direction', 'inbound')
+            ->where('message_type', '!=', 'system')
+            ->where('id', '>', $baselineInboundId)
+            ->orderByDesc('id')
+            ->first();
     }
 }

@@ -304,10 +304,13 @@ class MessageModel extends Equatable {
     this.customerName,
     this.attachments = const [],
     this.localPending = false,
+    this.localSending = false,
     this.localFailed = false,
     this.localUploading = false,
     this.localAttachmentPath,
+    this.localError,
     this.clientId,
+    this.correlationId,
     this.workerEngagementId,
     this.senderUserId,
     this.participantType,
@@ -327,13 +330,45 @@ class MessageModel extends Equatable {
   final String? customerName;
   final List<MessageAttachmentModel> attachments;
   final bool localPending;
+  final bool localSending;
   final bool localFailed;
   final bool localUploading;
   final String? localAttachmentPath;
+  final String? localError;
   final String? clientId;
+  final String? correlationId;
   final int? workerEngagementId;
   final int? senderUserId;
   final String? participantType;
+
+  OutboundPhase get outboundPhase {
+    if (localFailed || deliveryStatus?.toLowerCase() == 'failed') {
+      return OutboundPhase.failed;
+    }
+    if (localSending || localUploading) {
+      return OutboundPhase.sending;
+    }
+    if (localPending) {
+      return OutboundPhase.pending;
+    }
+    final ds = deliveryStatus?.toLowerCase().trim();
+    if (ds == 'pending' || ds == 'sending' || ds == 'queued' || ds == 'accepted') {
+      return OutboundPhase.accepted;
+    }
+    if (ds == 'sent') {
+      return OutboundPhase.sent;
+    }
+    if (ds == 'delivered') {
+      return OutboundPhase.delivered;
+    }
+    if (ds == 'read') {
+      return OutboundPhase.read;
+    }
+    if (ds == null) {
+      return id > 0 ? OutboundPhase.sent : OutboundPhase.pending;
+    }
+    return OutboundPhase.unknown;
+  }
 
   bool get isOutbound => direction == 'outbound' && !isInternalNote;
 
@@ -443,7 +478,10 @@ class MessageModel extends Equatable {
               ? payload['customer']['name']?.toString()
               : null),
       attachments: attachments,
+      localError: payload['delivery_error']?.toString() ??
+          payload['error_reason']?.toString(),
       clientId: clientId,
+      correlationId: payload['correlation_id']?.toString(),
       workerEngagementId: asNullableInt(payload['worker_engagement_id']),
       senderUserId: asNullableInt(payload['user_id']) ??
           (payload['user'] is Map
@@ -456,14 +494,19 @@ class MessageModel extends Equatable {
   MessageModel copyWith({
     int? id,
     bool? localPending,
+    bool? localSending,
     bool? localFailed,
     bool? localUploading,
     String? content,
     String? deliveryStatus,
+    bool clearDeliveryStatus = false,
     DateTime? deliveredAt,
     DateTime? readAt,
     List<MessageAttachmentModel>? attachments,
+    String? localError,
+    bool clearLocalError = false,
     String? clientId,
+    String? correlationId,
     DateTime? createdAt,
     String? localAttachmentPath,
     bool clearLocalAttachmentPath = false,
@@ -475,7 +518,9 @@ class MessageModel extends Equatable {
       messageType: messageType,
       content: content ?? this.content,
       aiGenerated: aiGenerated,
-      deliveryStatus: deliveryStatus ?? this.deliveryStatus,
+      deliveryStatus: clearDeliveryStatus
+          ? null
+          : (deliveryStatus ?? this.deliveryStatus),
       deliveredAt: deliveredAt ?? this.deliveredAt,
       readAt: readAt ?? this.readAt,
       createdAt: createdAt ?? this.createdAt,
@@ -483,12 +528,15 @@ class MessageModel extends Equatable {
       customerName: customerName,
       attachments: attachments ?? this.attachments,
       localPending: localPending ?? this.localPending,
+      localSending: localSending ?? this.localSending,
       localFailed: localFailed ?? this.localFailed,
       localUploading: localUploading ?? this.localUploading,
       localAttachmentPath: clearLocalAttachmentPath
           ? null
           : (localAttachmentPath ?? this.localAttachmentPath),
+      localError: clearLocalError ? null : (localError ?? this.localError),
       clientId: clientId ?? this.clientId,
+      correlationId: correlationId ?? this.correlationId,
       workerEngagementId: workerEngagementId,
       senderUserId: senderUserId,
       participantType: participantType,
@@ -503,6 +551,7 @@ class MessageModel extends Equatable {
     'content': content,
     'ai_generated': aiGenerated,
     if (deliveryStatus != null) 'delivery_status': deliveryStatus,
+    if (localError != null) 'delivery_error': localError,
     if (deliveredAt != null) 'delivered_at': deliveredAt!.toIso8601String(),
     if (readAt != null) 'read_at': readAt!.toIso8601String(),
     'created_at': createdAt?.toIso8601String(),
@@ -529,10 +578,23 @@ class MessageModel extends Equatable {
     clientId,
     content,
     localPending,
+    localSending,
     localFailed,
+    localError,
     deliveryStatus,
     attachments.length,
   ];
+}
+
+enum OutboundPhase {
+  pending,
+  sending,
+  accepted,
+  sent,
+  delivered,
+  read,
+  failed,
+  unknown,
 }
 
 class MessageStatusUpdate extends Equatable {
@@ -567,7 +629,8 @@ class MessageStatusUpdate extends Equatable {
       deliveryStatus: json['delivery_status']?.toString().toLowerCase() ?? 'sent',
       deliveredAt: DateTime.tryParse(json['delivered_at']?.toString() ?? ''),
       readAt: DateTime.tryParse(json['read_at']?.toString() ?? ''),
-      errorReason: json['error_reason']?.toString(),
+      errorReason: json['error_reason']?.toString() ??
+          json['delivery_error']?.toString(),
     );
   }
 
@@ -579,6 +642,7 @@ class MessageStatusUpdate extends Equatable {
     deliveryStatus,
     deliveredAt,
     readAt,
+    errorReason,
   ];
 }
 

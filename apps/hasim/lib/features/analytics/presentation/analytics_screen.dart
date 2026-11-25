@@ -173,9 +173,13 @@ class AnalyticsScreen extends ConsumerWidget {
                               children: [
                                 Icon(Icons.leaderboard_outlined, color: HasimTokens.primary),
                                 SizedBox(width: 8),
-                                Text(
-                                  'المنتجات الأكثر مبيعاً وطلباً',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                Expanded(
+                                  child: Text(
+                                    'المنتجات الأكثر مبيعاً وطلباً',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
                                 ),
                               ],
                             ),
@@ -243,9 +247,13 @@ class AnalyticsScreen extends ConsumerWidget {
                                 children: [
                                   Icon(Icons.timeline, color: HasimTokens.primary),
                                   SizedBox(width: 8),
-                                  Text(
-                                    'السجل الزمني للأداء',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  Expanded(
+                                    child: Text(
+                                      'السجل الزمني للأداء',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -254,15 +262,24 @@ class AnalyticsScreen extends ConsumerWidget {
                                 Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 4),
                                   child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        entry.label,
-                                        style: TextStyle(color: HasimTokens.mutedColor(context)),
+                                      Expanded(
+                                        child: Text(
+                                          entry.label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(color: HasimTokens.mutedColor(context)),
+                                        ),
                                       ),
-                                      Text(
-                                        '${entry.orders} طلبات • ${entry.revenue.toStringAsFixed(2)} ر.س',
-                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          '${entry.orders} طلبات • ${entry.revenue.toStringAsFixed(2)} ر.س',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.end,
+                                          style: const TextStyle(fontWeight: FontWeight.w600),
+                                        ),
                                       ),
                                     ],
                                   ),

@@ -23,9 +23,37 @@ final class SkillRegistry
 
     private const HANDOFF_INTENTS = ['human_request', 'complaint', 'confusion'];
 
-    private const CATALOG_READ_TOOLS = ['search_products', 'get_product_intelligence', 'send_product_image'];
+    private const CATALOG_READ_TOOLS = [
+        'search_products',
+        'get_product_details',
+        'get_product_variants',
+        'check_product_availability',
+        'get_current_price',
+        'get_active_offers',
+        'compare_products',
+        'get_product_intelligence',
+        'send_product_image',
+    ];
 
-    private const CATALOG_RECOMMEND_TOOLS = ['search_products', 'get_product_intelligence', 'evaluate_product_suitability', 'save_customer_commerce_context', 'create_customer_order', 'send_product_image'];
+    private const STORE_INFO_TOOLS = [
+        'get_shipping_information',
+        'get_store_information',
+    ];
+
+    private const CATALOG_RECOMMEND_TOOLS = [
+        'search_products',
+        'get_product_details',
+        'get_product_variants',
+        'check_product_availability',
+        'get_current_price',
+        'get_active_offers',
+        'compare_products',
+        'get_product_intelligence',
+        'evaluate_product_suitability',
+        'save_customer_commerce_context',
+        'create_customer_order',
+        'send_product_image',
+    ];
 
     private static ?self $default = null;
 
@@ -250,7 +278,7 @@ final class SkillRegistry
                 category: 'support',
                 supportedIntents: ['complaint', 'confusion', 'follow_up', 'human_request'],
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: [],
+                allowedTools: [...self::STORE_INFO_TOOLS, 'get_order_status', 'transfer_to_human_agent'],
                 settingsValidation: self::freeformSettings(),
             ),
             new SkillDefinition(
@@ -260,7 +288,7 @@ final class SkillRegistry
                 category: 'support',
                 supportedIntents: self::SUPPORT_INTENTS,
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: array_values(array_unique([...self::CATALOG_READ_TOOLS, 'create_customer_order'])),
+                allowedTools: array_values(array_unique([...self::CATALOG_READ_TOOLS, ...self::STORE_INFO_TOOLS, 'create_customer_order', 'get_order_status', 'transfer_to_human_agent'])),
                 settingsValidation: self::freeformSettings(),
             ),
             new SkillDefinition(
@@ -280,7 +308,7 @@ final class SkillRegistry
                 category: 'workflow',
                 supportedIntents: self::HANDOFF_INTENTS,
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: [],
+                allowedTools: ['transfer_to_human_agent'],
                 settingsValidation: self::freeformSettings(),
             ),
             new SkillDefinition(
@@ -290,7 +318,7 @@ final class SkillRegistry
                 category: 'workflow',
                 supportedIntents: ['follow_up', 'purchase_intent'],
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: ['create_customer_order'],
+                allowedTools: ['create_customer_order', 'get_order_status'],
                 settingsValidation: self::freeformSettings(),
             ),
             new SkillDefinition(
@@ -300,7 +328,7 @@ final class SkillRegistry
                 category: 'catalog',
                 supportedIntents: ['product_search', 'product_details', 'purchase_intent', 'short_message'],
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: self::CATALOG_RECOMMEND_TOOLS,
+                allowedTools: array_values(array_unique([...self::CATALOG_RECOMMEND_TOOLS, ...self::STORE_INFO_TOOLS])),
                 settingsValidation: self::freeformSettings(),
             ),
             new SkillDefinition(
@@ -320,7 +348,7 @@ final class SkillRegistry
                 category: 'sales',
                 supportedIntents: self::SALES_INTENTS,
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: self::CATALOG_RECOMMEND_TOOLS,
+                allowedTools: array_values(array_unique([...self::CATALOG_RECOMMEND_TOOLS, ...self::STORE_INFO_TOOLS, 'get_order_status', 'transfer_to_human_agent'])),
                 settingsValidation: [
                     'type' => 'object',
                     'properties' => [

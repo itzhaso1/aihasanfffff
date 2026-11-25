@@ -219,15 +219,17 @@ class _ChatComposerState extends State<ChatComposer> {
                                 highlightColor: Colors.transparent,
                                 splashColor: Colors.transparent,
                               ),
-                              child: Directionality(
-                                textDirection: TextDirection.rtl,
-                                child: TextField(
-                                  controller: widget.controller,
-                                  focusNode: widget.focusNode,
-                                  minLines: 1,
-                                  maxLines: 4,
-                                  textAlign: TextAlign.right,
-                                  textInputAction: TextInputAction.send,
+                              child: TextField(
+                                controller: widget.controller,
+                                focusNode: widget.focusNode,
+                                minLines: 1,
+                                maxLines: 4,
+                                textAlign: TextAlign.start,
+                                textDirection: _detectInputDirection(
+                                  widget.controller.text,
+                                  Directionality.of(context),
+                                ),
+                                textInputAction: TextInputAction.send,
                                   onChanged: (value) {
                                     if (!value.contains('\n')) {
                                       _committedText = value;
@@ -274,7 +276,6 @@ class _ChatComposerState extends State<ChatComposer> {
                                     disabledBorder: InputBorder.none,
                                   ),
                                 ),
-                              ),
                             ),
                           ),
                           _iconAction(
@@ -590,9 +591,7 @@ class _ReplyBar extends StatelessWidget {
       color: background,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
-      child: Directionality(
-        textDirection: TextDirection.rtl,
-        child: Padding(
+      child: Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 4, 6),
           child: Row(
             children: [
@@ -649,7 +648,25 @@ class _ReplyBar extends StatelessWidget {
             ],
           ),
         ),
-      ),
     );
   }
+}
+
+TextDirection _detectInputDirection(String text, TextDirection fallback) {
+  for (final rune in text.runes) {
+    if ((rune >= 0x0600 && rune <= 0x06FF) ||
+        (rune >= 0x0750 && rune <= 0x077F) ||
+        (rune >= 0x08A0 && rune <= 0x08FF) ||
+        (rune >= 0xFB50 && rune <= 0xFDFF) ||
+        (rune >= 0xFE70 && rune <= 0xFEFF) ||
+        (rune >= 0x0590 && rune <= 0x05FF)) {
+      return TextDirection.rtl;
+    }
+    if ((rune >= 0x0041 && rune <= 0x005A) ||
+        (rune >= 0x0061 && rune <= 0x007A) ||
+        (rune >= 0x00C0 && rune <= 0x024F)) {
+      return TextDirection.ltr;
+    }
+  }
+  return fallback;
 }

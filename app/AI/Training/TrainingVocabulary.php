@@ -18,6 +18,8 @@ final class TrainingVocabulary
         'intents' => [
             'greeting', 'short_message', 'follow_up', 'price_question', 'availability_question',
             'product_search', 'product_details', 'purchase_intent', 'discount_request', 'objection',
+            'shipping_question', 'return_policy', 'payment_question', 'order_status', 'store_info',
+            'product_comparison', 'recommendation_request',
             'human_request', 'complaint', 'confusion', 'off_topic',
         ],
         'roles' => [

@@ -465,6 +465,7 @@ class ConversationRepository {
     String content,
     String key, {
     String direction = 'outbound',
+    String? correlationId,
   }) async {
     final res = await _api.post(
       'conversations/$conversationId/messages',
@@ -473,13 +474,73 @@ class ConversationRepository {
         'direction': direction,
         'message_type': 'text',
         'idempotency_key': key,
+        'client_id': key,
       },
-      headers: {'Idempotency-Key': key},
+      headers: {
+        'Idempotency-Key': key,
+        if (correlationId != null && correlationId.isNotEmpty)
+          'X-Correlation-Id': correlationId,
+      },
       mapData: asMap,
     );
     final map = res.data;
     if (map == null) throw ApiException(res.message ?? 'تعذر إرسال الرسالة.');
-    return MessageModel.fromJson(map).copyWith(clientId: key);
+    final parsed = MessageModel.fromJson(map);
+    return parsed.copyWith(
+      clientId: key,
+      correlationId: correlationId ?? parsed.correlationId,
+    );
+  }
+
+  Future<MessageModel> retryMessage(
+    int conversationId,
+    int messageId, {
+    String? correlationId,
+  }) async {
+    final res = await _api.post(
+      'conversations/$conversationId/messages/$messageId/retry',
+      headers: {
+        if (correlationId != null && correlationId.isNotEmpty)
+          'X-Correlation-Id': correlationId,
+      },
+      mapData: asMap,
+    );
+    final map = res.data;
+    if (map == null) {
+      throw ApiException(res.message ?? 'تعذر إعادة إرسال الرسالة.');
+    }
+    final parsed = MessageModel.fromJson(map);
+    return parsed.copyWith(
+      correlationId: correlationId ?? parsed.correlationId,
+    );
+  }
+
+  Future<MessageModel?> findMessageByClientIdOnServer(
+    int conversationId,
+    String clientId,
+  ) async {
+    final res = await _api.get(
+      'conversations/$conversationId/messages',
+      query: const {'per_page': 30},
+    );
+    final items = asMapList(res.data).map(MessageModel.fromJson);
+    for (final m in items) {
+      if (m.clientId == clientId) {
+        return m;
+      }
+    }
+    return null;
+  }
+
+  Future<String?> cachedOutboxError(int workspaceId, String clientId) async {
+    final store = _local;
+    if (store == null) return null;
+    final op = await store.outboxByClientId(workspaceId, clientId);
+    if (op?.lastError != null && op!.lastError!.isNotEmpty) {
+      return op.lastError;
+    }
+    final msg = await store.getMessageByClientId(workspaceId, clientId);
+    return msg?.localError;
   }
 
   Future<Map<String, dynamic>> sendBulkMessage({

@@ -6,7 +6,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:hasim/app.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/local_db/inbox_database.dart';
@@ -121,7 +120,6 @@ class _ControllableRealtimeService extends NoopRealtimeService {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  GoogleFonts.config.allowRuntimeFetching = false;
 
   HttpOverrides? prevOverrides;
   setUp(() {
@@ -147,48 +145,69 @@ void main() {
   testWidgets('LocaleController switches Arabic RTL and English LTR dynamically in HasimApp', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final rawPrefs = await SharedPreferences.getInstance();
-    final db = InboxDatabase.memory();
-    await db.ensureReady();
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          sharedPrefsProvider.overrideWithValue(rawPrefs),
-          secureStoreProvider.overrideWithValue(_MemSecureStore()),
-          inboxDatabaseProvider.overrideWithValue(db),
-          authRepositoryProvider.overrideWith(
-            (ref) => _NoAuthMeRepository(ref.watch(apiClientProvider)),
-          ),
-          realtimeServiceProvider.overrideWithValue(NoopRealtimeService()),
-        ],
-        child: const HasimApp(),
-      ),
-    );
-    await tester.pump();
+    await tester.runAsync(() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((req) async {
+        req.response
+          ..statusCode = 200
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode({'success': true, 'data': [], 'meta': {}}));
+        await req.response.close();
+      });
+      await rawPrefs.setString(
+        'api_base_override',
+        'http://127.0.0.1:${server.port}',
+      );
+      final db = InboxDatabase.memory();
+      await db.ensureReady();
 
-    expect(
-      Directionality.of(tester.element(find.byType(Navigator).first)),
-      TextDirection.rtl,
-    );
+      await tester.pumpWidget(
+        ProviderScope(
+          key: const ValueKey('locale-test-scope'),
+          overrides: [
+            sharedPrefsProvider.overrideWithValue(rawPrefs),
+            secureStoreProvider.overrideWithValue(_MemSecureStore()),
+            inboxDatabaseProvider.overrideWithValue(db),
+            authRepositoryProvider.overrideWith(
+              (ref) => _NoAuthMeRepository(ref.watch(apiClientProvider)),
+            ),
+            realtimeServiceProvider.overrideWithValue(NoopRealtimeService()),
+          ],
+          child: const HasimApp(),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      await tester.pump();
 
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(HasimApp)),
-    );
-    await container
-        .read(localeControllerProvider.notifier)
-        .setLocale(const Locale('en'));
-    await tester.pump();
+      expect(
+        Directionality.of(tester.element(find.byType(Navigator).first)),
+        TextDirection.rtl,
+      );
 
-    expect(
-      Directionality.of(tester.element(find.byType(Navigator).first)),
-      TextDirection.ltr,
-    );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HasimApp)),
+      );
+      await container
+          .read(localeControllerProvider.notifier)
+          .setLocale(const Locale('en'));
+      await tester.pump();
 
-    await container
-        .read(localeControllerProvider.notifier)
-        .setLocale(const Locale('ar'));
-    await tester.pumpWidget(const SizedBox.shrink());
-    await db.close();
+      expect(
+        Directionality.of(tester.element(find.byType(Navigator).first)),
+        TextDirection.ltr,
+      );
+
+      await container
+          .read(localeControllerProvider.notifier)
+          .setLocale(const Locale('ar'));
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      await db.close();
+      await server.close(force: true);
+    });
   });
 
   test('ApiClient deduplicates concurrent GETs, supports CancelToken, and parses large message batches via isolate', () async {
@@ -337,6 +356,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        key: const ValueKey('analytics-sliver-scope'),
         overrides: [
           sharedPrefsProvider.overrideWithValue(rawPrefs),
           inboxDatabaseProvider.overrideWithValue(db),
@@ -361,51 +381,77 @@ void main() {
     expect(find.text('18540.50 ر.س'), findsOneWidget);
     expect(find.text('باقة الأعمال'), findsOneWidget);
 
-    // 3. Reconnecting banner appears/hides dynamically on ChatScreen
-    final container = ProviderScope(
-      overrides: [
-        sharedPrefsProvider.overrideWithValue(rawPrefs),
-        secureStoreProvider.overrideWithValue(_MemSecureStore()),
-        inboxSessionProvider.overrideWithValue(InboxSession()..beginWorkspace(1)),
-        inboxDatabaseProvider.overrideWithValue(db),
-        apiClientProvider.overrideWithValue(api),
-        authRepositoryProvider.overrideWithValue(_NoAuthMeRepository(api)),
-        realtimeServiceProvider.overrideWithValue(realtime),
-      ],
-      child: MaterialApp(
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.light,
-        locale: const Locale('ar'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const ChatScreen(conversationId: 1),
-      ),
-    );
-    await tester.pumpWidget(container);
-    await tester.pump();
-    expect(find.text('جاري إعادة الاتصال بالتحديث المباشر...'), findsNothing);
-
-    realtime.emitConnection(RealtimeConnectionState.reconnecting);
-    await tester.pump();
-    await tester.pump();
-    expect(find.text('جاري إعادة الاتصال بالتحديث المباشر...'), findsOneWidget);
-
-    realtime.emitConnection(RealtimeConnectionState.connected);
-    await tester.pump();
-    await tester.pump();
-    expect(find.text('جاري إعادة الاتصال بالتحديث المباشر...'), findsNothing);
-
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
-    realtime.dispose();
-    await db.close();
+
+    // 3. Reconnecting banner appears/hides dynamically on ChatScreen
+    await tester.runAsync(() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((req) async {
+        req.response
+          ..statusCode = 200
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode({'success': true, 'data': [], 'meta': {}}));
+        await req.response.close();
+      });
+      await rawPrefs.setString(
+        'api_base_override',
+        'http://127.0.0.1:${server.port}',
+      );
+      final chatApi = ApiClient(
+        secureStore: _MemSecureStore(),
+        prefsStore: PrefsStore(rawPrefs),
+      );
+      final chatContainer = ProviderScope(
+        key: const ValueKey('chat-reconnect-scope'),
+        overrides: [
+          sharedPrefsProvider.overrideWithValue(rawPrefs),
+          secureStoreProvider.overrideWithValue(_MemSecureStore()),
+          inboxSessionProvider.overrideWithValue(
+            InboxSession()..beginWorkspace(1),
+          ),
+          inboxDatabaseProvider.overrideWithValue(db),
+          apiClientProvider.overrideWithValue(chatApi),
+          authRepositoryProvider.overrideWithValue(_NoAuthMeRepository(chatApi)),
+          realtimeServiceProvider.overrideWithValue(realtime),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: ThemeMode.light,
+          locale: const Locale('ar'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ChatScreen(conversationId: 1),
+        ),
+      );
+      await tester.pumpWidget(chatContainer);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await tester.pump();
+      expect(find.text('جاري إعادة الاتصال بالتحديث المباشر...'), findsNothing);
+
+      realtime.emitConnection(RealtimeConnectionState.reconnecting);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('جاري إعادة الاتصال بالتحديث المباشر...'), findsOneWidget);
+
+      realtime.emitConnection(RealtimeConnectionState.connected);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('جاري إعادة الاتصال بالتحديث المباشر...'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      realtime.dispose();
+      await db.close();
+      await server.close(force: true);
+    });
   });
 
   testWidgets('Large 1200-message ChatScreen renders lazily and scrolls smoothly without jank', (tester) async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
-
     final largeMessages = [
       for (var i = 1; i <= 1200; i++)
         {
@@ -418,56 +464,57 @@ void main() {
         },
     ];
 
-    server.listen((req) async {
-      if (req.uri.path.endsWith('/messages')) {
+    await tester.runAsync(() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((req) async {
+        if (req.uri.path.endsWith('/messages')) {
+          req.response
+            ..statusCode = 200
+            ..headers.contentType = ContentType.json
+            ..write(jsonEncode({
+              'success': true,
+              'data': largeMessages.reversed.toList(),
+              'meta': {'has_more': false},
+            }));
+          await req.response.close();
+          return;
+        }
         req.response
           ..statusCode = 200
           ..headers.contentType = ContentType.json
-          ..write(jsonEncode({
-            'success': true,
-            'data': largeMessages.reversed.toList(),
-            'meta': {'has_more': false},
-          }));
+          ..write(jsonEncode({'success': true, 'data': {'unread_count': 0}}));
         await req.response.close();
-        return;
-      }
-      req.response
-        ..statusCode = 200
-        ..headers.contentType = ContentType.json
-        ..write(jsonEncode({'success': true, 'data': {'unread_count': 0}}));
-      await req.response.close();
-    });
+      });
 
-    SharedPreferences.setMockInitialValues({
-      'workspace_id': 1,
-      'api_base_override': 'http://127.0.0.1:${server.port}',
-    });
-    final rawPrefs = await SharedPreferences.getInstance();
-    final db = InboxDatabase.memory();
-    await db.ensureReady();
-    final store = InboxLocalStore(db);
-    final api = ApiClient(
-      secureStore: _MemSecureStore(),
-      prefsStore: PrefsStore(rawPrefs),
-    );
-    final repo = ConversationRepository(api, local: store);
-    final realtime = NoopRealtimeService();
+      SharedPreferences.setMockInitialValues({
+        'workspace_id': 1,
+        'api_base_override': 'http://127.0.0.1:${server.port}',
+      });
+      final rawPrefs = await SharedPreferences.getInstance();
+      final db = InboxDatabase.memory();
+      await db.ensureReady();
+      final store = InboxLocalStore(db);
+      final api = ApiClient(
+        secureStore: _MemSecureStore(),
+        prefsStore: PrefsStore(rawPrefs),
+      );
+      final repo = ConversationRepository(api, local: store);
+      final realtime = NoopRealtimeService();
 
-    final container = ProviderContainer(
-      overrides: [
-        sharedPrefsProvider.overrideWithValue(rawPrefs),
-        secureStoreProvider.overrideWithValue(_MemSecureStore()),
-        inboxSessionProvider.overrideWithValue(InboxSession()..beginWorkspace(1)),
-        inboxDatabaseProvider.overrideWithValue(db),
-        inboxLocalStoreProvider.overrideWithValue(store),
-        apiClientProvider.overrideWithValue(api),
-        authRepositoryProvider.overrideWithValue(_NoAuthMeRepository(api)),
-        conversationRepositoryProvider.overrideWithValue(repo),
-        realtimeServiceProvider.overrideWithValue(realtime),
-      ],
-    );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPrefsProvider.overrideWithValue(rawPrefs),
+          secureStoreProvider.overrideWithValue(_MemSecureStore()),
+          inboxSessionProvider.overrideWithValue(InboxSession()..beginWorkspace(1)),
+          inboxDatabaseProvider.overrideWithValue(db),
+          inboxLocalStoreProvider.overrideWithValue(store),
+          apiClientProvider.overrideWithValue(api),
+          authRepositoryProvider.overrideWithValue(_NoAuthMeRepository(api)),
+          conversationRepositoryProvider.overrideWithValue(repo),
+          realtimeServiceProvider.overrideWithValue(realtime),
+        ],
+      );
 
-    await tester.runAsync(() async {
       final openSw = Stopwatch()..start();
       await tester.pumpWidget(
         UncontrolledProviderScope(
@@ -520,10 +567,155 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
+      container.dispose();
+      realtime.dispose();
+      await db.close();
+      await server.close(force: true);
     });
-
-    container.dispose();
-    realtime.dispose();
-    await db.close();
   });
+
+  testWidgets(
+    'ChatMessageBubble distinguishes Customer, Human Agent, AI Assistant, and Internal Note cleanly with natural shrink-wrap sizing and Bidi support',
+    (tester) async {
+      final customerMsg = MessageModel(
+        id: 11,
+        conversationId: 1,
+        direction: 'inbound',
+        messageType: 'text',
+        content: 'هلا',
+        customerName: 'سارة',
+        createdAt: DateTime(2026, 11, 25, 10, 5),
+      );
+      final agentMsg = MessageModel(
+        id: 12,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'أهلاً بك، كيف نساعدك؟',
+        userName: 'أحمد',
+        participantType: 'company_staff',
+        deliveryStatus: 'read',
+        createdAt: DateTime(2026, 11, 25, 10, 6),
+      );
+      final aiMsg = MessageModel(
+        id: 13,
+        conversationId: 1,
+        direction: 'outbound',
+        messageType: 'text',
+        content: 'Order #42 is confirmed and ready.',
+        aiGenerated: true,
+        userName: 'مشعل AI',
+        participantType: 'ai_employee',
+        deliveryStatus: 'delivered',
+        createdAt: DateTime(2026, 11, 25, 10, 7),
+      );
+      final noteMsg = MessageModel(
+        id: 14,
+        conversationId: 1,
+        direction: 'internal_note',
+        messageType: 'system',
+        content: 'يرجى المتابعة من الفريق المالي',
+        createdAt: DateTime(2026, 11, 25, 10, 8),
+      );
+
+      for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
+            themeMode: mode,
+            locale: const Locale('ar'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: SizedBox(
+                width: 390,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ChatMessageBubble(message: customerMsg),
+                    ChatMessageBubble(message: agentMsg),
+                    ChatMessageBubble(message: aiMsg),
+                    ChatMessageBubble(message: noteMsg),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        // 1. Short customer message shrinks naturally to its content instead of spanning maxWidth
+        final customerBox = tester.getRect(
+          find
+              .descendant(
+                of: find.widgetWithText(ChatMessageBubble, 'هلا'),
+                matching: find.byType(DecoratedBox),
+              )
+              .first,
+        );
+        expect(customerBox.width, lessThan(220));
+        expect(customerBox.height, lessThan(52));
+
+        // 2. AI bubble uses dedicated AI surface distinctly different from Human Agent bubble
+        final agentDecor = tester
+            .widget<DecoratedBox>(
+              find
+                  .descendant(
+                    of: find.widgetWithText(ChatMessageBubble, 'أهلاً بك، كيف نساعدك؟'),
+                    matching: find.byType(DecoratedBox),
+                  )
+                  .first,
+            )
+            .decoration as BoxDecoration;
+        final aiDecor = tester
+            .widget<DecoratedBox>(
+              find
+                  .descendant(
+                    of: find.widgetWithText(ChatMessageBubble, 'Order #42 is confirmed and ready.'),
+                    matching: find.byType(DecoratedBox),
+                  )
+                  .first,
+            )
+            .decoration as BoxDecoration;
+        expect(aiDecor.color, isNot(equals(agentDecor.color)));
+
+        // 3. English AI content uses LTR textDirection inside Arabic RTL thread
+        final aiText = tester.widget<Text>(
+          find.text('Order #42 is confirmed and ready.'),
+        );
+        expect(aiText.textDirection, TextDirection.ltr);
+
+        // 4. Internal note displays lock badge and warm card without delivery ticks
+        expect(find.byKey(const Key('chat-internal-note')), findsOneWidget);
+        expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+        expect(find.text('ملاحظة داخلية'), findsOneWidget);
+        expect(find.text('ذكاء اصطناعي'), findsOneWidget);
+        expect(find.text('موظف'), findsOneWidget);
+        expect(find.text('عميل'), findsOneWidget);
+      }
+
+      // 5. Consecutive grouped bubble suppresses duplicate sender header
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          locale: const Locale('ar'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Column(
+              children: [
+                ChatMessageBubble(message: agentMsg, groupedWithNext: true),
+                ChatMessageBubble(
+                  message: agentMsg.copyWith(id: 15, content: 'رسالة ثانية متتالية'),
+                  groupedWithPrevious: true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      expect(find.text('أحمد'), findsOneWidget);
+      expect(find.text('رسالة ثانية متتالية'), findsOneWidget);
+    },
+  );
 }

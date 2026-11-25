@@ -49,7 +49,7 @@ class MessageController extends Controller
 
         $conversation = $conversation->fresh() ?? $conversation;
         if ($message->wasRecentlyCreated && $this->aiEligibility->shouldDispatchAiJob($conversation, $message)) {
-            ProcessAIResponse::dispatch($conversation->id, $message->id, (int) $conversation->workspace_id);
+            ProcessAIResponse::dispatchForInbound($conversation->id, $message->id, (int) $conversation->workspace_id);
         }
 
         return response()->json(['data' => $message], 201);

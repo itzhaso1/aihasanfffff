@@ -12,6 +12,9 @@ class MessageReconciler {
     required MessageModel incoming,
   }) {
     if (incoming.localFailed) return MessageLocalState.failed;
+    if (incoming.localSending || incoming.localUploading) {
+      return MessageLocalState.sending;
+    }
     if (incoming.localPending) {
       if (existingState == MessageLocalState.sending) {
         return MessageLocalState.sending;

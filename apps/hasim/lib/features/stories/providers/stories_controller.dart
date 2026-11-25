@@ -91,7 +91,7 @@ class StoriesController extends StateNotifier<StoriesState> {
     final epoch = ++_loadEpoch;
     final repo = _ref.read(storyRepositoryProvider);
     final cached = await repo.cached();
-    if (epoch != _loadEpoch) return;
+    if (!mounted || epoch != _loadEpoch) return;
     if (cached.isNotEmpty) {
       state = state.copyWith(
         buckets: _group(cached),
@@ -104,7 +104,7 @@ class StoriesController extends StateNotifier<StoriesState> {
     }
     try {
       final stories = await repo.list();
-      if (epoch != _loadEpoch) {
+      if (!mounted || epoch != _loadEpoch) {
         return;
       }
       state = state.copyWith(
@@ -117,12 +117,12 @@ class StoriesController extends StateNotifier<StoriesState> {
             : null,
       );
     } on ApiException catch (e) {
-      if (epoch != _loadEpoch) {
+      if (!mounted || epoch != _loadEpoch) {
         return;
       }
       if (e.statusCode == 403) {
         await repo.clearLocalWorkspaceData();
-        if (epoch != _loadEpoch) {
+        if (!mounted || epoch != _loadEpoch) {
           return;
         }
         state = state.copyWith(
@@ -140,7 +140,7 @@ class StoriesController extends StateNotifier<StoriesState> {
         loadedOnce: true,
       );
     } catch (_) {
-      if (epoch != _loadEpoch) {
+      if (!mounted || epoch != _loadEpoch) {
         return;
       }
       state = state.copyWith(
@@ -154,6 +154,7 @@ class StoriesController extends StateNotifier<StoriesState> {
 
   /// تحديث محلي بعد مشاهدة قصة (idempotent على مستوى الواجهة).
   void markViewedLocally(int storyId) {
+    if (!mounted) return;
     final next = state.buckets.map((b) {
       final stories = b.stories
           .map((s) => s.id == storyId ? s.copyWith(viewedByMe: true) : s)

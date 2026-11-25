@@ -13,6 +13,7 @@ use App\Models\Conversation;
 use App\Models\Customer;
 use App\Models\Message;
 use App\Models\MessageAttachment;
+use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Conversation\ConversationAiEligibilityService;
 use App\Services\Conversation\ConversationPresenceService;
 use App\Services\Conversation\ConversationResponderService;
@@ -418,7 +419,22 @@ class ConversationController extends Controller
                     $actor,
                     $payload,
                 );
+                $sentMessage = $sentMessage->fresh([
+                    'attachments',
+                    'user:id,name',
+                    'workerEngagement.workerProfile:id,user_id,display_name',
+                    'workerEngagement.workerProfile.user:id,name',
+                ]) ?? $sentMessage;
             } else {
+                if ($sentMessage->direction === 'outbound' && $sentMessage->delivery_status === 'pending') {
+                    app(ChannelOutboundService::class)->ensureQueuedForMessage($conversation, $sentMessage);
+                    $sentMessage = $sentMessage->fresh([
+                        'attachments',
+                        'user:id,name',
+                        'workerEngagement.workerProfile:id,user_id,display_name',
+                        'workerEngagement.workerProfile.user:id,name',
+                    ]) ?? $sentMessage;
+                }
                 app(InboxRealtimePublisher::class)->publishConversationUpdate($conversation);
             }
             $conversation = $conversation->fresh() ?? $conversation;
@@ -427,7 +443,7 @@ class ConversationController extends Controller
         if ($sentMessage->wasRecentlyCreated
             && $sentMessage->direction === 'inbound'
             && $this->aiEligibility->shouldDispatchAiJob($conversation, $sentMessage)) {
-            ProcessAIResponse::dispatch($conversation->id, $sentMessage->id, (int) $conversation->workspace_id);
+            ProcessAIResponse::dispatchForInbound($conversation->id, $sentMessage->id, (int) $conversation->workspace_id);
         }
 
         if ($request->expectsJson()) {
@@ -452,6 +468,31 @@ class ConversationController extends Controller
         return redirect()->route('workspace.conversations.index', [
             'conversation' => $conversation->id,
         ])->with('success', 'تم إرسال الرسالة.');
+    }
+
+    public function retryMessage(Request $request, Conversation $conversation, Message $message): JsonResponse|RedirectResponse
+    {
+        $this->authorize('reply', $conversation);
+
+        abort_if(
+            (int) $message->conversation_id !== (int) $conversation->id
+                || (int) $message->workspace_id !== (int) $conversation->workspace_id,
+            404,
+        );
+
+        abort_if($message->direction !== 'outbound', 422);
+
+        $retried = app(ChannelOutboundService::class)->retryOutboundForMessage($conversation, $message);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $this->serializeMessageForInbox($retried),
+            ]);
+        }
+
+        return redirect()->route('workspace.conversations.index', [
+            'conversation' => $conversation->id,
+        ])->with('success', 'تمت إعادة محاولة الإرسال.');
     }
 
     public function pollMessages(Request $request, Conversation $conversation): JsonResponse
@@ -579,6 +620,10 @@ class ConversationController extends Controller
             'content' => $message->content,
             'ai_generated' => (bool) $message->ai_generated,
             'delivery_status' => $message->delivery_status,
+            'delivery_error' => $message->delivery_status === 'failed'
+                && is_string($message->metadata['delivery_error'] ?? null)
+                ? $message->metadata['delivery_error']
+                : null,
             'delivered_at' => optional($message->delivered_at)?->toIso8601String(),
             'read_at' => optional($message->read_at)?->toIso8601String(),
             'is_internal_note' => $isInternalNote,

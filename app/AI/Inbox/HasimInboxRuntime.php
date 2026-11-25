@@ -86,7 +86,9 @@ final class HasimInboxRuntime
                 $app->make(TrainingContextBuilder::class),
                 $app->make(EmployeeTrainingQueryFactory::class),
             ),
-            $app->make(HasimModelGateway::class),
+            $app->bound(ModelGateway::class)
+                ? $app->make(ModelGateway::class)
+                : $app->make(HasimModelGateway::class),
             new HasimToolRunner(
                 $adapters->registry(),
                 new ToolPolicy,

@@ -390,6 +390,10 @@ class ApiClient {
   ApiException _mapDio(DioException e) {
     final status = e.response?.statusCode;
     final data = e.response?.data;
+    final retryAfterRaw = e.response?.headers.value('Retry-After');
+    final retryAfterSeconds = retryAfterRaw == null
+        ? null
+        : int.tryParse(retryAfterRaw.trim());
 
     if (status == 401) {
       _emitUnauthorized();
@@ -420,13 +424,15 @@ class ApiClient {
           return ApiException(
             'نسخة الخادم قديمة ولا تدعم اختبار الذكاء. حدّث السيرفر ثم أعد المحاولة.',
             statusCode: status,
-            errorCode: map['error']?.toString(),
+            errorCode: map['code']?.toString() ?? map['error']?.toString(),
+            retryAfterSeconds: retryAfterSeconds,
           );
         }
         return ApiException(
           message,
           statusCode: status,
-          errorCode: map['error']?.toString(),
+          errorCode: map['code']?.toString() ?? map['error']?.toString(),
+          retryAfterSeconds: retryAfterSeconds,
           errors: map['errors'] is Map
               ? Map<String, dynamic>.from(map['errors'] as Map)
               : null,
@@ -470,7 +476,11 @@ class ApiClient {
       return ApiException('بيانات غير صالحة.', statusCode: status);
     }
     if (status == 429) {
-      return ApiException('محاولات كثيرة. حاول لاحقاً.', statusCode: status);
+      return ApiException(
+        'محاولات كثيرة. حاول لاحقاً.',
+        statusCode: status,
+        retryAfterSeconds: retryAfterSeconds,
+      );
     }
     if (status == 500) {
       return ApiException(

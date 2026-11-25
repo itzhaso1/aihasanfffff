@@ -46,6 +46,7 @@ class EnsureIdempotency
         if ($claim->isConflict()) {
             return response()->json([
                 'success' => false,
+                'code' => 'idempotency_key_conflict',
                 'message' => 'Idempotency-Key already used with a different request.',
             ], 409);
         }
@@ -53,8 +54,9 @@ class EnsureIdempotency
         if ($claim->isBusy()) {
             return response()->json([
                 'success' => false,
+                'code' => 'idempotency_in_flight',
                 'message' => 'This request is already in progress.',
-            ], 409);
+            ], 409, ['Retry-After' => '2']);
         }
 
         try {

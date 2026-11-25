@@ -2,6 +2,8 @@
 
 namespace App\Services\TikTok;
 
+use App\Exceptions\ChannelOutboundRetryableException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -68,8 +70,18 @@ final class TikTokApiClient
             $request = $request->withHeaders(['Access-Token' => $accessToken]);
         }
 
-        $response = $request->post($this->apiBase().$path, $body);
+        try {
+            $response = $request->post($this->apiBase().$path, $body);
+        } catch (ConnectionException $exception) {
+            throw new ChannelOutboundRetryableException('TikTok connection error: '.$exception->getMessage(), 0, $exception);
+        }
+
         $payload = $response->json();
+
+        if ($response->serverError() || $response->status() === 429) {
+            $msg = is_array($payload) ? (string) ($payload['message'] ?? 'upstream error') : 'http '.$response->status();
+            throw new ChannelOutboundRetryableException('TikTok API error: '.$msg);
+        }
 
         if (! is_array($payload)) {
             throw new RuntimeException('TikTok API returned an invalid response.');

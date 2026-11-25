@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
 import 'package:hasim/core/local_db/conversation_reconciler.dart';
 import 'package:hasim/core/local_db/inbox_local_store.dart';
+import 'package:hasim/core/local_db/outbox_worker.dart';
+import 'package:hasim/core/logging/messaging_logger.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/storage/inbox_scope.dart';
@@ -109,6 +111,9 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     _statusSub = realtime.messageStatusUpdated.listen(_onRealtimeMessageStatus);
     _reconnectSub = realtime.reconnectSyncRequested.listen((_) {
       _scheduleDeltaSync();
+      unawaited(
+        _ref.read(outboxWorkerProvider).flush(workspaceId: _boundWorkspaceId),
+      );
     });
     _workspaceSub = _ref.listen<int?>(activeWorkspaceIdProvider, (
       previous,
@@ -891,6 +896,8 @@ class ChatState {
     this.messages = const [],
     this.nextCursor,
     this.error,
+    this.lastSendFailureMessage,
+    this.sendFailureSeq = 0,
     this.aiBusy = false,
     this.mutating = false,
     this.typingIndicator,
@@ -904,6 +911,8 @@ class ChatState {
   final List<MessageModel> messages;
   final String? nextCursor;
   final String? error;
+  final String? lastSendFailureMessage;
+  final int sendFailureSeq;
   final bool aiBusy;
   final bool mutating;
   final String? typingIndicator;
@@ -917,6 +926,8 @@ class ChatState {
     List<MessageModel>? messages,
     String? nextCursor,
     String? error,
+    String? lastSendFailureMessage,
+    int? sendFailureSeq,
     bool? aiBusy,
     bool? mutating,
     bool clearCursor = false,
@@ -932,6 +943,9 @@ class ChatState {
       messages: messages ?? this.messages,
       nextCursor: clearCursor ? nextCursor : (nextCursor ?? this.nextCursor),
       error: error,
+      lastSendFailureMessage:
+          lastSendFailureMessage ?? this.lastSendFailureMessage,
+      sendFailureSeq: sendFailureSeq ?? this.sendFailureSeq,
       aiBusy: aiBusy ?? this.aiBusy,
       mutating: mutating ?? this.mutating,
       typingIndicator: clearTyping ? null : (typingIndicator ?? this.typingIndicator),
@@ -964,12 +978,19 @@ class ChatController extends StateNotifier<ChatState> {
   StreamSubscription? _typingSub;
   StreamSubscription? _presenceSub;
   StreamSubscription<List<MessageModel>>? _messageSub;
+  StreamSubscription<OutboxChangeEvent>? _outboxSub;
   ProviderSubscription<int?>? _workspaceSub;
   Timer? _typingTimer;
   Timer? _presenceTimer;
   int? _boundWorkspaceId;
   List<MessageModel> _olderMessages = const [];
+  final Set<String> _reportedFailureClientIds = <String>{};
   bool _needsActivationSync = false;
+
+  static int _tempIdSeq = 0;
+
+  static int _nextTempId() =>
+      -((DateTime.now().millisecondsSinceEpoch * 1000) + (_tempIdSeq++ % 1000));
 
   /// Ensures WebSocket channel subscription and missed-message catch-up stay live
   /// even when revisiting a previously cached [ChatController] family instance.
@@ -1014,6 +1035,8 @@ class ChatController extends StateNotifier<ChatState> {
     _typingSub = null;
     await _presenceSub?.cancel();
     _presenceSub = null;
+    await _outboxSub?.cancel();
+    _outboxSub = null;
     _typingTimer?.cancel();
     _typingTimer = null;
     _presenceTimer?.cancel();
@@ -1043,6 +1066,14 @@ class ChatController extends StateNotifier<ChatState> {
     _statusUpdatedSub = _realtime.messageStatusUpdated.listen((update) {
       if (update.conversationId != conversationId || !mounted) return;
       _applyMessageStatusUpdate(update);
+    });
+    _outboxSub = _ref.read(outboxWorkerProvider).changes.listen((event) {
+      if (event.conversationId != conversationId ||
+          event.workspaceId != _boundWorkspaceId ||
+          !mounted) {
+        return;
+      }
+      unawaited(_syncAfterOutboxEvent(event));
     });
     _typingSub = _realtime.typingActivity.listen((data) {
       final convId = (data['conversation_id'] as num?)?.toInt();
@@ -1271,6 +1302,8 @@ class ChatController extends StateNotifier<ChatState> {
     _typingSub?.cancel();
     _typingTimer?.cancel();
     _messageSub?.cancel();
+    _outboxSub?.cancel();
+    _outboxSub = null;
     _workspaceSub?.close();
     _realtime.unwatchConversation(conversationId);
     super.dispose();
@@ -1465,13 +1498,92 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   /// Returns false when the message was not accepted (for example no workspace).
+  Future<void> _syncAfterOutboxEvent(OutboxChangeEvent event) async {
+    if (!mounted) return;
+    final scope = captureInboxScope(_ref);
+    final workspaceId = event.workspaceId;
+    if (scope.workspaceId != null && scope.workspaceId != workspaceId) return;
+    final latest = await _ref
+        .read(conversationRepositoryProvider)
+        .cachedMessages(workspaceId, conversationId);
+    if (!mounted || !_canCommit(scope)) return;
+    final merged = _mergeMessages(
+      _olderMessages,
+      _mergeMessages(state.messages, latest),
+    );
+    var nextFailureSeq = state.sendFailureSeq;
+    String? nextFailureMessage;
+    if (event.failed &&
+        event.error != null &&
+        event.error!.isNotEmpty &&
+        _reportedFailureClientIds.add(event.clientId)) {
+      nextFailureSeq += 1;
+      nextFailureMessage = event.error;
+    }
+    state = state.copyWith(
+      messages: merged,
+      lastSendFailureMessage: nextFailureMessage,
+      sendFailureSeq: nextFailureSeq,
+    );
+    for (final m in merged) {
+      if (m.clientId == event.clientId || m.id > 0) {
+        MessagingLogger.logRenderedOnce(
+          renderKey: '${m.clientId ?? m.id}:${m.outboundPhase.name}:${m.id}',
+          correlationId: m.correlationId,
+          workspaceId: workspaceId,
+          conversationId: conversationId,
+          clientId: m.clientId,
+          messageId: m.id > 0 ? m.id : null,
+          deliveryStatus: m.deliveryStatus ?? m.outboundPhase.name,
+        );
+      }
+    }
+  }
+
+  int? _resolveWorkspaceId(InboxScope scope) {
+    return scope.workspaceId ??
+        _boundWorkspaceId ??
+        _ref.read(authControllerProvider).workspace?.id ??
+        _ref.read(prefsStoreProvider).workspaceId;
+  }
+
   Future<bool> send(String content) async {
     final text = content.trim();
     if (text.isEmpty) return false;
     final clientId = newIdempotencyKey();
+    final correlationId = newIdempotencyKey();
     final currentUserName = _ref.read(authControllerProvider).user?.name ?? 'الموظف';
+    final scope = captureInboxScope(_ref);
+    final workspaceId = _resolveWorkspaceId(scope);
+
+    MessagingLogger.log(
+      'SEND_BUTTON_PRESSED',
+      correlationId: correlationId,
+      workspaceId: workspaceId,
+      conversationId: conversationId,
+      clientId: clientId,
+    );
+
+    if (workspaceId == null) {
+      const msg = 'تعذر إرسال الرسالة. أعد اختيار مساحة العمل.';
+      MessagingLogger.log(
+        'MESSAGE_FAILED',
+        correlationId: correlationId,
+        conversationId: conversationId,
+        clientId: clientId,
+        errorCode: 'missing_workspace',
+      );
+      state = state.copyWith(
+        sending: false,
+        error: state.messages.isEmpty ? msg : null,
+        lastSendFailureMessage: msg,
+        sendFailureSeq: state.sendFailureSeq + 1,
+      );
+      return false;
+    }
+
     final optimistic = MessageModel(
-      id: -DateTime.now().millisecondsSinceEpoch,
+      id: _nextTempId(),
       conversationId: conversationId,
       direction: 'outbound',
       messageType: 'text',
@@ -1481,23 +1593,34 @@ class ChatController extends StateNotifier<ChatState> {
       participantType: 'company_staff',
       deliveryStatus: 'pending',
       localPending: true,
+      localSending: true,
       clientId: clientId,
+      correlationId: correlationId,
     );
-    final scope = captureInboxScope(_ref);
-    final workspaceId = scope.workspaceId;
-    if (workspaceId == null) {
-      state = state.copyWith(
-        sending: false,
-        error: 'تعذر إرسال الرسالة. أعد اختيار مساحة العمل.',
-      );
-      return false;
-    }
+
+    MessagingLogger.log(
+      'LOCAL_MESSAGE_CREATED',
+      correlationId: correlationId,
+      workspaceId: workspaceId,
+      conversationId: conversationId,
+      clientId: clientId,
+      messageId: optimistic.id,
+      deliveryStatus: 'pending',
+    );
 
     final sendSw = Stopwatch()..start();
     state = state.copyWith(
       messages: _mergeMessages(_olderMessages, [...state.messages, optimistic]),
       sending: true,
       error: null,
+    );
+    MessagingLogger.logRenderedOnce(
+      renderKey: '$clientId:pending:${optimistic.id}',
+      correlationId: correlationId,
+      workspaceId: workspaceId,
+      conversationId: conversationId,
+      clientId: clientId,
+      deliveryStatus: 'pending',
     );
     if (kDebugMode) {
       debugPrint(
@@ -1513,16 +1636,45 @@ class ChatController extends StateNotifier<ChatState> {
         message: optimistic,
       );
     } catch (_) {
+      const errMsg = 'تعذر حفظ الرسالة للإرسال.';
+      MessagingLogger.log(
+        'MESSAGE_FAILED',
+        correlationId: correlationId,
+        workspaceId: workspaceId,
+        conversationId: conversationId,
+        clientId: clientId,
+        errorCode: 'enqueue_failed',
+      );
       if (!_canCommit(scope)) return false;
       _replaceLocalMessage(
         clientId,
-        optimistic.copyWith(localPending: false, localFailed: true),
+        optimistic.copyWith(
+          localPending: false,
+          localSending: false,
+          localFailed: true,
+          localError: errMsg,
+        ),
       );
-      state = state.copyWith(sending: false, error: 'تعذر إرسال الرسالة.');
+      state = state.copyWith(
+        sending: false,
+        error: state.messages.isEmpty ? errMsg : null,
+        lastSendFailureMessage: errMsg,
+        sendFailureSeq: state.sendFailureSeq + 1,
+      );
       return false;
     }
 
-    if (!_canCommit(scope)) return true;
+    if (!_canCommit(scope)) {
+      unawaited(
+        _flushTextSend(
+          scope: scope,
+          workspaceId: workspaceId,
+          clientId: clientId,
+          correlationId: correlationId,
+        ),
+      );
+      return true;
+    }
     final updatedConv = _deriveEmployeeActiveConversation();
 
     state = state.copyWith(
@@ -1542,6 +1694,7 @@ class ChatController extends StateNotifier<ChatState> {
         scope: scope,
         workspaceId: workspaceId,
         clientId: clientId,
+        correlationId: correlationId,
       ),
     );
     return true;
@@ -1612,19 +1765,53 @@ class ChatController extends StateNotifier<ChatState> {
     required InboxScope scope,
     required int workspaceId,
     required String clientId,
+    required String correlationId,
   }) async {
     try {
       await _ref.read(outboxWorkerProvider).flush(workspaceId: workspaceId);
       if (!_canCommit(scope)) return;
-      final after = await _ref
-          .read(conversationRepositoryProvider)
-          .cachedMessages(workspaceId, conversationId);
+      final repo = _ref.read(conversationRepositoryProvider);
+      final after = await repo.cachedMessages(workspaceId, conversationId);
       if (!_canCommit(scope)) return;
-      final failed = after.any((m) => m.clientId == clientId && m.localFailed);
-      state = state.copyWith(
-        messages: _mergeMessages(_olderMessages, after),
-        error: failed ? 'تعذر إرسال الرسالة.' : null,
+      final merged = _mergeMessages(
+        _olderMessages,
+        _mergeMessages(state.messages, after),
       );
+      MessageModel? target;
+      for (final m in merged) {
+        if (m.clientId == clientId) {
+          target = m;
+          break;
+        }
+      }
+      final failed = target != null && target.outboundPhase == OutboundPhase.failed;
+      String? failureMsg;
+      var nextSeq = state.sendFailureSeq;
+      if (failed) {
+        failureMsg = target.localError ??
+            await repo.cachedOutboxError(workspaceId, clientId) ??
+            'تعذر إرسال الرسالة.';
+        if (_reportedFailureClientIds.add(clientId)) {
+          nextSeq += 1;
+        }
+      }
+      state = state.copyWith(
+        messages: merged,
+        error: failed && merged.isEmpty ? failureMsg : null,
+        lastSendFailureMessage: failureMsg,
+        sendFailureSeq: nextSeq,
+      );
+      if (target != null && !failed) {
+        MessagingLogger.logRenderedOnce(
+          renderKey: '$clientId:${target.outboundPhase.name}:${target.id}',
+          correlationId: target.correlationId ?? correlationId,
+          workspaceId: workspaceId,
+          conversationId: conversationId,
+          clientId: clientId,
+          messageId: target.id > 0 ? target.id : null,
+          deliveryStatus: target.deliveryStatus,
+        );
+      }
       if (!_realtime.isWebSocketConnected) {
         unawaited(_syncConversationFromServer(scope));
         _realtime.triggerPoll();
@@ -1635,37 +1822,190 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   Future<void> retryFailed(MessageModel message) async {
-    if (!message.localFailed || message.clientId == null) return;
+    if (message.outboundPhase != OutboundPhase.failed) return;
     if (message.localAttachmentPath != null) {
       await _retryAttachment(message);
       return;
     }
-    final clientId = message.clientId!;
+
+    final scope = captureInboxScope(_ref);
+    final workspaceId = _resolveWorkspaceId(scope);
+    if (workspaceId == null) return;
+    final repo = _ref.read(conversationRepositoryProvider);
+
+    // Case 1: Server-persisted message whose external provider/queue failed.
+    if (message.id > 0 && !message.localFailed) {
+      final corrId = message.correlationId ?? newIdempotencyKey();
+      MessagingLogger.log(
+        'MESSAGE_RETRY',
+        correlationId: corrId,
+        workspaceId: workspaceId,
+        conversationId: conversationId,
+        clientId: message.clientId,
+        messageId: message.id,
+      );
+      final optimisticRetry = [
+        for (final m in state.messages)
+          if (m.id == message.id)
+            m.copyWith(
+              deliveryStatus: 'pending',
+              localPending: false,
+              localSending: true,
+              localFailed: false,
+              clearLocalError: true,
+              correlationId: corrId,
+            )
+          else
+            m,
+      ];
+      state = state.copyWith(
+        messages: _mergeMessages(_olderMessages, optimisticRetry),
+        sending: true,
+        error: null,
+      );
+      try {
+        final retried = await repo.retryMessage(
+          conversationId,
+          message.id,
+          correlationId: corrId,
+        );
+        await repo.persistMessages(workspaceId, conversationId, [
+          retried.copyWith(
+            clientId: message.clientId ?? retried.clientId,
+            correlationId: corrId,
+          ),
+        ]);
+        if (!_canCommit(scope)) return;
+        final cached = await repo.cachedMessages(workspaceId, conversationId);
+        if (!_canCommit(scope)) return;
+        final merged = _mergeMessages(
+          _olderMessages,
+          _mergeMessages(state.messages, cached),
+        );
+        final stillFailed = retried.deliveryStatus == 'failed';
+        state = state.copyWith(
+          messages: merged,
+          sending: false,
+          lastSendFailureMessage: stillFailed
+              ? (retried.localError ?? 'تعذر إعادة إرسال الرسالة.')
+              : null,
+          sendFailureSeq: stillFailed
+              ? state.sendFailureSeq + 1
+              : state.sendFailureSeq,
+        );
+      } on ApiException catch (e) {
+        if (!_canCommit(scope)) return;
+        final reverted = [
+          for (final m in state.messages)
+            if (m.id == message.id)
+              m.copyWith(
+                deliveryStatus: 'failed',
+                localSending: false,
+                localError: e.userMessage,
+              )
+            else
+              m,
+        ];
+        await repo.persistMessages(workspaceId, conversationId, reverted);
+        state = state.copyWith(
+          messages: _mergeMessages(_olderMessages, reverted),
+          sending: false,
+          lastSendFailureMessage: e.userMessage,
+          sendFailureSeq: state.sendFailureSeq + 1,
+        );
+      } catch (_) {
+        if (!_canCommit(scope)) return;
+        const err = 'تعذر إعادة إرسال الرسالة.';
+        final reverted = [
+          for (final m in state.messages)
+            if (m.id == message.id)
+              m.copyWith(
+                deliveryStatus: 'failed',
+                localSending: false,
+                localError: err,
+              )
+            else
+              m,
+        ];
+        state = state.copyWith(
+          messages: _mergeMessages(_olderMessages, reverted),
+          sending: false,
+          lastSendFailureMessage: err,
+          sendFailureSeq: state.sendFailureSeq + 1,
+        );
+      }
+      return;
+    }
+
+    final clientId = message.clientId;
+    if (clientId == null || clientId.isEmpty) return;
+    final corrId = message.correlationId ?? newIdempotencyKey();
+    _reportedFailureClientIds.remove(clientId);
+    MessagingLogger.log(
+      'MESSAGE_RETRY',
+      correlationId: corrId,
+      workspaceId: workspaceId,
+      conversationId: conversationId,
+      clientId: clientId,
+    );
     final updatedPending = state.messages.map((m) {
       if (m.clientId == clientId) {
-        return m.copyWith(localPending: true, localFailed: false);
+        return m.copyWith(
+          localPending: true,
+          localSending: true,
+          localFailed: false,
+          clearDeliveryStatus: true,
+          clearLocalError: true,
+          correlationId: corrId,
+        );
       }
       return m;
     }).toList();
-    final scope = captureInboxScope(_ref);
-    final workspaceId = scope.workspaceId;
-    if (workspaceId == null) return;
-    final repo = _ref.read(conversationRepositoryProvider);
     state = state.copyWith(
-      messages: updatedPending,
+      messages: _mergeMessages(_olderMessages, updatedPending),
       sending: true,
       error: null,
     );
     await repo.retryOutbound(workspaceId: workspaceId, clientId: clientId);
-    if (!_canCommit(scope)) return;
-    final queued = await repo.cachedMessages(workspaceId, conversationId);
-    if (!_canCommit(scope)) return;
-    state = state.copyWith(messages: queued, sending: true);
+    if (_canCommit(scope)) {
+      final queued = await repo.cachedMessages(workspaceId, conversationId);
+      if (_canCommit(scope)) {
+        state = state.copyWith(
+          messages: _mergeMessages(
+            _olderMessages,
+            _mergeMessages(state.messages, queued),
+          ),
+          sending: true,
+        );
+      }
+    }
     await _ref.read(outboxWorkerProvider).flush(workspaceId: workspaceId);
     if (!_canCommit(scope)) return;
     final after = await repo.cachedMessages(workspaceId, conversationId);
     if (!_canCommit(scope)) return;
-    state = state.copyWith(messages: after, sending: false);
+    final merged = _mergeMessages(
+      _olderMessages,
+      _mergeMessages(state.messages, after),
+    );
+    final retried = merged.where((m) => m.clientId == clientId).firstOrNull;
+    final stillFailed =
+        retried != null && retried.outboundPhase == OutboundPhase.failed;
+    String? errMsg;
+    var nextSeq = state.sendFailureSeq;
+    if (stillFailed) {
+      errMsg = retried.localError ??
+          await repo.cachedOutboxError(workspaceId, clientId) ??
+          'تعذر إرسال الرسالة.';
+      if (_reportedFailureClientIds.add(clientId)) {
+        nextSeq += 1;
+      }
+    }
+    state = state.copyWith(
+      messages: merged,
+      sending: false,
+      lastSendFailureMessage: errMsg,
+      sendFailureSeq: nextSeq,
+    );
   }
 
   /// Returns an error token for localization, or null on success.
@@ -1687,10 +2027,13 @@ class ChatController extends StateNotifier<ChatState> {
 
     final text = caption.trim().isEmpty ? '📎' : caption.trim();
     final key = newIdempotencyKey();
+    final corrId = newIdempotencyKey();
     final firstPath = files.first.path;
     final currentUserName = _ref.read(authControllerProvider).user?.name ?? 'الموظف';
+    final scope = captureInboxScope(_ref);
+    final workspaceId = _resolveWorkspaceId(scope);
     final optimistic = MessageModel(
-      id: -DateTime.now().millisecondsSinceEpoch,
+      id: _nextTempId(),
       conversationId: conversationId,
       direction: 'outbound',
       messageType: 'text',
@@ -1699,50 +2042,68 @@ class ChatController extends StateNotifier<ChatState> {
       userName: currentUserName,
       participantType: 'company_staff',
       localPending: true,
-      localUploading: false,
+      localUploading: true,
       localAttachmentPath: firstPath,
       clientId: key,
+      correlationId: corrId,
     );
-    final scope = captureInboxScope(_ref);
     final existing = state.messages.any((m) => m.clientId == key);
     state = state.copyWith(
-      messages: existing
-          ? state.messages
-                .map((m) => m.clientId == key ? optimistic : m)
-                .toList()
-          : [...state.messages, optimistic],
+      messages: _mergeMessages(
+        _olderMessages,
+        existing
+            ? state.messages
+                  .map((m) => m.clientId == key ? optimistic : m)
+                  .toList()
+            : [...state.messages, optimistic],
+      ),
       sending: true,
       error: null,
     );
+    final repo = _ref.read(conversationRepositoryProvider);
+    if (workspaceId != null) {
+      unawaited(repo.persistMessages(workspaceId, conversationId, [optimistic]));
+    }
     try {
-      final repo = _ref.read(conversationRepositoryProvider);
-      final saved = await repo.sendMessageWithKey(conversationId, text, key);
-      if (!_canCommit(scope)) return null;
-      _replaceLocalMessage(
+      final saved = await repo.sendMessageWithKey(
+        conversationId,
+        text,
         key,
-        saved.copyWith(
-          localPending: true,
-          localUploading: true,
-          localFailed: false,
-          localAttachmentPath: firstPath,
-          clientId: key,
-        ),
+        correlationId: corrId,
       );
+      final midState = saved.copyWith(
+        localPending: true,
+        localUploading: true,
+        localFailed: false,
+        localAttachmentPath: firstPath,
+        clientId: key,
+        correlationId: corrId,
+      );
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, [midState]);
+      }
+      if (_canCommit(scope)) {
+        _replaceLocalMessage(key, midState);
+      }
 
       final uploaded = <MessageAttachmentModel>[];
       for (final file in files) {
         final attachment = await repo.uploadAttachment(saved.id, file);
         uploaded.add(attachment);
       }
-      if (!_canCommit(scope)) return null;
       final withAttach = saved.copyWith(
         localPending: false,
         localUploading: false,
         localFailed: false,
         clearLocalAttachmentPath: true,
         clientId: key,
+        correlationId: corrId,
         attachments: [...saved.attachments, ...uploaded],
       );
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, [withAttach]);
+      }
+      if (!_canCommit(scope)) return null;
       _replaceLocalMessage(key, withAttach);
       final updatedConv = _deriveEmployeeActiveConversation();
       state = state.copyWith(sending: false, conversation: updatedConv);
@@ -1750,10 +2111,6 @@ class ChatController extends StateNotifier<ChatState> {
         _ref
             .read(conversationsControllerProvider.notifier)
             .applyRemoteConversation(updatedConv);
-      }
-      final workspaceId = scope.workspaceId;
-      if (workspaceId != null) {
-        await repo.persistMessages(workspaceId, conversationId, state.messages);
       }
       _clearUnreadAfterSend();
       unawaited(_persistReadAfterSend(workspaceId));
@@ -1763,6 +2120,17 @@ class ChatController extends StateNotifier<ChatState> {
       if (kDebugMode) {
         debugPrint('[CHAT_MULTI_ATTACHMENT_UPLOAD] failed error=$e');
       }
+      final errMsg = e is ApiException ? e.userMessage : 'تعذر رفع المرفق.';
+      final failedMsg = optimistic.copyWith(
+        localPending: false,
+        localUploading: false,
+        localFailed: true,
+        localAttachmentPath: firstPath,
+        localError: errMsg,
+      );
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, [failedMsg]);
+      }
       if (!_canCommit(scope)) return null;
       final failed = state.messages.map((m) {
         if (m.clientId != key) return m;
@@ -1771,9 +2139,15 @@ class ChatController extends StateNotifier<ChatState> {
           localUploading: false,
           localFailed: true,
           localAttachmentPath: firstPath,
+          localError: errMsg,
         );
       }).toList();
-      state = state.copyWith(messages: failed, sending: false);
+      state = state.copyWith(
+        messages: _mergeMessages(_olderMessages, failed),
+        sending: false,
+        lastSendFailureMessage: errMsg,
+        sendFailureSeq: state.sendFailureSeq + 1,
+      );
       if (e is ApiException) {
         return e.userMessage;
       }
@@ -1810,9 +2184,12 @@ class ChatController extends StateNotifier<ChatState> {
   }) async {
     final text = caption.trim().isEmpty ? '🎤' : caption.trim();
     final key = newIdempotencyKey();
+    final corrId = newIdempotencyKey();
     final currentUserName = _ref.read(authControllerProvider).user?.name ?? 'الموظف';
+    final scope = captureInboxScope(_ref);
+    final workspaceId = _resolveWorkspaceId(scope);
     final optimistic = MessageModel(
-      id: -DateTime.now().millisecondsSinceEpoch,
+      id: _nextTempId(),
       conversationId: conversationId,
       direction: 'outbound',
       messageType: 'text',
@@ -1821,42 +2198,57 @@ class ChatController extends StateNotifier<ChatState> {
       userName: currentUserName,
       participantType: 'company_staff',
       localPending: true,
-      localUploading: false,
+      localUploading: true,
       clientId: key,
+      correlationId: corrId,
     );
-    final scope = captureInboxScope(_ref);
     state = state.copyWith(
-      messages: [...state.messages, optimistic],
+      messages: _mergeMessages(_olderMessages, [...state.messages, optimistic]),
       sending: true,
       error: null,
     );
+    final repo = _ref.read(conversationRepositoryProvider);
+    if (workspaceId != null) {
+      unawaited(repo.persistMessages(workspaceId, conversationId, [optimistic]));
+    }
     try {
-      final repo = _ref.read(conversationRepositoryProvider);
-      final saved = await repo.sendMessageWithKey(conversationId, text, key);
-      if (!_canCommit(scope)) return null;
-      _replaceLocalMessage(
+      final saved = await repo.sendMessageWithKey(
+        conversationId,
+        text,
         key,
-        saved.copyWith(
-          localPending: true,
-          localUploading: true,
-          localFailed: false,
-          clientId: key,
-        ),
+        correlationId: corrId,
       );
+      final midState = saved.copyWith(
+        localPending: true,
+        localUploading: true,
+        localFailed: false,
+        clientId: key,
+        correlationId: corrId,
+      );
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, [midState]);
+      }
+      if (_canCommit(scope)) {
+        _replaceLocalMessage(key, midState);
+      }
       final attachment = await repo.uploadAttachmentBytes(
         saved.id,
         bytes: bytes,
         filename: filename,
         mime: mime,
       );
-      if (!_canCommit(scope)) return null;
       final withAttach = saved.copyWith(
         localPending: false,
         localUploading: false,
         localFailed: false,
         clientId: key,
+        correlationId: corrId,
         attachments: [...saved.attachments, attachment],
       );
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, [withAttach]);
+      }
+      if (!_canCommit(scope)) return withAttach;
       _replaceLocalMessage(key, withAttach);
       final updatedConv = _deriveEmployeeActiveConversation();
       state = state.copyWith(sending: false, conversation: updatedConv);
@@ -1864,10 +2256,6 @@ class ChatController extends StateNotifier<ChatState> {
         _ref
             .read(conversationsControllerProvider.notifier)
             .applyRemoteConversation(updatedConv);
-      }
-      final workspaceId = scope.workspaceId;
-      if (workspaceId != null) {
-        await repo.persistMessages(workspaceId, conversationId, state.messages);
       }
       _clearUnreadAfterSend();
       unawaited(_persistReadAfterSend(workspaceId));
@@ -1877,6 +2265,17 @@ class ChatController extends StateNotifier<ChatState> {
       if (kDebugMode) {
         debugPrint('[CHAT_VOICE_UPLOAD] failed error=$e');
       }
+      final errMsg = e is ApiException ? e.userMessage : 'تعذر إرسال المقطع الصوتي.';
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, [
+          optimistic.copyWith(
+            localPending: false,
+            localUploading: false,
+            localFailed: true,
+            localError: errMsg,
+          ),
+        ]);
+      }
       if (!_canCommit(scope)) return null;
       final failed = state.messages.map((m) {
         if (m.clientId != key) return m;
@@ -1884,9 +2283,15 @@ class ChatController extends StateNotifier<ChatState> {
           localPending: false,
           localUploading: false,
           localFailed: true,
+          localError: errMsg,
         );
       }).toList();
-      state = state.copyWith(messages: failed, sending: false);
+      state = state.copyWith(
+        messages: _mergeMessages(_olderMessages, failed),
+        sending: false,
+        lastSendFailureMessage: errMsg,
+        sendFailureSeq: state.sendFailureSeq + 1,
+      );
       return null;
     }
   }
@@ -1898,10 +2303,13 @@ class ChatController extends StateNotifier<ChatState> {
   }) async {
     final text = caption.trim().isEmpty ? '📎' : caption.trim();
     final key = clientId ?? newIdempotencyKey();
+    final corrId = newIdempotencyKey();
     final path = file.path;
     final currentUserName = _ref.read(authControllerProvider).user?.name ?? 'الموظف';
+    final scope = captureInboxScope(_ref);
+    final workspaceId = _resolveWorkspaceId(scope);
     final optimistic = MessageModel(
-      id: -DateTime.now().millisecondsSinceEpoch,
+      id: _nextTempId(),
       conversationId: conversationId,
       direction: 'outbound',
       messageType: 'text',
@@ -1910,45 +2318,63 @@ class ChatController extends StateNotifier<ChatState> {
       userName: currentUserName,
       participantType: 'company_staff',
       localPending: true,
-      localUploading: false,
+      localUploading: true,
       localAttachmentPath: path,
       clientId: key,
+      correlationId: corrId,
     );
-    final scope = captureInboxScope(_ref);
     final existing = state.messages.any((m) => m.clientId == key);
     state = state.copyWith(
-      messages: existing
-          ? state.messages
-                .map((m) => m.clientId == key ? optimistic : m)
-                .toList()
-          : [...state.messages, optimistic],
+      messages: _mergeMessages(
+        _olderMessages,
+        existing
+            ? state.messages
+                  .map((m) => m.clientId == key ? optimistic : m)
+                  .toList()
+            : [...state.messages, optimistic],
+      ),
       sending: true,
       error: null,
     );
+    final repo = _ref.read(conversationRepositoryProvider);
+    if (workspaceId != null) {
+      unawaited(repo.persistMessages(workspaceId, conversationId, [optimistic]));
+    }
     try {
-      final repo = _ref.read(conversationRepositoryProvider);
-      final saved = await repo.sendMessageWithKey(conversationId, text, key);
-      if (!_canCommit(scope)) return null;
-      _replaceLocalMessage(
+      final saved = await repo.sendMessageWithKey(
+        conversationId,
+        text,
         key,
-        saved.copyWith(
-          localPending: true,
-          localUploading: true,
-          localFailed: false,
-          localAttachmentPath: path,
-          clientId: key,
-        ),
+        correlationId: corrId,
       );
+      final midState = saved.copyWith(
+        localPending: true,
+        localUploading: true,
+        localFailed: false,
+        localAttachmentPath: path,
+        clientId: key,
+        correlationId: corrId,
+      );
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, [midState]);
+      }
+      if (_canCommit(scope)) {
+        _replaceLocalMessage(key, midState);
+      }
       final attachment = await repo.uploadAttachment(saved.id, file);
-      if (!_canCommit(scope)) return null;
       final withAttach = saved.copyWith(
         localPending: false,
         localUploading: false,
         localFailed: false,
         clearLocalAttachmentPath: true,
         clientId: key,
+        correlationId: corrId,
         attachments: [...saved.attachments, attachment],
       );
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, [withAttach]);
+      }
+      if (!_canCommit(scope)) return withAttach;
       _replaceLocalMessage(key, withAttach);
       final updatedConv = _deriveEmployeeActiveConversation();
       state = state.copyWith(sending: false, conversation: updatedConv);
@@ -1956,10 +2382,6 @@ class ChatController extends StateNotifier<ChatState> {
         _ref
             .read(conversationsControllerProvider.notifier)
             .applyRemoteConversation(updatedConv);
-      }
-      final workspaceId = scope.workspaceId;
-      if (workspaceId != null) {
-        await repo.persistMessages(workspaceId, conversationId, state.messages);
       }
       _clearUnreadAfterSend();
       unawaited(_persistReadAfterSend(workspaceId));
@@ -1969,6 +2391,18 @@ class ChatController extends StateNotifier<ChatState> {
       if (kDebugMode) {
         debugPrint('[CHAT_IMAGE_UPLOAD] failed error=$e');
       }
+      final errMsg = e is ApiException ? e.userMessage : 'تعذر رفع المرفق.';
+      if (workspaceId != null) {
+        await repo.persistMessages(workspaceId, conversationId, [
+          optimistic.copyWith(
+            localPending: false,
+            localUploading: false,
+            localFailed: true,
+            localAttachmentPath: path,
+            localError: errMsg,
+          ),
+        ]);
+      }
       if (!_canCommit(scope)) return null;
       final failed = state.messages.map((m) {
         if (m.clientId != key) return m;
@@ -1977,9 +2411,15 @@ class ChatController extends StateNotifier<ChatState> {
           localUploading: false,
           localFailed: true,
           localAttachmentPath: path,
+          localError: errMsg,
         );
       }).toList();
-      state = state.copyWith(messages: failed, sending: false);
+      state = state.copyWith(
+        messages: _mergeMessages(_olderMessages, failed),
+        sending: false,
+        lastSendFailureMessage: errMsg,
+        sendFailureSeq: state.sendFailureSeq + 1,
+      );
       return null;
     }
   }
@@ -2392,6 +2832,24 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  static bool _shouldApplyDeliveryStatus({
+    required String? current,
+    required String incoming,
+  }) {
+    final cur = current?.toLowerCase().trim();
+    final next = incoming.toLowerCase().trim();
+    if (next == 'failed') return cur != 'read';
+    if (cur == 'failed' &&
+        (next == 'pending' || next == 'sent' || next == 'delivered' || next == 'read')) {
+      return true;
+    }
+    final curRank = _deliveryRank(cur);
+    final nextRank = _deliveryRank(next);
+    if (curRank == 3 && nextRank != 3) return false;
+    if (curRank >= 0 && nextRank <= curRank) return false;
+    return true;
+  }
+
   void _applyMessageStatusUpdate(MessageStatusUpdate update) {
     MessageModel applyTo(MessageModel m) {
       final matchById = update.id > 0 && m.id == update.id;
@@ -2400,12 +2858,21 @@ class ChatController extends StateNotifier<ChatState> {
           update.clientId!.isNotEmpty &&
           m.clientId == update.clientId;
       if (!matchById && !matchByClient) return m;
+      if (!_shouldApplyDeliveryStatus(
+        current: m.deliveryStatus,
+        incoming: update.deliveryStatus,
+      )) {
+        return m;
+      }
       return m.copyWith(
         deliveryStatus: update.deliveryStatus,
         deliveredAt: update.deliveredAt ?? m.deliveredAt,
         readAt: update.readAt ?? m.readAt,
         localPending: false,
+        localSending: false,
         localFailed: update.deliveryStatus == 'failed',
+        localError: update.deliveryStatus == 'failed' ? update.errorReason : null,
+        clearLocalError: update.deliveryStatus != 'failed',
       );
     }
 
@@ -2450,10 +2917,33 @@ class ChatController extends StateNotifier<ChatState> {
     }
 
     final sw = Stopwatch()..start();
-    // Immediately update state so UI renders in < 5ms.
+    // Immediately update state so UI renders cleanly without dropping older history.
+    final merged = _mergeMessages(
+      _olderMessages,
+      _mergeMessages(state.messages, [incoming]),
+    );
     state = state.copyWith(
-      messages: _mergeMessages(state.messages, [incoming]),
+      messages: merged,
       clearTyping: true,
+    );
+    MessagingLogger.log(
+      'MESSAGE_RECONCILED',
+      correlationId: incoming.correlationId,
+      workspaceId: workspaceId,
+      conversationId: conversationId,
+      clientId: incoming.clientId,
+      messageId: incoming.id > 0 ? incoming.id : null,
+      deliveryStatus: incoming.deliveryStatus,
+      durationMs: sw.elapsedMilliseconds,
+    );
+    MessagingLogger.logRenderedOnce(
+      renderKey: '${incoming.clientId ?? incoming.id}:${incoming.outboundPhase.name}:${incoming.id}',
+      correlationId: incoming.correlationId,
+      workspaceId: workspaceId,
+      conversationId: conversationId,
+      clientId: incoming.clientId,
+      messageId: incoming.id > 0 ? incoming.id : null,
+      deliveryStatus: incoming.deliveryStatus,
     );
     if (kDebugMode) {
       debugPrint(

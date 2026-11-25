@@ -53,7 +53,7 @@ class ProcessIncomingInstagramMessage implements ShouldBeUnique, ShouldQueue
                 && $message->wasRecentlyCreated
                 && app(ConversationAiEligibilityService::class)->shouldDispatchAiJob($conversation, $message)
             ) {
-                ProcessAIResponse::dispatch($conversation->id, $message->id, $this->workspaceId);
+                ProcessAIResponse::dispatchForInbound($conversation->id, $message->id, $this->workspaceId);
             }
 
             WebhookEvent::withoutGlobalScopes()

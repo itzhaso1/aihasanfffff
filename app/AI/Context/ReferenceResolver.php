@@ -35,6 +35,19 @@ final class ReferenceResolver
             }
         }
         $attachedId = $this->attachedProductId($conversationMetadata);
+        $queryTokens = $this->catalog->tokens($currentMessage);
+
+        if ($stateIds !== [] && $this->hasPronounProductReference($currentMessage)) {
+            $items = $this->catalog->rowsForAssistantIds($workspace, $stateIds, $queryTokens);
+            if ($items !== []) {
+                return $this->resolved(
+                    'conversation_state',
+                    $stateIds,
+                    'listed',
+                    $items,
+                );
+            }
+        }
 
         if ($this->catalog->shouldLookupForAssistant($currentMessage)) {
             $lookup = $this->lookupWithPriorProduct($workspace, $currentMessage, $currentMessage, $recentMessages);
@@ -50,14 +63,17 @@ final class ReferenceResolver
             }
 
             if (in_array($status, ['catalog_empty', 'no_matching_type', 'name_not_found', 'search_failed'], true)) {
-                if (! $this->isFollowUpOnlyMessage($currentMessage)) {
+                if ($stateIds === [] && ! $this->isFollowUpOnlyMessage($currentMessage)) {
+                    return new ReferenceResolution(retrievalStatus: $status);
+                }
+                if ($stateIds !== [] && ! $this->isFollowUpOnlyMessage($currentMessage) && ! $this->isAttributeOrShortFollowUp($currentMessage, $queryTokens)) {
                     return new ReferenceResolution(retrievalStatus: $status);
                 }
             }
         }
 
         if ($stateIds !== []) {
-            $items = $this->catalog->rowsForAssistantIds($workspace, $stateIds);
+            $items = $this->catalog->rowsForAssistantIds($workspace, $stateIds, $queryTokens);
 
             return $this->resolved(
                 'conversation_state',
@@ -109,19 +125,52 @@ final class ReferenceResolver
         $followUpPhrases = [
             'كم', 'بكم', 'السعر', 'سعره', 'سعرها', 'اسعارها', 'اسعارهم', 'الاسعار',
             'كم حقه', 'كم حقها', 'كم سعره', 'كم سعرها', 'تكلفه', 'تكلفته',
-            'متوفر', 'متوفره', 'موجود', 'موجوده', 'فيه منه', 'في منه',
+            'متوفر', 'متوفره', 'موجود', 'موجوده', 'فيه منه', 'في منه', 'في منها', 'فيه منها',
             'هذا', 'هذي', 'هذه', 'ذا', 'الاول', 'الثاني', 'الثالث',
             'ابي هذا', 'ابغى هذا', 'اريد هذا', 'بدي هذا', 'بدي اياه', 'ابي منه',
             'طيب', 'تمام', 'اوكي', 'اي', 'ايه', 'نعم',
             'ابغاه', 'أبغاه', 'ابيه', 'باخذه', 'باخذها', 'شريت', 'خلاص', 'نفسه', 'نفسها',
             'احجزه', 'احجزلي', 'اعتمد', 'اريده', 'عطني', 'ابيها', 'باخذ', 'خلاص ابغاه',
             'خلاص باخذه', 'ابغاه خلاص', 'باخذه خلاص',
+            'تفاصيل', 'تفاصيله', 'تفاصيلها', 'مواصفاته', 'صورته', 'صوره', 'الوانه', 'مقاساته', 'ضمانه', 'التوصيل',
         ];
 
         foreach ($followUpPhrases as $phrase) {
             if ($normalized === $phrase || str_starts_with($normalized, $phrase.' ') || str_ends_with($normalized, ' '.$phrase)) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    /**
+     * Detect Arabic anaphora pronouns referring to an already active product ("منه", "سعره", "عليه").
+     */
+    private function hasPronounProductReference(string $message): bool
+    {
+        $normalized = mb_strtolower(trim($message));
+        $normalized = str_replace(['أ', 'إ', 'آ', 'ة', 'ى'], ['ا', 'ا', 'ا', 'ه', 'ي'], $normalized);
+
+        return preg_match(
+            '/(?:في\s+منه|فيه\s+منه|في\s+منها|فيه\s+منها|سعره|سعرها|لونه|لونها|مقاسه|مقاسها|حجمه|حجمها|نوعه|نوعها|صورته|صورتها|تفاصيله|تفاصيلها|ضمانه|عليه|عليها|ابغاه|ابيه|باخذه|نفسه|نفسها)/u',
+            $normalized,
+        ) === 1;
+    }
+
+    /**
+     * Keep prior conversation product when customer asks an attribute/delivery/modifier follow-up ("المقاس الكبير؟", "ارخص").
+     *
+     * @param  list<string>  $queryTokens
+     */
+    private function isAttributeOrShortFollowUp(string $message, array $queryTokens): bool
+    {
+        if ($this->hasPronounProductReference($message)) {
+            return true;
+        }
+
+        if (count($queryTokens) <= 2 && preg_match('/(?:لون|الوان|مقاس|قياس|حجم|نسخه|اصدار|صغير|وسط|كبير|اسود|ابيض|احمر|ازرق|اخضر|وردي|بني|رمادي|بيج|طويل|قصير|ضمان|اصلي|ارخص|توصيل|شحن|size|color|cheaper)/iu', $message) === 1) {
+            return true;
         }
 
         return false;

@@ -17,6 +17,7 @@ use App\Models\Workspace;
 use App\Services\Feature\FeatureAccessService;
 use App\Services\Media\MediaSecurityValidator;
 use App\Services\Observability\OpsMetricsRecorder;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -205,16 +206,36 @@ class WhatsAppOutboundService
 
         $started = microtime(true);
 
-        $response = Http::withToken($token)
-            ->acceptJson()
-            ->asJson()
-            ->timeout(20)
-            ->post($url, [
-                'messaging_product' => 'whatsapp',
-                'to' => $recipientWaId,
-                'type' => 'text',
-                'text' => ['body' => $body],
+        try {
+            $response = Http::withToken($token)
+                ->acceptJson()
+                ->asJson()
+                ->timeout(20)
+                ->post($url, [
+                    'messaging_product' => 'whatsapp',
+                    'to' => $recipientWaId,
+                    'type' => 'text',
+                    'text' => ['body' => $body],
+                ]);
+        } catch (ConnectionException $exception) {
+            $durationMs = (int) round((microtime(true) - $started) * 1000);
+            $outbound->forceFill([
+                'status' => WhatsAppOutboundMessage::STATUS_QUEUED,
+                'last_error' => 'connection_error',
+            ])->save();
+
+            Log::warning('whatsapp.outbound.connection_error', [
+                'conversation_id' => $conversation->id,
+                'message_id' => $message->id,
+                'workspace_id' => $conversation->workspace_id,
+                'duration_ms' => $durationMs,
+                'reason' => $exception->getMessage(),
             ]);
+
+            $this->markDeliveryFailed($delivery, 'whatsapp_connection_error', retryable: true);
+
+            return;
+        }
 
         $durationMs = (int) round((microtime(true) - $started) * 1000);
         $responseBody = $response->json();

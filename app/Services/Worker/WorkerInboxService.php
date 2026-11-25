@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 final class WorkerInboxService
 {
@@ -114,24 +115,32 @@ final class WorkerInboxService
             );
 
             $idempotencyKey = trim((string) ($data['idempotency_key'] ?? ''));
-            if ($idempotencyKey !== '') {
-                $existing = $this->findMessageByIdempotencyKey($conversation, $idempotencyKey);
-                if ($existing instanceof Message) {
-                    return $existing->load([
-                        'user:id,name',
-                        'workerEngagement.workerProfile:id,user_id,display_name',
-                        'workerEngagement.workerProfile.user:id,name',
-                    ]);
+
+            /** @var array{message: Message, recentlyCreated: bool, conversation: Conversation, payload: array<string, mixed>} $txResult */
+            $txResult = DB::transaction(function () use ($conversation, $engagement, $worker, $data, $idempotencyKey): array {
+                Conversation::withoutGlobalScopes()->whereKey($conversation->id)->lockForUpdate()->first();
+
+                if ($idempotencyKey !== '') {
+                    $existing = $this->findMessageByIdempotencyKey($conversation, $idempotencyKey);
+                    if ($existing instanceof Message) {
+                        return [
+                            'message' => $existing->load([
+                                'user:id,name',
+                                'workerEngagement.workerProfile:id,user_id,display_name',
+                                'workerEngagement.workerProfile.user:id,name',
+                            ]),
+                            'recentlyCreated' => false,
+                            'conversation' => $conversation->fresh() ?? $conversation,
+                            'payload' => [],
+                        ];
+                    }
                 }
-            }
 
-            if ($conversation->status !== 'open') {
-                throw WorkerInboxException::conversationNotOpen();
-            }
+                if ($conversation->status !== 'open') {
+                    throw WorkerInboxException::conversationNotOpen();
+                }
 
-            $message = $this->conversationService->addMessage(
-                $conversation,
-                [
+                $payload = [
                     'customer_id' => $conversation->customer_id,
                     'direction' => $data['direction'] ?? 'outbound',
                     'message_type' => $data['message_type'] ?? 'text',
@@ -139,9 +148,42 @@ final class WorkerInboxService
                     'ai_generated' => false,
                     'worker_engagement_id' => $engagement->id,
                     'metadata' => $idempotencyKey === '' ? [] : ['idempotency_key' => $idempotencyKey],
-                ],
+                ];
+
+                $created = $this->conversationService->addMessage(
+                    $conversation,
+                    $payload,
+                    $worker,
+                    dispatchSideEffects: false,
+                );
+
+                return [
+                    'message' => $created,
+                    'recentlyCreated' => $created->wasRecentlyCreated,
+                    'conversation' => $conversation->fresh() ?? $conversation,
+                    'payload' => $payload,
+                ];
+            });
+
+            $message = $txResult['message'];
+            if (! $txResult['recentlyCreated']) {
+                return $message;
+            }
+
+            $this->conversationService->dispatchPostCommitSideEffects(
+                $txResult['conversation'],
+                $message,
                 $worker,
+                $txResult['payload'],
             );
+
+            $message = $message->fresh([
+                'attachments',
+                'user:id,name',
+                'customer:id,name',
+                'workerEngagement.workerProfile:id,user_id,display_name',
+                'workerEngagement.workerProfile.user:id,name',
+            ]) ?? $message;
 
             $this->activityEvents->recordOperationalEvent(
                 $engagement,

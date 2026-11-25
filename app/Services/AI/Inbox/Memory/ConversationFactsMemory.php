@@ -34,6 +34,7 @@ final class ConversationFactsMemory
             'customer_name' => null,
             'interested_product_id' => null,
             'interested_product_name' => null,
+            'selected_variant' => null,
             'quantity' => null,
             'budget' => null,
             'purchase_intent' => false,
@@ -44,6 +45,7 @@ final class ConversationFactsMemory
             'price_clarified' => false,
             'delivery_clarified' => false,
             'answered_questions' => [],
+            'recent_ai_openings' => [],
             'last_updated_at' => now()->toIso8601String(),
         ];
     }
@@ -263,11 +265,44 @@ final class ConversationFactsMemory
             }
 
             // 5. Customer name
-            if (preg_match('/(?:اسمي|أنا|معاك|معك)\s+([^\s\d.,!؟]+(?:\s+[^\s\d.,!؟]+)?)/u', $trimmed, $nameMatch)) {
-                $candName = trim($nameMatch[1]);
-                if (! in_array($candName, ['ابغى', 'ابي', 'عندي', 'حاب', 'حابة'], true)) {
+            if (preg_match('/(اسمي|أنا|معاك|معك)\s+([^\s\d.,!؟]+(?:\s+[^\s\d.,!؟]+)?)/u', $trimmed, $nameMatch)) {
+                $introKeyword = trim($nameMatch[1]);
+                $words = preg_split('/\s+/u', trim($nameMatch[2])) ?: [];
+                $firstWord = $words[0] ?? '';
+                $secondWord = $words[1] ?? '';
+                $nonNameWords = [
+                    'ابغى', 'أبغى', 'ابي', 'أبي', 'عندي', 'حاب', 'حابة', 'في', 'من', 'على',
+                    'عند', 'مع', 'مش', 'مو', 'بدي', 'عايز', 'عاوز', 'محتاج', 'احجز', 'بطلب',
+                    'هنا', 'مستعجل', 'زعلان', 'موجود', 'جديد', 'بغيت', 'اريد', 'أريد',
+                ];
+                $secondIsStop = $secondWord === ''
+                    || str_starts_with($secondWord, 'و')
+                    || in_array($secondWord, $nonNameWords, true);
+                $candName = $secondIsStop ? $firstWord : $firstWord.' '.$secondWord;
+                $alreadyNamed = ! empty($existingFacts['customer_name']) && $introKeyword !== 'اسمي';
+                if ($candName !== '' && ! $alreadyNamed && ! in_array($firstWord, $nonNameWords, true)) {
                     $extracted['customer_name'] = $candName;
                 }
+            }
+
+            // 6. Budget ("ميزانيتي 200", "تحت 150", "أقل من 300 ريال", "بحدود 250")
+            if (preg_match('/(?:ميزانيت[ي|ك]|بحدود|اقل من|أقل من|تحت|ما يتجاوز)\s*[:：]?\s*([0-9٠-٩۰-۹]+)/u', $trimmed, $budgetMatch)) {
+                $budgetDigits = strtr($budgetMatch[1], [
+                    '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+                    '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+                    '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+                    '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+                ]);
+                if (is_numeric($budgetDigits) && (int) $budgetDigits > 0) {
+                    $extracted['budget'] = (int) $budgetDigits;
+                }
+            }
+
+            // 7. Variant / color / size hint
+            if (preg_match('/\b(XS|S|M|L|XL|XXL)\b/i', $trimmed, $sizeMatch)) {
+                $extracted['selected_variant'] = strtoupper($sizeMatch[1]);
+            } elseif (preg_match('/(أسود|اسود|أبيض|ابيض|أزرق|ازرق|أحمر|احمر|أخضر|اخضر|رمادي|بيج|بني|وردي|كحلي|ذهبي|فضي|مقاس\s+(?:صغير|وسط|كبير))/u', $trimmed, $variantHint)) {
+                $extracted['selected_variant'] = trim($variantHint[1]);
             }
         } elseif ($direction === 'outbound') {
             // Outbound message checks:
@@ -279,6 +314,17 @@ final class ConversationFactsMemory
             // 2. Delivery clarified
             if (preg_match('/(?:التوصيل\s*(?:متاح|مجاني|خلال|سريع)|الشحن\s*(?:متاح|مجاني)|نوصل\s*إلى)/u', $trimmed)) {
                 $extracted['delivery_clarified'] = true;
+            }
+
+            // 3. Track recent AI openings (first 36 chars of reply) to deter repetitive phrasing
+            $firstLine = trim(strtok($trimmed, "\n") ?: $trimmed);
+            $opening = mb_substr($firstLine, 0, 36);
+            if ($opening !== '') {
+                $openings = is_array($existingFacts['recent_ai_openings'] ?? null)
+                    ? $existingFacts['recent_ai_openings']
+                    : [];
+                $openings[] = $opening;
+                $extracted['recent_ai_openings'] = array_values(array_slice($openings, -4));
             }
         }
 

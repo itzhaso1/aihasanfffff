@@ -59,16 +59,28 @@ class TelegramOutboundService
 
         try {
             $result = $this->apiClient->sendMessage($token, $chatId, $body, $businessConnectionId);
-        } catch (\Throwable $exception) {
+        } catch (ChannelOutboundRetryableException $exception) {
             Log::warning('telegram.outbound.failed', [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
                 'message_id' => $message->id,
                 'duration_ms' => (int) round((microtime(true) - $started) * 1000),
                 'error_category' => ProviderErrorCategory::PROVIDER_UNAVAILABLE,
+                'retryable' => true,
             ]);
             $this->markFailed($delivery, ProviderErrorCategory::PROVIDER_UNAVAILABLE, retryable: true);
-            throw new ChannelOutboundRetryableException($exception->getMessage());
+        } catch (\Throwable $exception) {
+            Log::warning('telegram.outbound.failed', [
+                'workspace_id' => $conversation->workspace_id,
+                'conversation_id' => $conversation->id,
+                'message_id' => $message->id,
+                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+                'error_category' => ProviderErrorCategory::INVALID_RECIPIENT,
+                'retryable' => false,
+            ]);
+            $this->markFailed($delivery, ProviderErrorCategory::INVALID_RECIPIENT, retryable: false);
+
+            return;
         }
 
         $providerMessageId = (string) ($result['message_id'] ?? '');

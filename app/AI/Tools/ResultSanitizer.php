@@ -37,7 +37,11 @@ final class ResultSanitizer
         }
 
         $clean = $this->stripSensitiveKeys($payload);
-        if ($toolName === CanonicalTools::SEARCH_PRODUCTS) {
+        if (in_array($toolName, [
+            CanonicalTools::SEARCH_PRODUCTS,
+            CanonicalTools::GET_ACTIVE_OFFERS,
+            CanonicalTools::COMPARE_PRODUCTS,
+        ], true)) {
             $clean = $this->sanitizeSearchProducts($clean);
         }
 
@@ -76,6 +80,11 @@ final class ResultSanitizer
                     'id' => $variant['id'] ?? null,
                     'name' => $variant['name'] ?? null,
                     'price' => $variant['price'] ?? null,
+                    'base_price' => $variant['base_price'] ?? null,
+                    'sale_price' => $variant['sale_price'] ?? null,
+                    'compare_at_price' => $variant['compare_at_price'] ?? null,
+                    'has_active_offer' => ($variant['has_active_offer'] ?? false) === true ? true : null,
+                    'discount_percent' => $variant['discount_percent'] ?? null,
                     'display_price' => $variant['display_price'] ?? null,
                     'currency' => $variant['currency'] ?? null,
                     'stock' => $variant['stock'] ?? null,
@@ -98,13 +107,22 @@ final class ResultSanitizer
             return array_filter([
                 'catalog_item_id' => $row['catalog_item_id'] ?? $row['item_id'] ?? null,
                 'name' => $row['name'] ?? null,
+                'description' => $row['description'] ?? null,
                 'sku' => $row['sku'] ?? null,
+                'brand' => $row['brand'] ?? null,
                 'price' => $row['price'] ?? null,
+                'base_price' => $row['base_price'] ?? null,
+                'sale_price' => $row['sale_price'] ?? null,
+                'compare_at_price' => $row['compare_at_price'] ?? null,
+                'has_active_offer' => ($row['has_active_offer'] ?? false) === true ? true : null,
+                'discount_percent' => $row['discount_percent'] ?? null,
                 'display_price' => $row['display_price'] ?? null,
                 'currency' => $row['currency'] ?? null,
                 'stock' => $row['stock'] ?? null,
                 'category' => $row['category'] ?? null,
                 'availability' => $availability,
+                'specifications' => is_array($row['specifications'] ?? null) && $row['specifications'] !== [] ? $row['specifications'] : null,
+                'attributes' => is_array($row['attributes'] ?? null) && $row['attributes'] !== [] ? $row['attributes'] : null,
                 'variants' => $variants === [] ? null : $variants,
                 'has_more_variants' => ($row['has_more_variants'] ?? false) === true ? true : null,
                 'variant_match_status' => $row['variant_match_status'] ?? null,

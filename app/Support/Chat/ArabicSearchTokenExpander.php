@@ -10,7 +10,7 @@ final class ArabicSearchTokenExpander
 {
     public const MAX_VARIANTS_PER_TOKEN = 4;
 
-    public const MAX_TOKENS = 12;
+    public const MAX_TOKENS = 16;
 
     public function __construct(private readonly ArabicSearchNormalizer $normalizer) {}
 
@@ -68,18 +68,90 @@ final class ArabicSearchTokenExpander
             'حساب' => 'حسابات',
             'احذية' => 'حذاء',
             'حذاء' => 'احذية',
+            'شوز' => 'حذاء',
             'اجهزة' => 'جهاز',
             'جهاز' => 'اجهزة',
+            'سماعات' => 'سماعة',
+            'سماعه' => 'سماعات',
+            'سماعة' => 'سماعات',
+            'شنط' => 'شنطة',
+            'شنطه' => 'شنطة',
+            'حقيبة' => 'شنطة',
+            'حقيبه' => 'شنطة',
+            'حقائب' => 'حقيبة',
+            'فساتين' => 'فستان',
+            'فستان' => 'فساتين',
+            'عبايات' => 'عباية',
+            'عبايه' => 'عبايات',
+            'عباية' => 'عبايات',
+            'قمصان' => 'قميص',
+            'قميص' => 'قمصان',
+            'هوديات' => 'هودي',
+            'هودي' => 'بلوفر',
+            'شواحن' => 'شاحن',
+            'شاحن' => 'شواحن',
+            'باقات' => 'باقة',
+            'باقه' => 'باقة',
+            'اشتراكات' => 'اشتراك',
+            'اشتراك' => 'اشتراكات',
+            'بطاقات' => 'بطاقة',
+            'بطاقه' => 'بطاقة',
+            'جوالات' => 'جوال',
+            'جوال' => 'هاتف',
+            'موبايل' => 'جوال',
+            'لابتوبات' => 'لابتوب',
+            'كريمات' => 'كريم',
         ];
         if (isset($brokenPlurals[$folded])) {
             $variants[] = $brokenPlurals[$folded];
         }
 
-        if (in_array($folded, ['اكسل', 'اكسيل', 'ايسكل', 'ايكسل'], true)) {
-            $variants[] = 'excel';
-        }
-        if ($folded === 'excel') {
-            $variants[] = 'اكسل';
+        $bilingualSynonyms = [
+            'اكسل' => ['excel'],
+            'اكسيل' => ['excel'],
+            'ايسكل' => ['excel'],
+            'ايكسل' => ['excel'],
+            'excel' => ['اكسل'],
+            'بايثون' => ['python'],
+            'بايثن' => ['python', 'بايثون'],
+            'python' => ['بايثون'],
+            'ايفون' => ['iphone'],
+            'iphone' => ['ايفون'],
+            'سامسونج' => ['samsung'],
+            'سامسونق' => ['samsung', 'سامسونج'],
+            'samsung' => ['سامسونج'],
+            'ماك' => ['macbook', 'mac'],
+            'ماكبوك' => ['macbook'],
+            'macbook' => ['ماكبوك'],
+            'سماعه' => ['airpods', 'headphones'],
+            'سماعة' => ['airpods', 'headphones'],
+            'سماعات' => ['airpods', 'headphones'],
+            'airpods' => ['سماعه', 'سماعة'],
+            'شاحن' => ['charger'],
+            'charger' => ['شاحن'],
+            'ساعه' => ['watch', 'smartwatch'],
+            'ساعة' => ['watch', 'smartwatch'],
+            'watch' => ['ساعة', 'ساعه'],
+            'فستان' => ['dress'],
+            'dress' => ['فستان'],
+            'عطر' => ['perfume', 'fragrance'],
+            'عطور' => ['perfume', 'fragrance'],
+            'perfume' => ['عطر'],
+            'هودي' => ['hoodie'],
+            'hoodie' => ['هودي'],
+            'حذاء' => ['shoes'],
+            'شوز' => ['shoes', 'حذاء'],
+            'shoes' => ['حذاء', 'شوز'],
+            'عبايه' => ['abaya'],
+            'عباية' => ['abaya'],
+            'abaya' => ['عباية'],
+            'شنطه' => ['bag'],
+            'شنطة' => ['bag'],
+            'حقيبه' => ['bag'],
+            'bag' => ['شنطة', 'حقيبة'],
+        ];
+        foreach ($bilingualSynonyms[$folded] ?? [] as $synonym) {
+            $variants[] = $synonym;
         }
 
         $forms = [$folded];

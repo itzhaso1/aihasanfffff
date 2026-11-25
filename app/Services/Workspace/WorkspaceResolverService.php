@@ -7,6 +7,7 @@ use App\Models\Workspace;
 use App\Services\Mobile\MobileInboxActor;
 use App\Services\Worker\WorkerEngagementAuthorization;
 use Illuminate\Http\Request;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class WorkspaceResolverService
 {
@@ -27,7 +28,10 @@ class WorkspaceResolverService
         }
 
         if ($requestedWorkspace === null) {
-            $requestedWorkspace = $user?->currentAccessToken()?->workspace_id;
+            $token = $user?->currentAccessToken();
+            if ($token instanceof PersonalAccessToken) {
+                $requestedWorkspace = $token->workspace_id;
+            }
         }
 
         if ($requestedWorkspace === null || $user === null) {

@@ -5,6 +5,7 @@ namespace App\Jobs\Media;
 use App\Models\Conversation;
 use App\Models\MessageAttachment;
 use App\Services\Channel\Outbound\ChannelOutboundService;
+use App\Services\Inbox\InboxRealtimePublisher;
 use App\Services\Meta\Instagram\InstagramOutboundService;
 use App\Services\WhatsApp\WhatsAppOutboundService;
 use App\Support\Tenancy\WorkspaceContext;
@@ -85,6 +86,29 @@ class ProcessOutboundChannelMedia implements ShouldBeUnique, ShouldQueue
                 ]);
 
                 throw $exception;
+            }
+
+            if (trim((string) $message->content) === '') {
+                $freshMessage = $message->fresh() ?? $message;
+                app(InboxRealtimePublisher::class)->recordMessageDeliveryStatus($freshMessage, 'sent');
+            }
+        });
+    }
+
+    public function failed(?Throwable $exception): void
+    {
+        app(WorkspaceContext::class)->runForId($this->workspaceId, function () use ($exception): void {
+            $attachment = MessageAttachment::withoutGlobalScopes()
+                ->whereKey($this->attachmentId)
+                ->where('workspace_id', $this->workspaceId)
+                ->first();
+            $message = $attachment?->message()->first();
+            if ($message && trim((string) $message->content) === '') {
+                app(InboxRealtimePublisher::class)->recordMessageDeliveryStatus(
+                    $message,
+                    'failed',
+                    $exception?->getMessage() ?: 'outbound_media_failed',
+                );
             }
         });
     }

@@ -22,11 +22,40 @@ final class CanonicalTools
 
     public const SEND_PRODUCT_IMAGE = 'send_product_image';
 
+    public const GET_PRODUCT_DETAILS = 'get_product_details';
+
+    public const GET_PRODUCT_VARIANTS = 'get_product_variants';
+
+    public const CHECK_PRODUCT_AVAILABILITY = 'check_product_availability';
+
+    public const GET_CURRENT_PRICE = 'get_current_price';
+
+    public const GET_ACTIVE_OFFERS = 'get_active_offers';
+
+    public const COMPARE_PRODUCTS = 'compare_products';
+
+    public const GET_SHIPPING_INFORMATION = 'get_shipping_information';
+
+    public const GET_STORE_INFORMATION = 'get_store_information';
+
+    public const GET_ORDER_STATUS = 'get_order_status';
+
+    public const TRANSFER_TO_HUMAN_AGENT = 'transfer_to_human_agent';
+
     /** @var list<string> */
-    public const ORDER_CAPTURE_SKILLS = ['customer_support', 'sales', 'booking_agent', 'product_recommendation'];
+    public const ORDER_CAPTURE_SKILLS = ['customer_support', 'sales', 'booking_agent', 'product_recommendation', 'order_handling'];
 
     /** @var list<string> */
     public const CATALOG_READ_SKILLS = ['customer_support', 'product_recommendation', 'product_search', 'sales', 'booking_agent'];
+
+    /** @var list<string> */
+    public const CATALOG_DETAIL_SKILLS = ['customer_support', 'product_recommendation', 'sales', 'booking_agent'];
+
+    /** @var list<string> */
+    public const STORE_INFO_SKILLS = ['customer_support', 'complaint_handling', 'sales', 'booking_agent', 'product_recommendation'];
+
+    /** @var list<string> */
+    public const HANDOFF_SKILLS = ['customer_support', 'complaint_handling', 'human_handoff', 'sales'];
 
     /** @var list<string> */
     public const CATALOG_IMAGE_SKILLS = ['customer_support', 'product_recommendation', 'product_search', 'sales', 'booking_agent'];
@@ -61,6 +90,41 @@ final class CanonicalTools
                     'type' => 'object',
                     'required' => false,
                     'description' => 'Optional structured attribute filters.',
+                ],
+                'category' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Optional category filter.',
+                ],
+                'brand' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Optional brand filter.',
+                ],
+                'in_stock_only' => [
+                    'type' => 'boolean',
+                    'required' => false,
+                    'description' => 'Only return in-stock items.',
+                ],
+                'on_sale_only' => [
+                    'type' => 'boolean',
+                    'required' => false,
+                    'description' => 'Only return discounted items.',
+                ],
+                'min_price' => [
+                    'type' => 'number',
+                    'required' => false,
+                    'description' => 'Optional minimum unit price.',
+                ],
+                'max_price' => [
+                    'type' => 'number',
+                    'required' => false,
+                    'description' => 'Optional maximum unit price.',
+                ],
+                'sort_by' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Sort order: relevance, price_asc, price_desc, discount_desc, recommended, newest.',
                 ],
             ],
         );
@@ -219,6 +283,171 @@ final class CanonicalTools
         );
     }
 
+    public static function getProductDetails(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::GET_PRODUCT_DETAILS,
+            description: 'Retrieve complete details, specifications, pricing, active discounts, stock, policies, and variants for a specific catalog product.',
+            category: 'catalog',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::CATALOG_DETAIL_SKILLS,
+            inputSchema: [
+                'item_id' => ['type' => 'integer', 'required' => false, 'description' => 'Catalog item ID.'],
+                'product_name' => ['type' => 'string', 'required' => false, 'description' => 'Product name if item_id is not known.'],
+                'sku' => ['type' => 'string', 'required' => false, 'description' => 'Product or variant SKU.'],
+            ],
+        );
+    }
+
+    public static function getProductVariants(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::GET_PRODUCT_VARIANTS,
+            description: 'List all active variants (sizes, colors, capacities, editions) for a catalog item with individual price and stock.',
+            category: 'catalog',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::CATALOG_DETAIL_SKILLS,
+            inputSchema: [
+                'item_id' => ['type' => 'integer', 'required' => false, 'description' => 'Catalog item ID.'],
+                'product_name' => ['type' => 'string', 'required' => false, 'description' => 'Product name if item_id is not known.'],
+            ],
+        );
+    }
+
+    public static function checkProductAvailability(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::CHECK_PRODUCT_AVAILABILITY,
+            description: 'Check authoritative stock status and fulfillable quantity for a product or specific variant.',
+            category: 'catalog',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::CATALOG_DETAIL_SKILLS,
+            inputSchema: [
+                'item_id' => ['type' => 'integer', 'required' => false, 'description' => 'Catalog item ID.'],
+                'product_name' => ['type' => 'string', 'required' => false, 'description' => 'Product name if item_id is not known.'],
+                'variant_id' => ['type' => 'integer', 'required' => false, 'description' => 'Optional specific variant ID.'],
+                'quantity' => ['type' => 'integer', 'required' => false, 'description' => 'Optional requested quantity.'],
+            ],
+        );
+    }
+
+    public static function getCurrentPrice(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::GET_CURRENT_PRICE,
+            description: 'Get the authoritative current price, base price, active promotional/sale price, and currency for a product or variant.',
+            category: 'catalog',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::CATALOG_DETAIL_SKILLS,
+            inputSchema: [
+                'item_id' => ['type' => 'integer', 'required' => false, 'description' => 'Catalog item ID.'],
+                'product_name' => ['type' => 'string', 'required' => false, 'description' => 'Product name if item_id is not known.'],
+                'variant_id' => ['type' => 'integer', 'required' => false, 'description' => 'Optional specific variant ID.'],
+            ],
+        );
+    }
+
+    public static function getActiveOffers(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::GET_ACTIVE_OFFERS,
+            description: 'Retrieve active product discounts and promotional offers in this workspace, sorted by highest discount percentage.',
+            category: 'catalog',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::CATALOG_DETAIL_SKILLS,
+            inputSchema: [
+                'query' => ['type' => 'string', 'required' => false, 'description' => 'Optional keyword filter.'],
+                'category' => ['type' => 'string', 'required' => false, 'description' => 'Optional category filter.'],
+                'limit' => ['type' => 'integer', 'required' => false, 'description' => 'Maximum offers to return.'],
+            ],
+        );
+    }
+
+    public static function compareProducts(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::COMPARE_PRODUCTS,
+            description: 'Compare 2 or more catalog products side-by-side on price, active offers, stock, specifications, and variants.',
+            category: 'catalog',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::CATALOG_DETAIL_SKILLS,
+            inputSchema: [
+                'first_item_id' => ['type' => 'integer', 'required' => false, 'description' => 'First catalog item ID.'],
+                'second_item_id' => ['type' => 'integer', 'required' => false, 'description' => 'Second catalog item ID.'],
+                'first_name' => ['type' => 'string', 'required' => false, 'description' => 'First product name if ID is not known.'],
+                'second_name' => ['type' => 'string', 'required' => false, 'description' => 'Second product name if ID is not known.'],
+            ],
+        );
+    }
+
+    public static function getShippingInformation(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::GET_SHIPPING_INFORMATION,
+            description: 'Retrieve verified shipping and delivery policies, costs, timeframes, or digital delivery notes for this store.',
+            category: 'store',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::STORE_INFO_SKILLS,
+            inputSchema: [
+                'city' => ['type' => 'string', 'required' => false, 'description' => 'Optional destination city.'],
+            ],
+        );
+    }
+
+    public static function getStoreInformation(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::GET_STORE_INFORMATION,
+            description: 'Retrieve verified store working hours, contact options, payment methods, return/warranty policies, and location.',
+            category: 'store',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::STORE_INFO_SKILLS,
+            inputSchema: [
+                'topic' => ['type' => 'string', 'required' => false, 'description' => 'One of: all, hours, contact, policies, returns, payment, location.'],
+            ],
+        );
+    }
+
+    public static function getOrderStatus(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::GET_ORDER_STATUS,
+            description: 'Look up order status belonging strictly to the current conversation customer.',
+            category: 'order',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::ORDER_CAPTURE_SKILLS,
+            inputSchema: [
+                'order_number' => ['type' => 'string', 'required' => false, 'description' => 'Optional order number.'],
+            ],
+        );
+    }
+
+    public static function transferToHumanAgent(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::TRANSFER_TO_HUMAN_AGENT,
+            description: 'Escalate and transfer the conversation to a human agent when requested by the customer or when human review is required.',
+            category: 'handoff',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            maxCallsPerRun: 1,
+            allowedSkillKeys: self::HANDOFF_SKILLS,
+            inputSchema: [
+                'reason' => ['type' => 'string', 'required' => false, 'description' => 'Summary reason for human escalation.'],
+            ],
+        );
+    }
+
     /**
      * @return list<ToolDefinition>
      */
@@ -226,6 +455,16 @@ final class CanonicalTools
     {
         $definitions = [
             self::searchProducts(),
+            self::getProductDetails(),
+            self::getProductVariants(),
+            self::checkProductAvailability(),
+            self::getCurrentPrice(),
+            self::getActiveOffers(),
+            self::compareProducts(),
+            self::getShippingInformation(),
+            self::getStoreInformation(),
+            self::getOrderStatus(),
+            self::transferToHumanAgent(),
             self::getProductIntelligence(),
             self::evaluateProductSuitability(),
             self::saveCustomerCommerceContext(),

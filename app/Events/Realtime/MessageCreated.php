@@ -93,6 +93,10 @@ class MessageCreated implements ShouldBroadcastNow
             $senderName = $this->resolveSenderName();
             $participantType = WorkforceInboxAttribution::typeForMessage($this->message)?->value;
             $idempotencyKey = $this->message->metadata['idempotency_key'] ?? $this->message->metadata['client_id'] ?? null;
+            $deliveryError = $this->message->delivery_status === 'failed'
+                && is_string($this->message->metadata['delivery_error'] ?? null)
+                ? $this->message->metadata['delivery_error']
+                : null;
             $isInternalNote = $this->message->direction === 'internal_note'
                 || $this->message->message_type === 'system'
                 || (bool) data_get($this->message->metadata, 'handoff_acknowledgement');
@@ -106,6 +110,7 @@ class MessageCreated implements ShouldBroadcastNow
                 'content' => $this->message->content,
                 'ai_generated' => (bool) $this->message->ai_generated,
                 'delivery_status' => $this->message->delivery_status,
+                'delivery_error' => $deliveryError,
                 'delivered_at' => optional($this->message->delivered_at)?->toIso8601String(),
                 'read_at' => optional($this->message->read_at)?->toIso8601String(),
                 'is_internal_note' => $isInternalNote,

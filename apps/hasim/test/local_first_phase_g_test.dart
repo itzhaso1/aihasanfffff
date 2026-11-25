@@ -393,6 +393,7 @@ class _SendCounter extends ConversationRepository {
     String content,
     String key, {
     String direction = 'outbound',
+    String? correlationId,
   }) async {
     calls++;
     return MessageModel(

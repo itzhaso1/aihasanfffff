@@ -6,6 +6,7 @@ class ApiException implements Exception {
     this.statusCode,
     this.errors,
     this.errorCode,
+    this.retryAfterSeconds,
     this.isCancelled = false,
   });
 
@@ -14,6 +15,7 @@ class ApiException implements Exception {
   final int? statusCode;
   final Map<String, dynamic>? errors;
   final String? errorCode;
+  final int? retryAfterSeconds;
   final bool isCancelled;
 
   /// Arabic user-facing message; does not mutate API payloads.

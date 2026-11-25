@@ -61,6 +61,41 @@ final class SearchProductsTool implements InboxAgentSecuredTool
                 'required' => false,
                 'description' => 'Optional structured attribute filters (e.g. {"color": "Blue", "size": "L"}).',
             ],
+            'category' => [
+                'type' => 'string',
+                'required' => false,
+                'description' => 'Optional category name filter.',
+            ],
+            'brand' => [
+                'type' => 'string',
+                'required' => false,
+                'description' => 'Optional brand filter.',
+            ],
+            'in_stock_only' => [
+                'type' => 'boolean',
+                'required' => false,
+                'description' => 'Set true to return only available/in-stock items.',
+            ],
+            'on_sale_only' => [
+                'type' => 'boolean',
+                'required' => false,
+                'description' => 'Set true to return only discounted/promotional items.',
+            ],
+            'min_price' => [
+                'type' => 'number',
+                'required' => false,
+                'description' => 'Optional minimum unit price.',
+            ],
+            'max_price' => [
+                'type' => 'number',
+                'required' => false,
+                'description' => 'Optional maximum unit price (customer budget ceiling).',
+            ],
+            'sort_by' => [
+                'type' => 'string',
+                'required' => false,
+                'description' => 'Optional sort: relevance, price_asc, price_desc, discount_desc, recommended, newest.',
+            ],
         ];
     }
 
@@ -86,16 +121,24 @@ final class SearchProductsTool implements InboxAgentSecuredTool
         $limit = (int) ($arguments['limit'] ?? 8);
         $limit = max(1, min(self::MAX_LIMIT, $limit));
 
+        $structuredFilters = array_filter([
+            'category' => isset($arguments['category']) && is_string($arguments['category']) ? trim($arguments['category']) : null,
+            'brand' => isset($arguments['brand']) && is_string($arguments['brand']) ? trim($arguments['brand']) : null,
+            'in_stock_only' => $arguments['in_stock_only'] ?? null,
+            'on_sale_only' => $arguments['on_sale_only'] ?? null,
+            'min_price' => $arguments['min_price'] ?? null,
+            'max_price' => $arguments['max_price'] ?? null,
+            'sort_by' => isset($arguments['sort_by']) && is_string($arguments['sort_by']) ? trim($arguments['sort_by']) : null,
+        ], static fn (mixed $v): bool => $v !== null && $v !== '');
+
         try {
             $rows = array_values(array_filter(
-                $this->catalogRetrieval->searchForAi(
-                    $context->workspace,
-                    $effectiveQuery,
-                    $limit,
-                ),
+                $structuredFilters !== []
+                    ? $this->catalogRetrieval->searchForAiFiltered($context->workspace, $effectiveQuery, $structuredFilters, $limit)
+                    : $this->catalogRetrieval->searchForAi($context->workspace, $effectiveQuery, $limit),
                 static fn (array $row): bool => $row !== [],
             ));
-            if ($rows !== [] && $query !== '' && $customerMessage !== '') {
+            if ($structuredFilters === [] && $rows !== [] && $query !== '' && $customerMessage !== '') {
                 $refinedRows = array_values(array_filter(
                     $this->catalogRetrieval->searchForAi(
                         $context->workspace,
@@ -124,7 +167,13 @@ final class SearchProductsTool implements InboxAgentSecuredTool
                         'name' => $row['name'] ?? null,
                         'description' => $row['description'] ?? null,
                         'sku' => $row['sku'] ?? null,
+                        'brand' => $row['brand'] ?? null,
                         'price' => $row['price'] ?? null,
+                        'base_price' => $row['base_price'] ?? null,
+                        'sale_price' => $row['sale_price'] ?? null,
+                        'compare_at_price' => $row['compare_at_price'] ?? null,
+                        'has_active_offer' => $row['has_active_offer'] ?? false,
+                        'discount_percent' => $row['discount_percent'] ?? null,
                         'display_price' => $row['display_price'] ?? null,
                         'price_display' => $row['price_display'] ?? null,
                         'currency' => $row['currency'] ?? null,
@@ -137,6 +186,7 @@ final class SearchProductsTool implements InboxAgentSecuredTool
                         'category' => $row['category'] ?? null,
                         'seller_display_name' => $row['seller_display_name'] ?? null,
                         'attributes' => $row['attributes'] ?? [],
+                        'specifications' => $row['specifications'] ?? [],
                         'highlights' => $row['highlights'] ?? [],
                         'warnings' => $row['warnings'] ?? null,
                         'terms' => $row['terms'] ?? null,

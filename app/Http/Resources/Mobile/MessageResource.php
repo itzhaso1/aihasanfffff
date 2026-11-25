@@ -4,6 +4,7 @@ namespace App\Http\Resources\Mobile;
 
 use App\Models\Message;
 use App\Services\Workforce\WorkforceInboxAttribution;
+use App\Support\Observability\CorrelationContext;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -22,6 +23,12 @@ class MessageResource extends JsonResource
 
         $metadata = is_array($this->metadata) ? $this->metadata : [];
         $clientId = $metadata['client_id'] ?? $metadata['idempotency_key'] ?? null;
+        $deliveryError = $this->delivery_status === 'failed'
+            ? (is_string($metadata['delivery_error'] ?? null) ? $metadata['delivery_error'] : null)
+            : null;
+        $correlationId = is_string($metadata['correlation_id'] ?? null) && $metadata['correlation_id'] !== ''
+            ? $metadata['correlation_id']
+            : CorrelationContext::id();
 
         $customerName = null;
         if ($this->relationLoaded('customer')) {
@@ -60,6 +67,7 @@ class MessageResource extends JsonResource
             'content' => $this->content,
             'ai_generated' => (bool) $this->ai_generated,
             'delivery_status' => $this->delivery_status,
+            'delivery_error' => $deliveryError,
             'delivered_at' => optional($this->delivered_at)?->toIso8601String(),
             'read_at' => optional($this->read_at)?->toIso8601String(),
             'participant_type' => $this->resource instanceof Message
@@ -68,6 +76,7 @@ class MessageResource extends JsonResource
             'worker_engagement_id' => $this->worker_engagement_id,
             'client_id' => $clientId,
             'idempotency_key' => $clientId,
+            'correlation_id' => $correlationId,
             'created_at' => optional($this->created_at)?->toIso8601String(),
             'user' => $this->whenLoaded('user', fn () => $this->user ? [
                 'id' => $this->user->id,

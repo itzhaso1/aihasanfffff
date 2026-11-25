@@ -13,6 +13,7 @@ use App\Services\Channel\Outbound\ChannelOutboundService;
 use App\Services\Mobile\MessageAttachmentService;
 use App\Services\Observability\OpsMetricsRecorder;
 use App\Support\Meta\MetaConnectionKind;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -74,13 +75,27 @@ class InstagramOutboundService
         $version = $this->graphApiVersion($connection);
         $started = microtime(true);
 
-        $response = Http::acceptJson()
-            ->withToken($token)
-            ->timeout(20)
-            ->post('https://graph.instagram.com/'.$version.'/me/messages', [
-                'recipient' => ['id' => $recipientIgsid],
-                'message' => ['text' => $body],
+        try {
+            $response = Http::acceptJson()
+                ->withToken($token)
+                ->timeout(20)
+                ->post('https://graph.instagram.com/'.$version.'/me/messages', [
+                    'recipient' => ['id' => $recipientIgsid],
+                    'message' => ['text' => $body],
+                ]);
+        } catch (ConnectionException $exception) {
+            $durationMs = (int) round((microtime(true) - $started) * 1000);
+            Log::warning('instagram.outbound.connection_error', [
+                'conversation_id' => $conversation->id,
+                'message_id' => $message->id,
+                'workspace_id' => $conversation->workspace_id,
+                'duration_ms' => $durationMs,
+                'reason' => $exception->getMessage(),
             ]);
+            $this->markFailed($delivery, 'instagram_connection_error', retryable: true);
+
+            return;
+        }
 
         $durationMs = (int) round((microtime(true) - $started) * 1000);
 

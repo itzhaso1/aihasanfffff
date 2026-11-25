@@ -332,6 +332,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         })->name('conversations.show');
         Route::get('conversations/{conversation}/poll-messages', [ConversationController::class, 'pollMessages'])->name('conversations.messages.poll');
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');
+        Route::post('conversations/{conversation}/messages/{message}/retry', [ConversationController::class, 'retryMessage'])->name('conversations.messages.retry');
         Route::get('conversations/{conversation}/media', [ConversationController::class, 'media'])->name('conversations.media');
         Route::post('conversations/{conversation}/typing', [ConversationController::class, 'typing'])->name('conversations.typing');
         Route::get('conversations/{conversation}/presence', [ConversationController::class, 'presence'])->name('conversations.presence');
