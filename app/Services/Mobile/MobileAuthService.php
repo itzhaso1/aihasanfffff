@@ -14,7 +14,6 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\NewAccessToken;
 use Laravel\Sanctum\PersonalAccessToken;
 use RuntimeException;
@@ -65,20 +64,18 @@ class MobileAuthService
             'user' => $user,
             'workspace' => $workspace,
             'workspaces' => $workspaces,
+            'participant' => $this->workers->participant($user, $workspaces->isNotEmpty()),
             'token' => $token,
         ];
     }
 
     /**
      * @param  array{device_name?:string,device_type?:string,user_agent?:string,ip_address?:string}  $device
-     * @return array{user:User,workspace:Workspace|null,workspaces:Collection,token:NewAccessToken}
+     * @return array{user:User,workspace:Workspace|null,workspaces:Collection,participant:array{type:string,worker_profile_id:int|null},token:NewAccessToken}
      */
     public function loginWithPassword(string $emailOrPhone, string $password, ?int $workspaceId, array $device = []): array
     {
-        $user = User::query()
-            ->where('email', $emailOrPhone)
-            ->orWhere('phone', $emailOrPhone)
-            ->first();
+        $user = $this->findUserByEmailOrPhone($emailOrPhone);
 
         if (! $user || ! Hash::check($password, $user->password)) {
             throw new AuthenticationException('بيانات الدخول غير صحيحة.');
@@ -89,7 +86,8 @@ class MobileAuthService
             ->get();
 
         if ($workspaces->isEmpty()) {
-            if (! $this->workers->isIndependentWorker($user)) {
+            $participant = $this->workers->participant($user, false);
+            if ($participant['worker_profile_id'] === null) {
                 throw new ModelNotFoundException('لا توجد مساحة عمل مرتبطة بهذا الحساب.');
             }
 
@@ -111,6 +109,7 @@ class MobileAuthService
                 'user' => $user,
                 'workspace' => null,
                 'workspaces' => $workspaces,
+                'participant' => $participant,
                 'token' => $token,
             ];
         }
@@ -141,6 +140,7 @@ class MobileAuthService
             'user' => $user,
             'workspace' => $workspace,
             'workspaces' => $workspaces,
+            'participant' => $this->workers->participant($user, true),
             'token' => $token,
         ];
     }
@@ -196,6 +196,7 @@ class MobileAuthService
             'user' => $user,
             'workspace' => $workspace,
             'workspaces' => $workspaces,
+            'participant' => $this->workers->participant($user, $workspaces->isNotEmpty()),
             'token' => $token,
         ];
     }
@@ -241,16 +242,18 @@ class MobileAuthService
         }
 
         if ($token instanceof PersonalAccessToken) {
-            $token->forceFill(['workspace_id' => $workspace->id])->save();
+            $token->forceFill(['workspace_id' => $workspace->id]);
 
-            if (Schema::hasColumn('personal_access_tokens', 'device_name') && $device !== []) {
+            if (array_key_exists('device_name', $token->getAttributes()) && $device !== []) {
                 $token->forceFill(array_filter([
                     'device_name' => $device['device_name'] ?? $token->device_name ?? null,
                     'device_type' => $device['device_type'] ?? $token->device_type ?? null,
                     'user_agent' => $device['user_agent'] ?? $token->user_agent ?? null,
                     'ip_address' => $device['ip_address'] ?? $token->ip_address ?? null,
-                ], fn ($v) => $v !== null))->save();
+                ], fn ($v) => $v !== null));
             }
+
+            $token->save();
         }
 
         $this->auditLogService->log(
@@ -265,14 +268,11 @@ class MobileAuthService
     }
 
     /**
-     * @param  array{device_name?:string,device_type?:string,user_agent?:string,ip_address?:string}  $device
-     */
-    /**
      * @return array{type: string, worker_profile_id: int|null}
      */
-    public function participantFor(User $user): array
+    public function participantFor(User $user, ?bool $hasActiveWorkspace = null): array
     {
-        return $this->workers->participant($user);
+        return $this->workers->participant($user, $hasActiveWorkspace);
     }
 
     public function issueDeviceToken(User $user, ?int $workspaceId, array $device = []): NewAccessToken
@@ -282,26 +282,38 @@ class MobileAuthService
             $name = 'hasim-mobile';
         }
 
-        $token = $user->createToken(
-            name: $name,
-            abilities: ['mobile', '*'],
-            expiresAt: now()->addDays((int) config('security.mobile_token_days', 60)),
-        );
+        $plainTextToken = $user->generateTokenString();
+        $token = $user->tokens()->make([
+            'name' => $name,
+            'token' => hash('sha256', $plainTextToken),
+            'abilities' => ['mobile', '*'],
+            'expires_at' => now()->addDays((int) config('security.mobile_token_days', 60)),
+        ]);
 
-        $fill = [];
+        $fill = [
+            'device_name' => $device['device_name'] ?? $name,
+            'device_type' => $device['device_type'] ?? 'mobile',
+            'user_agent' => $device['user_agent'] ?? null,
+            'ip_address' => $device['ip_address'] ?? null,
+        ];
         if ($workspaceId !== null) {
             $fill['workspace_id'] = $workspaceId;
         }
-        if (Schema::hasColumn('personal_access_tokens', 'device_name')) {
-            $fill['device_name'] = $device['device_name'] ?? $name;
-            $fill['device_type'] = $device['device_type'] ?? 'mobile';
-            $fill['user_agent'] = $device['user_agent'] ?? null;
-            $fill['ip_address'] = $device['ip_address'] ?? null;
+
+        $token->forceFill($fill)->save();
+
+        return new NewAccessToken($token, $token->getKey().'|'.$plainTextToken);
+    }
+
+    private function findUserByEmailOrPhone(string $emailOrPhone): ?User
+    {
+        if (str_contains($emailOrPhone, '@')) {
+            return User::query()->where('email', mb_strtolower($emailOrPhone))->first()
+                ?? User::query()->where('phone', $emailOrPhone)->first();
         }
 
-        $token->accessToken->forceFill($fill)->save();
-
-        return $token;
+        return User::query()->where('phone', $emailOrPhone)->first()
+            ?? User::query()->where('email', $emailOrPhone)->first();
     }
 
     public function revokeSession(User $user, int $tokenId): void

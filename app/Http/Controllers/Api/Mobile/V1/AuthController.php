@@ -200,14 +200,19 @@ class AuthController extends MobileController
             return $this->fail('غير مصرح.', 401);
         }
 
-        $this->mobileAuthService->logoutCurrent($user, $user->currentAccessToken());
+        $currentToken = $user->currentAccessToken();
+        $deletedCurrent = $currentToken instanceof PersonalAccessToken
+            || (is_object($currentToken) && isset($currentToken->id));
+        $this->mobileAuthService->logoutCurrent($user, $currentToken);
 
-        // Ensure bearer token cannot be reused even if token object typing differs.
-        $bearer = $request->bearerToken();
-        if (is_string($bearer) && str_contains($bearer, '|')) {
-            [$id] = explode('|', $bearer, 2);
-            if (is_numeric($id)) {
-                $user->tokens()->whereKey((int) $id)->delete();
+        // Fallback only when currentAccessToken wasn't resolved to a persisted token model.
+        if (! $deletedCurrent) {
+            $bearer = $request->bearerToken();
+            if (is_string($bearer) && str_contains($bearer, '|')) {
+                [$id] = explode('|', $bearer, 2);
+                if (is_numeric($id)) {
+                    $user->tokens()->whereKey((int) $id)->delete();
+                }
             }
         }
 
@@ -232,9 +237,11 @@ class AuthController extends MobileController
 
         return $this->ok([
             'user' => new UserResource($user),
-            'participant' => $this->mobileAuthService->participantFor($user),
-            'workspace' => $workspace ? new WorkspaceResource($workspace) : null,
-            'workspaces' => WorkspaceResource::collection($workspaces),
+            'participant' => $this->mobileAuthService->participantFor($user, $workspaces->isNotEmpty()),
+            'workspace' => $workspace ? (new WorkspaceResource($workspace))->forUser($user) : null,
+            'workspaces' => $workspaces->map(
+                fn (Workspace $item): WorkspaceResource => (new WorkspaceResource($item))->forUser($user),
+            ),
         ]);
     }
 
@@ -348,7 +355,8 @@ class AuthController extends MobileController
             'token_type' => 'Bearer',
             'expires_at' => optional($result['token']->accessToken->expires_at)?->toIso8601String(),
             'user' => new UserResource($result['user']),
-            'participant' => $this->mobileAuthService->participantFor($result['user']),
+            'participant' => $result['participant']
+                ?? $this->mobileAuthService->participantFor($result['user'], $result['workspaces']->isNotEmpty()),
             'workspace' => $workspaceResource,
             'workspaces' => $workspaceResources,
         ], message: $message, status: $status);

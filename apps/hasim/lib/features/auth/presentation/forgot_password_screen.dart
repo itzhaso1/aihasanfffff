@@ -15,6 +15,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final _email = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   String? _success;
+  bool _submitting = false;
 
   @override
   void dispose() {
@@ -23,14 +24,20 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   }
 
   Future<void> _submit() async {
+    if (_submitting) return;
     if (!_formKey.currentState!.validate()) return;
-    final msg = await ref
-        .read(authControllerProvider.notifier)
-        .forgotPassword(_email.text.trim());
-    if (!mounted) return;
-    if (msg != null) {
-      setState(() => _success = msg);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    _submitting = true;
+    try {
+      final msg = await ref
+          .read(authControllerProvider.notifier)
+          .forgotPassword(_email.text.trim());
+      if (!mounted) return;
+      if (msg != null) {
+        setState(() => _success = msg);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
+    } finally {
+      _submitting = false;
     }
   }
 

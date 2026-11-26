@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -89,6 +91,7 @@ String _folderEmptySubtitle(String? folder) {
 class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
   static bool _wallpaperPrecached = false;
   final _search = TextEditingController();
+  Timer? _precacheTimer;
   int? _folderSelectedId;
   int? _actionConversationId;
   final Set<int> _selectedConversationIds = <int>{};
@@ -122,7 +125,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
     super.initState();
     if (!_wallpaperPrecached) {
       _wallpaperPrecached = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      _precacheTimer = Timer(const Duration(milliseconds: 250), () {
         if (!mounted) return;
         precacheImage(
           ChatWallpaperCatalog.decorationImage(
@@ -166,6 +169,7 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
 
   @override
   void dispose() {
+    _precacheTimer?.cancel();
     _search.dispose();
     super.dispose();
   }

@@ -88,6 +88,8 @@ class AuthController extends StateNotifier<AuthState> {
   final Ref _ref;
   StreamSubscription? _unauthSub;
   bool _clearingUnauthorized = false;
+  bool _authSubmitInFlight = false;
+  Future<void>? _refreshInFlight;
   int _bootstrapEpoch = 0;
 
   void _wireUnauthorized() {
@@ -170,7 +172,7 @@ class AuthController extends StateNotifier<AuthState> {
         token = await _ref
             .read(secureStoreProvider)
             .readToken()
-            .timeout(const Duration(seconds: 2));
+            .timeout(const Duration(milliseconds: 1200));
       } catch (_) {
         token = null;
       }
@@ -181,22 +183,35 @@ class AuthController extends StateNotifier<AuthState> {
       }
       state = state.copyWith(token: token);
       final prefs = _ref.read(prefsStoreProvider);
-      LocalAccountSnapshot? snapshot;
-      try {
-        snapshot = await _ref
-            .read(inboxLocalStoreProvider)
-            .loadAccountSnapshot()
-            .timeout(const Duration(milliseconds: 1000));
-      } catch (_) {
-        snapshot = null;
+      final fastSnapshot = prefs.readAccountSnapshot();
+      LocalAccountSnapshot? snapshot = fastSnapshot == null
+          ? null
+          : LocalAccountSnapshot(
+              user: fastSnapshot.user,
+              participant: fastSnapshot.participant,
+              workspaces: fastSnapshot.workspaces,
+              currentWorkspaceId: fastSnapshot.currentWorkspaceId,
+            );
+      if (snapshot == null) {
+        try {
+          snapshot = await _ref
+              .read(inboxLocalStoreProvider)
+              .loadAccountSnapshot()
+              .timeout(const Duration(milliseconds: 1000));
+        } catch (_) {
+          snapshot = null;
+        }
       }
       if (!mounted || epoch != _bootstrapEpoch) return;
       if (snapshot != null) {
         try {
           await _restoreSnapshot(token, snapshot);
           if (!mounted || epoch != _bootstrapEpoch) return;
-          _startInboxServices();
-          unawaited(_refreshAccount(allowWorkspaceReset: false));
+          scheduleMicrotask(() {
+            if (!mounted || epoch != _bootstrapEpoch) return;
+            _startInboxServices();
+            unawaited(_refreshAccount(allowWorkspaceReset: false));
+          });
           return;
         } catch (e) {
           debugPrint('[Hasim] restoreSnapshot failed: $e');
@@ -209,9 +224,12 @@ class AuthController extends StateNotifier<AuthState> {
       try {
         await _refreshAccount(
           allowWorkspaceReset: true,
-        ).timeout(const Duration(seconds: 3));
+        ).timeout(const Duration(milliseconds: 1500));
         if (!mounted || epoch != _bootstrapEpoch) return;
-        _startInboxServices();
+        scheduleMicrotask(() {
+          if (!mounted || epoch != _bootstrapEpoch) return;
+          _startInboxServices();
+        });
       } catch (_) {
         if (!mounted || epoch != _bootstrapEpoch || !state.bootstrapping) {
           return;
@@ -226,7 +244,10 @@ class AuthController extends StateNotifier<AuthState> {
                 ? WorkspaceModel(id: lastWorkspaceId, name: '')
                 : null,
           );
-          _startInboxServices();
+          scheduleMicrotask(() {
+            if (!mounted || epoch != _bootstrapEpoch) return;
+            _startInboxServices();
+          });
         } else {
           await _wipeLocalSession();
         }
@@ -282,8 +303,21 @@ class AuthController extends StateNotifier<AuthState> {
     _syncWorkerProfileId();
   }
 
-  Future<void> _refreshAccount({required bool allowWorkspaceReset}) async {
+  Future<void> _refreshAccount({required bool allowWorkspaceReset}) {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+    final run = _performRefreshAccount(allowWorkspaceReset: allowWorkspaceReset);
+    _refreshInFlight = run.whenComplete(() {
+      if (identical(_refreshInFlight, run)) {
+        _refreshInFlight = null;
+      }
+    });
+    return _refreshInFlight!;
+  }
+
+  Future<void> _performRefreshAccount({required bool allowWorkspaceReset}) async {
     final token = await _ref.read(secureStoreProvider).readToken();
+    if (!mounted) return;
     if (token == null || token.isEmpty) {
       if (state.bootstrapping) {
         state = state.copyWith(bootstrapping: false, clearSession: true);
@@ -320,20 +354,34 @@ class AuthController extends StateNotifier<AuthState> {
     } else {
       await prefs.setCompanyPushAllowed(false);
     }
-    await _ref
-        .read(inboxLocalStoreProvider)
-        .saveAccountSnapshot(
-          LocalAccountSnapshot(
-            user: me.user,
-            participant: me.participant,
-            workspaces: me.participant.isIndependentWorker
-                ? const []
-                : me.workspaces,
-            currentWorkspaceId: me.participant.isIndependentWorker
-                ? null
-                : workspace?.id,
-          ),
-        );
+    await prefs.saveAccountSnapshot(
+      user: me.user,
+      participant: me.participant,
+      workspaces: me.participant.isIndependentWorker
+          ? const []
+          : me.workspaces,
+      currentWorkspaceId: me.participant.isIndependentWorker
+          ? null
+          : workspace?.id,
+    );
+    unawaited(
+      _ref
+          .read(inboxLocalStoreProvider)
+          .saveAccountSnapshot(
+            LocalAccountSnapshot(
+              user: me.user,
+              participant: me.participant,
+              workspaces: me.participant.isIndependentWorker
+                  ? const []
+                  : me.workspaces,
+              currentWorkspaceId: me.participant.isIndependentWorker
+                  ? null
+                  : workspace?.id,
+            ),
+          )
+          .catchError((_) {}),
+    );
+    if (!mounted || state.token != token) return;
     _ref.read(apiClientProvider).resetUnauthorizedGate();
     state = AuthState(
       bootstrapping: false,
@@ -359,37 +407,41 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> _applyLogin(LoginResult result) async {
-    _bootstrapEpoch++;
-    await _ref.read(inboxLocalStoreProvider).clearAll();
+    final epoch = ++_bootstrapEpoch;
+    final prefs = _ref.read(prefsStoreProvider);
+    final prevUserId = prefs.cachedAccountUserId;
+    final switchingUsers =
+        prefs.inboxSeeded && prevUserId != result.user.id;
+    if (switchingUsers) {
+      await _ref.read(inboxLocalStoreProvider).clearAll();
+      if (!mounted || epoch != _bootstrapEpoch) return;
+    }
     await _ref.read(secureStoreProvider).saveToken(result.token);
+    if (!mounted || epoch != _bootstrapEpoch) return;
     final workspace = result.participant.isIndependentWorker
         ? null
         : result.workspace ??
               (result.workspaces.isNotEmpty ? result.workspaces.first : null);
     if (workspace != null) {
       _ref.read(inboxSessionProvider).beginWorkspace(workspace.id);
-      await _ref.read(prefsStoreProvider).setWorkspaceId(workspace.id);
-      await _ref.read(prefsStoreProvider).setCompanyPushAllowed(true);
+      await prefs.setWorkspaceId(workspace.id);
+      await prefs.setCompanyPushAllowed(true);
     } else {
       _ref.read(inboxSessionProvider).clear();
-      await _ref.read(prefsStoreProvider).setWorkspaceId(null);
-      await _ref
-          .read(prefsStoreProvider)
-          .setCompanyPushAllowed(!result.participant.isIndependentWorker);
+      await prefs.setWorkspaceId(null);
+      await prefs.setCompanyPushAllowed(!result.participant.isIndependentWorker);
     }
+    await prefs.saveAccountSnapshot(
+      user: result.user,
+      participant: result.participant,
+      workspaces: result.participant.isIndependentWorker
+          ? const []
+          : result.workspaces,
+      currentWorkspaceId: workspace?.id,
+    );
+    await prefs.markInboxSeeded();
+    if (!mounted || epoch != _bootstrapEpoch) return;
     _ref.read(apiClientProvider).resetUnauthorizedGate();
-    await _ref
-        .read(inboxLocalStoreProvider)
-        .saveAccountSnapshot(
-          LocalAccountSnapshot(
-            user: result.user,
-            participant: result.participant,
-            workspaces: result.participant.isIndependentWorker
-                ? const []
-                : result.workspaces,
-            currentWorkspaceId: workspace?.id,
-          ),
-        );
     state = AuthState(
       bootstrapping: false,
       loading: false,
@@ -400,12 +452,31 @@ class AuthController extends StateNotifier<AuthState> {
       participant: result.participant,
     );
     _syncWorkerProfileId();
-    await _ref.read(realtimeServiceProvider).start();
-    _ref.read(outboxWorkerProvider).start();
-    await _ref.read(pushServiceProvider).initializeAndRegister();
+    // Mirror to SQLite and boot realtime/push asynchronously so navigation happens immediately.
+    unawaited(
+      _ref
+          .read(inboxLocalStoreProvider)
+          .saveAccountSnapshot(
+            LocalAccountSnapshot(
+              user: result.user,
+              participant: result.participant,
+              workspaces: result.participant.isIndependentWorker
+                  ? const []
+                  : result.workspaces,
+              currentWorkspaceId: workspace?.id,
+            ),
+          )
+          .catchError((_) {}),
+    );
+    scheduleMicrotask(() {
+      if (!mounted || epoch != _bootstrapEpoch) return;
+      _startInboxServices();
+    });
   }
 
   Future<bool> login(String emailOrPhone, String password) async {
+    if (_authSubmitInFlight || state.loading) return false;
+    _authSubmitInFlight = true;
     state = state.copyWith(loading: true, clearError: true);
     try {
       final result = await _ref
@@ -414,11 +485,17 @@ class AuthController extends StateNotifier<AuthState> {
       await _applyLogin(result);
       return true;
     } on ApiException catch (e) {
-      state = state.copyWith(loading: false, error: e.userMessage);
+      if (mounted) {
+        state = state.copyWith(loading: false, error: e.userMessage);
+      }
       return false;
     } catch (_) {
-      state = state.copyWith(loading: false, error: 'تعذر تسجيل الدخول.');
+      if (mounted) {
+        state = state.copyWith(loading: false, error: 'تعذر تسجيل الدخول.');
+      }
       return false;
+    } finally {
+      _authSubmitInFlight = false;
     }
   }
 
@@ -430,6 +507,8 @@ class AuthController extends StateNotifier<AuthState> {
     String? phone,
     String? workspaceName,
   }) async {
+    if (_authSubmitInFlight || state.loading) return false;
+    _authSubmitInFlight = true;
     state = state.copyWith(loading: true, clearError: true);
     try {
       final result = await _ref
@@ -445,11 +524,17 @@ class AuthController extends StateNotifier<AuthState> {
       await _applyLogin(result);
       return true;
     } on ApiException catch (e) {
-      state = state.copyWith(loading: false, error: e.userMessage);
+      if (mounted) {
+        state = state.copyWith(loading: false, error: e.userMessage);
+      }
       return false;
     } catch (_) {
-      state = state.copyWith(loading: false, error: 'تعذر إنشاء الحساب.');
+      if (mounted) {
+        state = state.copyWith(loading: false, error: 'تعذر إنشاء الحساب.');
+      }
       return false;
+    } finally {
+      _authSubmitInFlight = false;
     }
   }
 
@@ -457,6 +542,8 @@ class AuthController extends StateNotifier<AuthState> {
     required String provider,
     required String accessToken,
   }) async {
+    if (_authSubmitInFlight || state.loading) return false;
+    _authSubmitInFlight = true;
     state = state.copyWith(loading: true, clearError: true);
     try {
       final result = await _ref
@@ -465,14 +552,20 @@ class AuthController extends StateNotifier<AuthState> {
       await _applyLogin(result);
       return true;
     } on ApiException catch (e) {
-      state = state.copyWith(loading: false, error: e.userMessage);
+      if (mounted) {
+        state = state.copyWith(loading: false, error: e.userMessage);
+      }
       return false;
     } catch (_) {
-      state = state.copyWith(
-        loading: false,
-        error: 'تعذر تسجيل الدخول عبر Google.',
-      );
+      if (mounted) {
+        state = state.copyWith(
+          loading: false,
+          error: 'تعذر تسجيل الدخول عبر Google.',
+        );
+      }
       return false;
+    } finally {
+      _authSubmitInFlight = false;
     }
   }
 
@@ -553,16 +646,26 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> _persistCurrentAccount() async {
     final user = state.user;
     if (user == null || !state.isAuthenticated) return;
+    final workspaces = state.isIndependentWorker
+        ? const <WorkspaceModel>[]
+        : state.workspaces;
+    final currentWorkspaceId = state.isIndependentWorker
+        ? null
+        : state.workspace?.id;
+    await _ref.read(prefsStoreProvider).saveAccountSnapshot(
+          user: user,
+          participant: state.participant,
+          workspaces: workspaces,
+          currentWorkspaceId: currentWorkspaceId,
+        );
     await _ref
         .read(inboxLocalStoreProvider)
         .saveAccountSnapshot(
           LocalAccountSnapshot(
             user: user,
             participant: state.participant,
-            workspaces: state.isIndependentWorker ? const [] : state.workspaces,
-            currentWorkspaceId: state.isIndependentWorker
-                ? null
-                : state.workspace?.id,
+            workspaces: workspaces,
+            currentWorkspaceId: currentWorkspaceId,
           ),
         );
   }
@@ -646,6 +749,8 @@ class AuthController extends StateNotifier<AuthState> {
     await _ref.read(prefsStoreProvider).clearPushDevice();
     await _ref.read(prefsStoreProvider).setCompanyPushAllowed(false);
     await _ref.read(prefsStoreProvider).setWorkspaceId(null);
+    await _ref.read(prefsStoreProvider).clearAccountSnapshot();
+    await _ref.read(prefsStoreProvider).clearInboxSeeded();
     if (!mounted || epoch != _bootstrapEpoch) return;
     _ref.read(apiClientProvider).clearPendingDedups();
     _ref.read(apiClientProvider).resetUnauthorizedGate();

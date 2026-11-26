@@ -29,9 +29,30 @@ class MobileHomeService
         ];
     }
 
+    /** @var array<string, bool> */
+    private static array $schemaCache = [];
+
+    private function hasTableCached(string $table): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable($table);
+        }
+
+        return self::$schemaCache["table:$table"] ??= Schema::hasTable($table);
+    }
+
+    private function hasColumnCached(string $table, string $column): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn($table, $column);
+        }
+
+        return self::$schemaCache["col:$table.$column"] ??= Schema::hasColumn($table, $column);
+    }
+
     private function unreadEmailCount(): int
     {
-        if (! Schema::hasTable('email_messages') || ! Schema::hasColumn('email_messages', 'read_at')) {
+        if (! $this->hasTableCached('email_messages') || ! $this->hasColumnCached('email_messages', 'read_at')) {
             return 0;
         }
 
@@ -43,13 +64,13 @@ class MobileHomeService
 
     private function unreadNotificationsCount(User $user, Workspace $workspace): int
     {
-        if (! Schema::hasTable('notifications')) {
+        if (! $this->hasTableCached('notifications')) {
             return 0;
         }
 
         return (int) $user->unreadNotifications()
             ->when(
-                Schema::hasColumn('notifications', 'workspace_id'),
+                $this->hasColumnCached('notifications', 'workspace_id'),
                 fn ($query) => $query->where('workspace_id', $workspace->id),
             )
             ->count();

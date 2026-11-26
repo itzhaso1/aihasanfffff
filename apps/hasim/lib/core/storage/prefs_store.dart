@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:hasim/core/models/models.dart';
 import 'package:hasim/features/conversations/data/chat_bubble_color_catalog.dart';
 import 'package:hasim/features/conversations/data/chat_wallpaper_catalog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +23,108 @@ class PrefsStore {
   static const _pushDeviceWorkspaceKey = 'push_device_workspace_id';
   static const _pushDeviceTokenKey = 'push_device_token';
   static const _companyPushAllowedKey = 'company_push_allowed';
+  static const _accountSnapshotKey = 'auth_account_snapshot_v1';
+  static const _inboxSeededKey = 'hasim_inbox_seeded_v1';
+
+  bool get inboxSeeded => _prefs.getBool(_inboxSeededKey) == true;
+
+  Future<void> markInboxSeeded() async {
+    if (!inboxSeeded) {
+      await _prefs.setBool(_inboxSeededKey, true);
+    }
+  }
+
+  Future<void> clearInboxSeeded() async {
+    await _prefs.remove(_inboxSeededKey);
+  }
+
+  /// Non-secret account & workspace snapshot for instant startup restoration without opening SQLite.
+  ({
+    UserModel user,
+    MobileParticipant participant,
+    List<WorkspaceModel> workspaces,
+    int? currentWorkspaceId,
+  })?
+  readAccountSnapshot() {
+    final raw = _prefs.getString(_accountSnapshotKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final userMap = decoded['user'];
+      if (userMap is! Map) return null;
+      final userId = (userMap['id'] as num?)?.toInt() ?? 0;
+      if (userId <= 0) return null;
+      final partMap = decoded['participant'];
+      final workspacesRaw = decoded['workspaces'];
+      final workspaces = <WorkspaceModel>[
+        if (workspacesRaw is List)
+          for (final w in workspacesRaw)
+            if (w is Map) WorkspaceModel.fromJson(Map<String, dynamic>.from(w)),
+      ];
+      return (
+        user: UserModel(
+          id: userId,
+          name: userMap['name']?.toString() ?? '',
+          email: userMap['email']?.toString(),
+          phone: userMap['phone']?.toString(),
+          locale: userMap['locale']?.toString(),
+          timezone: userMap['timezone']?.toString(),
+          avatarUrl: userMap['avatar_url']?.toString(),
+        ),
+        participant: MobileParticipant.fromJson(
+          partMap is Map ? Map<String, dynamic>.from(partMap) : null,
+        ),
+        workspaces: workspaces,
+        currentWorkspaceId: (decoded['current_workspace_id'] as num?)?.toInt(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? get cachedAccountUserId => readAccountSnapshot()?.user.id;
+
+  Future<void> saveAccountSnapshot({
+    required UserModel user,
+    required MobileParticipant participant,
+    required List<WorkspaceModel> workspaces,
+    required int? currentWorkspaceId,
+  }) async {
+    final payload = <String, dynamic>{
+      'user': {
+        'id': user.id,
+        'name': user.name,
+        if (user.email != null) 'email': user.email,
+        if (user.phone != null) 'phone': user.phone,
+        if (user.locale != null) 'locale': user.locale,
+        if (user.timezone != null) 'timezone': user.timezone,
+        if (user.avatarUrl != null) 'avatar_url': user.avatarUrl,
+      },
+      'participant': {
+        'type': participant.type,
+        if (participant.workerProfileId != null)
+          'worker_profile_id': participant.workerProfileId,
+      },
+      'workspaces': [
+        for (final w in workspaces)
+          {
+            'id': w.id,
+            'name': w.name,
+            if (w.type != null) 'type': w.type,
+            if (w.slug != null) 'slug': w.slug,
+            if (w.role != null) 'role': w.role,
+            'is_owner': w.isOwner,
+          },
+      ],
+      'current_workspace_id': currentWorkspaceId,
+    };
+    await _prefs.setString(_accountSnapshotKey, jsonEncode(payload));
+  }
+
+  Future<void> clearAccountSnapshot() async {
+    await _prefs.remove(_accountSnapshotKey);
+  }
 
   int? get workspaceId {
     final v = _prefs.getInt(_workspaceKey);

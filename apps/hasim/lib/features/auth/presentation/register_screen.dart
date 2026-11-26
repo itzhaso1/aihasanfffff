@@ -24,8 +24,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _workspaceName = TextEditingController();
   final _password = TextEditingController();
   final _passwordConfirmation = TextEditingController();
-  bool _obscurePassword = true;
-  bool _obscureConfirmation = true;
+  final _obscurePasswordNotifier = ValueNotifier<bool>(true);
+  final _obscureConfirmationNotifier = ValueNotifier<bool>(true);
   bool _googleBusy = false;
   bool _submitting = false;
 
@@ -37,6 +37,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _workspaceName.dispose();
     _password.dispose();
     _passwordConfirmation.dispose();
+    _obscurePasswordNotifier.dispose();
+    _obscureConfirmationNotifier.dispose();
     super.dispose();
   }
 
@@ -154,8 +156,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(authControllerProvider);
-    final busy = auth.loading || _submitting || _googleBusy;
     final muted = HasimTokens.mutedColor(context);
 
     return Directionality(
@@ -232,149 +232,192 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       textInputAction: TextInputAction.next,
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      key: const Key('register-password'),
-                      controller: _password,
-                      obscureText: _obscurePassword,
-                      decoration: _decoration(
-                        hint: 'كلمة المرور',
-                        leading: Icons.lock_outline,
-                        trailing: IconButton(
-                          onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword,
+                    ValueListenableBuilder<bool>(
+                      valueListenable: _obscurePasswordNotifier,
+                      builder: (_, obscurePassword, _) {
+                        return TextFormField(
+                          key: const Key('register-password'),
+                          controller: _password,
+                          obscureText: obscurePassword,
+                          decoration: _decoration(
+                            hint: 'كلمة المرور',
+                            leading: Icons.lock_outline,
+                            trailing: IconButton(
+                              onPressed: () =>
+                                  _obscurePasswordNotifier.value = !obscurePassword,
+                              icon: Icon(
+                                obscurePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: muted,
+                              ),
+                            ),
                           ),
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            color: muted,
-                          ),
-                        ),
-                      ),
-                      textInputAction: TextInputAction.next,
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'مطلوب';
-                        if (v.length < 8) {
-                          return 'كلمة المرور يجب ألا تقل عن 8 أحرف';
-                        }
-                        return null;
+                          textInputAction: TextInputAction.next,
+                          validator: (v) {
+                            if (v == null || v.isEmpty) return 'مطلوب';
+                            if (v.length < 8) {
+                              return 'كلمة المرور يجب ألا تقل عن 8 أحرف';
+                            }
+                            return null;
+                          },
+                        );
                       },
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      key: const Key('register-password-confirmation'),
-                      controller: _passwordConfirmation,
-                      obscureText: _obscureConfirmation,
-                      decoration: _decoration(
-                        hint: 'تأكيد كلمة المرور',
-                        leading: Icons.lock_outline,
-                        trailing: IconButton(
-                          onPressed: () => setState(
-                            () => _obscureConfirmation = !_obscureConfirmation,
-                          ),
-                          icon: Icon(
-                            _obscureConfirmation
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            color: muted,
-                          ),
-                        ),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'مطلوب';
-                        if (v != _password.text) {
-                          return 'تأكيد كلمة المرور غير مطابق';
-                        }
-                        return null;
-                      },
-                    ),
-                    if (auth.error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        auth.error!,
-                        key: const Key('register-error'),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    HasimPrimaryButton(
-                      key: const Key('register-submit'),
-                      label: 'إنشاء حساب',
-                      expanded: true,
-                      enabled: !busy,
-                      busy: auth.loading || _submitting,
-                      onPressed: _submit,
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Divider(color: HasimTokens.lineColor(context)),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(
-                            'أو',
-                            style: TextStyle(
-                              color: muted,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Divider(color: HasimTokens.lineColor(context)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      key: const Key('register-google'),
-                      onPressed: busy ? null : _google,
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: HasimTokens.cardBg(context),
-                        foregroundColor: HasimTokens.inkColor(context),
-                        minimumSize: const Size.fromHeight(52),
-                        side: BorderSide(color: HasimTokens.lineColor(context)),
-                        shape: const StadiumBorder(),
-                      ),
-                      child: _googleBusy
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  HasimGoogleMark(),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'التسجيل عبر Google',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                ],
+                    ValueListenableBuilder<bool>(
+                      valueListenable: _obscureConfirmationNotifier,
+                      builder: (_, obscureConfirmation, _) {
+                        return TextFormField(
+                          key: const Key('register-password-confirmation'),
+                          controller: _passwordConfirmation,
+                          obscureText: obscureConfirmation,
+                          decoration: _decoration(
+                            hint: 'تأكيد كلمة المرور',
+                            leading: Icons.lock_outline,
+                            trailing: IconButton(
+                              onPressed: () =>
+                                  _obscureConfirmationNotifier.value =
+                                      !obscureConfirmation,
+                              icon: Icon(
+                                obscureConfirmation
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: muted,
                               ),
                             ),
+                          ),
+                          validator: (v) {
+                            if (v == null || v.isEmpty) return 'مطلوب';
+                            if (v != _password.text) {
+                              return 'تأكيد كلمة المرور غير مطابق';
+                            }
+                            return null;
+                          },
+                        );
+                      },
                     ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: busy ? null : () => context.go('/login'),
-                      child: Text(
-                        'لديك حساب؟ تسجيل الدخول',
-                        style: TextStyle(
-                          color: AppTheme.brand,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final error = ref.watch(
+                          authControllerProvider.select((s) => s.error),
+                        );
+                        if (error == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(
+                            error,
+                            key: const Key('register-error'),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final loading = ref.watch(
+                          authControllerProvider.select((s) => s.loading),
+                        );
+                        final busy = loading || _submitting || _googleBusy;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            HasimPrimaryButton(
+                              key: const Key('register-submit'),
+                              label: 'إنشاء حساب',
+                              expanded: true,
+                              enabled: !busy,
+                              busy: loading || _submitting,
+                              onPressed: _submit,
+                            ),
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Divider(
+                                    color: HasimTokens.lineColor(context),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  child: Text(
+                                    'أو',
+                                    style: TextStyle(
+                                      color: muted,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Divider(
+                                    color: HasimTokens.lineColor(context),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            OutlinedButton(
+                              key: const Key('register-google'),
+                              onPressed: busy ? null : _google,
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: HasimTokens.cardBg(context),
+                                foregroundColor: HasimTokens.inkColor(context),
+                                minimumSize: const Size.fromHeight(52),
+                                side: BorderSide(
+                                  color: HasimTokens.lineColor(context),
+                                ),
+                                shape: const StadiumBorder(),
+                              ),
+                              child: _googleBusy
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          HasimGoogleMark(),
+                                          SizedBox(width: 10),
+                                          Text(
+                                            'التسجيل عبر Google',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 15,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextButton(
+                              onPressed: busy
+                                  ? null
+                                  : () => context.go('/login'),
+                              child: Text(
+                                'لديك حساب؟ تسجيل الدخول',
+                                style: TextStyle(
+                                  color: AppTheme.brand,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 8),
                     Text(

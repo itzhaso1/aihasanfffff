@@ -94,18 +94,17 @@ class HomeController extends StateNotifier<HomeState> {
       state = state.copyWith(loading: true, error: null);
     }
     try {
-      final snap = await _ref.read(homeRepositoryProvider).home();
+      final snapFuture = _ref.read(homeRepositoryProvider).home();
+      final pageFuture = _ref
+          .read(conversationRepositoryProvider)
+          .list(workspaceId: scope.workspaceId)
+          .then<List<ConversationModel>?>((page) => page.items.take(5).toList())
+          .catchError((_) => null);
+      final snap = await snapFuture;
       if (!_canCommit(scope)) return;
-      List<ConversationModel> recent = const [];
-      try {
-        final page = await _ref
-            .read(conversationRepositoryProvider)
-            .list(workspaceId: scope.workspaceId);
+      var recent = await pageFuture;
+      if (recent == null) {
         if (!_canCommit(scope)) return;
-        recent = page.items.take(5).toList();
-      } catch (_) {
-        if (!_canCommit(scope)) return;
-        final workspaceId = scope.workspaceId;
         recent = workspaceId == null
             ? const []
             : (await _ref

@@ -39,14 +39,22 @@ final class IndependentWorkerWebBoundary
         'verification.verify',
     ];
 
-    public function isIndependentWorker(mixed $user): bool
+    public function isIndependentWorker(mixed $user, ?bool $hasActiveWorkspace = null): bool
     {
         if (! $user instanceof User) {
             return false;
         }
 
+        if ($hasActiveWorkspace === true) {
+            return false;
+        }
+
         if (! $user->workerProfile()->exists()) {
             return false;
+        }
+
+        if ($hasActiveWorkspace === false) {
+            return true;
         }
 
         return ! $user->workspaces()->wherePivot('status', 'active')->exists();
@@ -58,8 +66,30 @@ final class IndependentWorkerWebBoundary
      *
      * @return array{type: string, worker_profile_id: int|null}
      */
-    public function participant(User $user): array
+    public function participant(User $user, ?bool $hasActiveWorkspace = null): array
     {
+        if ($hasActiveWorkspace === true) {
+            return [
+                'type' => WorkforceParticipantType::CompanyStaff->value,
+                'worker_profile_id' => null,
+            ];
+        }
+
+        if ($hasActiveWorkspace === false) {
+            $profileId = $user->workerProfile()->value('id');
+            if ($profileId === null) {
+                return [
+                    'type' => WorkforceParticipantType::CompanyStaff->value,
+                    'worker_profile_id' => null,
+                ];
+            }
+
+            return [
+                'type' => WorkforceParticipantType::IndependentWorker->value,
+                'worker_profile_id' => (int) $profileId,
+            ];
+        }
+
         if (! $this->isIndependentWorker($user)) {
             return [
                 'type' => WorkforceParticipantType::CompanyStaff->value,

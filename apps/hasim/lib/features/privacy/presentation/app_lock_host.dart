@@ -48,7 +48,14 @@ class _AppLockHostState extends ConsumerState<AppLockHost>
       }
     });
 
-    final auth = ref.watch(authControllerProvider);
+    final auth = ref.watch(
+      authControllerProvider.select(
+        (s) => (
+          isAuthenticated: s.isAuthenticated,
+          bootstrapping: s.bootstrapping,
+        ),
+      ),
+    );
     final lock = ref.watch(chatLockControllerProvider);
     final showShield =
         auth.isAuthenticated && !auth.bootstrapping && !lock.loaded;

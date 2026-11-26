@@ -88,7 +88,9 @@ class NativeDevicePushTokenSource implements PushTokenSource {
 
   @override
   Future<Map<String, dynamic>?> takeLaunchNotification() async {
+    if (!supported) return null;
     try {
+      await _gateway.initialize().timeout(const Duration(seconds: 4));
       return await _gateway.takeLaunchNotification();
     } catch (_) {
       return null;

@@ -38,8 +38,8 @@ class ApiClient {
           BaseOptions(
             // Trailing slash required: Dio must keep /api/mobile/v1/ as path prefix.
             baseUrl: '$base/api/mobile/v1/',
-            connectTimeout: const Duration(seconds: 20),
-            receiveTimeout: const Duration(seconds: 30),
+            connectTimeout: const Duration(seconds: 12),
+            receiveTimeout: const Duration(seconds: 20),
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
@@ -82,7 +82,8 @@ class ApiClient {
           return handler.next(response);
         },
         onError: (error, handler) {
-          if (error.response?.statusCode == 401) {
+          if (error.response?.statusCode == 401 &&
+              !_isPublicAuthPath(error.requestOptions.path)) {
             _emitUnauthorized();
           }
           if (kDebugMode) {
@@ -129,6 +130,15 @@ class ApiClient {
     if (!unauthorizedEvents.isClosed) {
       unauthorizedEvents.add(null);
     }
+  }
+
+  static bool _isPublicAuthPath(String path) {
+    final normalized = path.toLowerCase();
+    return normalized.endsWith('auth/login') ||
+        normalized.endsWith('auth/register') ||
+        normalized.endsWith('auth/social') ||
+        normalized.endsWith('auth/forgot-password') ||
+        normalized.endsWith('auth/reset-password');
   }
 
   /// Keep paths relative to `baseUrl` (`…/api/mobile/v1/`). Leading `/` would drop the prefix in some URI resolvers.
@@ -395,7 +405,7 @@ class ApiClient {
         ? null
         : int.tryParse(retryAfterRaw.trim());
 
-    if (status == 401) {
+    if (status == 401 && !_isPublicAuthPath(e.requestOptions.path)) {
       _emitUnauthorized();
     }
 

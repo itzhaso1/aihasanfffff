@@ -24,29 +24,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _idController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  bool _obscure = true;
+  final _obscureNotifier = ValueNotifier<bool>(true);
+  bool _submitting = false;
   bool _googleBusy = false;
 
   @override
   void dispose() {
     _idController.dispose();
     _passwordController.dispose();
+    _obscureNotifier.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    if (_submitting) return;
     if (!_formKey.currentState!.validate()) return;
-    final ok = await ref
-        .read(authControllerProvider.notifier)
-        .login(_idController.text.trim(), _passwordController.text);
-    if (!mounted) return;
-    if (ok) {
-      final auth = ref.read(authControllerProvider);
-      context.go(auth.authenticatedHome);
+    _submitting = true;
+    try {
+      final ok = await ref
+          .read(authControllerProvider.notifier)
+          .login(_idController.text.trim(), _passwordController.text);
+      if (!mounted) return;
+      if (ok) {
+        final auth = ref.read(authControllerProvider);
+        context.go(auth.authenticatedHome);
+      }
+    } finally {
+      _submitting = false;
     }
   }
 
   Future<void> _google() async {
+    if (_submitting || _googleBusy) return;
     setState(() => _googleBusy = true);
     try {
       final google = GoogleSignIn(scopes: const ['email', 'profile']);
@@ -141,25 +150,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Widget _whiteField({required Widget child}) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x08061C18),
-            blurRadius: 16,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
+  Widget _whiteField({required Widget child}) => child;
 
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(authControllerProvider);
     final theme = Theme.of(context);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -177,7 +171,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             children: [
               const Positioned.fill(
                 child: IgnorePointer(
-                  child: CustomPaint(painter: _LoginShapesPainter()),
+                  child: RepaintBoundary(
+                    child: CustomPaint(painter: _LoginShapesPainter()),
+                  ),
                 ),
               ),
               SafeArea(
@@ -196,8 +192,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               hasimLoginArtAsset,
                               key: const Key('hasim-login-art'),
                               height: 186,
+                              cacheHeight: 420,
                               fit: BoxFit.contain,
-                              filterQuality: FilterQuality.high,
+                              filterQuality: FilterQuality.medium,
                             ),
                             const SizedBox(height: 28),
                             Text(
@@ -230,6 +227,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   leading: Icons.person_outline,
                                 ),
                                 keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.next,
                                 validator: (v) =>
                                     (v == null || v.trim().isEmpty)
                                     ? 'مطلوب'
@@ -238,25 +236,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                             const SizedBox(height: 12),
                             _whiteField(
-                              child: TextFormField(
-                                controller: _passwordController,
-                                obscureText: _obscure,
-                                decoration: _fieldDecoration(
-                                  hint: 'كلمة المرور',
-                                  leading: Icons.lock_outline,
-                                  trailing: IconButton(
-                                    onPressed: () =>
-                                        setState(() => _obscure = !_obscure),
-                                    icon: Icon(
-                                      _obscure
-                                          ? Icons.visibility_outlined
-                                          : Icons.visibility_off_outlined,
-                                      color: _loginMuted,
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: _obscureNotifier,
+                                builder: (_, obscure, _) {
+                                  return TextFormField(
+                                    controller: _passwordController,
+                                    obscureText: obscure,
+                                    textInputAction: TextInputAction.done,
+                                    onFieldSubmitted: (_) => _submit(),
+                                    decoration: _fieldDecoration(
+                                      hint: 'كلمة المرور',
+                                      leading: Icons.lock_outline,
+                                      trailing: IconButton(
+                                        onPressed: () =>
+                                            _obscureNotifier.value = !obscure,
+                                        icon: Icon(
+                                          obscure
+                                              ? Icons.visibility_outlined
+                                              : Icons.visibility_off_outlined,
+                                          color: _loginMuted,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                                validator: (v) =>
-                                    (v == null || v.isEmpty) ? 'مطلوب' : null,
+                                    validator: (v) =>
+                                        (v == null || v.isEmpty) ? 'مطلوب' : null,
+                                  );
+                                },
                               ),
                             ),
                             Align(
@@ -280,92 +285,114 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                               ),
                             ),
-                            if (auth.error != null) ...[
-                              Text(
-                                auth.error!,
-                                style: TextStyle(
-                                  color: theme.colorScheme.error,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 8),
-                            ],
-                            FilledButton(
-                              onPressed: auth.loading ? null : _submit,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppTheme.brand,
-                                foregroundColor: Colors.white,
-                                minimumSize: const Size.fromHeight(52),
-                                shape: const StadiumBorder(),
-                                textStyle: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              child: auth.loading
-                                  ? const SizedBox(
-                                      height: 22,
-                                      width: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text('دخول'),
-                            ),
-                            const SizedBox(height: 22),
-                            const Row(
-                              children: [
-                                Expanded(child: Divider(color: _loginLine)),
-                                Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 12),
+                            Consumer(
+                              builder: (context, ref, _) {
+                                final error = ref.watch(
+                                  authControllerProvider.select((s) => s.error),
+                                );
+                                if (error == null) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
                                   child: Text(
-                                    'أو',
+                                    error,
                                     style: TextStyle(
-                                      color: _loginMuted,
-                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).colorScheme.error,
                                     ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                ),
-                                Expanded(child: Divider(color: _loginLine)),
-                              ],
+                                );
+                              },
                             ),
-                            const SizedBox(height: 18),
-                            OutlinedButton(
-                              onPressed: (auth.loading || _googleBusy)
-                                  ? null
-                                  : _google,
-                              style: OutlinedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: _loginInk,
-                                minimumSize: const Size.fromHeight(52),
-                                side: const BorderSide(color: _loginLine),
-                                shape: const StadiumBorder(),
-                              ),
-                              child: _googleBusy
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
+                            Consumer(
+                              builder: (context, ref, _) {
+                                final loading = ref.watch(
+                                  authControllerProvider.select((s) => s.loading),
+                                );
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    FilledButton(
+                                      onPressed: loading ? null : _submit,
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: AppTheme.brand,
+                                        foregroundColor: Colors.white,
+                                        minimumSize: const Size.fromHeight(52),
+                                        shape: const StadiumBorder(),
+                                        textStyle: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
-                                    )
-                                  : const Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      mainAxisSize: MainAxisSize.min,
+                                      child: loading
+                                          ? const SizedBox(
+                                              height: 22,
+                                              width: 22,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Text('دخول'),
+                                    ),
+                                    const SizedBox(height: 22),
+                                    const Row(
                                       children: [
-                                        HasimGoogleMark(),
-                                        SizedBox(width: 10),
-                                        Text(
-                                          'الدخول عبر Google',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 15,
+                                        Expanded(child: Divider(color: _loginLine)),
+                                        Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 12),
+                                          child: Text(
+                                            'أو',
+                                            style: TextStyle(
+                                              color: _loginMuted,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
                                         ),
+                                        Expanded(child: Divider(color: _loginLine)),
                                       ],
                                     ),
+                                    const SizedBox(height: 18),
+                                    OutlinedButton(
+                                      onPressed: (loading || _googleBusy)
+                                          ? null
+                                          : _google,
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor: Colors.white,
+                                        foregroundColor: _loginInk,
+                                        minimumSize: const Size.fromHeight(52),
+                                        side: const BorderSide(color: _loginLine),
+                                        shape: const StadiumBorder(),
+                                      ),
+                                      child: _googleBusy
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                HasimGoogleMark(),
+                                                SizedBox(width: 10),
+                                                Text(
+                                                  'الدخول عبر Google',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 15,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                             const SizedBox(height: 22),
                             Row(

@@ -69,10 +69,11 @@ class AuthenticationService
 
     public function loginWithPassword(string $emailOrPhone, string $password, int $workspaceId): array
     {
-        $user = User::query()
-            ->where('email', $emailOrPhone)
-            ->orWhere('phone', $emailOrPhone)
-            ->first();
+        $user = str_contains($emailOrPhone, '@')
+            ? (User::query()->where('email', mb_strtolower($emailOrPhone))->first()
+                ?? User::query()->where('phone', $emailOrPhone)->first())
+            : (User::query()->where('phone', $emailOrPhone)->first()
+                ?? User::query()->where('email', $emailOrPhone)->first());
 
         if (! $user || ! Hash::check($password, $user->password)) {
             throw new AuthenticationException('Invalid credentials.');
@@ -140,14 +141,16 @@ class AuthenticationService
 
     private function issueToken(User $user, int $workspaceId, array $abilities): NewAccessToken
     {
-        $token = $user->createToken(
-            name: 'api',
-            abilities: $abilities,
-            expiresAt: now()->addDays((int) config('security.api_token_days', 30))
-        );
+        $plainTextToken = $user->generateTokenString();
+        $token = $user->tokens()->make([
+            'name' => 'api',
+            'token' => hash('sha256', $plainTextToken),
+            'abilities' => $abilities,
+            'expires_at' => now()->addDays((int) config('security.api_token_days', 30)),
+        ]);
 
-        $token->accessToken->forceFill(['workspace_id' => $workspaceId])->save();
+        $token->forceFill(['workspace_id' => $workspaceId])->save();
 
-        return $token;
+        return new NewAccessToken($token, $token->getKey().'|'.$plainTextToken);
     }
 }

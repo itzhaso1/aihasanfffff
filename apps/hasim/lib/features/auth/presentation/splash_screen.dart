@@ -32,10 +32,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   bool _navigated = false;
   bool _checkingNavigation = false;
   bool _navCheckScheduled = false;
-  bool _minShowElapsed = false;
   bool _bootstrapGuardElapsed = false;
   Timer? _bootstrapGuard;
-  Timer? _minHold;
   Timer? _retryTimer;
   late final AnimationController _intro;
   late final Animation<double> _markFade;
@@ -48,42 +46,41 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   @override
   void initState() {
     super.initState();
-    _minShowElapsed = _skipIntro;
     _intro = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2600),
+      duration: const Duration(milliseconds: 220),
     );
     _markFade = CurvedAnimation(
       parent: _intro,
-      curve: const Interval(0.00, 0.16, curve: Curves.easeOut),
+      curve: const Interval(0.00, 0.25, curve: Curves.easeOut),
     );
-    _markScale = Tween<double>(begin: 0.86, end: 1).animate(
+    _markScale = Tween<double>(begin: 0.92, end: 1).animate(
       CurvedAnimation(
         parent: _intro,
-        curve: const Interval(0.00, 0.18, curve: Curves.easeOut),
+        curve: const Interval(0.00, 0.30, curve: Curves.easeOut),
       ),
     );
     _markTurns = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
         parent: _intro,
-        curve: const Interval(0.18, 0.42, curve: Curves.easeInOut),
+        curve: const Interval(0.15, 0.55, curve: Curves.easeInOut),
       ),
     );
     _posterFade = CurvedAnimation(
       parent: _intro,
-      curve: const Interval(0.10, 0.30, curve: Curves.easeOut),
+      curve: const Interval(0.05, 0.40, curve: Curves.easeOut),
     );
     _progress = CurvedAnimation(
       parent: _intro,
-      curve: const Interval(0.22, 0.92, curve: Curves.easeInOut),
+      curve: const Interval(0.10, 0.95, curve: Curves.easeInOut),
     );
     _iconReveal = List<Animation<double>>.generate(6, (i) {
-      final start = 0.36 + i * 0.055;
+      final start = 0.25 + i * 0.08;
       return CurvedAnimation(
         parent: _intro,
         curve: Interval(
           start,
-          (start + 0.12).clamp(0.0, 1.0),
+          (start + 0.18).clamp(0.0, 1.0),
           curve: Curves.easeOut,
         ),
       );
@@ -95,12 +92,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     WidgetsBinding.instance.ensureVisualUpdate();
 
     if (!_skipIntro) {
-      _minHold = Timer(const Duration(milliseconds: 2600), () {
-        if (!mounted) return;
-        _minShowElapsed = true;
-        _scheduleNavigationCheck();
-      });
-      _bootstrapGuard = Timer(const Duration(milliseconds: 2800), () async {
+      _bootstrapGuard = Timer(const Duration(milliseconds: 1200), () async {
         if (!mounted || _navigated) return;
         _bootstrapGuardElapsed = true;
         final auth = ref.read(authControllerProvider);
@@ -133,22 +125,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       _scheduleNavigationCheck();
       return;
     }
-    if (!_isFlutterTest) {
-      try {
-        await Future.wait<void>([
-          precacheImage(const AssetImage(hasimSplashAsset), context),
-          precacheImage(const AssetImage(hasimSplashMarkAsset), context),
-        ]).timeout(const Duration(milliseconds: 1500));
-      } catch (_) {}
-    }
-    if (!mounted) return;
     try {
       await _intro.forward();
     } catch (_) {
       _intro.value = 1.0;
     }
-    if (!mounted) return;
-    await Future<void>.delayed(const Duration(milliseconds: 100));
     if (!mounted) return;
     _scheduleNavigationCheck();
   }
@@ -156,7 +137,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   @override
   void dispose() {
     _bootstrapGuard?.cancel();
-    _minHold?.cancel();
     _retryTimer?.cancel();
     _intro.dispose();
     super.dispose();
@@ -179,10 +159,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (_navigated || _checkingNavigation || !mounted) return;
     _checkingNavigation = true;
     try {
-      if (!_skipIntro && !_minShowElapsed) {
-        return;
-      }
-      if (_intro.status != AnimationStatus.completed && _intro.value < 1.0) {
+      if (!_skipIntro &&
+          _intro.status != AnimationStatus.completed &&
+          _intro.value < 1.0) {
         if (_bootstrapGuardElapsed) {
           _intro.value = 1.0;
         } else {
@@ -269,14 +248,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         children: [
                           FadeTransition(
                             opacity: _posterFade,
-                            child: Image.asset(
-                              hasimSplashAsset,
-                              key: const Key('hasim-splash-art'),
-                              width: _artW,
-                              height: _artH,
-                              fit: BoxFit.fill,
-                              filterQuality: FilterQuality.high,
-                              gaplessPlayback: true,
+                            child: RepaintBoundary(
+                              child: Image.asset(
+                                hasimSplashAsset,
+                                key: const Key('hasim-splash-art'),
+                                width: _artW,
+                                height: _artH,
+                                fit: BoxFit.fill,
+                                filterQuality: FilterQuality.medium,
+                                gaplessPlayback: true,
+                              ),
                             ),
                           ),
                           Positioned.fill(
@@ -329,7 +310,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                         width: 234,
                                         height: 270,
                                         fit: BoxFit.fill,
-                                        filterQuality: FilterQuality.high,
+                                        filterQuality: FilterQuality.medium,
                                       ),
                                     ),
                                   ),

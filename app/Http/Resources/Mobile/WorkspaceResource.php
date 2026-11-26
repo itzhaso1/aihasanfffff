@@ -7,7 +7,6 @@ use App\Models\Workspace;
 use App\Support\Authorization\WorkspaceAccess;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Schema;
 
 /** @mixin Workspace */
 class WorkspaceResource extends JsonResource
@@ -46,7 +45,8 @@ class WorkspaceResource extends JsonResource
             'is_owner' => $isOwner,
         ];
 
-        if (Schema::hasColumn('workspaces', 'slug')) {
+        $attributes = $this->resource->getAttributes();
+        if (array_key_exists('slug', $attributes)) {
             $data['slug'] = $this->slug;
         }
 
