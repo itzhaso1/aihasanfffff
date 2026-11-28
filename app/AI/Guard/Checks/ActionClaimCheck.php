@@ -26,8 +26,8 @@ final class ActionClaimCheck implements GuardCheck
             $input->confirmedActions,
         );
 
-        foreach ($this->claims($text) as $type) {
-            if (! in_array($type, $confirmed, true)) {
+        foreach ($this->claimRequirements($text) as $acceptableTypes) {
+            if (array_intersect($acceptableTypes, $confirmed) === []) {
                 return GuardFinding::rejected(self::NAME, 'unconfirmed_action');
             }
         }
@@ -36,31 +36,51 @@ final class ActionClaimCheck implements GuardCheck
     }
 
     /**
-     * @return list<string>
+     * @return list<list<string>>
      */
-    private function claims(string $text): array
+    private function claimRequirements(string $text): array
     {
-        $claims = [];
+        $requirements = [];
         if ($this->matches($text, [
             '/\bI(?:\'ve| have)? (?:just )?(?:saved|stored)\b/i',
             '/حفظت|تم الحفظ|سجلت القياس/u',
         ])) {
-            $claims[] = CanonicalTools::SAVE_CUSTOMER_COMMERCE_CONTEXT;
+            $requirements[] = [CanonicalTools::SAVE_CUSTOMER_COMMERCE_CONTEXT];
         }
         if ($this->matches($text, [
             '/\bI(?:\'ve| have)? (?:just )?(?:transferred|escalated|handed (?:you|this) over)\b/i',
             '/(?:حولت(?:ك|كم|ها|ه)?|تم\s+تحويل(?:ك|كم|المحادثة|الطلب)?)\s+(?:ل|إلى|الى|على)\s*(?:الفريق|الموظف|موظف|خدمة\s+العملاء|الدعم|شخص)/u',
         ])) {
-            $claims[] = CanonicalTools::TRANSFER_TO_HUMAN_AGENT;
+            $requirements[] = [CanonicalTools::TRANSFER_TO_HUMAN_AGENT];
         }
         if ($this->matches($text, [
-            '/\bI(?:\'ve| have)? (?:just )?(?:refunded|cancelled|canceled|charged|posted|placed the order)\b/i',
-            '/ألغيت|رجعت المبلغ|حولت\s+(?:المبلغ|الفلوس|الرصيد|الحوالة)|تم الاسترجاع|تم الإلغاء|أرسلت الفاتورة|أنشأت فاتورة/u',
+            '/تم\s+(?:تأكيد|إنشاء|تسجيل|اعتماد)\s+(?:الحجز|حجزك|الموعد)|حجزت\s+لك|\bbooking\s+(?:is\s+)?confirmed\b/iu',
         ])) {
-            $claims[] = 'forbidden_mutation';
+            $requirements[] = [CanonicalTools::CREATE_BOOKING, CanonicalTools::RESCHEDULE_BOOKING];
+        }
+        if ($this->matches($text, [
+            '/تم\s+(?:تأجيل|إعادة\s+جدولة|تعديل\s+موعد)\s+(?:الحجز|حجزك|الموعد)|أجلت\s+(?:الحجز|حجزك|الموعد)/u',
+        ])) {
+            $requirements[] = [CanonicalTools::RESCHEDULE_BOOKING, CanonicalTools::UPDATE_BOOKING];
+        }
+        if ($this->matches($text, [
+            '/تم\s+إلغاء\s+(?:الحجز|حجزك|الموعد)|ألغيت\s+(?:الحجز|حجزك|الموعد)/u',
+        ])) {
+            $requirements[] = [CanonicalTools::CANCEL_BOOKING];
+        } elseif ($this->matches($text, [
+            '/\bI(?:\'ve| have)? (?:just )?(?:cancelled|canceled)\b/i',
+            '/ألغيت|تم الإلغاء/u',
+        ])) {
+            $requirements[] = [CanonicalTools::CANCEL_CUSTOMER_ORDER, CanonicalTools::CANCEL_BOOKING];
+        }
+        if ($this->matches($text, [
+            '/\bI(?:\'ve| have)? (?:just )?(?:refunded|charged|posted|placed the order)\b/i',
+            '/رجعت المبلغ|حولت\s+(?:المبلغ|الفلوس|الرصيد|الحوالة)|تم الاسترجاع|أرسلت الفاتورة|أنشأت فاتورة/u',
+        ])) {
+            $requirements[] = ['forbidden_mutation'];
         }
 
-        return $claims;
+        return $requirements;
     }
 
     /**

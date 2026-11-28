@@ -11,6 +11,7 @@ import 'package:hasim/features/conversations/presentation/widgets/chat_attachmen
 import 'package:hasim/features/conversations/presentation/widgets/chat_image_grid.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_media_viewer_dialog.dart';
 import 'package:hasim/l10n/app_localizations.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Pre-resolved styling/localization context shared across visible message bubbles
 /// so scrolled rows avoid redundant `Theme.of`, `MediaQuery.of`, and `AppLocalizations.of` lookups.
@@ -628,7 +629,12 @@ class _BubbleBody extends StatelessWidget {
         message.attachments.isEmpty &&
         message.localAttachmentPath != null;
     final hasAttachments = message.attachments.isNotEmpty;
-    final textOnly = showCaption && !hasAttachments && !pendingUpload;
+    final hasLocation = message.location != null;
+    final effectiveCaption = hasLocation && message.messageType == 'location'
+        ? false
+        : showCaption;
+    final textOnly =
+        effectiveCaption && !hasAttachments && !pendingUpload && !hasLocation;
 
     final header = showSenderHeader
         ? _SenderHeader(
@@ -745,10 +751,21 @@ class _BubbleBody extends StatelessWidget {
               ),
             ),
           ),
-        if (showCaption)
+        if (hasLocation)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: _LocationCard(
+              location: message.location!,
+              dark: dark,
+              fg: fg,
+              meta: meta,
+              lineColor: lineColor,
+            ),
+          ),
+        if (effectiveCaption)
           Padding(
             padding: EdgeInsets.only(
-              top: (hasAttachments || pendingUpload) ? 5 : 0,
+              top: (hasAttachments || pendingUpload || hasLocation) ? 5 : 0,
             ),
             child: Text(
               message.content,
@@ -772,11 +789,197 @@ class _BubbleBody extends StatelessWidget {
           ),
         Padding(
           padding: EdgeInsets.only(
-            top: (showCaption || hasAttachments || pendingUpload) ? 4 : 0,
+            top: (effectiveCaption || hasAttachments || pendingUpload || hasLocation) ? 4 : 0,
           ),
           child: _metaRow(),
         ),
       ],
+    );
+  }
+}
+
+class _LocationCard extends StatelessWidget {
+  const _LocationCard({
+    required this.location,
+    required this.dark,
+    required this.fg,
+    required this.meta,
+    required this.lineColor,
+  });
+
+  final MessageLocationModel location;
+  final bool dark;
+  final Color fg;
+  final Color meta;
+  final Color lineColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = location.verificationStatus;
+    final Color statusBg;
+    final Color statusFg;
+    if (status == 'confirmed') {
+      statusBg = dark ? const Color(0x2810B981) : const Color(0xFFD1FAE5);
+      statusFg = dark ? const Color(0xFF6EE7B7) : const Color(0xFF065F46);
+    } else if (status == 'needs_adjustment') {
+      statusBg = dark ? const Color(0x28F43F5E) : const Color(0xFFFFE4E6);
+      statusFg = dark ? const Color(0xFFFDA4AF) : const Color(0xFF9F1239);
+    } else {
+      statusBg = dark ? const Color(0x28F59E0B) : const Color(0xFFFEF3C7);
+      statusFg = dark ? const Color(0xFFFCD34D) : const Color(0xFF92400E);
+    }
+
+    final statusText = location.verificationLabel ??
+        switch (status) {
+          'confirmed' => 'موقع مؤكد',
+          'needs_adjustment' => 'يحتاج مراجعة / تعديل',
+          _ => 'بانتظار التأكيد',
+        };
+    final addressText = (location.formattedAddress?.trim().isNotEmpty ?? false)
+        ? location.formattedAddress!.trim()
+        : '${location.latitude.toStringAsFixed(5)}, ${location.longitude.toStringAsFixed(5)}';
+    final areaParts = <String>[
+      if (location.city?.trim().isNotEmpty ?? false) location.city!.trim(),
+      if (location.district?.trim().isNotEmpty ?? false) location.district!.trim(),
+    ];
+
+    return DecoratedBox(
+      key: const Key('chat-message-location-card'),
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF0F2420) : const Color(0xFFF2FBF8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: dark ? const Color(0xFF1F4E45) : const Color(0xFFBEE9DF),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.location_on_rounded,
+                      size: 16,
+                      color: dark ? const Color(0xFF34D399) : const Color(0xFF067E6B),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'موقع التوصيل',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: dark ? const Color(0xFF6EE7B7) : const Color(0xFF067E6B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 8),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: statusBg,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: statusFg,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              addressText,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+                color: fg,
+              ),
+            ),
+            if (areaParts.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                areaParts.join(' · '),
+                style: TextStyle(fontSize: 11, color: meta),
+              ),
+            ],
+            if (location.customerNotes?.trim().isNotEmpty ?? false) ...[
+              const SizedBox(height: 5),
+              Text(
+                'ملاحظة: ${location.customerNotes!.trim()}',
+                style: TextStyle(fontSize: 11, color: meta),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (location.sourceLabel?.trim().isNotEmpty ?? false)
+                  Text(
+                    location.sourceLabel!,
+                    style: TextStyle(fontSize: 10.5, color: meta, fontWeight: FontWeight.w600),
+                  ),
+                if (location.accuracyMeters != null)
+                  Text(
+                    '±${location.accuracyMeters}م',
+                    style: TextStyle(fontSize: 10.5, color: meta),
+                  ),
+                InkWell(
+                  onTap: () async {
+                    final raw = location.googleMapsUrl ??
+                        'https://www.google.com/maps?q=${location.latitude},${location.longitude}';
+                    final uri = Uri.tryParse(raw);
+                    if (uri != null) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF067E6B),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.map_outlined, size: 12, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'فتح في الخريطة',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -75,6 +75,33 @@ final class TelegramWebhookParser
      */
     private function resolveTypeAndAttachments(array $message): array
     {
+        if (is_array($message['venue'] ?? null) && is_array($message['venue']['location'] ?? null)) {
+            $loc = $message['venue']['location'];
+
+            return ['location', [[
+                'kind' => 'location',
+                'source' => 'telegram_venue',
+                'latitude' => $loc['latitude'] ?? null,
+                'longitude' => $loc['longitude'] ?? null,
+                'horizontal_accuracy' => $loc['horizontal_accuracy'] ?? null,
+                'title' => $message['venue']['title'] ?? null,
+                'address' => $message['venue']['address'] ?? null,
+            ]]];
+        }
+
+        if (is_array($message['location'] ?? null)) {
+            $loc = $message['location'];
+
+            return ['location', [[
+                'kind' => 'location',
+                'source' => 'telegram_location',
+                'latitude' => $loc['latitude'] ?? null,
+                'longitude' => $loc['longitude'] ?? null,
+                'horizontal_accuracy' => $loc['horizontal_accuracy'] ?? null,
+                'live_period' => $loc['live_period'] ?? null,
+            ]]];
+        }
+
         if (is_array($message['photo'] ?? null)) {
             $photos = $message['photo'];
             $largest = is_array($photos) ? end($photos) : null;

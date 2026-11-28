@@ -183,9 +183,11 @@ class ConversationController extends Controller
         if ($activeConversationId) {
             $activeConversation = Conversation::query()
                 ->with([
+                    'customer.primaryLocation',
                     'customer.notes' => fn ($query) => $query->latest()->limit(8),
                     'customer.tags',
                     'customer.orders' => fn ($query) => $query->latest()->limit(8),
+                    'latestLocation',
                     'assignedUser:id,name',
                     'assignedWorkerEngagement:id,workspace_id,worker_profile_id,status',
                     'assignedWorkerEngagement.workerProfile:id,user_id,display_name',
@@ -705,6 +707,9 @@ class ConversationController extends Controller
                         : null,
                 ];
             })->values()->all(),
+            'location' => is_array(data_get($message->metadata, 'location'))
+                ? data_get($message->metadata, 'location')
+                : null,
         ];
     }
 

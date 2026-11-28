@@ -144,6 +144,9 @@ class MessageCreated implements ShouldBroadcastNow
                 'broadcast_at' => Carbon::now()->toIso8601String(),
                 'correlation_id' => $this->correlationId ?? CorrelationContext::id(),
                 'attachments' => $readyAttachments,
+                'location' => is_array(data_get($this->message->metadata, 'location'))
+                    ? data_get($this->message->metadata, 'location')
+                    : null,
             ];
         });
     }

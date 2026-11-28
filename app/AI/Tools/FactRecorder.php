@@ -33,6 +33,14 @@ final class FactRecorder
             CanonicalTools::EVALUATE_PRODUCT_SUITABILITY => $this->evaluationFacts($arguments, $payload),
             CanonicalTools::SAVE_CUSTOMER_COMMERCE_CONTEXT => $this->savedContextFacts($payload),
             CanonicalTools::TRANSFER_TO_HUMAN_AGENT => $this->handoffFacts($payload),
+            CanonicalTools::REQUEST_LOCATION_CAPTURE => $this->locationRequestFacts($payload),
+            CanonicalTools::GET_BOOKING_OPTIONS => $this->bookingOptionsFacts($payload),
+            CanonicalTools::CHECK_BOOKING_AVAILABILITY => $this->bookingAvailabilityFacts($payload),
+            CanonicalTools::GET_CUSTOMER_BOOKINGS => $this->customerBookingsFacts($payload),
+            CanonicalTools::CREATE_BOOKING,
+            CanonicalTools::RESCHEDULE_BOOKING,
+            CanonicalTools::UPDATE_BOOKING,
+            CanonicalTools::CANCEL_BOOKING => $this->bookingMutationFacts($toolName, $payload),
             default => [],
         };
     }
@@ -46,6 +54,54 @@ final class FactRecorder
             $reference = $request->conversationId !== null ? (string) $request->conversationId : null;
 
             return new ConfirmedAction(CanonicalTools::TRANSFER_TO_HUMAN_AGENT, $reference);
+        }
+
+        if ($toolName === CanonicalTools::CANCEL_CUSTOMER_ORDER && ($payload['cancelled'] ?? false) === true) {
+            $reference = isset($payload['order_number']) && is_string($payload['order_number'])
+                ? $payload['order_number']
+                : ($request->conversationId !== null ? (string) $request->conversationId : null);
+
+            return new ConfirmedAction(CanonicalTools::CANCEL_CUSTOMER_ORDER, $reference);
+        }
+
+        if ($toolName === CanonicalTools::UPDATE_CUSTOMER_ORDER && ($payload['updated'] ?? false) === true) {
+            $reference = isset($payload['order_number']) && is_string($payload['order_number'])
+                ? $payload['order_number']
+                : ($request->conversationId !== null ? (string) $request->conversationId : null);
+
+            return new ConfirmedAction(CanonicalTools::UPDATE_CUSTOMER_ORDER, $reference);
+        }
+
+        if ($toolName === CanonicalTools::REQUEST_LOCATION_CAPTURE && ($payload['requested'] ?? false) === true) {
+            $reference = isset($payload['capture_url']) && is_string($payload['capture_url'])
+                ? $payload['capture_url']
+                : ($request->conversationId !== null ? (string) $request->conversationId : null);
+
+            return new ConfirmedAction(CanonicalTools::REQUEST_LOCATION_CAPTURE, $reference);
+        }
+
+        if ($toolName === CanonicalTools::CREATE_BOOKING && ($payload['created'] ?? false) === true) {
+            $reference = is_string($payload['booking_reference'] ?? null) ? $payload['booking_reference'] : null;
+
+            return new ConfirmedAction(CanonicalTools::CREATE_BOOKING, $reference);
+        }
+
+        if ($toolName === CanonicalTools::RESCHEDULE_BOOKING && ($payload['rescheduled'] ?? false) === true) {
+            $reference = is_string($payload['booking_reference'] ?? null) ? $payload['booking_reference'] : null;
+
+            return new ConfirmedAction(CanonicalTools::RESCHEDULE_BOOKING, $reference);
+        }
+
+        if ($toolName === CanonicalTools::UPDATE_BOOKING && ($payload['updated'] ?? false) === true) {
+            $reference = is_string($payload['booking_reference'] ?? null) ? $payload['booking_reference'] : null;
+
+            return new ConfirmedAction(CanonicalTools::UPDATE_BOOKING, $reference);
+        }
+
+        if ($toolName === CanonicalTools::CANCEL_BOOKING && ($payload['cancelled'] ?? false) === true) {
+            $reference = is_string($payload['booking_reference'] ?? null) ? $payload['booking_reference'] : null;
+
+            return new ConfirmedAction(CanonicalTools::CANCEL_BOOKING, $reference);
         }
 
         if ($toolName !== CanonicalTools::SAVE_CUSTOMER_COMMERCE_CONTEXT) {
@@ -345,5 +401,125 @@ final class FactRecorder
         return [
             new FactRecord(CanonicalTools::TRANSFER_TO_HUMAN_AGENT, 'transferred', (bool) ($payload['transferred'] ?? false)),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<FactRecord>
+     */
+    private function locationRequestFacts(array $payload): array
+    {
+        $facts = [
+            new FactRecord(CanonicalTools::REQUEST_LOCATION_CAPTURE, 'requested', (bool) ($payload['requested'] ?? false)),
+        ];
+        if (isset($payload['capture_url']) && is_string($payload['capture_url']) && $payload['capture_url'] !== '') {
+            $facts[] = new FactRecord(CanonicalTools::REQUEST_LOCATION_CAPTURE, 'capture_url', $payload['capture_url']);
+        }
+        if (isset($payload['platform']) && is_string($payload['platform'])) {
+            $facts[] = new FactRecord(CanonicalTools::REQUEST_LOCATION_CAPTURE, 'platform', $payload['platform']);
+        }
+
+        return $facts;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<FactRecord>
+     */
+    private function bookingOptionsFacts(array $payload): array
+    {
+        $services = is_array($payload['services'] ?? null) ? $payload['services'] : [];
+        $facts = [
+            new FactRecord(CanonicalTools::GET_BOOKING_OPTIONS, 'booking_enabled', (bool) ($payload['booking_enabled'] ?? false)),
+            new FactRecord(CanonicalTools::GET_BOOKING_OPTIONS, 'result_status', $services !== [] ? 'available' : 'empty'),
+        ];
+
+        foreach (array_slice($services, 0, self::MAX_PRODUCT_FACTS) as $index => $service) {
+            if (! is_array($service)) {
+                continue;
+            }
+            $prefix = is_numeric($service['id'] ?? null) ? 'booking_service:'.(int) $service['id'] : 'booking_service:'.$index;
+            if (is_string($service['name'] ?? null) && trim($service['name']) !== '') {
+                $facts[] = new FactRecord(CanonicalTools::GET_BOOKING_OPTIONS, $prefix.'.name', $service['name']);
+            }
+            if (isset($service['price']) && is_numeric($service['price'])) {
+                $facts[] = new FactRecord(CanonicalTools::GET_BOOKING_OPTIONS, $prefix.'.price', $service['price']);
+            }
+            if (is_string($service['currency'] ?? null) && $service['currency'] !== '') {
+                $facts[] = new FactRecord(CanonicalTools::GET_BOOKING_OPTIONS, $prefix.'.currency', $service['currency']);
+            }
+        }
+
+        return $facts;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<FactRecord>
+     */
+    private function bookingAvailabilityFacts(array $payload): array
+    {
+        $slots = is_array($payload['available_slots'] ?? null) ? $payload['available_slots'] : [];
+        $facts = [
+            new FactRecord(CanonicalTools::CHECK_BOOKING_AVAILABILITY, 'available_count', count($slots)),
+            new FactRecord(CanonicalTools::CHECK_BOOKING_AVAILABILITY, 'result_status', $slots !== [] ? 'available' : 'empty'),
+        ];
+
+        foreach (array_slice($slots, 0, self::MAX_PRODUCT_FACTS) as $index => $slot) {
+            if (! is_array($slot)) {
+                continue;
+            }
+            $label = trim((string) ($slot['date'] ?? '').' '.(string) ($slot['start_time'] ?? ''));
+            if ($label !== '') {
+                $facts[] = new FactRecord(CanonicalTools::CHECK_BOOKING_AVAILABILITY, 'booking_slot:'.$index, $label);
+            }
+        }
+
+        return $facts;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<FactRecord>
+     */
+    private function customerBookingsFacts(array $payload): array
+    {
+        $rows = is_array($payload['bookings'] ?? null) ? $payload['bookings'] : [];
+        $facts = [new FactRecord(CanonicalTools::GET_CUSTOMER_BOOKINGS, 'count', count($rows))];
+        foreach (array_slice($rows, 0, self::MAX_PRODUCT_FACTS) as $index => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $prefix = 'customer_booking:'.$index;
+            foreach (['booking_reference', 'status', 'booking_date', 'start_time', 'service_name'] as $field) {
+                if (isset($row[$field]) && $this->isScalar($row[$field])) {
+                    $facts[] = new FactRecord(CanonicalTools::GET_CUSTOMER_BOOKINGS, $prefix.'.'.$field, $row[$field]);
+                }
+            }
+        }
+
+        return $facts;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<FactRecord>
+     */
+    private function bookingMutationFacts(string $toolName, array $payload): array
+    {
+        $facts = [];
+        if (is_string($payload['booking_reference'] ?? null) && $payload['booking_reference'] !== '') {
+            $facts[] = new FactRecord($toolName, 'booking_reference', $payload['booking_reference']);
+        }
+        $booking = is_array($payload['booking'] ?? null) ? $payload['booking'] : null;
+        if ($booking !== null) {
+            foreach (['service_name', 'booking_date', 'start_time', 'status', 'price', 'currency'] as $field) {
+                if (isset($booking[$field]) && $this->isScalar($booking[$field]) && $booking[$field] !== '') {
+                    $facts[] = new FactRecord($toolName, 'booking.'.$field, $booking[$field]);
+                }
+            }
+        }
+
+        return $facts;
     }
 }

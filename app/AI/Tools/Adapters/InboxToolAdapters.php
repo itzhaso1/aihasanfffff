@@ -7,22 +7,32 @@ namespace App\AI\Tools\Adapters;
 use App\AI\Tools\CanonicalTools;
 use App\AI\Tools\Contracts\RuntimeTool;
 use App\AI\Tools\ToolRegistry;
+use App\Services\AI\Inbox\Tools\CancelBookingTool;
+use App\Services\AI\Inbox\Tools\CancelCustomerOrderTool;
+use App\Services\AI\Inbox\Tools\CheckBookingAvailabilityTool;
 use App\Services\AI\Inbox\Tools\CheckProductAvailabilityTool;
 use App\Services\AI\Inbox\Tools\CompareProductsTool;
+use App\Services\AI\Inbox\Tools\CreateBookingTool;
 use App\Services\AI\Inbox\Tools\CreateCustomerOrderTool;
 use App\Services\AI\Inbox\Tools\EvaluateProductSuitabilityTool;
 use App\Services\AI\Inbox\Tools\GetActiveOffersTool;
+use App\Services\AI\Inbox\Tools\GetBookingOptionsTool;
 use App\Services\AI\Inbox\Tools\GetCurrentPriceTool;
+use App\Services\AI\Inbox\Tools\GetCustomerBookingsTool;
 use App\Services\AI\Inbox\Tools\GetOrderStatusTool;
 use App\Services\AI\Inbox\Tools\GetProductDetailsTool;
 use App\Services\AI\Inbox\Tools\GetProductIntelligenceTool;
 use App\Services\AI\Inbox\Tools\GetProductVariantsTool;
 use App\Services\AI\Inbox\Tools\GetShippingInformationTool;
 use App\Services\AI\Inbox\Tools\GetStoreInformationTool;
+use App\Services\AI\Inbox\Tools\RequestLocationCaptureTool;
+use App\Services\AI\Inbox\Tools\RescheduleBookingTool;
 use App\Services\AI\Inbox\Tools\SaveCustomerCommerceContextTool;
 use App\Services\AI\Inbox\Tools\SearchProductsTool;
 use App\Services\AI\Inbox\Tools\SendProductImageTool;
 use App\Services\AI\Inbox\Tools\TransferToHumanAgentTool;
+use App\Services\AI\Inbox\Tools\UpdateBookingTool;
+use App\Services\AI\Inbox\Tools\UpdateCustomerOrderTool;
 
 final class InboxToolAdapters
 {
@@ -42,7 +52,17 @@ final class InboxToolAdapters
         private readonly EvaluateProductSuitabilityTool $evaluateSuitability,
         private readonly SaveCustomerCommerceContextTool $saveCustomerContext,
         private readonly CreateCustomerOrderTool $createCustomerOrder,
+        private readonly UpdateCustomerOrderTool $updateCustomerOrder,
+        private readonly CancelCustomerOrderTool $cancelCustomerOrder,
         private readonly SendProductImageTool $sendProductImage,
+        private readonly RequestLocationCaptureTool $requestLocationCapture,
+        private readonly GetBookingOptionsTool $getBookingOptions,
+        private readonly CheckBookingAvailabilityTool $checkBookingAvailability,
+        private readonly GetCustomerBookingsTool $getCustomerBookings,
+        private readonly CreateBookingTool $createBooking,
+        private readonly RescheduleBookingTool $rescheduleBooking,
+        private readonly UpdateBookingTool $updateBooking,
+        private readonly CancelBookingTool $cancelBooking,
         private readonly InboxToolContextFactory $contexts = new InboxToolContextFactory,
     ) {}
 
@@ -67,7 +87,17 @@ final class InboxToolAdapters
             new InboxToolAdapter($this->productIntelligence, CanonicalTools::getProductIntelligence(), $this->contexts),
             new InboxToolAdapter($this->saveCustomerContext, CanonicalTools::saveCustomerCommerceContext(), $this->contexts),
             new InboxToolAdapter($this->createCustomerOrder, CanonicalTools::createCustomerOrder(), $this->contexts),
+            new InboxToolAdapter($this->updateCustomerOrder, CanonicalTools::updateCustomerOrder(), $this->contexts),
+            new InboxToolAdapter($this->cancelCustomerOrder, CanonicalTools::cancelCustomerOrder(), $this->contexts),
             new InboxToolAdapter($this->sendProductImage, CanonicalTools::sendProductImage(), $this->contexts),
+            new InboxToolAdapter($this->requestLocationCapture, CanonicalTools::requestLocationCapture(), $this->contexts),
+            new InboxToolAdapter($this->getBookingOptions, CanonicalTools::getBookingOptions(), $this->contexts),
+            new InboxToolAdapter($this->checkBookingAvailability, CanonicalTools::checkBookingAvailability(), $this->contexts),
+            new InboxToolAdapter($this->getCustomerBookings, CanonicalTools::getCustomerBookings(), $this->contexts),
+            new InboxToolAdapter($this->createBooking, CanonicalTools::createBooking(), $this->contexts),
+            new InboxToolAdapter($this->rescheduleBooking, CanonicalTools::rescheduleBooking(), $this->contexts),
+            new InboxToolAdapter($this->updateBooking, CanonicalTools::updateBooking(), $this->contexts),
+            new InboxToolAdapter($this->cancelBooking, CanonicalTools::cancelBooking(), $this->contexts),
         ];
     }
 

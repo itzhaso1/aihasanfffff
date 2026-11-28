@@ -290,6 +290,99 @@ class MessageAttachmentModel extends Equatable {
   List<Object?> get props => [id, kind, downloadUrl, previewUrl];
 }
 
+class MessageLocationModel extends Equatable {
+  const MessageLocationModel({
+    required this.latitude,
+    required this.longitude,
+    this.id,
+    this.accuracyMeters,
+    this.source,
+    this.sourceLabel,
+    this.platform,
+    this.verificationStatus = 'pending_confirmation',
+    this.verificationLabel,
+    this.formattedAddress,
+    this.city,
+    this.district,
+    this.street,
+    this.placeName,
+    this.customerNotes,
+    this.googleMapsUrl,
+  });
+
+  final int? id;
+  final double latitude;
+  final double longitude;
+  final int? accuracyMeters;
+  final String? source;
+  final String? sourceLabel;
+  final String? platform;
+  final String verificationStatus;
+  final String? verificationLabel;
+  final String? formattedAddress;
+  final String? city;
+  final String? district;
+  final String? street;
+  final String? placeName;
+  final String? customerNotes;
+  final String? googleMapsUrl;
+
+  factory MessageLocationModel.fromJson(Map<String, dynamic> json) {
+    final lat = (json['latitude'] as num?)?.toDouble() ?? 0.0;
+    final lng = (json['longitude'] as num?)?.toDouble() ?? 0.0;
+    return MessageLocationModel(
+      id: asNullableInt(json['id']),
+      latitude: lat,
+      longitude: lng,
+      accuracyMeters: asNullableInt(json['accuracy_meters']),
+      source: json['source']?.toString(),
+      sourceLabel: json['source_label']?.toString(),
+      platform: json['platform']?.toString(),
+      verificationStatus:
+          json['verification_status']?.toString() ?? 'pending_confirmation',
+      verificationLabel: json['verification_label']?.toString(),
+      formattedAddress: json['formatted_address']?.toString(),
+      city: json['city']?.toString(),
+      district: json['district']?.toString(),
+      street: json['street']?.toString(),
+      placeName: json['place_name']?.toString(),
+      customerNotes: json['customer_notes']?.toString(),
+      googleMapsUrl: json['google_maps_url']?.toString() ??
+          'https://www.google.com/maps?q=${lat.toStringAsFixed(7)},${lng.toStringAsFixed(7)}',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) 'id': id,
+    'latitude': latitude,
+    'longitude': longitude,
+    if (accuracyMeters != null) 'accuracy_meters': accuracyMeters,
+    if (source != null) 'source': source,
+    if (sourceLabel != null) 'source_label': sourceLabel,
+    if (platform != null) 'platform': platform,
+    'verification_status': verificationStatus,
+    if (verificationLabel != null) 'verification_label': verificationLabel,
+    if (formattedAddress != null) 'formatted_address': formattedAddress,
+    if (city != null) 'city': city,
+    if (district != null) 'district': district,
+    if (street != null) 'street': street,
+    if (placeName != null) 'place_name': placeName,
+    if (customerNotes != null) 'customer_notes': customerNotes,
+    if (googleMapsUrl != null) 'google_maps_url': googleMapsUrl,
+  };
+
+  @override
+  List<Object?> get props => [
+    id,
+    latitude,
+    longitude,
+    accuracyMeters,
+    verificationStatus,
+    formattedAddress,
+    customerNotes,
+  ];
+}
+
 class MessageModel extends Equatable {
   const MessageModel({
     required this.id,
@@ -316,6 +409,7 @@ class MessageModel extends Equatable {
     this.workerEngagementId,
     this.senderUserId,
     this.participantType,
+    this.location,
   });
 
   final int id;
@@ -342,6 +436,7 @@ class MessageModel extends Equatable {
   final int? workerEngagementId;
   final int? senderUserId;
   final String? participantType;
+  final MessageLocationModel? location;
 
   OutboundPhase get outboundPhase {
     if (localFailed || deliveryStatus?.toLowerCase() == 'failed') {
@@ -490,6 +585,11 @@ class MessageModel extends Equatable {
               ? asNullableInt(payload['user']['id'])
               : null),
       participantType: payload['participant_type']?.toString(),
+      location: payload['location'] is Map
+          ? MessageLocationModel.fromJson(
+              Map<String, dynamic>.from(payload['location'] as Map),
+            )
+          : null,
     );
   }
 
@@ -512,6 +612,7 @@ class MessageModel extends Equatable {
     DateTime? createdAt,
     String? localAttachmentPath,
     bool clearLocalAttachmentPath = false,
+    MessageLocationModel? location,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -542,6 +643,7 @@ class MessageModel extends Equatable {
       workerEngagementId: workerEngagementId,
       senderUserId: senderUserId,
       participantType: participantType,
+      location: location ?? this.location,
     );
   }
 
@@ -557,6 +659,7 @@ class MessageModel extends Equatable {
     if (deliveredAt != null) 'delivered_at': deliveredAt!.toIso8601String(),
     if (readAt != null) 'read_at': readAt!.toIso8601String(),
     'created_at': createdAt?.toIso8601String(),
+    if (location != null) 'location': location!.toJson(),
     'attachments': attachments
         .map(
           (a) => {
@@ -585,6 +688,7 @@ class MessageModel extends Equatable {
     localError,
     deliveryStatus,
     attachments.length,
+    location,
   ];
 }
 

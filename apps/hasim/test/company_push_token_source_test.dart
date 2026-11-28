@@ -15,6 +15,8 @@ class _FakeGateway implements NativeMessagingGateway {
   String? tokenValue;
   bool throwOnInit = false;
   final refreshesController = StreamController<String>.broadcast();
+  final foregroundController =
+      StreamController<Map<String, dynamic>>.broadcast();
   final openedController = StreamController<Map<String, dynamic>>.broadcast();
   Map<String, dynamic>? launch;
   var initialized = false;
@@ -36,6 +38,10 @@ class _FakeGateway implements NativeMessagingGateway {
 
   @override
   Stream<String> get tokenRefreshes => refreshesController.stream;
+
+  @override
+  Stream<Map<String, dynamic>> get foregroundMessages =>
+      foregroundController.stream;
 
   @override
   Stream<Map<String, dynamic>> get openedNotifications => openedController.stream;

@@ -38,6 +38,7 @@ class ReverbWebSocketClient {
     required String channelPrefix,
     Duration pingInterval = const Duration(seconds: 25),
     this.onChannelSubscribed,
+    this.onSubscriptionStateChanged,
   })  : _apiClient = apiClient,
         _host = host,
         _port = port,
@@ -56,6 +57,7 @@ class ReverbWebSocketClient {
   final String _channelPrefix;
   final Duration _pingInterval;
   final void Function(String channel)? onChannelSubscribed;
+  final void Function()? onSubscriptionStateChanged;
 
   WsTransport? _socket;
   StreamSubscription<dynamic>? _socketSub;
@@ -104,11 +106,25 @@ class ReverbWebSocketClient {
   RealtimeConnectionState get state => _state;
   bool get isConnected => _state == RealtimeConnectionState.connected;
   Set<String> get confirmedChannels => Set.unmodifiable(_confirmedChannels);
+  bool get hasConfirmedDesiredChannels {
+    if (_desiredChannels.isEmpty) return false;
+    for (final ch in _desiredChannels) {
+      if (!_confirmedChannels.contains(ch)) return false;
+    }
+    return true;
+  }
 
   void updateWorkspace(int? workspaceId) {
-    if (_workspaceId == workspaceId) return;
+    if (_workspaceId == workspaceId) {
+      if (isConnected && !hasConfirmedDesiredChannels) {
+        _syncSubscriptions();
+      }
+      return;
+    }
     _workspaceId = workspaceId;
+    _subscribeRetryAttempts.clear();
     _rebuildDesiredChannels();
+    onSubscriptionStateChanged?.call();
     if (isConnected) {
       _syncSubscriptions();
     }
@@ -122,6 +138,7 @@ class ReverbWebSocketClient {
         ? null
         : ((workspaceId != null && workspaceId > 0) ? workspaceId : _workspaceId);
     _rebuildDesiredChannels();
+    onSubscriptionStateChanged?.call();
     final targetWsId = _watchingWorkspaceId ?? _workspaceId;
     if (!isConnected) return;
 
@@ -138,6 +155,7 @@ class ReverbWebSocketClient {
         targetWsId != null &&
         targetWsId > 0) {
       final newChannel = _conversationChannelName(targetWsId, conversationId);
+      _subscribeRetryAttempts.remove(newChannel);
       if (!_confirmedChannels.contains(newChannel)) {
         unawaited(_subscribePrivate(newChannel));
       }
@@ -239,6 +257,10 @@ class ReverbWebSocketClient {
       }
       return;
     }
+    if (!hasConfirmedDesiredChannels) {
+      _subscribeRetryAttempts.clear();
+      _syncSubscriptions();
+    }
     _sendHeartbeatPing(timeout: const Duration(milliseconds: 2500));
   }
 
@@ -321,6 +343,7 @@ class ReverbWebSocketClient {
             if (kDebugMode) {
               debugPrint('[REALTIME_WS] Subscription confirmed: $channel');
             }
+            onSubscriptionStateChanged?.call();
             onChannelSubscribed?.call(channel);
           }
 
@@ -336,6 +359,7 @@ class ReverbWebSocketClient {
           if (channel.isNotEmpty) {
             _confirmedChannels.remove(channel);
             _inFlightAuthChannels.remove(channel);
+            onSubscriptionStateChanged?.call();
             _scheduleChannelSubscribeRetry(channel);
           }
 
@@ -381,7 +405,7 @@ class ReverbWebSocketClient {
               final conversation = ConversationModel.fromJson(data);
               final convSigKey = 'conv:${conversation.id}';
               final convSigVal =
-                  '${conversation.handoffVersion}:${conversation.status}:${conversation.aiEnabled}:${conversation.handoffStatus}:${conversation.assignedUserId}:${conversation.responder?.status}:${conversation.responder?.isAiGenerating}:${conversation.responder?.isTyping}:${conversation.lastMessage?.id}';
+                  '${conversation.handoffVersion}:${conversation.status}:${conversation.aiEnabled}:${conversation.handoffStatus}:${conversation.assignedUserId}:${conversation.responder?.status}:${conversation.responder?.isAiGenerating}:${conversation.responder?.isTyping}:${conversation.lastMessage?.id}:${conversation.lastMessage?.content.hashCode ?? 0}:${conversation.lastMessage?.attachments.length ?? 0}:${conversation.lastMessageAt?.millisecondsSinceEpoch ?? 0}:${conversation.hasUnreadCount ? conversation.unreadCount : ''}';
               if (_isDuplicateFrame(convSigKey, convSigVal)) {
                 return;
               }
@@ -599,6 +623,8 @@ class ReverbWebSocketClient {
 
       if (result.permanentFailure) {
         _inFlightAuthChannels.remove(channel);
+        _confirmedChannels.remove(channel);
+        onSubscriptionStateChanged?.call();
         return;
       }
 
@@ -636,7 +662,10 @@ class ReverbWebSocketClient {
     }
     if (_subscribeRetryTimers.containsKey(channel)) return;
     final attempts = (_subscribeRetryAttempts[channel] ?? 0) + 1;
-    if (attempts > 5) return;
+    if (attempts > 5) {
+      onSubscriptionStateChanged?.call();
+      return;
+    }
     _subscribeRetryAttempts[channel] = attempts;
     final delay = _backoffWithJitter(1 << (attempts - 1), maxSeconds: 15);
     _subscribeRetryTimers[channel] = Timer(delay, () {

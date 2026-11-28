@@ -76,10 +76,13 @@ class ConversationController extends MobileController
 
         return $this->ok(
             ConversationResource::collection($items),
-            $this->cursorMeta(
-                $paginator->nextCursor()?->encode(),
-                $paginator->previousCursor()?->encode(),
-                $perPage,
+            array_merge(
+                $this->cursorMeta(
+                    $paginator->nextCursor()?->encode(),
+                    $paginator->previousCursor()?->encode(),
+                    $perPage,
+                ),
+                ['server_time' => now()->toIso8601String()],
             ),
         );
     }

@@ -13,6 +13,8 @@ use App\Models\WhatsAppPhoneNumber;
 use App\Services\Customer\CustomerChannelIdentityService;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Inbox\InboxRealtimePublisher;
+use App\Services\Location\LocationCaptureService;
+use App\Services\Location\LocationPayloadNormalizer;
 use App\Services\Media\InboundMediaCoordinator;
 use App\Support\Http\WebhookHeaderSanitizer;
 use App\Support\Observability\CorrelationContext;
@@ -350,6 +352,18 @@ class WhatsAppService
                 $customer->update([
                     'last_conversation_at' => $message->created_at,
                 ]);
+            }
+
+            if ($parsed['message_type'] === 'location') {
+                $normalizedLocation = app(LocationPayloadNormalizer::class)->fromWhatsApp(
+                    $messageData,
+                    (int) $conversation->id,
+                    (int) $customer->id,
+                );
+                if ($normalizedLocation !== null) {
+                    app(LocationCaptureService::class)->ingestChannelLocation($conversation, $message, $normalizedLocation);
+                    $message = $message->fresh() ?? $message;
+                }
             }
 
             $conversation = $conversation->fresh() ?? $conversation;

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math' as math;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -24,11 +25,14 @@ class HybridRealtimeService
     ConversationRepository? repository,
     VoidCallback? onLocalInboxChange,
     Connectivity? connectivity,
+    Stream<Map<String, dynamic>>? foregroundPushStream,
   })  : _apiClient = apiClient,
         _workspaceIdOf = workspaceIdOf,
         _repository = repository,
         _onLocalInboxChange = onLocalInboxChange,
-        _connectivity = connectivity {
+        _connectivity = connectivity,
+        _foregroundPushStream = foregroundPushStream {
+    _polling.paused = true;
     _listenToPolling();
   }
 
@@ -36,11 +40,42 @@ class HybridRealtimeService
     _pollingMessageSub ??= _polling.messageCreated.listen(_onIncomingMessage);
     _pollingStatusSub ??= _polling.messageStatusUpdated.listen(_onStatusUpdated);
     _pollingListSub ??= _polling.conversationsChanged.listen((_) {
-      if (!isWebSocketConnected) {
+      if (!isWebSocketConnected && !_disposed && !_listController.isClosed) {
         _listController.add(null);
       }
     });
   }
+
+  void _listenToPush() {
+    final stream = _foregroundPushStream;
+    if (stream == null || _pushForegroundSub != null) return;
+    _pushForegroundSub = stream.listen((data) {
+      if (!_started || _disposed) return;
+      final type = data['type']?.toString().toLowerCase() ?? '';
+      final convId = _parseInt(data['conversation_id']);
+      if (type != 'message' && convId == null && data['message_id'] == null) {
+        return;
+      }
+      _needsCatchUpSync = true;
+      if (_wsClient != null) {
+        _wsClient!.verifyConnectionOrReconnect();
+      }
+      if (convId != null && convId > 0 && convId == _activeConversationId) {
+        unawaited(catchUpConversation(convId));
+      } else if (_activeConversationId != null && _activeConversationId! > 0) {
+        unawaited(catchUpConversation(_activeConversationId!));
+      }
+      if (!isWebSocketConnected) {
+        _polling.triggerPoll();
+      }
+      if (!_disposed && !_reconnectController.isClosed) {
+        _reconnectController.add(null);
+      }
+    }, onError: (_) {});
+  }
+
+  static int? _parseInt(dynamic v) =>
+      v is num ? v.toInt() : int.tryParse(v?.toString() ?? '');
 
   final PollingRealtimeService _polling;
   final ApiClient _apiClient;
@@ -48,11 +83,13 @@ class HybridRealtimeService
   final ConversationRepository? _repository;
   final VoidCallback? _onLocalInboxChange;
   final Connectivity? _connectivity;
+  final Stream<Map<String, dynamic>>? _foregroundPushStream;
 
   ReverbWebSocketClient? _wsClient;
   StreamSubscription<MessageModel>? _pollingMessageSub;
   StreamSubscription<MessageStatusUpdate>? _pollingStatusSub;
   StreamSubscription<void>? _pollingListSub;
+  StreamSubscription<Map<String, dynamic>>? _pushForegroundSub;
   StreamSubscription<MessageModel>? _wsMessageSub;
   StreamSubscription<ConversationModel>? _wsConversationSub;
   StreamSubscription<MessageStatusUpdate>? _wsStatusSub;
@@ -135,34 +172,48 @@ class HybridRealtimeService
     _explicitlyDisabled = false;
     _lastWorkspaceId = _workspaceIdOf?.call();
     _listenToPolling();
+    _listenToPush();
     _attachLifecycleObserver();
     _attachConnectivityObserver();
 
     if (!alreadyStarted) {
       await _polling.start();
     }
+    _syncPollingState();
     await _attemptConfigAndConnect();
   }
 
   @override
   void updateWorkspace(int? workspaceId) {
     if (_disposed) return;
-    if (workspaceId != _lastWorkspaceId) {
+    final changed = workspaceId != _lastWorkspaceId;
+    if (changed) {
       _lastWorkspaceId = workspaceId;
       _seenSignatures.clear();
       _polling.updateWorkspace(workspaceId);
-      _wsClient?.updateWorkspace(workspaceId);
-      if (_started && workspaceId != null && workspaceId > 0) {
-        _needsCatchUpSync = true;
-        if (isWebSocketConnected) {
-          _scheduleCatchUpSync();
-        } else if (!_disposed) {
-          _reconnectController.add(null);
-        }
-      }
-      return;
     }
     _wsClient?.updateWorkspace(workspaceId);
+    _syncPollingState();
+
+    if (_started && !_websocketConfigured) {
+      _explicitlyDisabled = false;
+      _configRetryTimer?.cancel();
+      _configRetryTimer = null;
+      _configRetryAttempts = 0;
+      unawaited(_attemptConfigAndConnect());
+    }
+
+    if (changed && _started && workspaceId != null && workspaceId > 0) {
+      _needsCatchUpSync = true;
+      if (isWebSocketConnected) {
+        _scheduleCatchUpSync();
+      } else {
+        if (!_disposed && !_reconnectController.isClosed) {
+          _reconnectController.add(null);
+        }
+        _polling.triggerPoll();
+      }
+    }
   }
 
   @override
@@ -270,17 +321,26 @@ class HybridRealtimeService
       if (kDebugMode) {
         debugPrint('[HYBRID_REALTIME] App resumed; verifying realtime transport...');
       }
-      if (!_websocketConfigured && !_explicitlyDisabled) {
+      if (!_websocketConfigured) {
+        _explicitlyDisabled = false;
+        _configRetryTimer?.cancel();
+        _configRetryTimer = null;
         _configRetryAttempts = 0;
         unawaited(_attemptConfigAndConnect());
-      } else if (_wsClient != null) {
+      }
+      if (_wsClient != null) {
         _needsCatchUpSync = true;
         _wsClient!.verifyConnectionOrReconnect();
-        if (_wsClient!.isConnected) {
+        if (isWebSocketConnected) {
           _scheduleCatchUpSync();
+        } else {
+          _polling.triggerPoll();
         }
       } else {
         _polling.triggerPoll();
+        if (!_disposed && !_reconnectController.isClosed) {
+          _reconnectController.add(null);
+        }
       }
     }
   }
@@ -309,7 +369,8 @@ class HybridRealtimeService
     if (result.explicitDisabled) {
       _explicitlyDisabled = true;
       _websocketConfigured = false;
-      _polling.paused = false;
+      _syncPollingState();
+      _scheduleConfigRetry(delayOverrideSec: 60);
       return;
     }
 
@@ -318,35 +379,49 @@ class HybridRealtimeService
       _configRetryTimer = null;
       _configRetryAttempts = 0;
       _websocketConfigured = true;
-      _polling.paused = true;
+      // Keep polling active until channel subscription actually succeeds.
+      _syncPollingState();
       _initWebSocket(config);
       return;
     }
 
     _websocketConfigured = false;
-    _polling.paused = false;
+    _syncPollingState();
     _scheduleConfigRetry();
   }
 
-  void _scheduleConfigRetry() {
-    if (!_started || _disposed || _websocketConfigured || _explicitlyDisabled) {
+  void _scheduleConfigRetry({int? delayOverrideSec}) {
+    if (!_started || _disposed || _websocketConfigured) {
+      return;
+    }
+    if (delayOverrideSec == null && _explicitlyDisabled) {
       return;
     }
     if (_configRetryTimer != null) return;
-    _configRetryAttempts = (_configRetryAttempts + 1).clamp(1, 5);
-    final delaySec = switch (_configRetryAttempts) {
-      1 => 2,
-      2 => 5,
-      3 => 10,
-      4 => 20,
-      _ => 30,
-    };
+    final int delaySec;
+    if (delayOverrideSec != null) {
+      delaySec = delayOverrideSec;
+    } else {
+      _configRetryAttempts = (_configRetryAttempts + 1).clamp(1, 5);
+      delaySec = switch (_configRetryAttempts) {
+        1 => 2,
+        2 => 5,
+        3 => 10,
+        4 => 20,
+        _ => 30,
+      };
+    }
     _configRetryTimer = Timer(Duration(seconds: delaySec), () {
       _configRetryTimer = null;
       if (_started && !_disposed && !_websocketConfigured) {
         unawaited(_attemptConfigAndConnect());
       }
     });
+  }
+
+  void _syncPollingState() {
+    final live = _started && !_disposed && isWebSocketConnected;
+    _polling.paused = live;
   }
 
   void _initWebSocket(Map<String, dynamic> config) {
@@ -364,7 +439,10 @@ class HybridRealtimeService
         config['auth_endpoint']?.toString() ?? '/api/broadcasting/auth';
     final channelPrefix =
         config['channel_prefix']?.toString() ?? 'private-workspace.';
-    final pingSec = (config['ping_interval'] as num?)?.toInt() ?? 25;
+    final activitySec = (config['activity_timeout'] as num?)?.toInt() ?? 30;
+    final maxSafePing = math.max(12, math.min(activitySec - 5, 22));
+    final pingSec =
+        ((config['ping_interval'] as num?)?.toInt() ?? 20).clamp(12, maxSafePing);
 
     final client = ReverbWebSocketClient(
       apiClient: _apiClient,
@@ -374,8 +452,13 @@ class HybridRealtimeService
       scheme: scheme,
       authEndpoint: authEndpoint,
       channelPrefix: channelPrefix,
-      pingInterval: Duration(seconds: pingSec.clamp(15, 60)),
+      pingInterval: Duration(seconds: pingSec),
+      onSubscriptionStateChanged: _syncPollingState,
       onChannelSubscribed: (_) {
+        _syncPollingState();
+        if (isWebSocketConnected && !_disposed && !_connectionStateController.isClosed) {
+          _connectionStateController.add(RealtimeConnectionState.connected);
+        }
         if (_needsCatchUpSync) {
           _scheduleCatchUpSync();
         }
@@ -392,11 +475,11 @@ class HybridRealtimeService
       if (!_disposed && !_connectionStateController.isClosed) {
         _connectionStateController.add(state);
       }
+      _syncPollingState();
       if (state == RealtimeConnectionState.connected) {
         if (kDebugMode) {
-          debugPrint('[HYBRID_REALTIME] WebSocket connected. Pausing polling.');
+          debugPrint('[HYBRID_REALTIME] WebSocket connected (awaiting channel auth).');
         }
-        _polling.paused = true;
         if (_needsCatchUpSync) {
           _scheduleCatchUpSync();
         }
@@ -405,10 +488,9 @@ class HybridRealtimeService
         _needsCatchUpSync = true;
         if (kDebugMode) {
           debugPrint(
-            '[HYBRID_REALTIME] WebSocket $state. Resuming fallback polling.',
+            '[HYBRID_REALTIME] WebSocket $state. Fallback polling active.',
           );
         }
-        _polling.paused = false;
       }
     });
 
@@ -419,6 +501,7 @@ class HybridRealtimeService
         workspaceId: _watchingWorkspaceId,
       );
     }
+    _syncPollingState();
     unawaited(client.connect());
   }
 
@@ -570,17 +653,25 @@ class HybridRealtimeService
   @override
   Future<void> stop() async {
     _started = false;
+    _websocketConfigured = false;
+    _explicitlyDisabled = false;
+    _configRetryAttempts = 0;
+    _configInFlight = null;
+    _needsCatchUpSync = false;
     _configRetryTimer?.cancel();
     _configRetryTimer = null;
     _catchUpDebounce?.cancel();
     _catchUpDebounce = null;
+    _polling.paused = true;
     await _polling.stop();
     await _pollingMessageSub?.cancel();
     await _pollingStatusSub?.cancel();
     await _pollingListSub?.cancel();
+    await _pushForegroundSub?.cancel();
     _pollingMessageSub = null;
     _pollingStatusSub = null;
     _pollingListSub = null;
+    _pushForegroundSub = null;
     await _wsMessageSub?.cancel();
     await _wsConversationSub?.cancel();
     await _wsStatusSub?.cancel();
@@ -591,7 +682,15 @@ class HybridRealtimeService
     _wsStateSub = null;
     await _connectivitySub?.cancel();
     _connectivitySub = null;
-    await _wsClient?.disconnect();
+    final oldWs = _wsClient;
+    _wsClient = null;
+    if (oldWs != null) {
+      await oldWs.disconnect();
+      oldWs.dispose();
+    }
+    if (!_disposed && !_connectionStateController.isClosed) {
+      _connectionStateController.add(RealtimeConnectionState.disconnected);
+    }
   }
 
   @override
@@ -600,7 +699,7 @@ class HybridRealtimeService
     _watchingWorkspaceId = conversationId == null ? null : workspaceId;
     _wsClient?.updateWorkspace(_workspaceIdOf?.call());
     _wsClient?.watchConversation(conversationId, workspaceId: workspaceId);
-    _polling.watchConversation(conversationId);
+    _syncPollingState();
 
     final wsId = workspaceId ?? _workspaceIdOf?.call();
     final repo = _repository;
@@ -608,13 +707,27 @@ class HybridRealtimeService
         conversationId > 0 &&
         wsId != null &&
         repo != null) {
+      // Set active id immediately without firing an unseeded full-page poll before seedMax loads.
+      _polling.watchConversation(
+        conversationId,
+        workspaceId: workspaceId,
+        pollNow: false,
+      );
       unawaited(
         repo.maxCachedServerMessageId(wsId, conversationId).then((maxId) {
-          if (_activeConversationId == conversationId && maxId > 0) {
+          if (_disposed || _activeConversationId != conversationId) return;
+          if (maxId > 0) {
             _polling.setSeedMaxMessageId(conversationId, maxId);
+          }
+          if (!isWebSocketConnected && !_polling.paused) {
+            unawaited(
+              _polling.catchUpConversation(conversationId, afterId: maxId),
+            );
           }
         }).catchError((_) {}),
       );
+    } else {
+      _polling.watchConversation(conversationId, workspaceId: workspaceId);
     }
   }
 
@@ -626,12 +739,14 @@ class HybridRealtimeService
     }
     _wsClient?.updateWorkspace(_workspaceIdOf?.call());
     _wsClient?.unwatchConversation(conversationId);
+    _syncPollingState();
     _polling.unwatchConversation(conversationId);
   }
 
   @override
   void triggerPoll() {
     _wsClient?.updateWorkspace(_workspaceIdOf?.call());
+    _syncPollingState();
     if (isWebSocketConnected) {
       _scheduleCatchUpSync();
       return;
@@ -670,7 +785,9 @@ class HybridRealtimeService
   @override
   int? get activeConversationId => _activeConversationId;
   @override
-  bool get isWebSocketConnected => _wsClient?.isConnected ?? false;
+  bool get isWebSocketConnected =>
+      (_wsClient?.isConnected ?? false) &&
+      (_wsClient?.hasConfirmedDesiredChannels ?? false);
 
   @override
   void dispose() {

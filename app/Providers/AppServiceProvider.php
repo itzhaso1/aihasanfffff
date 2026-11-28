@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\AI\Core\Contracts\ModelGateway;
 use App\AI\Inbox\HasimInboxRuntime;
 use App\AI\Models\HasimModelGateway;
+use App\Models\Booking;
 use App\Models\ChatCatalog;
 use App\Models\ChatCatalogCategory;
 use App\Models\ChatCatalogCommunicationProfile;
@@ -40,6 +41,7 @@ use App\Observers\ChatCatalogAuditObserver;
 use App\Observers\ChatCatalogSensitiveAuditObserver;
 use App\Observers\CommerceSensitiveAuditObserver;
 use App\Observers\WorkspaceAuditObserver;
+use App\Policies\BookingPolicy;
 use App\Policies\ChatCatalogCategoryPolicy;
 use App\Policies\ChatCatalogDigitalInventoryPoolPolicy;
 use App\Policies\ChatCatalogDigitalInventoryUnitPolicy;
@@ -64,12 +66,18 @@ use App\Services\AI\Contracts\GeminiInteractionsClient;
 use App\Services\AI\Gemini\GeminiInteractionsHttpClient;
 use App\Services\AI\Inbox\Memory\Contracts\InboxAgentMemoryExtractor;
 use App\Services\AI\Inbox\Memory\LlmInboxAgentMemoryExtractor;
+use App\Services\AI\Inbox\Tools\CancelBookingTool;
+use App\Services\AI\Inbox\Tools\CancelCustomerOrderTool;
+use App\Services\AI\Inbox\Tools\CheckBookingAvailabilityTool;
 use App\Services\AI\Inbox\Tools\CheckProductAvailabilityTool;
 use App\Services\AI\Inbox\Tools\CompareProductsTool;
+use App\Services\AI\Inbox\Tools\CreateBookingTool;
 use App\Services\AI\Inbox\Tools\CreateCustomerOrderTool;
 use App\Services\AI\Inbox\Tools\EvaluateProductSuitabilityTool;
 use App\Services\AI\Inbox\Tools\GetActiveOffersTool;
+use App\Services\AI\Inbox\Tools\GetBookingOptionsTool;
 use App\Services\AI\Inbox\Tools\GetCurrentPriceTool;
+use App\Services\AI\Inbox\Tools\GetCustomerBookingsTool;
 use App\Services\AI\Inbox\Tools\GetOrderStatusTool;
 use App\Services\AI\Inbox\Tools\GetProductDetailsTool;
 use App\Services\AI\Inbox\Tools\GetProductIntelligenceTool;
@@ -77,10 +85,14 @@ use App\Services\AI\Inbox\Tools\GetProductVariantsTool;
 use App\Services\AI\Inbox\Tools\GetShippingInformationTool;
 use App\Services\AI\Inbox\Tools\GetStoreInformationTool;
 use App\Services\AI\Inbox\Tools\InboxAgentToolRegistry;
+use App\Services\AI\Inbox\Tools\RequestLocationCaptureTool;
+use App\Services\AI\Inbox\Tools\RescheduleBookingTool;
 use App\Services\AI\Inbox\Tools\SaveCustomerCommerceContextTool;
 use App\Services\AI\Inbox\Tools\SearchProductsTool;
 use App\Services\AI\Inbox\Tools\SendProductImageTool;
 use App\Services\AI\Inbox\Tools\TransferToHumanAgentTool;
+use App\Services\AI\Inbox\Tools\UpdateBookingTool;
+use App\Services\AI\Inbox\Tools\UpdateCustomerOrderTool;
 use App\Services\Payment\Contracts\MerchantSettlementProviderInterface;
 use App\Services\Payment\Providers\HyperPayMerchantSettlementProvider;
 use App\Services\Platform\PlatformAiConfiguration;
@@ -145,8 +157,10 @@ class AppServiceProvider extends ServiceProvider
         $this->registerInboxAgentTools();
         $this->configureAuthRateLimiting();
         $this->configureSubscriptionRateLimiting();
+        $this->configureLocationCaptureRateLimiting();
 
         Gate::policy(Workspace::class, WorkspacePolicy::class);
+        Gate::policy(Booking::class, BookingPolicy::class);
         Gate::policy(ChatCatalogCategory::class, ChatCatalogCategoryPolicy::class);
         Gate::policy(ChatCatalog::class, ChatCatalogPolicy::class);
         Gate::policy(ChatCatalogDigitalInventoryPool::class, ChatCatalogDigitalInventoryPoolPolicy::class);
@@ -266,6 +280,31 @@ class AppServiceProvider extends ServiceProvider
         });
     }
 
+    private function configureLocationCaptureRateLimiting(): void
+    {
+        RateLimiter::for('location-capture-view', function (Request $request) {
+            $limit = max(5, (int) config('location.rate_limits.view_per_minute', 30));
+
+            return Limit::perMinute($limit)->by('loc-view:'.($request->ip() ?? 'unknown'));
+        });
+
+        RateLimiter::for('location-capture-submit', function (Request $request) {
+            $limit = max(2, (int) config('location.rate_limits.submit_per_minute', 10));
+            $tokenHint = substr(hash('sha256', (string) $request->route('token', '')), 0, 16);
+
+            return [
+                Limit::perMinute($limit)->by('loc-submit-ip:'.($request->ip() ?? 'unknown')),
+                Limit::perMinute($limit)->by('loc-submit-tok:'.$tokenHint),
+            ];
+        });
+
+        RateLimiter::for('location-capture-search', function (Request $request) {
+            $limit = max(5, (int) config('location.rate_limits.search_per_minute', 20));
+
+            return Limit::perMinute($limit)->by('loc-search:'.($request->ip() ?? 'unknown'));
+        });
+    }
+
     private function registerInboxAgentTools(): void
     {
         if ($this->app->runningUnitTests()) {
@@ -292,6 +331,16 @@ class AppServiceProvider extends ServiceProvider
         $registry->register($this->app->make(GetProductIntelligenceTool::class));
         $registry->register($this->app->make(SaveCustomerCommerceContextTool::class));
         $registry->register($this->app->make(CreateCustomerOrderTool::class));
+        $registry->register($this->app->make(UpdateCustomerOrderTool::class));
+        $registry->register($this->app->make(CancelCustomerOrderTool::class));
         $registry->register($this->app->make(SendProductImageTool::class));
+        $registry->register($this->app->make(RequestLocationCaptureTool::class));
+        $registry->register($this->app->make(GetBookingOptionsTool::class));
+        $registry->register($this->app->make(CheckBookingAvailabilityTool::class));
+        $registry->register($this->app->make(GetCustomerBookingsTool::class));
+        $registry->register($this->app->make(CreateBookingTool::class));
+        $registry->register($this->app->make(RescheduleBookingTool::class));
+        $registry->register($this->app->make(UpdateBookingTool::class));
+        $registry->register($this->app->make(CancelBookingTool::class));
     }
 }

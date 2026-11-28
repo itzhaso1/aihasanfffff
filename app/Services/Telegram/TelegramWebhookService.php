@@ -11,6 +11,8 @@ use App\Models\WebhookEvent;
 use App\Models\WorkspaceTelegramConnection;
 use App\Services\Customer\CustomerChannelIdentityService;
 use App\Services\Inbox\InboxRealtimePublisher;
+use App\Services\Location\LocationCaptureService;
+use App\Services\Location\LocationPayloadNormalizer;
 use App\Services\Media\InboundMediaCoordinator;
 use App\Support\Http\WebhookHeaderSanitizer;
 use App\Support\Observability\CorrelationContext;
@@ -269,7 +271,7 @@ class TelegramWebhookService
         }
 
         $messageType = strtolower((string) ($messageData['message_type'] ?? 'text'));
-        if (! in_array($messageType, ['text', 'image', 'audio', 'video', 'file', 'system'], true)) {
+        if (! in_array($messageType, ['text', 'image', 'audio', 'video', 'file', 'system', 'location'], true)) {
             $messageType = 'text';
         }
 
@@ -277,7 +279,7 @@ class TelegramWebhookService
         $metadata['channel'] = 'telegram';
 
         try {
-            return Message::withoutGlobalScopes()->create([
+            $message = Message::withoutGlobalScopes()->create([
                 'workspace_id' => $workspaceId,
                 'conversation_id' => $conversation->id,
                 'customer_id' => $customer->id,
@@ -287,6 +289,22 @@ class TelegramWebhookService
                 'external_message_id' => $externalMessageId,
                 'metadata' => $metadata,
             ]);
+
+            if ($messageType === 'location') {
+                $normalized = app(LocationPayloadNormalizer::class)->fromTelegram(
+                    $messageData,
+                    (int) $conversation->id,
+                    (int) $customer->id,
+                    null,
+                    $externalMessageId,
+                );
+                if ($normalized !== null) {
+                    app(LocationCaptureService::class)->ingestChannelLocation($conversation, $message, $normalized);
+                    $message = $message->fresh() ?? $message;
+                }
+            }
+
+            return $message;
         } catch (UniqueConstraintViolationException) {
             return Message::withoutGlobalScopes()
                 ->where('workspace_id', $workspaceId)

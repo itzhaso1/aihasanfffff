@@ -521,6 +521,50 @@ final class RealtimeMessagingPipelineTest extends TestCase
         $this->assertSame('reverb-override-key', $payload['key']);
     }
 
+    public function test_independent_worker_without_workspace_membership_receives_clamped_realtime_config(): void
+    {
+        config([
+            'broadcasting.default' => 'reverb',
+            'broadcasting.connections.reverb.key' => 'worker-reverb-key',
+            'reverb.apps.apps.0.activity_timeout' => 30,
+            'reverb.apps.apps.0.ping_interval' => 60,
+        ]);
+
+        [$owner, $workspace] = $this->workspaceWithWhatsApp('pn-worker-rt');
+        $worker = User::factory()->create();
+
+        $token = $worker->createToken('worker-device')->plainTextToken;
+
+        $response = $this->withToken($token)
+            ->withHeader('X-Workspace-Id', (string) $workspace->id)
+            ->getJson('/api/mobile/v1/realtime/config')
+            ->assertOk()
+            ->assertJsonPath('data.enabled', true)
+            ->assertJsonPath('data.driver', 'reverb')
+            ->assertJsonPath('data.activity_timeout', 30);
+
+        $ping = (int) $response->json('data.ping_interval');
+        $this->assertGreaterThanOrEqual(12, $ping);
+        $this->assertLessThanOrEqual(25, $ping);
+        $this->assertLessThan((int) $response->json('data.activity_timeout'), $ping);
+    }
+
+    public function test_mobile_conversations_index_includes_iso8601_server_time_meta(): void
+    {
+        [$owner, $workspace] = $this->createWhatsAppConversation('pn-server-time');
+
+        Sanctum::actingAs($owner);
+
+        $response = $this->withHeader('X-Workspace-Id', (string) $workspace->id)
+            ->getJson('/api/mobile/v1/conversations')
+            ->assertOk()
+            ->assertJsonStructure(['meta' => ['next_cursor', 'prev_cursor', 'server_time']]);
+
+        $serverTime = (string) $response->json('meta.server_time');
+        $this->assertNotEmpty($serverTime);
+        $this->assertNotFalse(\DateTimeImmutable::createFromFormat(\DateTimeInterface::ATOM, $serverTime));
+    }
+
     /**
      * @return array{0: User, 1: Workspace}
      */

@@ -20,6 +20,10 @@ final class CanonicalTools
 
     public const CREATE_CUSTOMER_ORDER = 'create_customer_order';
 
+    public const UPDATE_CUSTOMER_ORDER = 'update_customer_order';
+
+    public const CANCEL_CUSTOMER_ORDER = 'cancel_customer_order';
+
     public const SEND_PRODUCT_IMAGE = 'send_product_image';
 
     public const GET_PRODUCT_DETAILS = 'get_product_details';
@@ -41,6 +45,25 @@ final class CanonicalTools
     public const GET_ORDER_STATUS = 'get_order_status';
 
     public const TRANSFER_TO_HUMAN_AGENT = 'transfer_to_human_agent';
+
+    public const REQUEST_LOCATION_CAPTURE = 'request_location_capture';
+
+    public const GET_BOOKING_OPTIONS = 'get_booking_options';
+
+    public const CHECK_BOOKING_AVAILABILITY = 'check_booking_availability';
+
+    public const GET_CUSTOMER_BOOKINGS = 'get_customer_bookings';
+
+    public const CREATE_BOOKING = 'create_booking';
+
+    public const RESCHEDULE_BOOKING = 'reschedule_booking';
+
+    public const UPDATE_BOOKING = 'update_booking';
+
+    public const CANCEL_BOOKING = 'cancel_booking';
+
+    /** @var list<string> */
+    public const BOOKING_SKILLS = ['booking_agent', 'customer_support', 'sales', 'order_handling'];
 
     /** @var list<string> */
     public const ORDER_CAPTURE_SKILLS = ['customer_support', 'sales', 'booking_agent', 'product_recommendation', 'order_handling'];
@@ -227,7 +250,48 @@ final class CanonicalTools
                 'items' => [
                     'type' => 'array',
                     'required' => true,
-                    'description' => 'Array of items/products with name, id, quantity.',
+                    'description' => 'Array of ordered products/services. Always include product_name (and chat_catalog_item_id/id if known), variant_name or product_type (e.g. PDF عربي, مقاس وسط), unit_price, and quantity.',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'chat_catalog_item_id' => [
+                                'type' => 'integer',
+                                'description' => 'Catalog product/item ID from context or search results.',
+                            ],
+                            'id' => [
+                                'type' => 'integer',
+                                'description' => 'Alias for catalog product/item ID.',
+                            ],
+                            'product_name' => [
+                                'type' => 'string',
+                                'description' => 'Verified product or service name.',
+                            ],
+                            'name' => [
+                                'type' => 'string',
+                                'description' => 'Alias for product or service name.',
+                            ],
+                            'variant_id' => [
+                                'type' => 'integer',
+                                'description' => 'Selected catalog variant ID if applicable.',
+                            ],
+                            'variant_name' => [
+                                'type' => 'string',
+                                'description' => 'Selected product variant, edition, size, color, or type (e.g. PDF عربي).',
+                            ],
+                            'product_type' => [
+                                'type' => 'string',
+                                'description' => 'Product type or category/classification (e.g. digital, physical, service, PDF عربي).',
+                            ],
+                            'unit_price' => [
+                                'type' => 'number',
+                                'description' => 'Verified unit price of the selected item or variant.',
+                            ],
+                            'quantity' => [
+                                'type' => 'integer',
+                                'description' => 'Requested quantity.',
+                            ],
+                        ],
+                    ],
                 ],
                 'notes' => [
                     'type' => 'string',
@@ -253,6 +317,98 @@ final class CanonicalTools
                     'type' => 'string',
                     'required' => false,
                     'description' => 'Action required from the store agent.',
+                ],
+                'is_additional_order' => [
+                    'type' => 'boolean',
+                    'required' => false,
+                    'description' => 'True when the customer is placing an additional separate order (for example, to a second address or second phone number).',
+                ],
+            ],
+        );
+    }
+
+    public static function updateCustomerOrder(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::UPDATE_CUSTOMER_ORDER,
+            description: 'Modify an existing unpaid, unfulfilled customer order belonging to this conversation or customer (add items, replace items, or update delivery address, phone, recipient name, or notes).',
+            category: 'order',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            allowedSkillKeys: self::ORDER_CAPTURE_SKILLS,
+            inputSchema: [
+                'order_number' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Order number to update (e.g. ORD-00000001). Defaults to the latest active order.',
+                ],
+                'mode' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'One of: add_items, replace_items, update_details.',
+                ],
+                'items' => [
+                    'type' => 'array',
+                    'required' => false,
+                    'description' => 'Items to add or set on the order.',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'chat_catalog_item_id' => ['type' => 'integer', 'description' => 'Catalog product/item ID.'],
+                            'product_name' => ['type' => 'string', 'description' => 'Product or service name.'],
+                            'variant_id' => ['type' => 'integer', 'description' => 'Selected catalog variant ID.'],
+                            'variant_name' => ['type' => 'string', 'description' => 'Selected variant or product type.'],
+                            'product_type' => ['type' => 'string', 'description' => 'Product type or classification.'],
+                            'unit_price' => ['type' => 'number', 'description' => 'Verified unit price.'],
+                            'quantity' => ['type' => 'integer', 'description' => 'Requested quantity.'],
+                        ],
+                    ],
+                ],
+                'customer_name' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Updated recipient name.',
+                ],
+                'phone' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Updated recipient phone.',
+                ],
+                'address' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Updated delivery address.',
+                ],
+                'notes' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Updated notes.',
+                ],
+            ],
+        );
+    }
+
+    public static function cancelCustomerOrder(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::CANCEL_CUSTOMER_ORDER,
+            description: 'Cancel an existing unpaid, unfulfilled order belonging to this conversation or customer.',
+            category: 'order',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            allowedSkillKeys: self::ORDER_CAPTURE_SKILLS,
+            inputSchema: [
+                'order_number' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Order number to cancel (e.g. ORD-00000001).',
+                ],
+                'reason' => [
+                    'type' => 'string',
+                    'required' => false,
+                    'description' => 'Reason for cancelling the order.',
                 ],
             ],
         );
@@ -448,6 +604,183 @@ final class CanonicalTools
         );
     }
 
+    public static function requestLocationCapture(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::REQUEST_LOCATION_CAPTURE,
+            description: 'Create a secure, single-use location capture map link for this conversation so the customer can pinpoint and confirm their delivery location accurately (with GPS + manual pin fallback). Always share the returned capture_url with the customer.',
+            category: 'order',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            maxCallsPerRun: 2,
+            allowedSkillKeys: self::ORDER_CAPTURE_SKILLS,
+            inputSchema: [
+                'order_number' => ['type' => 'string', 'required' => false, 'description' => 'Optional existing order number to link the captured delivery location to (e.g. ORD-00000001).'],
+                'purpose' => ['type' => 'string', 'required' => false, 'description' => 'One of: delivery (initial capture) or update_delivery (customer wants to change existing delivery location).'],
+            ],
+        );
+    }
+
+    public static function getBookingOptions(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::GET_BOOKING_OPTIONS,
+            description: 'Retrieve active booking settings, services/appointment types (durations, capacities, prices), branches/locations, staff/providers, working hours, holidays, and required custom fields for this business.',
+            category: 'booking',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::BOOKING_SKILLS,
+            inputSchema: [
+                'include_branches' => ['type' => 'boolean', 'required' => false, 'description' => 'Include branch/location options.'],
+                'include_providers' => ['type' => 'boolean', 'required' => false, 'description' => 'Include staff/provider/resource options.'],
+            ],
+        );
+    }
+
+    public static function checkBookingAvailability(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::CHECK_BOOKING_AVAILABILITY,
+            description: 'Check real booking availability in the database for a specific date/time or find the nearest available appointment slots. Always call this before promising or suggesting available dates or times.',
+            category: 'booking',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            maxCallsPerRun: 4,
+            allowedSkillKeys: self::BOOKING_SKILLS,
+            inputSchema: [
+                'date' => ['type' => 'string', 'required' => false, 'description' => 'Target local date (YYYY-MM-DD). Omit or combine with nearest_only=true to find earliest upcoming slots.'],
+                'start_time' => ['type' => 'string', 'required' => false, 'description' => 'Optional specific start time (HH:MM, 24h) to check exact availability.'],
+                'service_id' => ['type' => 'integer', 'required' => false, 'description' => 'Booking service ID.'],
+                'service_name' => ['type' => 'string', 'required' => false, 'description' => 'Booking service/type name.'],
+                'branch_id' => ['type' => 'integer', 'required' => false, 'description' => 'Optional branch ID.'],
+                'branch_name' => ['type' => 'string', 'required' => false, 'description' => 'Optional branch name.'],
+                'provider_id' => ['type' => 'integer', 'required' => false, 'description' => 'Optional staff/provider/resource ID.'],
+                'provider_name' => ['type' => 'string', 'required' => false, 'description' => 'Optional staff/provider/resource name.'],
+                'party_size' => ['type' => 'integer', 'required' => false, 'description' => 'Optional number of guests/people.'],
+                'nearest_only' => ['type' => 'boolean', 'required' => false, 'description' => 'Set true when the customer asks for the earliest/nearest available slot.'],
+                'limit' => ['type' => 'integer', 'required' => false, 'description' => 'Maximum slots to return (default 8).'],
+            ],
+        );
+    }
+
+    public static function getCustomerBookings(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::GET_CUSTOMER_BOOKINGS,
+            description: 'Look up upcoming and previous bookings strictly belonging to the current customer or conversation.',
+            category: 'booking',
+            access: ToolAccess::Read,
+            risk: ToolRisk::Read,
+            allowedSkillKeys: self::BOOKING_SKILLS,
+            inputSchema: [
+                'include_past' => ['type' => 'boolean', 'required' => false, 'description' => 'Include completed/cancelled/past bookings as well as active ones (default true).'],
+            ],
+        );
+    }
+
+    public static function createBooking(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::CREATE_BOOKING,
+            description: 'Create a real appointment/booking after collecting required customer details and verifying slot availability. Rejects unavailable slots and returns real nearest alternatives if a conflict occurs.',
+            category: 'booking',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            maxCallsPerRun: 2,
+            allowedSkillKeys: self::BOOKING_SKILLS,
+            inputSchema: [
+                'customer_name' => ['type' => 'string', 'required' => true, 'description' => 'Customer full name.'],
+                'phone' => ['type' => 'string', 'required' => false, 'description' => 'Customer mobile phone number.'],
+                'service_id' => ['type' => 'integer', 'required' => false, 'description' => 'Booking service ID from get_booking_options.'],
+                'service_name' => ['type' => 'string', 'required' => true, 'description' => 'Service or booking type name.'],
+                'date' => ['type' => 'string', 'required' => true, 'description' => 'Local booking date (YYYY-MM-DD).'],
+                'start_time' => ['type' => 'string', 'required' => true, 'description' => 'Local booking start time (HH:MM, 24h).'],
+                'party_size' => ['type' => 'integer', 'required' => false, 'description' => 'Number of guests/people when applicable.'],
+                'branch_id' => ['type' => 'integer', 'required' => false, 'description' => 'Branch/location ID if applicable.'],
+                'branch_name' => ['type' => 'string', 'required' => false, 'description' => 'Branch/location name if applicable.'],
+                'provider_id' => ['type' => 'integer', 'required' => false, 'description' => 'Staff/provider/resource ID if applicable.'],
+                'provider_name' => ['type' => 'string', 'required' => false, 'description' => 'Staff/provider/resource name if applicable.'],
+                'notes' => ['type' => 'string', 'required' => false, 'description' => 'Customer notes or special requests.'],
+                'custom_fields' => ['type' => 'object', 'required' => false, 'description' => 'Business-specific extra booking details as key-value pairs.'],
+            ],
+        );
+    }
+
+    public static function rescheduleBooking(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::RESCHEDULE_BOOKING,
+            description: 'Reschedule an existing active booking belonging strictly to the current customer or conversation to a new verified date and time. IMPORTANT: Ask the customer to confirm before setting customer_confirmed=true.',
+            category: 'booking',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            maxCallsPerRun: 2,
+            allowedSkillKeys: self::BOOKING_SKILLS,
+            inputSchema: [
+                'booking_reference' => ['type' => 'string', 'required' => false, 'description' => 'Booking reference (e.g. BK-000001). Optional when customer has only one active booking.'],
+                'new_date' => ['type' => 'string', 'required' => true, 'description' => 'New local booking date (YYYY-MM-DD).'],
+                'new_start_time' => ['type' => 'string', 'required' => true, 'description' => 'New local booking start time (HH:MM, 24h).'],
+                'branch_id' => ['type' => 'integer', 'required' => false, 'description' => 'Optional new branch ID.'],
+                'branch_name' => ['type' => 'string', 'required' => false, 'description' => 'Optional new branch name.'],
+                'provider_id' => ['type' => 'integer', 'required' => false, 'description' => 'Optional new provider ID.'],
+                'provider_name' => ['type' => 'string', 'required' => false, 'description' => 'Optional new provider name.'],
+                'reason' => ['type' => 'string', 'required' => false, 'description' => 'Reason for rescheduling.'],
+                'customer_confirmed' => ['type' => 'boolean', 'required' => true, 'description' => 'Must be true ONLY after the customer explicitly confirmed the new date/time. Set false to get confirmation details without modifying yet.'],
+            ],
+        );
+    }
+
+    public static function updateBooking(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::UPDATE_BOOKING,
+            description: 'Update details (service, party size, branch, provider, customer name, phone, notes, or custom fields) on an active booking for the current customer. IMPORTANT: Ask the customer to confirm before setting customer_confirmed=true.',
+            category: 'booking',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            maxCallsPerRun: 2,
+            allowedSkillKeys: self::BOOKING_SKILLS,
+            inputSchema: [
+                'booking_reference' => ['type' => 'string', 'required' => false, 'description' => 'Booking reference (e.g. BK-000001).'],
+                'service_id' => ['type' => 'integer', 'required' => false, 'description' => 'Updated service ID.'],
+                'service_name' => ['type' => 'string', 'required' => false, 'description' => 'Updated service name.'],
+                'party_size' => ['type' => 'integer', 'required' => false, 'description' => 'Updated number of guests/people.'],
+                'branch_id' => ['type' => 'integer', 'required' => false, 'description' => 'Updated branch ID.'],
+                'branch_name' => ['type' => 'string', 'required' => false, 'description' => 'Updated branch name.'],
+                'provider_id' => ['type' => 'integer', 'required' => false, 'description' => 'Updated provider ID.'],
+                'provider_name' => ['type' => 'string', 'required' => false, 'description' => 'Updated provider name.'],
+                'customer_name' => ['type' => 'string', 'required' => false, 'description' => 'Updated customer name.'],
+                'phone' => ['type' => 'string', 'required' => false, 'description' => 'Updated customer phone.'],
+                'notes' => ['type' => 'string', 'required' => false, 'description' => 'Updated notes.'],
+                'custom_fields' => ['type' => 'object', 'required' => false, 'description' => 'Updated custom business fields.'],
+                'customer_confirmed' => ['type' => 'boolean', 'required' => true, 'description' => 'Must be true ONLY after customer explicitly confirms the modification.'],
+            ],
+        );
+    }
+
+    public static function cancelBooking(): ToolDefinition
+    {
+        return new ToolDefinition(
+            name: self::CANCEL_BOOKING,
+            description: 'Cancel an active booking belonging strictly to the current customer or conversation. IMPORTANT: Ask the customer to confirm before setting customer_confirmed=true.',
+            category: 'booking',
+            access: ToolAccess::Write,
+            risk: ToolRisk::Low,
+            writes: true,
+            maxCallsPerRun: 2,
+            allowedSkillKeys: self::BOOKING_SKILLS,
+            inputSchema: [
+                'booking_reference' => ['type' => 'string', 'required' => false, 'description' => 'Booking reference (e.g. BK-000001).'],
+                'reason' => ['type' => 'string', 'required' => false, 'description' => 'Customer reason for cancellation.'],
+                'customer_confirmed' => ['type' => 'boolean', 'required' => true, 'description' => 'Must be true ONLY after customer explicitly confirms cancelling the booking. Set false first to review details without cancelling yet.'],
+            ],
+        );
+    }
+
     /**
      * @return list<ToolDefinition>
      */
@@ -469,7 +802,17 @@ final class CanonicalTools
             self::evaluateProductSuitability(),
             self::saveCustomerCommerceContext(),
             self::createCustomerOrder(),
+            self::updateCustomerOrder(),
+            self::cancelCustomerOrder(),
             self::sendProductImage(),
+            self::requestLocationCapture(),
+            self::getBookingOptions(),
+            self::checkBookingAvailability(),
+            self::getCustomerBookings(),
+            self::createBooking(),
+            self::rescheduleBooking(),
+            self::updateBooking(),
+            self::cancelBooking(),
         ];
         usort($definitions, static fn (ToolDefinition $a, ToolDefinition $b): int => strcmp($a->name, $b->name));
 

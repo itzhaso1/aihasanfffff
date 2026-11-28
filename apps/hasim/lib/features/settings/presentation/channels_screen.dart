@@ -4,7 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:hasim/core/models/models.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
+import 'package:hasim/core/widgets/hasim_buttons.dart';
+import 'package:hasim/core/widgets/hasim_card.dart';
 import 'package:hasim/core/widgets/hasim_channel_mark.dart';
+import 'package:hasim/core/widgets/hasim_form_field.dart';
+import 'package:hasim/core/widgets/hasim_settings_body.dart';
 import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
 import 'package:hasim/core/widgets/skeleton_list.dart';
 import 'package:hasim/features/settings/data/channel_connection.dart';
@@ -75,39 +79,53 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
         context: context,
         isScrollControlled: true,
         builder: (context) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'ربط Telegram',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'أدخل رمز البوت من BotFather. لا يُحفظ الرمز على الجهاز بعد الإرسال.',
-                    style: TextStyle(color: HasimTokens.muted, height: 1.4),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    obscureText: true,
-                    autofocus: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Bot token',
-                      hintText: '123456:ABC-DEF...',
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                24 + MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(
+                          color: HasimTokens.lineColor(context),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: () =>
-                        Navigator.pop(context, controller.text.trim()),
-                    child: const Text('ربط'),
-                  ),
-                ],
+                    const HasimSettingsSectionHeader(
+                      icon: Icons.send_rounded,
+                      title: 'ربط Telegram',
+                      subtitle:
+                          'أدخل رمز البوت من BotFather. لا يُحفظ الرمز على الجهاز بعد الإرسال.',
+                    ),
+                    const SizedBox(height: 16),
+                    HasimFormField(
+                      controller: controller,
+                      label: 'Bot token',
+                      icon: Icons.vpn_key_outlined,
+                      obscureText: true,
+                      textDirection: TextDirection.ltr,
+                      textAlign: TextAlign.left,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () =>
+                          Navigator.pop(context, controller.text.trim()),
+                      child: const Text('ربط'),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -191,6 +209,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
       },
     );
 
+    final connectedCount = state.items
+        .where((c) => c.connected || c.status == 'connected')
+        .length;
+    final mobile = compact && !widget.embedded;
+
     final listBody = state.loading
         ? const SkeletonList()
         : state.error != null
@@ -210,38 +233,87 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
         : RefreshIndicator(
             onRefresh: () =>
                 ref.read(channelsControllerProvider.notifier).reload(),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              children: [
-                if (!widget.embedded)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 14),
-                    child: Text(
-                      'اربط قنوات التواصل لإدارة رسائلك من مكان واحد',
-                      style: TextStyle(
-                        color: HasimTokens.muted,
-                        fontWeight: FontWeight.w600,
-                        height: 1.4,
-                      ),
+            child: ColoredBox(
+              color: HasimTokens.settingsCanvasBg(context),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: mobile
+                        ? double.infinity
+                        : HasimTokens.settingsContentMaxWidth,
+                  ),
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      mobile ? 16 : 24,
+                      8,
+                      mobile ? 16 : 24,
+                      24,
                     ),
+                    children: [
+                      if (!widget.embedded)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Text(
+                            'اربط قنوات التواصل لإدارة رسائلك من مكان واحد',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: HasimTokens.mutedColor(context),
+                                ),
+                          ),
+                        ),
+                      HasimCard(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.hub_outlined,
+                              size: 18,
+                              color: HasimTokens.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                state.items.isEmpty
+                                    ? 'لا توجد قنوات متاحة حالياً'
+                                    : 'حالة الربط · $connectedCount من ${state.items.length} متصلة',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: HasimTokens.inkColor(context),
+                                    ),
+                              ),
+                            ),
+                            HasimBadge(
+                              label: '$connectedCount/${state.items.length}',
+                            ),
+                          ],
+                        ),
+                      ),
+                      for (final channel in state.items) ...[
+                        _ChannelCard(
+                          channel: channel,
+                          busy:
+                              state.busyChannel == channel.key ||
+                              state.pendingChannel == channel.key,
+                          onOpenInbox: () => _openInbox(channel),
+                          onConnect: () => _connect(channel),
+                          onDisconnect: () => ref
+                              .read(channelsControllerProvider.notifier)
+                              .disconnect(channel.key),
+                          onWebFallback: () => _openManageFallback(channel),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      const _WhyConnectCard(),
+                    ],
                   ),
-                for (final channel in state.items) ...[
-                  _ChannelCard(
-                    channel: channel,
-                    busy:
-                        state.busyChannel == channel.key ||
-                        state.pendingChannel == channel.key,
-                    onOpenInbox: () => _openInbox(channel),
-                    onConnect: () => _connect(channel),
-                    onDisconnect: () => ref
-                        .read(channelsControllerProvider.notifier)
-                        .disconnect(channel.key),
-                    onWebFallback: () => _openManageFallback(channel),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                const _WhyConnectCard(),
-              ],
+                ),
+              ),
             ),
           );
 
@@ -254,10 +326,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen>
     }
 
     return Scaffold(
-      backgroundColor: HasimTokens.pageBg(context),
+      backgroundColor: HasimTokens.settingsCanvasBg(context),
       appBar: AppBar(
         title: Text(l10n.channels),
-        backgroundColor: HasimTokens.pageBg(context),
+        backgroundColor: HasimTokens.settingsCanvasBg(context),
         surfaceTintColor: Colors.transparent,
       ),
       body: listBody,
@@ -299,101 +371,102 @@ class _ChannelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: HasimTokens.cardBg(context),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: HasimTokens.lineColor(context)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-        child: Column(
-          children: [
-            InkWell(
-              onTap: _connected
-                  ? onOpenInbox
-                  : (channel.canConnectInApp ? onConnect : null),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  HasimChannelMark(channel: channel.key, size: 44),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          channel.name,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                            color: HasimTokens.inkColor(context),
-                          ),
+    return HasimCard(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
+      radius: 14,
+      borderColor: _connected
+          ? HasimTokens.primary.withValues(alpha: 0.35)
+          : HasimTokens.lineColor(context),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _connected
+                ? onOpenInbox
+                : (channel.canConnectInApp ? onConnect : null),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                HasimChannelMark(channel: channel.key, size: 40),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        channel.name,
+                        style: Theme.of(context).textTheme.titleSmall
+                            ?.copyWith(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: HasimTokens.inkColor(context),
+                            ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _description,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: HasimTokens.mutedColor(context),
+                          height: 1.35,
+                          fontSize: 12.5,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _description,
-                          style: const TextStyle(
-                            color: HasimTokens.muted,
-                            height: 1.45,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  if (busy)
-                    const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  else
-                    _StatusPill(
-                      connected: _connected,
-                      label: _connected ? 'متصل' : 'غير متصل',
-                    ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                if (busy)
+                  const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  _StatusPill(
+                    connected: _connected,
+                    label: _connected ? 'متصل' : 'غير متصل',
+                  ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Divider(height: 1, color: HasimTokens.lineColor(context)),
-            SizedBox(
-              height: 46,
-              child: Row(
-                children: [
-                  if (channel.canConnectInApp)
-                    TextButton(
-                      key: ValueKey('channel-connect-${channel.key}'),
-                      onPressed: busy ? null : onConnect,
-                      child: Text(_connected ? 'إعادة ربط' : 'ربط'),
+          ),
+          const SizedBox(height: 8),
+          Divider(height: 1, color: HasimTokens.lineColor(context)),
+          SizedBox(
+            height: 38,
+            child: Row(
+              children: [
+                if (channel.canConnectInApp)
+                  TextButton(
+                    key: ValueKey('channel-connect-${channel.key}'),
+                    onPressed: busy ? null : onConnect,
+                    child: Text(_connected ? 'إعادة ربط' : 'ربط'),
+                  ),
+                if (channel.canDisconnect)
+                  TextButton(
+                    key: ValueKey('channel-disconnect-${channel.key}'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: HasimTokens.danger,
                     ),
-                  if (channel.canDisconnect)
-                    TextButton(
-                      key: ValueKey('channel-disconnect-${channel.key}'),
-                      onPressed: busy ? null : onDisconnect,
-                      child: const Text('قطع الاتصال'),
-                    ),
-                  if (!channel.canConnectInApp && channel.manageUrl != null)
-                    TextButton(
-                      onPressed: onWebFallback,
-                      child: const Text('إدارة عبر Web'),
-                    ),
-                  if (_connected) ...[
-                    const Spacer(),
-                    TextButton(
-                      onPressed: onOpenInbox,
-                      child: const Text('المحادثات'),
-                    ),
-                  ],
+                    onPressed: busy ? null : onDisconnect,
+                    child: const Text('قطع الاتصال'),
+                  ),
+                if (!channel.canConnectInApp && channel.manageUrl != null)
+                  TextButton(
+                    onPressed: onWebFallback,
+                    child: const Text('إدارة عبر Web'),
+                  ),
+                if (_connected) ...[
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: onOpenInbox,
+                    icon: const Icon(Icons.forum_outlined, size: 16),
+                    label: const Text('المحادثات'),
+                  ),
                 ],
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -407,12 +480,14 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = connected ? const Color(0xFF16A34A) : const Color(0xFF94A3B8);
+    final color = connected
+        ? HasimTokens.success
+        : HasimTokens.mutedColor(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -442,42 +517,14 @@ class _WhyConnectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: HasimTokens.mintFill(context),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(Icons.forum_outlined, color: HasimTokens.mutedColor(context)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'لماذا تربط قنواتك؟',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      color: HasimTokens.inkColor(context),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'استقبل الرسائل وأدر محادثات عملائك من لوحة واحدة.',
-                    style: TextStyle(
-                      color: HasimTokens.mutedColor(context),
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+    return HasimCard(
+      backgroundColor: HasimTokens.mintFill(context),
+      borderColor: HasimTokens.primary.withValues(alpha: 0.25),
+      showShadow: false,
+      child: const HasimSettingsSectionHeader(
+        icon: Icons.forum_outlined,
+        title: 'لماذا تربط قنواتك؟',
+        subtitle: 'استقبل الرسائل وأدر محادثات عملائك من لوحة واحدة.',
       ),
     );
   }

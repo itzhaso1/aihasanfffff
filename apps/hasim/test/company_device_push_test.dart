@@ -63,6 +63,10 @@ class _Source implements PushTokenSource {
   Stream<String> get refreshes => refreshesController.stream;
 
   @override
+  Stream<Map<String, dynamic>> get foregroundMessages =>
+      const Stream<Map<String, dynamic>>.empty();
+
+  @override
   Stream<Map<String, dynamic>> get openedNotifications =>
       const Stream<Map<String, dynamic>>.empty();
 

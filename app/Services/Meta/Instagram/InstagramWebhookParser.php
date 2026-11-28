@@ -217,6 +217,18 @@ class InstagramWebhookParser
 
             $url = is_string($attachment['payload']['url'] ?? null) ? trim((string) $attachment['payload']['url']) : '';
             $item = ['type' => $type];
+            $coords = data_get($attachment, 'payload.coordinates');
+            if ($type === 'location' && is_array($coords)) {
+                $item['payload'] = [
+                    'coordinates' => [
+                        'lat' => $coords['lat'] ?? ($coords['latitude'] ?? null),
+                        'long' => $coords['long'] ?? ($coords['lng'] ?? ($coords['longitude'] ?? null)),
+                    ],
+                ];
+                if (is_string($attachment['title'] ?? null)) {
+                    $item['title'] = mb_substr(trim((string) $attachment['title']), 0, 180);
+                }
+            }
             $origin = $this->attachmentOrigin($url !== '' ? $url : null);
             if ($origin !== null) {
                 $item['url'] = $origin;
@@ -238,6 +250,12 @@ class InstagramWebhookParser
      */
     private function resolveMessageType(?string $text, array $attachments): string
     {
+        foreach ($attachments as $attachment) {
+            if (($attachment['type'] ?? '') === 'location') {
+                return 'location';
+            }
+        }
+
         foreach ($attachments as $attachment) {
             if (($attachment['type'] ?? '') === 'image') {
                 return 'image';

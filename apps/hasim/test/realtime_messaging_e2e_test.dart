@@ -111,6 +111,8 @@ class _LoopbackInboxServer {
 
   bool failConfigOnce = false;
   bool failAuthOnce = false;
+  bool realtimeEnabled = true;
+  int? forceAuthStatus;
   bool failSend = false;
   int _nextMsgId = 500;
 
@@ -170,7 +172,14 @@ class _LoopbackInboxServer {
       return;
     }
 
-    final bodyStr = await utf8.decoder.bind(req).join();
+    final String bodyStr;
+    try {
+      bodyStr = await utf8.decoder.bind(req).join();
+    } on HttpException {
+      return;
+    } on SocketException {
+      return;
+    }
     final bodyMap = bodyStr.isNotEmpty
         ? (jsonDecode(bodyStr) as Map<String, dynamic>)
         : <String, dynamic>{};
@@ -179,6 +188,12 @@ class _LoopbackInboxServer {
       if (failConfigOnce) {
         failConfigOnce = false;
         return _json(req, 503, {'success': false, 'message': 'unavailable'});
+      }
+      if (!realtimeEnabled) {
+        return _json(req, 200, {
+          'success': true,
+          'data': {'enabled': false, 'driver': 'log'},
+        });
       }
       return _json(req, 200, {
         'success': true,
@@ -198,6 +213,9 @@ class _LoopbackInboxServer {
     }
 
     if (path == '/api/mobile/v1/broadcasting/auth') {
+      if (forceAuthStatus != null) {
+        return _json(req, forceAuthStatus!, {'message': 'forbidden'});
+      }
       if (failAuthOnce) {
         failAuthOnce = false;
         return _json(req, 500, {'message': 'transient auth failure'});
@@ -395,10 +413,16 @@ class _LoopbackInboxServer {
   }
 
   void _json(HttpRequest req, int status, Map<String, dynamic> payload) {
-    req.response.statusCode = status;
-    req.response.headers.contentType = ContentType.json;
-    req.response.write(jsonEncode(payload));
-    req.response.close();
+    try {
+      req.response.statusCode = status;
+      req.response.headers.contentType = ContentType.json;
+      req.response.write(jsonEncode(payload));
+      unawaited(req.response.close().catchError((_) {}));
+    } on HttpException {
+      // Server closed during teardown while client request was in flight.
+    } on SocketException {
+      // Server closed during teardown while client request was in flight.
+    }
   }
 }
 
@@ -425,10 +449,18 @@ void main() {
       _FakeConnectivity connectivity,
     })
   >
-  bootHarness({bool failConfigOnce = false, bool failAuthOnce = false}) async {
+  bootHarness({
+    bool failConfigOnce = false,
+    bool failAuthOnce = false,
+    bool realtimeEnabled = true,
+    int? forceAuthStatus,
+    Stream<Map<String, dynamic>>? foregroundPushStream,
+  }) async {
     final server = _LoopbackInboxServer()
       ..failConfigOnce = failConfigOnce
-      ..failAuthOnce = failAuthOnce;
+      ..failAuthOnce = failAuthOnce
+      ..realtimeEnabled = realtimeEnabled
+      ..forceAuthStatus = forceAuthStatus;
     await server.start();
 
     server.conversations[1] = {
@@ -512,6 +544,7 @@ void main() {
             workspaceIdOf: () => session.workspaceId,
             repository: repo,
             connectivity: connectivity,
+            foregroundPushStream: foregroundPushStream,
             onLocalInboxChange: () => bumpInboxLocalRevision(ref),
           );
           ref.listen<int?>(activeWorkspaceIdProvider, (_, next) {
@@ -1302,6 +1335,165 @@ void main() {
         // ignore: avoid_print
         print('[BENCHMARK_CROSS_DEVICE] flutter_a_to_b_ui_ms=${flutterAToBSw.elapsedMilliseconds}');
       });
+    },
+  );
+
+  test(
+    'stop() then start() reconnects WebSocket and HomeController reflects live inbound unread updates',
+    () async {
+      final pushCtrl = StreamController<Map<String, dynamic>>.broadcast();
+      final h = await bootHarness(foregroundPushStream: pushCtrl.stream);
+      addTearDown(() async {
+        await pushCtrl.close();
+        await h.container.read(realtimeServiceProvider).stop();
+        await h.container.read(outboxWorkerProvider).stop();
+        h.outbox.dispose();
+        h.connectivity.dispose();
+        h.container.dispose();
+        await h.server.close();
+      });
+
+      final realtime = h.container.read(realtimeServiceProvider);
+      final listCtrl = h.container.read(conversationsControllerProvider.notifier);
+      final homeCtrl = h.container.read(homeControllerProvider.notifier);
+      await listCtrl.refresh();
+      await homeCtrl.refresh();
+
+      expect(h.container.read(homeControllerProvider).snapshot?.unreadConversations, 0);
+
+      await realtime.start();
+      final chatCtrl = h.container.read(chatControllerProvider(1).notifier);
+      chatCtrl.onActivated();
+      await waitUntil(
+        () =>
+            realtime.isWebSocketConnected &&
+            h.server.subscribedChannels.contains('private-workspace.1.conversation.1'),
+      );
+
+      // Simulate switchWorkspace/logout-login calling stop() then start().
+      await realtime.stop();
+      expect(realtime.isWebSocketConnected, isFalse);
+
+      await realtime.start();
+      await waitUntil(
+        () =>
+            realtime.isWebSocketConnected &&
+            h.server.subscribedChannels.contains('private-workspace.1.conversation.1'),
+      );
+
+      // Broadcast message on open chat -> delivered immediately after stop()->start().
+      h.server.broadcast('private-workspace.1.conversation.1', 'message.created', {
+        'id': 910,
+        'conversation_id': 1,
+        'direction': 'inbound',
+        'message_type': 'text',
+        'content': 'بعد إعادة الاتصال',
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      await waitUntil(
+        () => h.container.read(chatControllerProvider(1)).messages.any((m) => m.id == 910),
+      );
+
+      // Broadcast inbound message on closed conversation 2 -> HomeController unread & recent update live.
+      h.server.broadcast('private-workspace.1.conversations', 'message.created', {
+        'id': 911,
+        'conversation_id': 2,
+        'direction': 'inbound',
+        'message_type': 'text',
+        'content': 'رسالة جديدة للرئيسية',
+        'created_at': DateTime.now().add(const Duration(minutes: 1)).toUtc().toIso8601String(),
+      });
+      await waitUntil(() {
+        final home = h.container.read(homeControllerProvider);
+        return (home.snapshot?.unreadConversations ?? 0) == 1 &&
+            home.recentConversations.isNotEmpty &&
+            home.recentConversations.first.id == 2;
+      });
+
+      // Foreground FCM push stream wakes immediate catch-up for active conversation.
+      h.server.messagesByConv[1]!.add({
+        'id': 912,
+        'conversation_id': 1,
+        'direction': 'inbound',
+        'message_type': 'text',
+        'content': 'تنبيه إشعار فوري',
+        'created_at': DateTime.now().add(const Duration(minutes: 2)).toUtc().toIso8601String(),
+      });
+      pushCtrl.add({'type': 'message', 'conversation_id': '1', 'message_id': '912'});
+      await waitUntil(
+        () => h.container.read(chatControllerProvider(1)).messages.any((m) => m.id == 912),
+      );
+    },
+  );
+
+  test(
+    'Channel auth 403 does not suppress fallback polling, and enabled=false polls fast without refresh',
+    () async {
+      // Case 1: WebSocket handshake succeeds, but private channel auth returns 403.
+      final h403 = await bootHarness(forceAuthStatus: 403);
+      addTearDown(() async {
+        await h403.container.read(realtimeServiceProvider).stop();
+        await h403.container.read(outboxWorkerProvider).stop();
+        h403.outbox.dispose();
+        h403.connectivity.dispose();
+        h403.container.dispose();
+        await h403.server.close();
+      });
+
+      final rt403 = h403.container.read(realtimeServiceProvider);
+      await h403.container.read(conversationsControllerProvider.notifier).refresh();
+      await rt403.start();
+      h403.container.read(chatControllerProvider(1).notifier).onActivated();
+
+      await waitUntil(() => h403.server.sockets.isNotEmpty);
+      expect(rt403.isWebSocketConnected, isFalse);
+
+      h403.server.messagesByConv[1]!.add({
+        'id': 920,
+        'conversation_id': 1,
+        'direction': 'inbound',
+        'message_type': 'text',
+        'content': 'رسالة عبر البولنج الاحتياطي',
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      await waitUntil(
+        () => h403.container.read(chatControllerProvider(1)).messages.any((m) => m.id == 920),
+        timeout: const Duration(seconds: 4),
+      );
+
+      // Case 2: Broadcast disabled (BROADCAST_CONNECTION=log) -> fast fallback polling delivers automatically.
+      final hLog = await bootHarness(realtimeEnabled: false);
+      addTearDown(() async {
+        await hLog.container.read(realtimeServiceProvider).stop();
+        await hLog.container.read(outboxWorkerProvider).stop();
+        hLog.outbox.dispose();
+        hLog.connectivity.dispose();
+        hLog.container.dispose();
+        await hLog.server.close();
+      });
+
+      final rtLog = hLog.container.read(realtimeServiceProvider);
+      await hLog.container.read(conversationsControllerProvider.notifier).refresh();
+      await rtLog.start();
+      hLog.container.read(chatControllerProvider(1).notifier).onActivated();
+      await waitUntil(
+        () => hLog.container.read(chatControllerProvider(1)).messages.any((m) => m.id == 101),
+      );
+
+      hLog.server.messagesByConv[1]!.add({
+        'id': 921,
+        'conversation_id': 1,
+        'direction': 'inbound',
+        'message_type': 'text',
+        'content': 'وصول تلقائي سريع في وضع log',
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      final sw = Stopwatch()..start();
+      await waitUntil(
+        () => hLog.container.read(chatControllerProvider(1)).messages.any((m) => m.id == 921),
+        timeout: const Duration(seconds: 4),
+      );
+      expect(sw.elapsedMilliseconds, lessThan(3000));
     },
   );
 }

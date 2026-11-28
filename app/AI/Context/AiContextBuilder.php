@@ -8,8 +8,15 @@ use App\AI\Core\AiRequest;
 use App\AI\Core\Data\ResolvedEmployee;
 use App\AI\Employees\EmployeePersonaOptions;
 use App\AI\Employees\EmployeeRepository;
+use App\Enums\BookingStatus;
+use App\Models\Booking;
+use App\Models\BookingBranch;
+use App\Models\BookingService;
+use App\Models\BookingSetting;
 use App\Models\Conversation;
 use App\Models\Customer;
+use App\Models\CustomerLocation;
+use App\Models\LocationCaptureSession;
 use App\Models\Message;
 use App\Models\Workspace;
 use App\Services\AI\AiSafety;
@@ -76,6 +83,8 @@ final class AiContextBuilder
             workspacePolicyContext: $this->workspacePolicyContext($request, $references),
             companyProfile: $this->companyProfiles->contextPayload($request->workspaceId),
             conversationFacts: $facts,
+            locationContext: $this->locationContext($conversation, $channel),
+            bookingContext: $this->bookingContext($request->workspaceId, $conversation),
         );
     }
 
@@ -191,6 +200,141 @@ final class AiContextBuilder
             'display_name' => is_string($name) && trim($name) !== ''
                 ? $this->safety->truncateInput($name, 120)
                 : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function locationContext(?Conversation $conversation, string $channel): array
+    {
+        $supportsNative = in_array(strtolower(trim($channel)), ['whatsapp', 'telegram'], true);
+
+        if ($conversation === null) {
+            return [
+                'status' => 'not_captured',
+                'channel' => $channel,
+                'supports_native_location' => $supportsNative,
+            ];
+        }
+
+        $location = CustomerLocation::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where(function ($q) use ($conversation): void {
+                $q->where('conversation_id', $conversation->id);
+                if ($conversation->customer_id !== null) {
+                    $q->orWhere('customer_id', $conversation->customer_id);
+                }
+            })
+            ->where('verification_status', '!=', CustomerLocation::STATUS_SUPERSEDED)
+            ->orderByRaw("CASE WHEN verification_status = 'confirmed' THEN 0 ELSE 1 END")
+            ->latest('id')
+            ->first();
+
+        $pendingSession = LocationCaptureSession::withoutGlobalScopes()
+            ->where('workspace_id', $conversation->workspace_id)
+            ->where('conversation_id', $conversation->id)
+            ->where('status', LocationCaptureSession::STATUS_PENDING)
+            ->where('expires_at', '>', now())
+            ->latest('id')
+            ->first();
+
+        if ($location === null) {
+            return [
+                'status' => 'not_captured',
+                'channel' => $channel,
+                'supports_native_location' => $supportsNative,
+                'pending_link_active' => $pendingSession !== null,
+            ];
+        }
+
+        return [
+            'status' => $location->verification_status,
+            'channel' => $channel,
+            'supports_native_location' => $supportsNative,
+            'pending_link_active' => $pendingSession !== null,
+            'location_id' => (int) $location->id,
+            'formatted_address' => $location->formatted_address,
+            'city' => $location->city,
+            'district' => $location->district,
+            'street' => $location->street,
+            'customer_notes' => $location->customer_notes,
+            'accuracy_meters' => $location->accuracy_meters,
+            'source' => $location->source,
+            'confirmed_at' => $location->confirmed_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function bookingContext(int $workspaceId, ?Conversation $conversation): array
+    {
+        $setting = BookingSetting::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->first();
+
+        if (! $setting instanceof BookingSetting || ! $setting->enabled) {
+            return ['enabled' => false];
+        }
+
+        $timezone = $setting->timezone ?: 'Asia/Riyadh';
+        $activeServices = BookingService::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->limit(15)
+            ->get(['id', 'name', 'duration_minutes', 'requires_party_size'])
+            ->map(static fn (BookingService $s): array => [
+                'id' => (int) $s->id,
+                'name' => $s->name,
+                'duration_minutes' => $s->effectiveDurationMinutes($setting),
+            ])
+            ->values()
+            ->all();
+
+        $branchesCount = BookingBranch::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->where('is_active', true)
+            ->count();
+
+        $customerBookings = [];
+        if ($conversation !== null) {
+            $customerBookings = Booking::withoutGlobalScopes()
+                ->where('workspace_id', $workspaceId)
+                ->where(function ($query) use ($conversation): void {
+                    $query->where('conversation_id', $conversation->id);
+                    if ($conversation->customer_id !== null) {
+                        $query->orWhere('customer_id', $conversation->customer_id);
+                    }
+                })
+                ->whereIn('status', BookingStatus::activeValues())
+                ->orderBy('starts_at')
+                ->limit(5)
+                ->get()
+                ->map(static fn (Booking $b): array => [
+                    'booking_reference' => $b->booking_reference,
+                    'service_name' => $b->service_name,
+                    'date' => $b->booking_date?->format('Y-m-d'),
+                    'start_time' => $b->start_time,
+                    'status' => $b->status,
+                ])
+                ->values()
+                ->all();
+        }
+
+        return [
+            'enabled' => true,
+            'timezone' => $timezone,
+            'today_local' => now($timezone)->format('Y-m-d'),
+            'tomorrow_local' => now($timezone)->addDay()->format('Y-m-d'),
+            'allow_party_size' => (bool) $setting->allow_party_size,
+            'require_staff' => (bool) $setting->require_staff,
+            'require_branch' => (bool) $setting->require_branch,
+            'services' => $activeServices,
+            'branches_count' => $branchesCount,
+            'custom_fields_schema' => $setting->custom_fields_schema ?? [],
+            'customer_active_bookings' => $customerBookings,
         ];
     }
 

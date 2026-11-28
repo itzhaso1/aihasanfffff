@@ -89,6 +89,7 @@ class MessageResource extends JsonResource
             'attachments' => MessageAttachmentResource::collection(
                 $this->relationLoaded('attachments') ? $this->attachments : [],
             ),
+            'location' => is_array($metadata['location'] ?? null) ? $metadata['location'] : null,
         ];
     }
 }

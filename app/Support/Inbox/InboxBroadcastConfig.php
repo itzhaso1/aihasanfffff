@@ -35,8 +35,10 @@ final class InboxBroadcastConfig
             return ['enabled' => false, 'driver' => $driver];
         }
 
-        $pingInterval = (int) config('reverb.apps.apps.0.ping_interval', 30);
-        $activityTimeout = (int) config('reverb.apps.apps.0.activity_timeout', 60);
+        $activityTimeout = max(20, min(120, (int) config('reverb.apps.apps.0.activity_timeout', 30)));
+        $configuredPing = (int) config('reverb.apps.apps.0.ping_interval', 20);
+        // Keep client heartbeats strictly shorter than Reverb's activity_timeout and mobile NAT timeouts.
+        $pingInterval = max(12, min($configuredPing > 0 ? $configuredPing : 20, max(12, $activityTimeout - 5), 25));
 
         return [
             'enabled' => true,
@@ -48,8 +50,8 @@ final class InboxBroadcastConfig
             'use_tls' => (bool) ($options['useTLS'] ?? true),
             'auth_endpoint' => url($authPath),
             'channel_prefix' => 'private-workspace.',
-            'ping_interval' => max(15, min(60, $pingInterval)),
-            'activity_timeout' => max(30, min(120, $activityTimeout)),
+            'ping_interval' => $pingInterval,
+            'activity_timeout' => $activityTimeout,
             'server_time' => now()->toIso8601String(),
         ];
     }

@@ -8,6 +8,8 @@ abstract class PushTokenSource {
 
   Stream<String> get refreshes;
 
+  Stream<Map<String, dynamic>> get foregroundMessages;
+
   Stream<Map<String, dynamic>> get openedNotifications;
 
   Future<Map<String, dynamic>?> takeLaunchNotification();
@@ -42,6 +44,10 @@ class UnconfiguredNativePushTokenSource implements PushTokenSource {
 
   @override
   Stream<String> get refreshes => const Stream<String>.empty();
+
+  @override
+  Stream<Map<String, dynamic>> get foregroundMessages =>
+      const Stream<Map<String, dynamic>>.empty();
 
   @override
   Stream<Map<String, dynamic>> get openedNotifications =>
@@ -83,6 +89,10 @@ class NativeDevicePushTokenSource implements PushTokenSource {
   Stream<String> get refreshes => _gateway.tokenRefreshes;
 
   @override
+  Stream<Map<String, dynamic>> get foregroundMessages =>
+      _gateway.foregroundMessages;
+
+  @override
   Stream<Map<String, dynamic>> get openedNotifications =>
       _gateway.openedNotifications;
 
@@ -109,6 +119,8 @@ abstract class NativeMessagingGateway {
   Future<String?> token();
 
   Stream<String> get tokenRefreshes;
+
+  Stream<Map<String, dynamic>> get foregroundMessages;
 
   Stream<Map<String, dynamic>> get openedNotifications;
 

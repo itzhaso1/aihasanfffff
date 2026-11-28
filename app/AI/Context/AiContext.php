@@ -43,6 +43,8 @@ final readonly class AiContext
         array $workspacePolicyContext,
         array $companyProfile = ['present' => false],
         public array $conversationFacts = [],
+        public array $locationContext = [],
+        public array $bookingContext = [],
     ) {
         $this->recentMessages = TypedList::of($recentMessages, ContextMessage::class, 'Context messages');
         $this->customerContext = $customerContext;
@@ -68,6 +70,8 @@ final readonly class AiContext
             'workspace_policy_context' => $this->workspacePolicyContext,
             'company_profile' => $this->companyProfile,
             'conversation_facts' => $this->conversationFacts,
+            'location_context' => $this->locationContext,
+            'booking_context' => $this->bookingContext,
         ];
     }
 }

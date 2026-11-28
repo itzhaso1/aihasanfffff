@@ -10,6 +10,8 @@ import 'package:hasim/core/network/api_exception.dart';
 import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
+import 'package:hasim/core/widgets/hasim_card.dart';
+import 'package:hasim/core/widgets/hasim_settings_body.dart';
 import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
 import 'package:hasim/features/catalog/data/chat_catalog_models.dart';
 import 'package:hasim/features/settings/data/ai_choice_labels.dart';
@@ -222,47 +224,50 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen>
     final loading =
         (settings.loading && settings.settings == null) &&
         (employees.loading && employees.employees.isEmpty);
-    final body = loading
-        ? const Center(child: CircularProgressIndicator())
-        : Column(
-            children: [
-              if (widget.embedded)
-                Material(
-                  color: HasimTokens.cardBg(context),
-                  child: _aiTabs(context, _tabs, tabs),
+    final body = ColoredBox(
+      color: HasimTokens.settingsCanvasBg(context),
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                if (widget.embedded)
+                  Material(
+                    color: HasimTokens.cardBg(context),
+                    child: _aiTabs(context, _tabs, tabs),
+                  ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabs,
+                    children: [
+                      _GeneralTab(
+                        employee: employees.selected,
+                        draft: _composedEmployeeDraft(),
+                        aiRoles: settings.aiRoles,
+                        name: _name,
+                        instructions: _instructions,
+                        experience: _experience,
+                        nameError: _nameError,
+                        saving: employees.saving,
+                        onChanged: (next) =>
+                            setState(() => _employeeDraft = next),
+                        onSave: _save,
+                        onOpenTest: () {
+                          final id = employees.selectedId;
+                          if (id == null) return;
+                          context.push('/ai-test', extra: id);
+                        },
+                      ),
+                      _EmployeesTab(
+                        roles: settings.aiRoles,
+                        onSelectEmployee: _selectEmployee,
+                      ),
+                      const _RealWorkersSection(),
+                    ],
+                  ),
                 ),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabs,
-                  children: [
-                    _GeneralTab(
-                      employee: employees.selected,
-                      draft: _composedEmployeeDraft(),
-                      aiRoles: settings.aiRoles,
-                      name: _name,
-                      instructions: _instructions,
-                      experience: _experience,
-                      nameError: _nameError,
-                      saving: employees.saving,
-                      onChanged: (next) =>
-                          setState(() => _employeeDraft = next),
-                      onSave: _save,
-                      onOpenTest: () {
-                        final id = employees.selectedId;
-                        if (id == null) return;
-                        context.push('/ai-test', extra: id);
-                      },
-                    ),
-                    _EmployeesTab(
-                      roles: settings.aiRoles,
-                      onSelectEmployee: _selectEmployee,
-                    ),
-                    const _RealWorkersSection(),
-                  ],
-                ),
-              ),
-            ],
-          );
+              ],
+            ),
+    );
 
     if (!widget.embedded && HasimLayout.isCompact(context)) {
       return HasimMobileScaffold(
@@ -275,11 +280,13 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen>
     return Scaffold(
       backgroundColor: widget.embedded
           ? Colors.transparent
-          : HasimTokens.pageBg(context),
+          : HasimTokens.settingsCanvasBg(context),
       appBar: widget.embedded
           ? null
           : AppBar(
               title: Text(l10n.aiSettingsTitle, style: _aiTitle(context)),
+              backgroundColor: HasimTokens.cardBg(context),
+              surfaceTintColor: Colors.transparent,
               bottom: _aiTabs(context, _tabs, tabs),
             ),
       body: body,
@@ -320,10 +327,11 @@ class _GeneralTab extends StatelessWidget {
     final selected = employee;
     final current = draft;
     if (selected == null || current == null) {
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      return HasimSettingsBody(
+        mobileLayout: HasimLayout.isCompact(context),
         children: [
           _SectionCard(
+            icon: Icons.smart_toy_outlined,
             title: 'الموظف',
             child: Text(
               'اختر موظفاً من تبويب الموظفين ليظهر هنا.',
@@ -340,20 +348,51 @@ class _GeneralTab extends StatelessWidget {
         : aiRoles;
     final role = roles.contains(current.role) ? current.role : roles.first;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+    return HasimSettingsBody(
+      mobileLayout: HasimLayout.isCompact(context),
       children: [
         _SectionCard(
+          icon: Icons.smart_toy_outlined,
           title: 'الموظف',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                selected.name,
-                key: const ValueKey('ai-general-employee-heading'),
-                style: _aiTitle(context),
+              Row(
+                children: [
+                  _EmployeeAvatar(avatarKey: selected.avatarKey),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          selected.name,
+                          key: const ValueKey('ai-general-employee-heading'),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: HasimTokens.inkColor(context),
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            if (selected.isDefault)
+                              const _Pill(label: 'افتراضي', highlighted: true),
+                            _Pill(
+                              label: selected.isActive ? 'مفعّل' : 'موقوف',
+                              highlighted: selected.isActive,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               TextField(
                 key: const ValueKey('ai-general-employee-name'),
                 controller: name,
@@ -378,8 +417,9 @@ class _GeneralTab extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         _SectionCard(
+          icon: Icons.assignment_outlined,
           title: 'التعليمات',
           child: Column(
             children: [
@@ -408,8 +448,9 @@ class _GeneralTab extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         _SectionCard(
+          icon: Icons.tune_rounded,
           title: 'أسلوب الرد',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -418,9 +459,22 @@ class _GeneralTab extends StatelessWidget {
                 children: [
                   Text('درجة الإبداع', style: _aiTitle(context)),
                   const Spacer(),
-                  Text(
-                    current.temperature.toStringAsFixed(2),
-                    style: _aiMuted(context),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: HasimTokens.mintFill(context),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      current.temperature.toStringAsFixed(2),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: HasimTokens.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -474,19 +528,36 @@ class _GeneralTab extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: onOpenTest,
-          icon: const Icon(Icons.science_outlined),
-          label: const Text('اختبار الذكاء الاصطناعي'),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 48,
-          child: FilledButton(
-            onPressed: saving ? null : onSave,
-            child: Text(saving ? l10n.loading : 'حفظ التغييرات'),
-          ),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final testBtn = OutlinedButton.icon(
+              onPressed: onOpenTest,
+              icon: const Icon(Icons.science_outlined),
+              label: const Text('اختبار الذكاء الاصطناعي'),
+            );
+            final saveBtn = FilledButton(
+              onPressed: saving ? null : onSave,
+              child: Text(saving ? l10n.loading : 'حفظ التغييرات'),
+            );
+            if (constraints.maxWidth >= 440) {
+              return Row(
+                children: [
+                  Expanded(child: SizedBox(height: 48, child: saveBtn)),
+                  const SizedBox(width: 12),
+                  Expanded(child: SizedBox(height: 48, child: testBtn)),
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                testBtn,
+                const SizedBox(height: 10),
+                SizedBox(height: 48, child: saveBtn),
+              ],
+            );
+          },
         ),
       ],
     );
@@ -494,38 +565,27 @@ class _GeneralTab extends StatelessWidget {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({this.title, required this.child});
+  const _SectionCard({this.title, this.icon, required this.child});
 
   final String? title;
+  final IconData? icon;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: HasimTokens.cardBg(context),
-      elevation: 0,
-      shadowColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: HasimTokens.lineColor(context)),
-      ),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: HasimTokens.softShadow(context),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (title != null) ...[
+    return HasimCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (title != null) ...[
+            if (icon != null)
+              HasimSettingsSectionHeader(icon: icon, title: title!)
+            else
               Text(title!, style: _aiTitle(context)),
-              const SizedBox(height: 10),
-            ],
-            child,
+            const SizedBox(height: 12),
           ],
-        ),
+          child,
+        ],
       ),
     );
   }

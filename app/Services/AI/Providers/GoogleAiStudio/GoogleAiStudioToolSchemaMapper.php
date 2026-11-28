@@ -26,10 +26,21 @@ final class GoogleAiStudioToolSchemaMapper
                     continue;
                 }
 
-                $properties[$name] = [
-                    'type' => $this->mapType((string) ($rules['type'] ?? 'string')),
+                $rules = is_array($rules) ? $rules : [];
+                $type = strtolower((string) ($rules['type'] ?? 'string'));
+                $property = [
+                    'type' => $this->mapType($type),
                     'description' => (string) ($rules['description'] ?? ''),
                 ];
+
+                if ($type === 'array') {
+                    $items = is_array($rules['items'] ?? null) ? $rules['items'] : ['type' => 'object'];
+                    $property['items'] = [
+                        'type' => $this->mapType((string) ($items['type'] ?? 'object')),
+                    ];
+                }
+
+                $properties[$name] = $property;
 
                 if ((bool) ($rules['required'] ?? false)) {
                     $required[] = $name;
@@ -41,7 +52,7 @@ final class GoogleAiStudioToolSchemaMapper
                 'description' => $definition->description,
                 'parameters' => [
                     'type' => 'OBJECT',
-                    'properties' => $properties,
+                    'properties' => $properties === [] ? (object) [] : $properties,
                     'required' => $required,
                 ],
             ];

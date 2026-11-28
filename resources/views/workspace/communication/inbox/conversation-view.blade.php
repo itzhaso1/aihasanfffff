@@ -582,9 +582,22 @@
                         </div>
                     @endif
 
-                    <div class="text-[12.5px] sm:text-[13px] leading-[1.6] whitespace-pre-wrap font-normal text-slate-800">
-                        {{ $message->content ?: '—' }}
-                    </div>
+                    @php
+                        $msgLocation = is_array(data_get($message->metadata, 'location')) ? data_get($message->metadata, 'location') : null;
+                    @endphp
+                    @if($msgLocation !== null)
+                        <div class="mb-1.5">
+                            @include('partials.location-card', [
+                                'location' => $msgLocation,
+                                'compact' => false,
+                                'allowVerify' => $inboxAllowsCompanyActions,
+                            ])
+                        </div>
+                    @else
+                        <div class="text-[12.5px] sm:text-[13px] leading-[1.6] whitespace-pre-wrap font-normal text-slate-800">
+                            {{ $message->content ?: '—' }}
+                        </div>
+                    @endif
 
                     {{-- Message Metadata Footer --}}
                     <div class="mt-1 flex items-center justify-end gap-1.5 text-[9.5px] text-slate-400 select-none">
@@ -667,11 +680,25 @@
                     </svg>
                 </button>
             </div>
-            <div class="flex items-center justify-between text-[10px] text-slate-400 px-1">
-                <span class="inline-flex items-center gap-1.5">
-                    <span class="h-1.5 w-1.5 rounded-full {{ $activeChannelChip['dot'] ?? 'bg-slate-400' }}"></span>
-                    <span>المصدر: {{ $activeChannelChip['label'] }}</span>
-                </span>
+            <div class="flex items-center justify-between text-[10px] text-slate-400 px-1 gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1.5">
+                        <span class="h-1.5 w-1.5 rounded-full {{ $activeChannelChip['dot'] ?? 'bg-slate-400' }}"></span>
+                        <span>المصدر: {{ $activeChannelChip['label'] }}</span>
+                    </span>
+                    @if($inboxAllowsCompanyActions)
+                        <button
+                            type="button"
+                            data-request-location-btn="1"
+                            data-request-location-url="{{ route('workspace.conversations.location-request', $activeConversation) }}"
+                            class="inline-flex items-center gap-1 rounded-lg border border-[#BEE9DF] bg-[#E8FAF6] px-2 py-0.5 text-[10.5px] font-bold text-[#067E6B] transition hover:bg-[#D4F5EE]"
+                            title="إرسال رابط تحديد الموقع الجغرافي للعميل"
+                        >
+                            <span>📍</span>
+                            <span>طلب الموقع</span>
+                        </button>
+                    @endif
+                </div>
                 <span class="hidden sm:inline">اضغط Enter للإرسال · Shift+Enter لسطر جديد</span>
             </div>
         </form>

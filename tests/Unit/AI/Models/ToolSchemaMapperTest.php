@@ -32,4 +32,25 @@ class ToolSchemaMapperTest extends TestCase
         $this->assertSame('integer', $openai[0]['function']['parameters']['properties']['limit']['type']);
         $this->assertSame(['query'], $openai[0]['function']['parameters']['required']);
     }
+
+    public function test_array_parameters_include_items_schema_for_gemini_and_openai(): void
+    {
+        $tool = new ToolSpec('create_customer_order', 'Create order.', [
+            'items' => [
+                'type' => 'array',
+                'required' => true,
+                'description' => 'Order items.',
+            ],
+        ]);
+        $mapper = new ToolSchemaMapper;
+
+        $gemini = $mapper->geminiDeclarations([$tool]);
+        $openai = $mapper->openaiTools([$tool]);
+
+        $this->assertSame('ARRAY', $gemini[0]['parameters']['properties']['items']['type']);
+        $this->assertSame('OBJECT', $gemini[0]['parameters']['properties']['items']['items']['type']);
+
+        $this->assertSame('array', $openai[0]['function']['parameters']['properties']['items']['type']);
+        $this->assertSame('object', $openai[0]['function']['parameters']['properties']['items']['items']['type']);
+    }
 }

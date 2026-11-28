@@ -43,21 +43,35 @@ class NotificationPreferencesScreen extends ConsumerWidget {
         children: [
           HasimCard(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const HasimSettingsSectionHeader(
+                  icon: Icons.notifications_outlined,
+                  title: 'قنوات التنبيه',
+                  subtitle: 'اختر أنواع الإشعارات التي ترغب في استلامها',
+                ),
+                const SizedBox(height: 12),
+                Divider(height: 1, color: HasimTokens.lineColor(context)),
                 _PrefSwitch(
+                  icon: Icons.chat_bubble_outline_rounded,
                   title: l10n.notificationPrefMessages,
+                  subtitle: 'إشعارات الرسائل الجديدة وردود العملاء الفورية',
                   value: state.messages,
                   onChanged: notifier.setMessages,
                 ),
                 Divider(height: 1, color: HasimTokens.lineColor(context)),
                 _PrefSwitch(
+                  icon: Icons.mail_outline_rounded,
                   title: l10n.notificationPrefEmail,
+                  subtitle: 'تنبيهات رسائل البريد الإلكتروني الواردة',
                   value: state.email,
                   onChanged: notifier.setEmail,
                 ),
                 Divider(height: 1, color: HasimTokens.lineColor(context)),
                 _PrefSwitch(
+                  icon: Icons.campaign_outlined,
                   title: l10n.notificationPrefMarketing,
+                  subtitle: 'تحديثات المنصة والميزات الجديدة والعروض',
                   value: state.marketing,
                   onChanged: notifier.setMarketing,
                 ),
@@ -109,30 +123,59 @@ class NotificationPreferencesScreen extends ConsumerWidget {
 
 class _PrefSwitch extends StatelessWidget {
   const _PrefSwitch({
+    required this.icon,
     required this.title,
+    required this.subtitle,
     required this.value,
     required this.onChanged,
   });
 
+  final IconData icon;
   final String title;
+  final String subtitle;
   final bool value;
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final dark = HasimTokens.isDark(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: HasimTokens.primary.withValues(alpha: dark ? 0.16 : 0.09),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: HasimTokens.primary),
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: HasimTokens.inkColor(context),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: HasimTokens.inkColor(context),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: HasimTokens.mutedColor(context),
+                  ),
+                ),
+              ],
             ),
           ),
+          const SizedBox(width: 8),
           Switch.adaptive(
             value: value,
             onChanged: onChanged,

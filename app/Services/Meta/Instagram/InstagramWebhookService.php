@@ -12,6 +12,8 @@ use App\Models\WorkspaceMetaConnection;
 use App\Services\Customer\CustomerChannelIdentityService;
 use App\Services\Inbox\InboxHumanHandoffService;
 use App\Services\Inbox\InboxRealtimePublisher;
+use App\Services\Location\LocationCaptureService;
+use App\Services\Location\LocationPayloadNormalizer;
 use App\Services\Media\InboundMediaCoordinator;
 use App\Support\Http\WebhookHeaderSanitizer;
 use App\Support\Meta\MetaConnectionKind;
@@ -296,7 +298,7 @@ class InstagramWebhookService
         $messageType = is_string($messageData['message_type'] ?? null)
             ? (string) $messageData['message_type']
             : 'text';
-        if (! in_array($messageType, ['text', 'image', 'file', 'system'], true)) {
+        if (! in_array($messageType, ['text', 'image', 'file', 'system', 'location'], true)) {
             $messageType = 'text';
         }
 
@@ -307,7 +309,7 @@ class InstagramWebhookService
         }
 
         try {
-            return Message::withoutGlobalScopes()->create([
+            $message = Message::withoutGlobalScopes()->create([
                 'workspace_id' => $workspaceId,
                 'conversation_id' => $conversation->id,
                 'customer_id' => $customer->id,
@@ -317,6 +319,23 @@ class InstagramWebhookService
                 'external_message_id' => $externalMessageId,
                 'metadata' => $metadata,
             ]);
+
+            if ($messageType === 'location' && is_array($messageData['attachments'] ?? null)) {
+                $normalized = app(LocationPayloadNormalizer::class)->fromMetaAttachments(
+                    'instagram',
+                    $messageData['attachments'],
+                    (int) $conversation->id,
+                    (int) $customer->id,
+                    null,
+                    $externalMessageId,
+                );
+                if ($normalized !== null) {
+                    app(LocationCaptureService::class)->ingestChannelLocation($conversation, $message, $normalized);
+                    $message = $message->fresh() ?? $message;
+                }
+            }
+
+            return $message;
         } catch (UniqueConstraintViolationException) {
             return Message::withoutGlobalScopes()
                 ->where('workspace_id', $workspaceId)

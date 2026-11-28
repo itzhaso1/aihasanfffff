@@ -115,8 +115,8 @@ class _RealWorkersSectionState extends ConsumerState<_RealWorkersSection>
       ],
     );
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+    return HasimSettingsBody(
+      mobileLayout: compact,
       children: [
         const _WorkerDiscoveryHeader(),
         const SizedBox(height: 14),

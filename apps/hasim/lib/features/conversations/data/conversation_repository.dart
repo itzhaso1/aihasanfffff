@@ -308,6 +308,8 @@ class ConversationRepository {
               ),
               res.nextCursor,
             );
+            final serverTime = res.meta?['server_time']?.toString();
+            await _local?.setServerDeltaTime(workspaceId, serverTime);
           }
         } catch (e, st) {
           debugPrint('[Hasim] SQLite cache write failed in list(): $e\n$st');

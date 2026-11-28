@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
+import 'package:hasim/core/widgets/hasim_card.dart';
+import 'package:hasim/core/widgets/hasim_settings_body.dart';
+import 'package:hasim/features/conversations/data/chat_bubble_color_catalog.dart';
+import 'package:hasim/features/conversations/data/chat_wallpaper_catalog.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_bubble_color_picker.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_wallpaper_picker.dart';
+import 'package:hasim/features/conversations/providers/chat_bubble_color_controller.dart';
+import 'package:hasim/features/conversations/providers/chat_wallpaper_controller.dart';
 
-/// المظهر (فاتح/داكن) + سمات خلفية المحادثة — في شاشة واحدة.
+/// المظهر (فاتح/داكن) + معاينة حية + سمات خلفية المحادثة — في شاشة واحدة.
 class DisplayAppearanceSettings extends ConsumerWidget {
   const DisplayAppearanceSettings({
     super.key,
@@ -21,7 +27,8 @@ class DisplayAppearanceSettings extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final muted = HasimTokens.mutedColor(context);
+    final wallpaperId = ref.watch(chatWallpaperControllerProvider);
+    final bubbleColorId = ref.watch(chatBubbleColorControllerProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -36,46 +43,170 @@ class DisplayAppearanceSettings extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
         ],
-        Text(
-          'المظهر',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: HasimTokens.inkColor(context),
+        HasimCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const HasimSettingsSectionHeader(
+                icon: Icons.brightness_6_outlined,
+                title: 'المظهر',
+                subtitle: 'اختر السطوع المناسب أو اربطه بإعدادات الجهاز',
+              ),
+              const SizedBox(height: 14),
+              _AppearanceModeBar(
+                themeMode: themeMode,
+                onChanged: onThemeChanged,
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        _AppearanceModeBar(themeMode: themeMode, onChanged: onThemeChanged),
-        const SizedBox(height: 24),
-        Text(
-          'السمات',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: HasimTokens.inkColor(context),
+        const SizedBox(height: HasimTokens.spaceMd),
+        _AppearanceLivePreviewCard(
+          wallpaperId: wallpaperId,
+          bubbleColorId: bubbleColorId,
+        ),
+        const SizedBox(height: HasimTokens.spaceMd),
+        HasimCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const HasimSettingsSectionHeader(
+                icon: Icons.wallpaper_outlined,
+                title: 'السمات',
+                subtitle: 'اختر صورة أو خلفية لشاشة المحادثة',
+              ),
+              const SizedBox(height: 14),
+              ChatWallpaperPicker(compact: compactPreview),
+            ],
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          'اختر صورة أو خلفية لشاشة المحادثة',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: muted),
-        ),
-        const SizedBox(height: 16),
-        ChatWallpaperPicker(compact: compactPreview),
-        const SizedBox(height: 24),
-        Text(
-          'لون فقاعاتك',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: HasimTokens.inkColor(context),
+        const SizedBox(height: HasimTokens.spaceMd),
+        HasimCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const HasimSettingsSectionHeader(
+                icon: Icons.color_lens_outlined,
+                title: 'لون فقاعاتك',
+                subtitle: 'لون رسائلك المرسلة في المحادثة',
+              ),
+              const SizedBox(height: 14),
+              const ChatBubbleColorPicker(),
+            ],
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          'لون رسائلك المرسلة في المحادثة',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: muted),
-        ),
-        const SizedBox(height: 12),
-        const ChatBubbleColorPicker(),
       ],
+    );
+  }
+}
+
+class _AppearanceLivePreviewCard extends StatelessWidget {
+  const _AppearanceLivePreviewCard({
+    required this.wallpaperId,
+    required this.bubbleColorId,
+  });
+
+  final String wallpaperId;
+  final String bubbleColorId;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HasimTokens.isDark(context);
+    final bubbleColor =
+        ChatBubbleColorCatalog.find(bubbleColorId)?.resolve(context) ??
+        HasimTokens.outgoingBubble(context);
+    final inboundBg = dark ? const Color(0xFF1F2C33) : Colors.white;
+    final bubbleInk = dark ? Colors.white : HasimTokens.ink;
+
+    return HasimCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: HasimSettingsSectionHeader(
+              icon: Icons.visibility_outlined,
+              title: 'معاينة المحادثة',
+              subtitle: 'تحديث مباشر عند تغيير السمة أو لون الفقاعات',
+            ),
+          ),
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              bottom: Radius.circular(HasimTokens.radiusMd - 1),
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: HasimTokens.chatCanvas(context),
+                image: ChatWallpaperCatalog.decorationImage(wallpaperId),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: inboundBg,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: HasimTokens.softShadow(context),
+                        ),
+                        child: Text(
+                          'مرحباً، أود الاستفسار عن تفاصيل الطلب',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: bubbleInk),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: bubbleColor,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: HasimTokens.softShadow(context),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'أهلاً بك! يسعدنا خدمتك الآن',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(color: bubbleInk),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.done_all_rounded,
+                              size: 15,
+                              color: HasimTokens.readReceipt,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

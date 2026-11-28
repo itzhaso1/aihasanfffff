@@ -18,6 +18,7 @@ final class WhatsAppInboundMediaParser
             'video' => $this->media('video', $messageData['video'] ?? [], $messageData),
             'document' => $this->media('file', $messageData['document'] ?? [], $messageData),
             'sticker' => $this->media('image', $messageData['sticker'] ?? [], $messageData),
+            'location' => $this->location($messageData['location'] ?? []),
             default => [
                 'message_type' => 'text',
                 'content' => is_string($messageData['text']['body'] ?? null) ? $messageData['text']['body'] : null,
@@ -51,6 +52,23 @@ final class WhatsAppInboundMediaParser
             'message_type' => $kind,
             'content' => $caption,
             'descriptors' => $descriptors,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{message_type:string,content:?string,descriptors:list<array<string,mixed>>}
+     */
+    private function location(array $payload): array
+    {
+        $name = is_string($payload['name'] ?? null) ? trim($payload['name']) : '';
+        $address = is_string($payload['address'] ?? null) ? trim($payload['address']) : '';
+        $parts = array_values(array_filter([$name, $address]));
+
+        return [
+            'message_type' => 'location',
+            'content' => $parts !== [] ? implode(' — ', $parts) : '📍 موقع مشترك',
+            'descriptors' => [],
         ];
     }
 }

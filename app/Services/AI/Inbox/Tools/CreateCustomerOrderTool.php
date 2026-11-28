@@ -57,7 +57,19 @@ final class CreateCustomerOrderTool implements InboxAgentSecuredTool
             'items' => [
                 'type' => 'array',
                 'required' => true,
-                'description' => 'List of products/items being ordered. Each item should include item_id or product_name, and quantity.',
+                'description' => 'List of products/items being ordered. Always include product_name (and chat_catalog_item_id if known), variant_name/product_type, unit_price, and quantity.',
+                'items' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'chat_catalog_item_id' => ['type' => 'integer', 'description' => 'Catalog product ID.'],
+                        'product_name' => ['type' => 'string', 'description' => 'Product or service name.'],
+                        'variant_id' => ['type' => 'integer', 'description' => 'Selected variant ID if applicable.'],
+                        'variant_name' => ['type' => 'string', 'description' => 'Selected variant, edition, size, or product type.'],
+                        'product_type' => ['type' => 'string', 'description' => 'Product type or classification.'],
+                        'unit_price' => ['type' => 'number', 'description' => 'Verified unit price of the item or variant.'],
+                        'quantity' => ['type' => 'integer', 'description' => 'Requested quantity.'],
+                    ],
+                ],
             ],
             'notes' => [
                 'type' => 'string',
@@ -84,6 +96,11 @@ final class CreateCustomerOrderTool implements InboxAgentSecuredTool
                 'required' => false,
                 'description' => 'Action recommended for the human agent.',
             ],
+            'is_additional_order' => [
+                'type' => 'boolean',
+                'required' => false,
+                'description' => 'True when an existing customer is placing a new separate/additional order (e.g. for a second address or second phone number).',
+            ],
         ];
     }
 
@@ -97,6 +114,7 @@ final class CreateCustomerOrderTool implements InboxAgentSecuredTool
         $isComplete = (bool) ($arguments['is_complete'] ?? true);
         $reviewReason = isset($arguments['review_reason']) ? (string) $arguments['review_reason'] : null;
         $requiredAction = isset($arguments['required_action']) ? (string) $arguments['required_action'] : null;
+        $isAdditionalOrder = (bool) ($arguments['is_additional_order'] ?? false);
 
         if ($phone === '') {
             return InboxAgentToolExecutionResult::failure(
@@ -119,6 +137,7 @@ final class CreateCustomerOrderTool implements InboxAgentSecuredTool
                 isComplete: $isComplete,
                 reviewReason: $reviewReason,
                 requiredAction: $requiredAction,
+                isAdditionalOrder: $isAdditionalOrder,
             );
 
             return InboxAgentToolExecutionResult::success(
@@ -131,6 +150,18 @@ final class CreateCustomerOrderTool implements InboxAgentSecuredTool
                     'customer_status' => $result['customer']->status->value,
                     'order_number' => $result['order']->order_number,
                     'order_total' => (string) $result['order']->total_amount,
+                    'currency' => $result['order']->currency,
+                    'shipping_address' => $result['order']->metadata['shipping_address'] ?? null,
+                    'recipient_phone' => $result['order']->metadata['recipient_phone'] ?? null,
+                    'is_additional_order' => (bool) ($result['order']->metadata['is_additional_order'] ?? false),
+                    'items' => $result['order']->items->map(static fn ($item): array => [
+                        'product_name' => $item->product_name,
+                        'variant_name' => $item->variant_name,
+                        'item_type' => $item->item_type,
+                        'quantity' => (int) $item->quantity,
+                        'unit_price' => (string) $item->unit_price,
+                        'total_amount' => (string) $item->total_amount,
+                    ])->values()->all(),
                     'is_review_required' => $result['is_review_required'],
                 ],
             );

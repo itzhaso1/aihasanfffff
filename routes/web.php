@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\PhoneOtpController;
 use App\Http\Controllers\Auth\SocialLoginController;
 use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\LegalPageController;
+use App\Http\Controllers\LocationCaptureController;
 use App\Http\Controllers\Mobile\WhatsAppMobileSignupController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
@@ -24,6 +25,8 @@ use App\Http\Controllers\Worker\WorkerWorkSessionController as WorkerWorkSession
 use App\Http\Controllers\Workspace\AiSettingController;
 use App\Http\Controllers\Workspace\AnalyticsController as WorkspaceAnalyticsController;
 use App\Http\Controllers\Workspace\ApiKeyController as WorkspaceApiKeyController;
+use App\Http\Controllers\Workspace\BookingController as WorkspaceBookingController;
+use App\Http\Controllers\Workspace\BookingSettingController as WorkspaceBookingSettingController;
 use App\Http\Controllers\Workspace\ChannelController;
 use App\Http\Controllers\Workspace\Chat\ChatCatalogController;
 use App\Http\Controllers\Workspace\Chat\ChatCatalogDigitalInventoryController;
@@ -37,6 +40,7 @@ use App\Http\Controllers\Workspace\ConversationBulkMessageController;
 use App\Http\Controllers\Workspace\ConversationController;
 use App\Http\Controllers\Workspace\ConversationHandoffController;
 use App\Http\Controllers\Workspace\ConversationLiveMonitorController;
+use App\Http\Controllers\Workspace\ConversationLocationController as WorkspaceConversationLocationController;
 use App\Http\Controllers\Workspace\CustomerController;
 use App\Http\Controllers\Workspace\DashboardController as WorkspaceDashboardController;
 use App\Http\Controllers\Workspace\EmployeeInvitationController;
@@ -98,6 +102,23 @@ Route::get('/terms', [LegalPageController::class, 'terms'])->name('legal.terms')
 Route::get('/cookies', [LegalPageController::class, 'cookies'])->name('legal.cookies');
 Route::get('/acceptable-use', [LegalPageController::class, 'acceptableUse'])->name('legal.acceptable-use');
 Route::get('/refund', [LegalPageController::class, 'refund'])->name('legal.refund');
+
+Route::prefix('l/{token}')
+    ->where(['token' => '[A-Fa-f0-9]{64}'])
+    ->group(function (): void {
+        Route::get('/', [LocationCaptureController::class, 'show'])
+            ->middleware('throttle:location-capture-view')
+            ->name('location.capture.show');
+        Route::post('/confirm', [LocationCaptureController::class, 'store'])
+            ->middleware('throttle:location-capture-submit')
+            ->name('location.capture.confirm');
+        Route::get('/search', [LocationCaptureController::class, 'search'])
+            ->middleware('throttle:location-capture-search')
+            ->name('location.capture.search');
+        Route::get('/reverse', [LocationCaptureController::class, 'reverse'])
+            ->middleware('throttle:location-capture-search')
+            ->name('location.capture.reverse');
+    });
 
 Route::post('/assistant/chat', [AssistantController::class, 'chat'])
     ->middleware('throttle:20,1')
@@ -357,6 +378,11 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->name('conversations.messages.store');
         Route::post('conversations/{conversation}/messages/{message}/retry', [ConversationController::class, 'retryMessage'])->name('conversations.messages.retry');
         Route::get('conversations/{conversation}/media', [ConversationController::class, 'media'])->name('conversations.media');
+        Route::post('conversations/{conversation}/location-request', [WorkspaceConversationLocationController::class, 'requestCapture'])
+            ->name('conversations.location-request');
+        Route::patch('locations/{location}/verification', [WorkspaceConversationLocationController::class, 'updateVerification'])
+            ->whereNumber('location')
+            ->name('locations.verification.update');
         Route::post('conversations/{conversation}/typing', [ConversationController::class, 'typing'])->name('conversations.typing');
         Route::get('conversations/{conversation}/presence', [ConversationController::class, 'presence'])->name('conversations.presence');
         Route::post('conversations/{conversation}/presence/ping', [ConversationController::class, 'presencePing'])->name('conversations.presence.ping');
@@ -375,6 +401,29 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             ->name('message-attachments.download');
 
         Route::get('chat-catalog/product-templates', [ChatCatalogProductTemplateController::class, 'index'])->name('chat-catalog.templates.index');
+
+        Route::prefix('bookings')->as('bookings.')->group(function (): void {
+            Route::get('/', [WorkspaceBookingController::class, 'index'])->name('index');
+            Route::get('/availability-slots', [WorkspaceBookingController::class, 'availability'])->name('availability');
+            Route::get('/create', [WorkspaceBookingController::class, 'create'])->name('create');
+            Route::post('/', [WorkspaceBookingController::class, 'store'])->name('store');
+            Route::get('/settings', [WorkspaceBookingSettingController::class, 'edit'])->name('settings.edit');
+            Route::put('/settings', [WorkspaceBookingSettingController::class, 'update'])->name('settings.update');
+            Route::post('/settings/services', [WorkspaceBookingSettingController::class, 'storeService'])->name('settings.services.store');
+            Route::put('/settings/services/{service}', [WorkspaceBookingSettingController::class, 'updateService'])->whereNumber('service')->name('settings.services.update');
+            Route::delete('/settings/services/{service}', [WorkspaceBookingSettingController::class, 'destroyService'])->whereNumber('service')->name('settings.services.destroy');
+            Route::post('/settings/branches', [WorkspaceBookingSettingController::class, 'storeBranch'])->name('settings.branches.store');
+            Route::delete('/settings/branches/{branch}', [WorkspaceBookingSettingController::class, 'destroyBranch'])->whereNumber('branch')->name('settings.branches.destroy');
+            Route::post('/settings/providers', [WorkspaceBookingSettingController::class, 'storeProvider'])->name('settings.providers.store');
+            Route::delete('/settings/providers/{provider}', [WorkspaceBookingSettingController::class, 'destroyProvider'])->whereNumber('provider')->name('settings.providers.destroy');
+            Route::post('/settings/blocked-slots', [WorkspaceBookingSettingController::class, 'storeBlockedSlot'])->name('settings.blocked-slots.store');
+            Route::delete('/settings/blocked-slots/{blockedSlot}', [WorkspaceBookingSettingController::class, 'destroyBlockedSlot'])->whereNumber('blockedSlot')->name('settings.blocked-slots.destroy');
+            Route::get('/{booking}', [WorkspaceBookingController::class, 'show'])->whereNumber('booking')->name('show');
+            Route::put('/{booking}', [WorkspaceBookingController::class, 'update'])->whereNumber('booking')->name('update');
+            Route::post('/{booking}/reschedule', [WorkspaceBookingController::class, 'reschedule'])->whereNumber('booking')->name('reschedule');
+            Route::patch('/{booking}/status', [WorkspaceBookingController::class, 'updateStatus'])->whereNumber('booking')->name('status.update');
+            Route::post('/{booking}/remind', [WorkspaceBookingController::class, 'sendReminder'])->whereNumber('booking')->name('remind');
+        });
         Route::get('chat-catalog/product-templates/{template}', [ChatCatalogProductTemplateController::class, 'show'])->name('chat-catalog.templates.show');
         Route::post('chat-catalog/product-templates', [ChatCatalogProductTemplateController::class, 'store'])->name('chat-catalog.templates.store');
         Route::post('chat-catalog/product-templates/{template}/clone', [ChatCatalogProductTemplateController::class, 'clone'])->name('chat-catalog.templates.clone');

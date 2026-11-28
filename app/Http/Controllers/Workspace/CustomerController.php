@@ -132,6 +132,8 @@ class CustomerController extends Controller
         $this->authorize('view', $customer);
 
         $customer->load([
+            'primaryLocation',
+            'bookings' => fn ($q) => $q->with(['branch', 'provider'])->latest('starts_at'),
             'orders' => fn ($q) => $q->with('items')->latest('id'),
             'conversations' => fn ($q) => $q->with(['messages' => fn ($mq) => $mq->latest('id')->limit(1)])->latest('last_message_at'),
             'notes.user',

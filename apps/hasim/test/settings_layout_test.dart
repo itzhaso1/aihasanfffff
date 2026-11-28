@@ -322,4 +322,51 @@ void main() {
       expect(find.text('شاشة الحساب'), findsNothing);
     },
   );
+
+  testWidgets(
+    'settings show grouped sections, empty search state, and switch detail panes smoothly',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+
+      // Grouped section headers in desktop panel.
+      expect(find.text('الأمان والإشعارات'), findsOneWidget);
+      expect(find.text('العمل والذكاء'), findsOneWidget);
+      expect(find.text('التفضيلات'), findsOneWidget);
+
+      // Switch to Privacy Lock detail pane.
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('hasim-settings-panel')),
+          matching: find.text('القفل والخصوصية'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('حماية التطبيق والبصمة'), findsOneWidget);
+
+      // Switch to Appearance detail pane -> live chat preview is rendered.
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('hasim-settings-panel')),
+          matching: find.text('المظهر والسمات'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('معاينة المحادثة'), findsOneWidget);
+
+      // Unmatched search shows localized empty state instead of blank panel.
+      await tester.enterText(
+        find.widgetWithText(TextField, 'ابحث في الإعدادات'),
+        'غير_موجود_ابدا',
+      );
+      await tester.pump();
+      expect(find.text('لا توجد نتائج'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

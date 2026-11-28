@@ -95,6 +95,7 @@ class CommerceOrderController extends Controller
         return view('workspace.commerce.orders.show', [
             'order' => $order->load([
                 'customer',
+                'deliveryLocation',
                 'commerceCart',
                 'items.commerceSeller',
                 'sellerAllocations.seller',

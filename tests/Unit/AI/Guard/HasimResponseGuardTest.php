@@ -135,12 +135,43 @@ class HasimResponseGuardTest extends TestCase
         $this->assertSame('المتوفر 4 قطع والعملة SAR', $outcome->text);
     }
 
+    public function test_unmatched_variant_allows_offering_listed_in_stock_variants(): void
+    {
+        $outcome = (new HasimResponseGuard)->review($this->input(
+            'متوفر كتاب تعلم Excel للمبتدئين بنسخة PDF عربي 154 ريال',
+            facts: [
+                new FactRecord('chat_catalog', 'catalog_item:8.name', 'كتاب تعلم Excel للمبتدئين'),
+                new FactRecord('chat_catalog', 'catalog_item:8.availability', 'in_stock'),
+                new FactRecord('chat_catalog', 'catalog_item:8.variant:2.name', 'PDF عربي'),
+                new FactRecord('chat_catalog', 'catalog_item:8.variant:2.price', '154.00'),
+                new FactRecord('chat_catalog', 'catalog_item:8.variant:2.availability', 'in_stock'),
+                new FactRecord('chat_catalog', 'catalog_item:8.variant_match_status', 'not_found'),
+                new FactRecord('chat_catalog', 'catalog_item:8.requested_variant.status', 'not_found'),
+            ],
+        ));
+
+        $this->assertSame(GuardVerdict::Pass, $outcome->verdict);
+    }
+
     public function test_unconfirmed_save_is_rejected_and_confirmed_save_passes(): void
     {
         $denied = (new HasimResponseGuard)->review($this->input('حفظت القياس عندي'));
         $allowed = (new HasimResponseGuard)->review($this->input(
             'حفظت القياس عندي',
             actions: [new ConfirmedAction(CanonicalTools::SAVE_CUSTOMER_COMMERCE_CONTEXT, '4')],
+        ));
+
+        $this->assertSame(GuardVerdict::Rejected, $denied->verdict);
+        $this->assertSame('unconfirmed_action', $this->reason($denied, ActionClaimCheck::NAME));
+        $this->assertSame(GuardVerdict::Pass, $allowed->verdict);
+    }
+
+    public function test_unconfirmed_cancel_is_rejected_and_confirmed_cancel_passes(): void
+    {
+        $denied = (new HasimResponseGuard)->review($this->input('تم الإلغاء للطلب'));
+        $allowed = (new HasimResponseGuard)->review($this->input(
+            'تم الإلغاء للطلب',
+            actions: [new ConfirmedAction(CanonicalTools::CANCEL_CUSTOMER_ORDER, 'ORD-00000001')],
         ));
 
         $this->assertSame(GuardVerdict::Rejected, $denied->verdict);

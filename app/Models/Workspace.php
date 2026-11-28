@@ -151,4 +151,14 @@ class Workspace extends Model
     {
         return $this->hasOne(CommerceWorkspaceProfile::class);
     }
+
+    public function bookingSetting(): HasOne
+    {
+        return $this->hasOne(BookingSetting::class);
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
+    }
 }

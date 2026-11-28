@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Mobile\V1\AiSettingsController;
 use App\Http\Controllers\Api\Mobile\V1\AnalyticsController;
 use App\Http\Controllers\Api\Mobile\V1\AttachmentController;
 use App\Http\Controllers\Api\Mobile\V1\AuthController;
+use App\Http\Controllers\Api\Mobile\V1\BookingController;
 use App\Http\Controllers\Api\Mobile\V1\BrandingController;
 use App\Http\Controllers\Api\Mobile\V1\ChannelConnectController;
 use App\Http\Controllers\Api\Mobile\V1\ChannelController;
@@ -21,6 +22,7 @@ use App\Http\Controllers\Api\Mobile\V1\CompanyProfileController;
 use App\Http\Controllers\Api\Mobile\V1\ConversationBulkMessageController;
 use App\Http\Controllers\Api\Mobile\V1\ConversationController;
 use App\Http\Controllers\Api\Mobile\V1\ConversationHandoffController;
+use App\Http\Controllers\Api\Mobile\V1\ConversationLocationController;
 use App\Http\Controllers\Api\Mobile\V1\CustomerController;
 use App\Http\Controllers\Api\Mobile\V1\DeviceController;
 use App\Http\Controllers\Api\Mobile\V1\DeviceSessionController;
@@ -51,6 +53,7 @@ Route::prefix('auth')->group(function (): void {
 
 Route::middleware(['auth:sanctum', 'throttle:mobile-api'])->group(function (): void {
     Route::match(['get', 'post'], '/broadcasting/auth', [BroadcastController::class, 'authenticate']);
+    Route::get('/realtime/config', [RealtimeController::class, 'config']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::patch('/auth/profile', [AuthController::class, 'updateProfile']);
@@ -173,6 +176,11 @@ Route::middleware([
         ->middleware('throttle:mobile-messages');
     Route::post('/conversations/{conversation}/messages/{message}/retry', [ConversationController::class, 'retryMessage'])
         ->middleware('throttle:mobile-messages');
+    Route::post('/conversations/{conversation}/location-request', [ConversationLocationController::class, 'requestCapture'])
+        ->middleware('throttle:mobile-messages');
+    Route::patch('/locations/{location}/verification', [ConversationLocationController::class, 'updateVerification'])
+        ->whereNumber('location')
+        ->middleware('throttle:mobile-write');
     Route::post('/conversations/bulk-messages', [ConversationBulkMessageController::class, 'store'])
         ->middleware('throttle:mobile-write');
     Route::get('/conversations/bulk-messages/{bulkSend}', [ConversationBulkMessageController::class, 'show'])
@@ -252,8 +260,6 @@ Route::middleware([
 
     Route::post('/devices', [DeviceController::class, 'store'])->middleware('throttle:mobile-write');
     Route::delete('/devices/{device}', [DeviceController::class, 'destroy']);
-
-    Route::get('/realtime/config', [RealtimeController::class, 'config']);
 
     Route::get('/home', [HomeController::class, 'index']);
     Route::get('/analytics', [AnalyticsController::class, 'summary']);
@@ -381,6 +387,17 @@ Route::middleware([
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
     Route::get('/notification-preferences', [NotificationController::class, 'preferences']);
     Route::put('/notification-preferences', [NotificationController::class, 'updatePreferences']);
+
+    Route::prefix('bookings')->group(function (): void {
+        Route::get('/', [BookingController::class, 'index']);
+        Route::get('/availability', [BookingController::class, 'availability']);
+        Route::get('/settings', [BookingController::class, 'settings']);
+        Route::post('/', [BookingController::class, 'store'])->middleware('throttle:mobile-write');
+        Route::get('/{booking}', [BookingController::class, 'show'])->whereNumber('booking');
+        Route::patch('/{booking}', [BookingController::class, 'update'])->whereNumber('booking')->middleware('throttle:mobile-write');
+        Route::post('/{booking}/reschedule', [BookingController::class, 'reschedule'])->whereNumber('booking')->middleware('throttle:mobile-write');
+        Route::patch('/{booking}/status', [BookingController::class, 'updateStatus'])->whereNumber('booking')->middleware('throttle:mobile-write');
+    });
 
     Route::prefix('company')->name('company.')->group(function (): void {
         Route::get('/worker-discovery', [WorkerDiscoveryController::class, 'index']);

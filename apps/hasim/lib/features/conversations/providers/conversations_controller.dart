@@ -374,7 +374,7 @@ class ConversationsController extends StateNotifier<ConversationsState> {
 
   void _scheduleRealtimeRefresh() {
     _realtimeRefreshTimer?.cancel();
-    _realtimeRefreshTimer = Timer(const Duration(milliseconds: 350), () {
+    _realtimeRefreshTimer = Timer(const Duration(milliseconds: 120), () {
       if (mounted) unawaited(refresh(silent: true));
     });
   }
@@ -400,7 +400,7 @@ class ConversationsController extends StateNotifier<ConversationsState> {
     try {
       final since = DateTime.fromMillisecondsSinceEpoch(
         latestMs,
-      ).subtract(const Duration(seconds: 5));
+      ).subtract(const Duration(seconds: 10));
       final page = await repo.deltaList(
         updatedAfter: since,
         filter: _remoteFilter,
@@ -1055,10 +1055,6 @@ class ChatController extends StateNotifier<ChatState> {
       return;
     }
     final workspaceId = _boundWorkspaceId;
-    _realtime.watchConversation(
-      conversationId,
-      workspaceId: state.conversation?.workspaceId ?? workspaceId,
-    );
     _sub = _realtime.messageCreated.listen((m) {
       if (m.conversationId != conversationId) return;
       unawaited(_ingestPolledMessage(m));
@@ -1120,6 +1116,10 @@ class ChatController extends StateNotifier<ChatState> {
       if (convId != conversationId) return;
       _applyPresenceData(data);
     });
+    _realtime.watchConversation(
+      conversationId,
+      workspaceId: state.conversation?.workspaceId ?? workspaceId,
+    );
     _presenceTimer = Timer.periodic(const Duration(seconds: 18), (_) {
       unawaited(pingPresence());
     });

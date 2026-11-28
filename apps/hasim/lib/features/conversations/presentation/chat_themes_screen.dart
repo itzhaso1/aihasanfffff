@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/theme/theme_mode_controller.dart';
+import 'package:hasim/core/widgets/hasim_card.dart';
 import 'package:hasim/core/widgets/hasim_settings_body.dart';
 import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
 import 'package:hasim/features/conversations/presentation/widgets/chat_bubble_color_picker.dart';
@@ -31,27 +32,36 @@ class ChatThemesScreen extends ConsumerWidget {
       mobileLayout: compact && !embedded,
       children: [
         if (forConversation) ...[
-          const Text(
-            'سمة هذه المحادثة',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'تُحفظ لهذه المحادثة فقط، وباقي المحادثات تبقى على السمة العامة.',
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton(
-              onPressed: () => ref
-                  .read(conversationThemeProvider(conversationId!).notifier)
-                  .useSharedTheme(),
-              child: const Text('استخدام السمة العامة'),
+          HasimCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                HasimSettingsSectionHeader(
+                  icon: Icons.palette_outlined,
+                  title: 'سمة هذه المحادثة',
+                  subtitle:
+                      'تُحفظ لهذه المحادثة فقط، وباقي المحادثات تبقى على السمة العامة.',
+                  trailing: TextButton(
+                    onPressed: () => ref
+                        .read(conversationThemeProvider(conversationId!).notifier)
+                        .useSharedTheme(),
+                    child: const Text('استخدام السمة العامة'),
+                  ),
+                ),
+              ],
             ),
           ),
-          ChatWallpaperPicker(compact: compact, conversationId: conversationId),
-          const SizedBox(height: 16),
-          ChatBubbleColorPicker(conversationId: conversationId),
+          const SizedBox(height: HasimTokens.spaceMd),
+          HasimCard(
+            child: ChatWallpaperPicker(
+              compact: compact,
+              conversationId: conversationId,
+            ),
+          ),
+          const SizedBox(height: HasimTokens.spaceMd),
+          HasimCard(
+            child: ChatBubbleColorPicker(conversationId: conversationId),
+          ),
         ] else
           DisplayAppearanceSettings(
             themeMode: themeMode,
@@ -63,7 +73,10 @@ class ChatThemesScreen extends ConsumerWidget {
     );
 
     if (embedded) {
-      return ColoredBox(color: HasimTokens.pageBg(context), child: body);
+      return ColoredBox(
+        color: HasimTokens.settingsCanvasBg(context),
+        child: body,
+      );
     }
 
     final title = forConversation ? 'سمة هذه المحادثة' : 'المظهر والسمات';
@@ -73,10 +86,10 @@ class ChatThemesScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: HasimTokens.pageBg(context),
+      backgroundColor: HasimTokens.settingsCanvasBg(context),
       appBar: AppBar(
         title: Text(title),
-        backgroundColor: HasimTokens.pageBg(context),
+        backgroundColor: HasimTokens.settingsCanvasBg(context),
         surfaceTintColor: Colors.transparent,
       ),
       body: body,

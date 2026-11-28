@@ -65,6 +65,9 @@ abstract final class HasimTokens {
   static Color pageBg(BuildContext context) =>
       isDark(context) ? darkPage : background;
 
+  static Color settingsCanvasBg(BuildContext context) =>
+      isDark(context) ? darkPage : const Color(0xFFF6F9F9);
+
   static Color dangerSoftColor(BuildContext context) =>
       isDark(context) ? const Color(0xFF3A1C1C) : dangerSoft;
 

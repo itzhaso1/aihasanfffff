@@ -43,6 +43,11 @@ class CommerceOrderResource extends JsonResource
             'required_next_step' => $this->nextStep($commerceStatus),
             'placed_at' => $this->placed_at?->toIso8601String(),
             'cancelled_at' => $this->cancelled_at?->toIso8601String(),
+            'delivery_location' => $this->whenLoaded(
+                'deliveryLocation',
+                fn () => $this->deliveryLocation?->toSummaryArray(),
+                data_get($this->metadata, 'delivery_location'),
+            ),
             'items' => $this->whenLoaded('items', fn () => $this->items->map(fn ($item) => [
                 'id' => $item->id,
                 'catalog_item_id' => $item->chat_catalog_item_id,

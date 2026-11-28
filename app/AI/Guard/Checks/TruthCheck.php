@@ -60,7 +60,8 @@ final class TruthCheck implements GuardCheck
             : $this->trustedStrings($input->facts, 'availability');
         if (in_array('not_found', $requestedVariantStatus, true)
             && $requestedAvailability === []
-            && $this->assertsPositiveProductAvailability($text)) {
+            && $this->assertsPositiveProductAvailability($text)
+            && ! $this->referencesListedInStockVariant($text, $input->facts)) {
             return GuardFinding::rejected(self::NAME, 'ungrounded_variant_availability');
         }
         if ($availability !== [] && $this->availabilityConflicts($text, $availability)) {
@@ -206,11 +207,47 @@ final class TruthCheck implements GuardCheck
 
     private function assertsPositiveProductAvailability(string $text): bool
     {
-        if (preg_match('/غير\s+متوفر|غير\s+متاح|نفد|out[_ ]of[_ ]stock/iu', $text) === 1) {
+        if (preg_match('/غير\s+متوفر|غير\s+متاح|غير\s+مسجل|غير\s+مدرج|غير\s+موجود|مو\s+متوفر|مو\s+موجود|ما\s+(?:عندنا|عندي|في|فيه)|لا\s+(?:يوجد|توجد|يتوفر|تتوفر)|نفد|out[_ ]of[_ ]stock|not\s+(?:available|listed)/iu', $text) === 1) {
             return false;
         }
 
         return preg_match('/(?:متوفر|متاحة|متاح|موجود|available|in[_ ]stock)/iu', $text) === 1;
+    }
+
+    /**
+     * @param  list<FactRecord>  $facts
+     */
+    private function referencesListedInStockVariant(string $text, array $facts): bool
+    {
+        $foldedText = $this->fold($text);
+        if ($foldedText === '') {
+            return false;
+        }
+
+        $variants = [];
+        foreach ($facts as $fact) {
+            if (preg_match('/^(?:catalog_item|product):(\d+)\.variant:(\d+)\.(name|availability)$/', $fact->key, $match) !== 1) {
+                continue;
+            }
+            $id = $match[1].':'.$match[2];
+            $variants[$id][$match[3]] = $fact->value;
+        }
+
+        foreach ($variants as $variant) {
+            $name = is_string($variant['name'] ?? null) ? trim($variant['name']) : '';
+            $availability = is_string($variant['availability'] ?? null) ? strtolower(trim($variant['availability'])) : '';
+            if ($name === '' || $availability !== 'in_stock') {
+                continue;
+            }
+
+            $normalizedName = preg_replace('/\s+/u', ' ', $this->fold($name)) ?? '';
+            $normalizedText = preg_replace('/\s+/u', ' ', $foldedText) ?? '';
+            if ($normalizedName !== '' && str_contains($normalizedText, $normalizedName)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

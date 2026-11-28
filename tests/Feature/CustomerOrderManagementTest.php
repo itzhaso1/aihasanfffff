@@ -11,10 +11,13 @@ use App\Models\Conversation;
 use App\Models\Customer;
 use App\Models\Message;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\AI\Inbox\InboxAgentContextBuilder;
+use App\Services\AI\Inbox\Tools\CancelCustomerOrderTool;
 use App\Services\AI\Inbox\Tools\CreateCustomerOrderTool;
+use App\Services\AI\Inbox\Tools\UpdateCustomerOrderTool;
 use App\Services\Customer\CustomerOrderCaptureService;
 use Database\Seeders\FoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -191,6 +194,280 @@ class CustomerOrderManagementTest extends TestCase
         $this->assertSame('create_customer_order', $result->toolName);
         $this->assertNotEmpty($result->payload['order_number']);
         $this->assertSame('450.00', $result->payload['order_total']);
+    }
+
+    public function test_ai_tool_records_variant_price_and_product_type_from_canonical_aliases(): void
+    {
+        [$user, $workspace] = $this->createWorkspaceWithOwner();
+
+        $catalogItem = ChatCatalogItem::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'كتاب تعلم Excel للمبتدئين',
+            'slug' => 'excel-beginners',
+            'item_kind' => 'product',
+            'price' => '10.00',
+            'currency' => 'SAR',
+            'status' => 'active',
+            'is_active' => true,
+        ]);
+
+        $variant = $catalogItem->variants()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'PDF عربي',
+            'price' => '154.00',
+            'currency' => 'SAR',
+            'is_active' => true,
+        ]);
+
+        $conversation = Conversation::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'channel' => 'facebook_messenger',
+            'status' => 'open',
+        ]);
+
+        $message = Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'content' => 'ابغى PDF عربي',
+            'ai_generated' => false,
+        ]);
+
+        $setting = AiSetting::query()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'Assistant',
+            'instructions' => 'مساعد مبيعات',
+            'provider' => 'google_ai_studio',
+            'model' => 'gemini-2.5-flash',
+            'is_active' => true,
+        ]);
+
+        $context = app(InboxAgentContextBuilder::class)->build($workspace, $conversation, $message, $setting);
+
+        /** @var CreateCustomerOrderTool $tool */
+        $tool = app(CreateCustomerOrderTool::class);
+
+        $result = $tool->execute($context, [
+            'customer_name' => 'برايم الحسينات',
+            'phone' => '0778899990',
+            'items' => [
+                [
+                    'id' => $catalogItem->id,
+                    'name' => 'كتاب تعلم Excel للمبتدئين',
+                    'product_type' => 'PDF عربي',
+                    'quantity' => 2,
+                ],
+            ],
+            'is_complete' => true,
+        ]);
+
+        $this->assertTrue($result->success);
+        $this->assertSame('308.00', $result->payload['order_total']);
+        $this->assertSame('PDF عربي', $result->payload['items'][0]['variant_name']);
+        $this->assertSame('154.00', $result->payload['items'][0]['unit_price']);
+
+        $order = Order::withoutGlobalScopes()->where('order_number', $result->payload['order_number'])->firstOrFail();
+        $item = OrderItem::withoutGlobalScopes()->where('order_id', $order->id)->first();
+        $this->assertNotNull($item);
+        $this->assertSame($catalogItem->id, (int) $item->chat_catalog_item_id);
+        $this->assertSame($variant->id, (int) $item->chat_catalog_item_variant_id);
+        $this->assertSame('كتاب تعلم Excel للمبتدئين', $item->product_name);
+        $this->assertSame('PDF عربي', $item->variant_name);
+        $this->assertSame('product', $item->item_type);
+        $this->assertSame('154.00', (string) $item->unit_price);
+        $this->assertSame('308.00', (string) $item->total_amount);
+    }
+
+    public function test_same_customer_can_add_additional_order_for_second_address_and_second_phone(): void
+    {
+        [$user, $workspace] = $this->createWorkspaceWithOwner();
+
+        $catalogItem = ChatCatalogItem::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'كتاب تعلم Excel للمبتدئين',
+            'slug' => 'excel-book-multi',
+            'item_kind' => 'product',
+            'price' => '10.00',
+            'currency' => 'SAR',
+            'status' => 'active',
+            'is_active' => true,
+        ]);
+        $variant = $catalogItem->variants()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'PDF عربي',
+            'price' => '154.00',
+            'currency' => 'SAR',
+            'is_active' => true,
+        ]);
+
+        $primaryCustomer = Customer::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'خالد العتيبي',
+            'phone' => '+966501112222',
+            'address' => 'الرياض - حي الملقا',
+            'status' => CustomerStatus::AwaitingPayment,
+        ]);
+
+        $conversation = Conversation::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'customer_id' => $primaryCustomer->id,
+            'channel' => 'whatsapp',
+            'status' => 'open',
+        ]);
+
+        $message = Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'content' => 'أبي طلب ثاني لأخوي في جدة',
+            'ai_generated' => false,
+        ]);
+
+        $setting = AiSetting::query()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'Assistant',
+            'instructions' => 'مساعد مبيعات',
+            'provider' => 'google_ai_studio',
+            'model' => 'gemini-2.5-flash',
+            'is_active' => true,
+        ]);
+
+        $context = app(InboxAgentContextBuilder::class)->build($workspace, $conversation, $message, $setting);
+        /** @var CreateCustomerOrderTool $tool */
+        $tool = app(CreateCustomerOrderTool::class);
+
+        $result = $tool->execute($context, [
+            'customer_name' => 'سلطان العتيبي',
+            'phone' => '0559998888',
+            'address' => 'جدة - حي الروضة',
+            'is_additional_order' => true,
+            'items' => [
+                [
+                    'chat_catalog_item_id' => $catalogItem->id,
+                    'variant_id' => $variant->id,
+                    'quantity' => 1,
+                ],
+            ],
+        ]);
+
+        $this->assertTrue($result->success);
+        $this->assertSame('جدة - حي الروضة', $result->payload['shipping_address']);
+        $this->assertSame('+966559998888', $result->payload['recipient_phone']);
+        $this->assertTrue($result->payload['is_additional_order']);
+
+        // Original conversation customer link must remain intact
+        $this->assertSame($primaryCustomer->id, (int) $conversation->fresh()->customer_id);
+
+        $secondOrder = Order::withoutGlobalScopes()->where('order_number', $result->payload['order_number'])->firstOrFail();
+        $this->assertSame('جدة - حي الروضة', $secondOrder->metadata['shipping_address']);
+        $this->assertSame('+966559998888', $secondOrder->metadata['recipient_phone']);
+        $this->assertSame($primaryCustomer->id, $secondOrder->metadata['ordered_by_customer_id']);
+        $this->assertStringContainsString('جدة - حي الروضة', (string) $secondOrder->notes);
+    }
+
+    public function test_ai_tools_can_modify_and_cancel_owned_order_and_block_cross_conversation_access(): void
+    {
+        [$user, $workspace] = $this->createWorkspaceWithOwner();
+
+        $book = ChatCatalogItem::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'كتاب تعلم HTML',
+            'slug' => 'html-book',
+            'item_kind' => 'product',
+            'price' => '250.00',
+            'currency' => 'SAR',
+            'status' => 'active',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'نورة',
+            'phone' => '+966504445555',
+            'status' => CustomerStatus::AwaitingPayment,
+        ]);
+
+        $conversation = Conversation::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'customer_id' => $customer->id,
+            'channel' => 'whatsapp',
+            'status' => 'open',
+        ]);
+
+        $otherConversation = Conversation::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'channel' => 'whatsapp',
+            'status' => 'open',
+        ]);
+
+        $message = Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $conversation->id,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'content' => 'عدّل الطلب',
+            'ai_generated' => false,
+        ]);
+
+        $otherMessage = Message::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'conversation_id' => $otherConversation->id,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'content' => 'الغي الطلب',
+            'ai_generated' => false,
+        ]);
+
+        $setting = AiSetting::query()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'Assistant',
+            'instructions' => 'مساعد مبيعات',
+            'provider' => 'google_ai_studio',
+            'model' => 'gemini-2.5-flash',
+            'is_active' => true,
+        ]);
+
+        $context = app(InboxAgentContextBuilder::class)->build($workspace, $conversation, $message, $setting);
+        $otherContext = app(InboxAgentContextBuilder::class)->build($workspace, $otherConversation, $otherMessage, $setting);
+
+        $created = app(CreateCustomerOrderTool::class)->execute($context, [
+            'customer_name' => 'نورة',
+            'phone' => '0504445555',
+            'address' => 'الرياض',
+            'items' => [['chat_catalog_item_id' => $book->id, 'quantity' => 1]],
+        ]);
+        $orderNumber = $created->payload['order_number'];
+
+        // Cross-conversation IDOR attempt must fail
+        $idorAttempt = app(CancelCustomerOrderTool::class)->execute($otherContext, [
+            'order_number' => $orderNumber,
+        ]);
+        $this->assertFalse($idorAttempt->success);
+
+        // Modify order: add 1 more book + update address
+        $updated = app(UpdateCustomerOrderTool::class)->execute($context, [
+            'order_number' => $orderNumber,
+            'mode' => 'add_items',
+            'address' => 'الدمام - الشاطئ',
+            'items' => [['chat_catalog_item_id' => $book->id, 'quantity' => 1]],
+        ]);
+        $this->assertTrue($updated->success);
+        $this->assertSame('500.00', $updated->payload['order_total']);
+        $this->assertSame('الدمام - الشاطئ', $updated->payload['shipping_address']);
+        $this->assertSame('500.00', (string) $customer->fresh()->total_purchases);
+
+        // Cancel order: status becomes cancelled and customer total_purchases resets to 0.00
+        $cancelled = app(CancelCustomerOrderTool::class)->execute($context, [
+            'order_number' => $orderNumber,
+            'reason' => 'تغيير رأي العميل',
+        ]);
+        $this->assertTrue($cancelled->success);
+        $this->assertTrue($cancelled->payload['cancelled']);
+        $this->assertSame('cancelled', $cancelled->payload['status']);
+        $this->assertSame(0, (int) $customer->fresh()->orders_count);
+        $this->assertSame('0.00', (string) $customer->fresh()->total_purchases);
     }
 
     public function test_web_customers_index_and_tabs(): void

@@ -31,22 +31,43 @@ class _EmployeesTab extends ConsumerWidget {
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+    return HasimSettingsBody(
+      mobileLayout: HasimLayout.isCompact(context),
       children: [
-        Text(
-          'كل موظف له اسمه وأسلوبه ومهاراته. الموظف الافتراضي هو من سيرد في المحادثات عند تفعيل نظام الموظفين في صندوق الوارد.',
-          softWrap: true,
-          style: _aiMuted(context).copyWith(fontSize: 13, height: 1.6),
+        HasimCard(
+          backgroundColor: HasimTokens.mintFill(context),
+          borderColor: HasimTokens.primary.withValues(alpha: 0.25),
+          showShadow: false,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.groups_outlined,
+                size: 20,
+                color: HasimTokens.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'كل موظف له اسمه وأسلوبه ومهاراته. الموظف الافتراضي هو من سيرد في المحادثات عند تفعيل نظام الموظفين في صندوق الوارد.',
+                  softWrap: true,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: HasimTokens.inkColor(context),
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         if (state.error != null) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             state.error!,
             style: _aiMuted(context).copyWith(color: HasimTokens.danger),
           ),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         if (state.employees.isEmpty)
           _SectionCard(
             child: Text(

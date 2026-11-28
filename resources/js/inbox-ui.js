@@ -131,6 +131,55 @@ const formatFileSize = (bytes) => {
     return `${Math.round(bytes / 1024)} KB`;
 };
 
+const renderLocationCardHtml = (loc) => {
+    if (!loc || typeof loc !== 'object') {
+        return '';
+    }
+    const status = String(loc.verification_status || 'pending_confirmation');
+    const statusStyles = status === 'confirmed'
+        ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+        : (status === 'needs_adjustment'
+            ? 'bg-rose-100 text-rose-800 border-rose-200'
+            : 'bg-amber-100 text-amber-800 border-amber-200');
+    const statusLabel = loc.verification_label || (status === 'confirmed'
+        ? 'موقع مؤكد'
+        : (status === 'needs_adjustment' ? 'يحتاج مراجعة / تعديل' : 'بانتظار التأكيد'));
+    const sourceLabel = loc.source_label || loc.source || 'GPS';
+    const address = loc.formatted_address || `${Number(loc.latitude || 0).toFixed(5)}, ${Number(loc.longitude || 0).toFixed(5)}`;
+    const areaParts = [loc.city, loc.district, loc.street].filter((v) => typeof v === 'string' && v.trim() !== '');
+    const mapsUrl = loc.google_maps_url || `https://www.google.com/maps?q=${encodeURIComponent(loc.latitude)},${encodeURIComponent(loc.longitude)}`;
+    const accBadge = loc.accuracy_meters !== null && loc.accuracy_meters !== undefined
+        ? `<span class="rounded-lg bg-white border border-slate-200 px-2 py-0.5 font-mono" dir="ltr">±${escapeHtml(loc.accuracy_meters)}m</span>`
+        : '';
+    const notesHtml = loc.customer_notes
+        ? `<div class="mt-1.5 rounded-xl bg-white/80 border border-slate-200/80 px-2.5 py-1.5 text-[11px] text-slate-700"><span class="font-bold text-slate-500">ملاحظة:</span> ${escapeHtml(loc.customer_notes)}</div>`
+        : '';
+
+    return `
+        <div class="rounded-2xl border border-[#BEE9DF] bg-gradient-to-br from-[#F4FBF9] to-white p-3 text-right shadow-2xs" data-location-card="1">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                <span class="inline-flex items-center gap-1.5 text-xs font-bold text-[#067E6B]">
+                    <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span>موقع التوصيل</span>
+                </span>
+                <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusStyles}">${escapeHtml(statusLabel)}</span>
+            </div>
+            <p class="text-xs font-semibold text-slate-800 leading-relaxed">${escapeHtml(address)}</p>
+            ${areaParts.length > 0 ? `<p class="mt-0.5 text-[11px] text-slate-500">${escapeHtml(areaParts.join(' · '))}</p>` : ''}
+            ${notesHtml}
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10.5px] text-slate-500">
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="rounded-lg bg-white border border-slate-200 px-2 py-0.5 font-medium text-slate-600">${escapeHtml(sourceLabel)}</span>
+                    ${accBadge}
+                </div>
+                <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 rounded-xl bg-[#067E6B] px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-[#056153]">
+                    <span>فتح في الخريطة</span>
+                    <span>↗</span>
+                </a>
+            </div>
+        </div>`;
+};
+
 const renderAttachmentsGridHtml = (attachments, messagePayload = {}) => {
     if (!Array.isArray(attachments) || attachments.length === 0) {
         return '';
@@ -322,6 +371,18 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
 
     const existingId = payload.id ? list.querySelector(`[data-message-id="${payload.id}"]`) : null;
     if (existingId) {
+        if (payload.location && typeof payload.location === 'object') {
+            const bubble = existingId.querySelector('.hs-inbox-message-bubble');
+            const existingLocCard = existingId.querySelector('[data-location-card]');
+            if (existingLocCard) {
+                existingLocCard.outerHTML = renderLocationCardHtml(payload.location);
+            } else if (bubble) {
+                const locWrap = document.createElement('div');
+                locWrap.className = 'mb-1.5';
+                locWrap.innerHTML = renderLocationCardHtml(payload.location);
+                bubble.prepend(locWrap);
+            }
+        }
         if (Array.isArray(payload.attachments) && payload.attachments.length > 0 && !existingId.querySelector('[data-attachments-wrap], [data-media-viewer]')) {
             const bubble = existingId.querySelector('.hs-inbox-message-bubble');
             if (bubble) {
@@ -422,7 +483,12 @@ const appendInboxMessage = (payload, { optimistic = false } = {}) => {
         bubble.appendChild(attachmentsWrap);
     }
 
-    if (payload.content) {
+    if (payload.location && typeof payload.location === 'object') {
+        const locWrap = document.createElement('div');
+        locWrap.className = 'mb-1.5';
+        locWrap.innerHTML = renderLocationCardHtml(payload.location);
+        bubble.appendChild(locWrap);
+    } else if (payload.content) {
         const text = document.createElement('div');
         text.className = 'text-[12.5px] sm:text-[13px] leading-[1.6] whitespace-pre-wrap font-normal text-slate-800';
         text.textContent = payload.content;
@@ -2034,6 +2100,51 @@ document.addEventListener('hs:before-navigate', () => {
     if (sidebarPollTimer) {
         clearInterval(sidebarPollTimer);
         sidebarPollTimer = null;
+    }
+});
+
+document.addEventListener('click', async (event) => {
+    const btn = event.target.closest('[data-request-location-btn]');
+    if (!btn || btn.disabled) {
+        return;
+    }
+
+    const url = btn.dataset.requestLocationUrl;
+    if (!url) {
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span><span>جاري الإرسال...</span>';
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+        const data = await res.json();
+        if (res.ok && data?.success) {
+            appendInboxMessage({
+                id: data.message_id,
+                direction: 'outbound',
+                message_type: 'text',
+                content: data.content,
+                delivery_status: 'pending',
+                created_at_time: formatTimeNow(),
+            });
+            scrollMessagesToBottom(true);
+        }
+    } catch (_) {
+        // Live polling/WS reconciles if needed.
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
     }
 });
 

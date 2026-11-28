@@ -95,6 +95,16 @@ class Conversation extends WorkspaceScopedModel
         return $this->hasMany(Message::class);
     }
 
+    public function locations(): HasMany
+    {
+        return $this->hasMany(CustomerLocation::class);
+    }
+
+    public function latestLocation(): HasOne
+    {
+        return $this->hasOne(CustomerLocation::class)->latestOfMany();
+    }
+
     public function lastMessage(): HasOne
     {
         return $this->hasOne(Message::class)->latestOfMany();
@@ -301,5 +311,10 @@ class Conversation extends WorkspaceScopedModel
         }
 
         return $attributes;
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
     }
 }

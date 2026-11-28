@@ -38,6 +38,7 @@ class CommerceOrderController extends MobileController
             ->where('source', 'commerce')
             ->with([
                 'customer',
+                'deliveryLocation',
                 'items.commerceSeller',
                 'sellerAllocations.seller',
                 'inventoryReservations',
@@ -129,6 +130,7 @@ class CommerceOrderController extends MobileController
 
         return $this->ok(new CommerceOrderResource($order->load([
             'customer',
+            'deliveryLocation',
             'commerceCart',
             'items.commerceSeller',
             'sellerAllocations.seller',

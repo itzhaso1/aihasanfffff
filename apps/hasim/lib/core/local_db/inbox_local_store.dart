@@ -478,9 +478,11 @@ class InboxLocalStore {
     List<MessageModel> items,
   ) async {
     final now = DateTime.now();
-    for (final item in items) {
-      await _upsertMessage(workspaceId, conversationId, item, now);
-    }
+    await _db.transaction((tx) async {
+      for (final item in items) {
+        await _upsertMessage(workspaceId, conversationId, item, now, tx: tx);
+      }
+    });
     _changed();
   }
 
@@ -575,6 +577,7 @@ class InboxLocalStore {
           )
           .toList(),
     );
+    final locationJson = item.location != null ? jsonEncode(item.location!.toJson()) : null;
 
     if (existing != null) {
       await run(
@@ -596,6 +599,7 @@ class InboxLocalStore {
           user_name = COALESCE(?, user_name),
           customer_name = COALESCE(?, customer_name),
           attachments_json = ?,
+          location_json = COALESCE(?, location_json),
           local_state = ?,
           worker_engagement_id = COALESCE(?, worker_engagement_id),
           sender_user_id = COALESCE(?, sender_user_id),
@@ -623,6 +627,7 @@ class InboxLocalStore {
           item.userName,
           item.customerName,
           attachments,
+          locationJson,
           localState,
           item.workerEngagementId,
           item.senderUserId,
@@ -643,10 +648,10 @@ class InboxLocalStore {
         workspace_id, conversation_server_id, server_id, client_id, direction,
         message_type, content, ai_generated, delivery_status, delivered_at, read_at,
         local_error, correlation_id,
-        created_at, user_name, customer_name, attachments_json, local_state,
+        created_at, user_name, customer_name, attachments_json, location_json, local_state,
         worker_engagement_id, sender_user_id, participant_type, sync_state,
         client_created_at, cached_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''',
       [
         workspaceId,
@@ -666,6 +671,7 @@ class InboxLocalStore {
         item.userName,
         item.customerName,
         attachments,
+        locationJson,
         localState,
         item.workerEngagementId,
         item.senderUserId,
@@ -1066,10 +1072,31 @@ class InboxLocalStore {
     return (rows.first['max_id'] as num?)?.toInt() ?? 0;
   }
 
-  /// Most recent conversation `updated_at` timestamp (ms) for delta sync.
+  static const String serverDeltaResource = 'conversations:server_delta_at';
+
+  /// Persist server clock watermark for delta sync (`updated_after`).
+  Future<void> setServerDeltaTime(int workspaceId, String? serverTimeIso) async {
+    final trimmed = serverTimeIso?.trim();
+    if (trimmed == null || trimmed.isEmpty) return;
+    if (DateTime.tryParse(trimmed) == null) return;
+    await setSyncCursor(workspaceId, serverDeltaResource, trimmed);
+  }
+
+  /// Most recent server-originated timestamp (ms) for delta sync.
+  /// Prefers the server clock captured on the last conversation list fetch,
+  /// falling back to `MAX(last_message_at)` rather than local `updated_at`
+  /// (which local reads/outbox writes overwrite with device wall-clock time).
   Future<int> getLatestConversationUpdatedMs(int workspaceId) async {
+    final serverIso = await getSyncCursor(workspaceId, serverDeltaResource);
+    if (serverIso != null && serverIso.isNotEmpty) {
+      final parsed = DateTime.tryParse(serverIso);
+      if (parsed != null) {
+        return parsed.toUtc().millisecondsSinceEpoch;
+      }
+    }
     final rows = await _db.select(
-      'SELECT MAX(updated_at) AS max_ts FROM inbox_conversations WHERE workspace_id = ?',
+      'SELECT MAX(COALESCE(last_message_at, 0)) AS max_ts '
+      'FROM inbox_conversations WHERE workspace_id = ? AND deleted_at IS NULL',
       [workspaceId],
     );
     return (rows.first['max_ts'] as num?)?.toInt() ?? 0;
@@ -1192,7 +1219,15 @@ class InboxLocalStore {
       if (item.customer == null) {
         return true;
       }
-      await _upsertConversation(workspaceId, item, now);
+      final initialItem = isConversationOpen
+          ? (item.unreadCount == 0 ? item : item.copyWith(unreadCount: 0))
+          : (!item.hasUnreadCount &&
+                    item.lastMessage != null &&
+                    !item.lastMessage!.isOutbound &&
+                    !item.lastMessage!.isInternalNote
+                ? item.copyWith(unreadCount: 1)
+                : item);
+      await _upsertConversation(workspaceId, initialItem, now);
       _changed();
       return false;
     }
@@ -1564,6 +1599,18 @@ class InboxLocalStore {
         // Skip corrupt attachment JSON rows.
       }
     }
+    MessageLocationModel? location;
+    final rawLocation = row['location_json']?.toString();
+    if (rawLocation != null && rawLocation.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawLocation);
+        if (decoded is Map) {
+          location = MessageLocationModel.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
+        }
+      } catch (_) {}
+    }
     return MessageModel(
       id: serverId ?? -localId,
       conversationId: (row['conversation_server_id'] as num).toInt(),
@@ -1589,6 +1636,7 @@ class InboxLocalStore {
       workerEngagementId: (row['worker_engagement_id'] as num?)?.toInt(),
       senderUserId: (row['sender_user_id'] as num?)?.toInt(),
       participantType: row['participant_type']?.toString(),
+      location: location,
     );
   }
 

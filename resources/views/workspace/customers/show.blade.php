@@ -81,8 +81,45 @@
 
             <!-- Tabbed Main Content -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Left 2 Cols: Orders & Conversations -->
+                <!-- Left 2 Cols: Bookings, Orders & Conversations -->
                 <div class="lg:col-span-2 space-y-6">
+                    <!-- Bookings Section -->
+                    <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:bg-gray-800 dark:border-gray-700 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-[#06C2A4]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                <span>سجل الحجوزات والمواعيد ({{ $customer->bookings->count() }})</span>
+                            </h3>
+                            @if(\Illuminate\Support\Facades\Route::has('workspace.bookings.create'))
+                                <a href="{{ route('workspace.bookings.create', ['customer_id' => $customer->id]) }}" class="rounded-xl border border-[#06C2A4]/40 bg-[#E8FAF6] px-3 py-1.5 text-xs font-bold text-[#067E6B] hover:bg-[#D5F5EE]">
+                                    + حجز جديد
+                                </a>
+                            @endif
+                        </div>
+
+                        <div class="divide-y divide-gray-100 dark:divide-gray-700">
+                            @forelse($customer->bookings ?? [] as $b)
+                                <div class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 first:pt-0 last:pb-0">
+                                    <div>
+                                        <a href="{{ route('workspace.bookings.show', $b) }}" class="font-mono font-bold text-sm text-slate-900 hover:text-[#067E6B]">{{ $b->booking_reference }}</a>
+                                        <span class="ms-2 text-xs font-semibold text-slate-700">{{ $b->service_name }}</span>
+                                        <div class="mt-0.5 text-xs text-slate-500">
+                                            {{ $b->booking_date?->format('Y-m-d') }} · {{ $b->start_time }} - {{ $b->end_time }}
+                                            @if($b->branch?->name) · {{ $b->branch->name }} @endif
+                                            @if($b->provider?->name) · {{ $b->provider->name }} @endif
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        @include('workspace.bookings.partials.status-badge', ['status' => $b->status])
+                                        <a href="{{ route('workspace.bookings.show', $b) }}" class="text-xs font-bold text-[#067E6B] hover:underline">التفاصيل</a>
+                                    </div>
+                                </div>
+                            @empty
+                                <p class="text-xs text-gray-400 py-2">لا توجد حجوزات مسجلة لهذا العميل.</p>
+                            @endforelse
+                        </div>
+                    </div>
+
                     <!-- Orders Section -->
                     <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:bg-gray-800 dark:border-gray-700 space-y-4">
                         <div class="flex items-center justify-between">
@@ -103,6 +140,19 @@
                                                 <span class="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 mr-2 dark:bg-amber-900/40 dark:text-amber-300">
                                                     {{ $order->review_reason }}
                                                 </span>
+                                            @endif
+                                            @if(! empty($order->metadata['shipping_address']) || ! empty($order->metadata['recipient_phone']))
+                                                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                                                    @if(! empty($order->metadata['recipient_name']))
+                                                        <span>المستلم: {{ $order->metadata['recipient_name'] }}</span>
+                                                    @endif
+                                                    @if(! empty($order->metadata['recipient_phone']))
+                                                        <span class="font-mono dir-ltr">{{ $order->metadata['recipient_phone'] }}</span>
+                                                    @endif
+                                                    @if(! empty($order->metadata['shipping_address']))
+                                                        <span>العنوان: {{ $order->metadata['shipping_address'] }}</span>
+                                                    @endif
+                                                </div>
                                             @endif
                                         </div>
                                         <div class="flex items-center gap-2">
@@ -220,6 +270,19 @@
                             @endif
                         </dl>
                     </div>
+
+                    <!-- Delivery Location Card -->
+                    @php
+                        $customerLocation = $customer->primaryLocation?->toSummaryArray()
+                            ?? (is_array(data_get($customer->metadata, 'delivery_location')) ? data_get($customer->metadata, 'delivery_location') : null);
+                    @endphp
+                    @if($customerLocation)
+                        @include('partials.location-card', [
+                            'location' => $customerLocation,
+                            'compact' => false,
+                            'allowVerify' => true,
+                        ])
+                    @endif
 
                     <!-- Internal Notes Form & List -->
                     <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:bg-gray-800 dark:border-gray-700 space-y-4">

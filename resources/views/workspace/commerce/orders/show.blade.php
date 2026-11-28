@@ -241,6 +241,19 @@
                     @endif
                 </div>
 
+                <!-- Delivery Location Card -->
+                @php
+                    $orderLocation = $order->deliveryLocation?->toSummaryArray()
+                        ?? (is_array(data_get($order->metadata, 'delivery_location')) ? data_get($order->metadata, 'delivery_location') : null);
+                @endphp
+                @if($orderLocation)
+                    @include('partials.location-card', [
+                        'location' => $orderLocation,
+                        'compact' => false,
+                        'allowVerify' => true,
+                    ])
+                @endif
+
                 <!-- Order Notes & Metadata -->
                 <div class="hs-card space-y-3">
                     <h3 class="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3">الملاحظات والقناة</h3>

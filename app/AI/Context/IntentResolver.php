@@ -23,6 +23,10 @@ final class IntentResolver
         'complaint' => 'complaint',
         'store_info' => 'store_info',
         'human_request' => 'human_request',
+        'booking_reschedule' => 'booking_reschedule',
+        'booking_cancel' => 'booking_cancel',
+        'booking_inquiry' => 'booking_inquiry',
+        'booking_request' => 'booking_request',
     ];
 
     /** @var list<string> */

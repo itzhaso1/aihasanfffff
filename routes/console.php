@@ -32,6 +32,7 @@ Schedule::command('subscriptions:process-renewals')->hourly()->withoutOverlappin
 Schedule::command('subscriptions:process-dunning')->hourly()->withoutOverlapping(50)->onOneServer();
 Schedule::command('worker:engagements:expire')->everyMinute()->withoutOverlapping(10)->onOneServer();
 Schedule::command('conversations:auto-resume-ai')->everyMinute()->withoutOverlapping(10)->onOneServer()->when(fn () => config('hasim.idle_handoff_resume_minutes') > 0);
+Schedule::command('bookings:send-reminders')->everyMinute()->withoutOverlapping(10)->onOneServer();
 Schedule::command('backup:database')->everySixHours()->withoutOverlapping(120)->onOneServer();
 Schedule::command('backup:verify-latest')->weeklyOn(1, '03:30')->withoutOverlapping(120)->onOneServer();
 Schedule::command('ops:alerts:evaluate')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();

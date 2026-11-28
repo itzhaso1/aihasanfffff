@@ -11,6 +11,7 @@ import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
+import 'package:hasim/core/widgets/hasim_buttons.dart';
 import 'package:hasim/core/widgets/hasim_card.dart';
 import 'package:hasim/core/widgets/hasim_form_field.dart';
 import 'package:hasim/core/widgets/hasim_settings_body.dart';
@@ -215,27 +216,139 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(authControllerProvider).user;
+    final auth = ref.watch(authControllerProvider);
+    final user = auth.user;
+    final workspaceName = auth.workspace?.name;
 
     final compact = HasimLayout.isCompact(context);
+    final displayName = (user?.name != null && user!.name.trim().isNotEmpty)
+        ? user.name.trim()
+        : 'حسابي';
+    final email = user?.email?.trim();
     final content = HasimSettingsBody(
       mobileLayout: compact && !widget.embedded,
       children: [
         HasimCard(
-          child: Column(
+          child: Row(
             children: [
-              _profileAvatar(user?.avatarUrl, user?.name),
-              const SizedBox(height: 12),
-              TextButton.icon(
-                onPressed: _uploadingAvatar ? null : _avatar,
-                icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                label: const Text('تغيير الصورة'),
-                style: TextButton.styleFrom(
-                  foregroundColor: HasimTokens.mutedColor(context),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
+              GestureDetector(
+                onTap: _uploadingAvatar ? null : _avatar,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: HasimTokens.primary.withValues(alpha: 0.4),
+                          width: 2,
+                        ),
+                      ),
+                      child: _profileAvatar(user?.avatarUrl, user?.name),
+                    ),
+                    if (_uploadingAvatar)
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    PositionedDirectional(
+                      bottom: 2,
+                      end: 2,
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: AppTheme.brand,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: HasimTokens.cardBg(context),
+                            width: 2,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: HasimTokens.inkColor(context),
+                      ),
+                    ),
+                    if (email != null && email.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        email,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textDirection: TextDirection.ltr,
+                        textAlign: TextAlign.end,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: HasimTokens.mutedColor(context),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (workspaceName != null &&
+                            workspaceName.trim().isNotEmpty)
+                          HasimBadge(label: workspaceName.trim()),
+                        OutlinedButton.icon(
+                          onPressed: _uploadingAvatar ? null : _avatar,
+                          icon: const Icon(Icons.camera_alt_outlined, size: 16),
+                          label: const Text('تغيير الصورة'),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            minimumSize: const Size(0, 34),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            side: BorderSide(
+                              color: HasimTokens.lineColor(context),
+                            ),
+                            foregroundColor: HasimTokens.inkColor(context),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -246,6 +359,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const HasimSettingsSectionHeader(
+                icon: Icons.person_outline_rounded,
+                title: 'معلومات الحساب الشخصي',
+                subtitle: 'الاسم وبيانات التواصل المرتبطة بحسابك',
+              ),
+              const SizedBox(height: 16),
               HasimFormField(
                 controller: _name,
                 label: 'الاسم',
@@ -270,20 +389,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const SizedBox(height: 20),
               Align(
                 alignment: AlignmentDirectional.centerStart,
-                child: SizedBox(
-                  width: 220,
-                  height: 46,
-                  child: FilledButton(
-                    onPressed: _saving ? null : _saveProfile,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.brand,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(_saving ? 'جارٍ الحفظ...' : 'حفظ'),
-                  ),
+                child: HasimPrimaryButton(
+                  label: _saving ? 'جارٍ الحفظ...' : 'حفظ',
+                  loading: _saving,
+                  onPressed: _saving ? null : _saveProfile,
                 ),
               ),
             ],
@@ -294,12 +403,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'تغيير كلمة المرور',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: HasimTokens.inkColor(context),
-                ),
+              const HasimSettingsSectionHeader(
+                icon: Icons.lock_reset_rounded,
+                title: 'تغيير كلمة المرور',
+                subtitle: 'استخدم كلمة مرور قوية لحماية حسابك',
               ),
               const SizedBox(height: 16),
               HasimFormField(
@@ -331,26 +438,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const SizedBox(height: 20),
               Align(
                 alignment: AlignmentDirectional.centerStart,
-                child: SizedBox(
-                  width: 220,
-                  height: 46,
-                  child: OutlinedButton(
-                    onPressed: _changingPassword ? null : _changePassword,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.brand,
-                      side: BorderSide(
-                        color: AppTheme.brand.withValues(alpha: 0.55),
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(
-                      _changingPassword
-                          ? 'جارٍ التحديث...'
-                          : 'تغيير كلمة المرور',
-                    ),
-                  ),
+                child: HasimSecondaryButton(
+                  label: _changingPassword
+                      ? 'جارٍ التحديث...'
+                      : 'تغيير كلمة المرور',
+                  loading: _changingPassword,
+                  onPressed: _changingPassword ? null : _changePassword,
                 ),
               ),
             ],

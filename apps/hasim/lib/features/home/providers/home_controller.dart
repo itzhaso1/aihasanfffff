@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim/core/di/providers.dart';
@@ -41,6 +42,9 @@ class HomeController extends StateNotifier<HomeState> {
       next,
     ) {
       if (previous == next) return;
+      _baseOverlaidSnapshot = null;
+      _baseLocalUnreadCount = 0;
+      _refreshDebounce?.cancel();
       state = const HomeState();
       unawaited(refresh());
     });
@@ -51,18 +55,54 @@ class HomeController extends StateNotifier<HomeState> {
       if (previous == next) return;
       unawaited(_applyLocalUnread());
     });
+    final realtime = _ref.read(realtimeServiceProvider);
+    _msgSub = realtime.messageCreated.listen((_) {
+      unawaited(_applyLocalUnread());
+    });
+    _convSub = realtime.conversationUpdated.listen((_) {
+      unawaited(_applyLocalUnread());
+    });
+    _convChangedSub = realtime.conversationsChanged.listen((_) {
+      if (!realtime.isWebSocketConnected) {
+        _scheduleRefresh();
+      } else {
+        unawaited(_applyLocalUnread());
+      }
+    });
+    _reconnectSub = realtime.reconnectSyncRequested.listen((_) {
+      _scheduleRefresh();
+    });
     refresh();
   }
 
   final Ref _ref;
   ProviderSubscription<int?>? _workspaceSub;
   ProviderSubscription<int>? _revisionSub;
+  StreamSubscription<MessageModel>? _msgSub;
+  StreamSubscription<ConversationModel>? _convSub;
+  StreamSubscription<void>? _convChangedSub;
+  StreamSubscription<void>? _reconnectSub;
+  Timer? _refreshDebounce;
+  HomeSnapshot? _baseOverlaidSnapshot;
+  int _baseLocalUnreadCount = 0;
 
   @override
   void dispose() {
     _workspaceSub?.close();
     _revisionSub?.close();
+    _msgSub?.cancel();
+    _convSub?.cancel();
+    _convChangedSub?.cancel();
+    _reconnectSub?.cancel();
+    _refreshDebounce?.cancel();
     super.dispose();
+  }
+
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) unawaited(refresh());
+    });
   }
 
   Future<void> refresh() async {
@@ -119,7 +159,14 @@ class HomeController extends StateNotifier<HomeState> {
           : await _ref
                 .read(conversationRepositoryProvider)
                 .overlayHomeUnread(scope.workspaceId!, snap);
+      final localUnread = scope.workspaceId == null
+          ? 0
+          : await _ref
+                .read(inboxLocalStoreProvider)
+                .unreadConversationCount(scope.workspaceId!);
       if (!_canCommit(scope)) return;
+      _baseOverlaidSnapshot = overlaid;
+      _baseLocalUnreadCount = localUnread;
       state = HomeState(
         loading: false,
         snapshot: overlaid,
@@ -146,12 +193,22 @@ class HomeController extends StateNotifier<HomeState> {
 
   Future<void> _applyLocalUnread() async {
     final scope = captureInboxScope(_ref);
-    final snap = state.snapshot;
+    final base = _baseOverlaidSnapshot ?? state.snapshot;
     final workspaceId = scope.workspaceId;
-    if (snap == null || workspaceId == null) return;
-    final overlaid = await _ref
-        .read(conversationRepositoryProvider)
-        .overlayHomeUnread(workspaceId, snap);
+    if (base == null || workspaceId == null) return;
+    final store = _ref.read(inboxLocalStoreProvider);
+    final overlaid = _baseOverlaidSnapshot != null
+        ? base.copyWith(
+            unreadConversations: math.max(
+              0,
+              base.unreadConversations +
+                  ((await store.unreadConversationCount(workspaceId)) -
+                      _baseLocalUnreadCount),
+            ),
+          )
+        : await _ref
+              .read(conversationRepositoryProvider)
+              .overlayHomeUnread(workspaceId, base);
     if (!_canCommit(scope)) return;
     List<ConversationModel> recent = state.recentConversations;
     try {

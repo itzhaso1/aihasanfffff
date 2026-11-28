@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'workspace_id',
     'customer_id',
     'conversation_id',
+    'delivery_location_id',
     'commerce_seller_id',
     'commerce_cart_id',
     'dining_table_id', // legacy Business column; Chat Commerce does not write this
@@ -86,6 +87,11 @@ class Order extends WorkspaceScopedModel
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(Conversation::class);
+    }
+
+    public function deliveryLocation(): BelongsTo
+    {
+        return $this->belongsTo(CustomerLocation::class, 'delivery_location_id');
     }
 
     /**

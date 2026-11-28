@@ -28,6 +28,11 @@ class CustomerResource extends JsonResource
             'email' => $this->email,
             'whatsapp' => $this->whatsapp,
             'city' => $this->city,
+            'primary_location' => $this->whenLoaded(
+                'primaryLocation',
+                fn () => $this->primaryLocation?->toSummaryArray(),
+                data_get($this->metadata, 'delivery_location'),
+            ),
             'orders_count' => (int) $this->orders_count,
             'total_purchases' => (string) ($this->total_purchases ?? '0.00'),
             'last_order_at' => $this->last_order_at?->toISOString(),

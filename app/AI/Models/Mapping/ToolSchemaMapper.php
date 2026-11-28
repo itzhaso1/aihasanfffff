@@ -69,17 +69,54 @@ final class ToolSchemaMapper
                 continue;
             }
             $rules = is_array($rules) ? $rules : [];
-            $type = (string) ($rules['type'] ?? 'string');
-            $properties[$name] = [
-                'type' => $uppercaseTypes ? $this->geminiType($type) : $this->openaiType($type),
-                'description' => (string) ($rules['description'] ?? ''),
-            ];
+            $properties[$name] = $this->mapSchemaNode($rules, $uppercaseTypes);
             if ((bool) ($rules['required'] ?? false)) {
                 $required[] = $name;
             }
         }
 
-        return [$properties, $required];
+        return [$properties === [] ? (object) [] : $properties, $required];
+    }
+
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, mixed>
+     */
+    private function mapSchemaNode(array $rules, bool $uppercaseTypes): array
+    {
+        $type = strtolower((string) ($rules['type'] ?? 'string'));
+        $node = [
+            'type' => $uppercaseTypes ? $this->geminiType($type) : $this->openaiType($type),
+        ];
+
+        $description = (string) ($rules['description'] ?? '');
+        if ($description !== '' || ! isset($rules['items'])) {
+            $node['description'] = $description;
+        }
+
+        if ($type === 'array') {
+            $items = is_array($rules['items'] ?? null) ? $rules['items'] : ['type' => 'object'];
+            $node['items'] = $this->mapSchemaNode($items, $uppercaseTypes);
+        } elseif ($type === 'object' && is_array($rules['properties'] ?? null)) {
+            $nestedProps = [];
+            $nestedRequired = [];
+            foreach ($rules['properties'] as $propName => $propRules) {
+                if (! is_string($propName) || $propName === '') {
+                    continue;
+                }
+                $propRules = is_array($propRules) ? $propRules : [];
+                $nestedProps[$propName] = $this->mapSchemaNode($propRules, $uppercaseTypes);
+                if ((bool) ($propRules['required'] ?? false)) {
+                    $nestedRequired[] = $propName;
+                }
+            }
+            $node['properties'] = $nestedProps === [] ? (object) [] : $nestedProps;
+            if ($nestedRequired !== []) {
+                $node['required'] = $nestedRequired;
+            }
+        }
+
+        return $node;
     }
 
     private function geminiType(string $type): string

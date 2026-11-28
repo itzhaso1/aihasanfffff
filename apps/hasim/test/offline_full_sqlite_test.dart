@@ -26,12 +26,12 @@ void main() {
     );
   });
 
-  test('InboxDatabase schema v12 creates commerce tables and outbox diagnostics columns', () async {
+  test('InboxDatabase schema v13 creates commerce tables, outbox diagnostics, and location_json column', () async {
     final db = InboxDatabase.memory();
     addTearDown(db.close);
     await db.ensureReady();
 
-    expect(db.schemaVersion, 12);
+    expect(db.schemaVersion, 13);
 
     final tables = await db.select(
       "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('local_commerce_orders', 'local_customers')",
@@ -44,6 +44,7 @@ void main() {
     final colNames = msgCols.map((r) => r['name']?.toString()).toSet();
     expect(colNames.contains('local_error'), isTrue);
     expect(colNames.contains('correlation_id'), isTrue);
+    expect(colNames.contains('location_json'), isTrue);
   });
 
   test('DomainLocalStore stores, filters, and retrieves commerce orders offline', () async {

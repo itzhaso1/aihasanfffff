@@ -452,6 +452,25 @@ class CatalogVariantContextTest extends TestCase
         $this->assertFalse($lookup['items'][0]['variants'][0]['matches_question']);
     }
 
+    public function test_arabic_search_verbs_do_not_mark_variant_as_not_found(): void
+    {
+        $workspace = Workspace::factory()->create(['type' => 'company']);
+        $this->createBook($workspace, 'كتاب تعلم Excel للمبتدئين', '10.00', [[
+            'name' => 'PDF عربي',
+            'price' => '154.00',
+            'currency' => 'SAR',
+            'inventory_policy' => 'not_tracked',
+        ]]);
+
+        $lookup = app(ChatCatalogRetrievalService::class)->lookupForAssistant(
+            $workspace,
+            'ادور كتاب اكسل',
+        );
+
+        $this->assertSame('listed', $lookup['status']);
+        $this->assertSame('not_requested', $lookup['items'][0]['variant_match_status']);
+    }
+
     public function test_variant_constraints_do_not_cross_similar_products(): void
     {
         $workspace = Workspace::factory()->create(['type' => 'company']);

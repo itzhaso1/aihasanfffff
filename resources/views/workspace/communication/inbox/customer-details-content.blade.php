@@ -104,6 +104,22 @@
             </div>
         </div>
 
+        {{-- Delivery Location --}}
+        @php
+            $drawerLocation = $activeConversation->latestLocation?->toSummaryArray()
+                ?? (is_array(data_get($activeConversation->metadata, 'customer_location')) ? data_get($activeConversation->metadata, 'customer_location') : null)
+                ?? ($customer->primaryLocation?->toSummaryArray() ?? (is_array(data_get($customer->metadata, 'delivery_location')) ? data_get($customer->metadata, 'delivery_location') : null));
+        @endphp
+        @if($drawerLocation)
+            <div class="px-4 py-3.5">
+                @include('partials.location-card', [
+                    'location' => $drawerLocation,
+                    'compact' => true,
+                    'allowVerify' => $inboxAllowsCompanyActions ?? true,
+                ])
+            </div>
+        @endif
+
         {{-- Notes --}}
         <details open class="group px-4 py-3.5">
             <summary class="flex cursor-pointer items-center justify-between text-xs font-bold text-slate-800">
@@ -249,6 +265,43 @@
                             </div>
                         @endforeach
                     </div>
+                @endif
+            </div>
+        </details>
+
+        {{-- Bookings --}}
+        @php
+            $customerBookings = $customer->relationLoaded('bookings')
+                ? $customer->bookings
+                : $customer->bookings()->with(['branch', 'provider'])->latest('starts_at')->limit(6)->get();
+        @endphp
+        <details class="group px-4 py-3.5" @if($customerBookings->isNotEmpty()) open @endif>
+            <summary class="flex cursor-pointer items-center justify-between text-xs font-bold text-slate-800">
+                <span class="flex items-center gap-1.5">
+                    <svg class="h-3.5 w-3.5 text-[#00BFAE]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    <span>الحجوزات والمواعيد ({{ $customerBookings->count() }})</span>
+                </span>
+                <svg class="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7"/></svg>
+            </summary>
+            <div class="mt-3 space-y-2">
+                @forelse($customerBookings as $b)
+                    <a href="{{ route('workspace.bookings.show', $b) }}" class="block rounded-2xl border border-slate-100 bg-slate-50/70 p-3 text-xs text-slate-700 hover:border-[#06C2A4]/50 transition">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="font-bold text-slate-900">{{ $b->booking_reference }} · {{ $b->service_name }}</span>
+                            @include('workspace.bookings.partials.status-badge', ['status' => $b->status])
+                        </div>
+                        <div class="mt-1 text-[11px] text-slate-500">
+                            {{ $b->booking_date?->format('Y-m-d') }} · {{ $b->start_time }}
+                            @if($b->branch?->name) · {{ $b->branch->name }} @endif
+                        </div>
+                    </a>
+                @empty
+                    <p class="text-xs text-slate-400 py-1">لا توجد حجوزات لهذا العميل بعد.</p>
+                @endforelse
+                @if(\Illuminate\Support\Facades\Route::has('workspace.bookings.create'))
+                    <a href="{{ route('workspace.bookings.create', ['conversation_id' => $activeConversation->id, 'customer_id' => $customer->id]) }}" class="mt-1 inline-flex w-full items-center justify-center rounded-xl border border-[#06C2A4]/40 bg-[#E8FAF6]/70 px-3 py-1.5 text-[11px] font-bold text-[#067E6B] hover:bg-[#E8FAF6] transition">
+                        + حجز موعد جديد
+                    </a>
                 @endif
             </div>
         </details>

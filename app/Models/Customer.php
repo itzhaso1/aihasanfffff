@@ -7,6 +7,7 @@ use App\Models\Concerns\BelongsToWorkspace;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -29,6 +30,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'city',
     'postal_code',
     'country_code',
+    'primary_location_id',
     'additional_number',
     'payment_terms',
     'balance',
@@ -119,5 +121,20 @@ class Customer extends WorkspaceScopedModel
     public function notes(): HasMany
     {
         return $this->hasMany(CustomerNote::class);
+    }
+
+    public function primaryLocation(): BelongsTo
+    {
+        return $this->belongsTo(CustomerLocation::class, 'primary_location_id');
+    }
+
+    public function locations(): HasMany
+    {
+        return $this->hasMany(CustomerLocation::class);
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
     }
 }

@@ -19,8 +19,10 @@ FirebaseMessagingGateway sharedFirebaseMessagingGateway() {
 class FirebaseMessagingGateway implements NativeMessagingGateway {
   FirebaseMessagingGateway();
 
+  final _foreground = StreamController<Map<String, dynamic>>.broadcast();
   final _opened = StreamController<Map<String, dynamic>>.broadcast();
   final _tokenRefreshes = StreamController<String>.broadcast();
+  StreamSubscription<RemoteMessage>? _foregroundSub;
   StreamSubscription<RemoteMessage>? _openedSub;
   StreamSubscription<String>? _tokenSub;
   bool _initialized = false;
@@ -53,6 +55,12 @@ class FirebaseMessagingGateway implements NativeMessagingGateway {
             sound: true,
           );
     }
+    _foregroundSub ??= FirebaseMessaging.onMessage.listen((message) {
+      final data = firebaseMessageData(message);
+      if (data.isNotEmpty) {
+        _foreground.add(data);
+      }
+    });
     _openedSub ??= FirebaseMessaging.onMessageOpenedApp.listen((message) {
       final data = firebaseMessageData(message);
       if (data.isNotEmpty) {
@@ -94,6 +102,9 @@ class FirebaseMessagingGateway implements NativeMessagingGateway {
 
   @override
   Stream<String> get tokenRefreshes => _tokenRefreshes.stream;
+
+  @override
+  Stream<Map<String, dynamic>> get foregroundMessages => _foreground.stream;
 
   @override
   Stream<Map<String, dynamic>> get openedNotifications => _opened.stream;

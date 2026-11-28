@@ -543,10 +543,11 @@ void main() {
         expect(find.byKey(const Key('responder-resume-ai-btn')), findsNothing);
 
         await tester.tap(find.byKey(const Key('responder-takeover-btn')));
-        for (var i = 0; i < 20; i++) {
+        for (var i = 0; i < 40; i++) {
           await Future<void>.delayed(const Duration(milliseconds: 20));
           await tester.pump(const Duration(milliseconds: 16));
-          if (find.byKey(const Key('responder-resume-ai-btn')).evaluate().isNotEmpty &&
+          if (h.server.takeoverRequests.isNotEmpty &&
+              find.byKey(const Key('responder-resume-ai-btn')).evaluate().isNotEmpty &&
               find.text('الموظف المسؤول: سلمان المستقل').evaluate().isNotEmpty) {
             break;
           }
@@ -560,10 +561,11 @@ void main() {
         expect(find.byKey(const Key('responder-resume-ai-btn')), findsOneWidget);
 
         await tester.tap(find.byKey(const Key('responder-resume-ai-btn')));
-        for (var i = 0; i < 20; i++) {
+        for (var i = 0; i < 40; i++) {
           await Future<void>.delayed(const Duration(milliseconds: 20));
           await tester.pump(const Duration(milliseconds: 16));
-          if (find.text('مشغل AI').evaluate().isNotEmpty &&
+          if (h.server.resumeAiRequests.isNotEmpty &&
+              find.text('مشغل AI').evaluate().isNotEmpty &&
               find.byKey(const Key('responder-takeover-btn')).evaluate().isNotEmpty) {
             break;
           }

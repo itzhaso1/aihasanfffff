@@ -26,8 +26,9 @@ class InboxDatabase implements QueryExecutorUser {
   /// v10: ensure `inbox_conversations.last_message_direction` exists on upgraded DBs.
   /// v11: add `delivery_status`, `delivered_at`, `read_at` to `inbox_messages`.
   /// v12: add `local_error`, `correlation_id` to `inbox_messages` and `correlation_id` to `inbox_outbox`.
+  /// v13: add `location_json` to `inbox_messages`.
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   Future<void> ensureReady() async {
     if (_closed || _opened) return;
@@ -89,8 +90,20 @@ class InboxDatabase implements QueryExecutorUser {
       if (from < 12) {
         await _upgradeV11ToV12(e);
       }
+      if (from < 13) {
+        await _upgradeV12ToV13(e);
+      }
     }
     await _createIndexes(e);
+  }
+
+  Future<void> _upgradeV12ToV13(QueryExecutor e) async {
+    await _ensureColumn(
+      e,
+      'inbox_messages',
+      'location_json',
+      'location_json TEXT NULL',
+    );
   }
 
   Future<void> _upgradeV11ToV12(QueryExecutor e) async {
@@ -205,6 +218,7 @@ class InboxDatabase implements QueryExecutorUser {
         user_name TEXT,
         customer_name TEXT,
         attachments_json TEXT NOT NULL DEFAULT '[]',
+        location_json TEXT NULL,
         local_state TEXT NOT NULL DEFAULT 'sent',
         worker_engagement_id INTEGER,
         sender_user_id INTEGER,

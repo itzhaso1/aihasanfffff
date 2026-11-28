@@ -50,10 +50,14 @@ class PollingRealtimeService implements RealtimeService {
   Timer? _listTimer;
   Timer? _chatTimer;
   int? _watchingConversationId;
+  int? _watchingWorkspaceId;
   final Set<int> _deliveredMessageIds = <int>{};
   final Map<int, String> _emittedStatusKeys = <int, String>{};
   int _lastMaxMessageId = 0;
   int _pollGeneration = 0;
+  int _listTick = 0;
+  bool _stopped = false;
+  bool _pollChatInFlight = false;
   bool _disposed = false;
 
   /// When true (e.g. WebSocket is active and streaming), periodic poll calls are skipped
@@ -107,54 +111,79 @@ class PollingRealtimeService implements RealtimeService {
 
   @override
   Future<void> start() async {
+    _stopped = false;
+    _listTick = 0;
     _listTimer?.cancel();
-    _listTimer = Timer.periodic(const Duration(milliseconds: 8000), (_) {
-      if (paused) return;
-      if (_watchingConversationId != null) return;
-      _listController.add(null);
+    _listTimer = Timer.periodic(const Duration(milliseconds: 2000), (_) {
+      if (_stopped || paused || _disposed) return;
+      _listTick++;
+      // Keep inbox list & badges live even while a chat is open (e.g. desktop split view).
+      if (_watchingConversationId != null && _listTick.isOdd) return;
+      if (!_listController.isClosed) {
+        _listController.add(null);
+      }
     });
   }
 
   @override
   Future<void> stop() async {
+    _stopped = true;
+    _pollChatInFlight = false;
     _pollGeneration++;
     _listTimer?.cancel();
+    _listTimer = null;
     _chatTimer?.cancel();
+    _chatTimer = null;
   }
 
   @override
   void updateWorkspace(int? workspaceId) {
     _pollGeneration++;
+    _pollChatInFlight = false;
+    _watchingWorkspaceId = workspaceId;
     _deliveredMessageIds.clear();
     _emittedStatusKeys.clear();
     _lastMaxMessageId = 0;
-    if (_watchingConversationId != null && !paused) {
-      _pollChat();
-    } else if (!paused) {
+    if (_stopped || paused || _disposed) return;
+    if (_watchingConversationId != null) {
+      unawaited(_pollChat());
+    } else if (!_listController.isClosed) {
       _listController.add(null);
     }
   }
 
   @override
-  void watchConversation(int? conversationId, {int? workspaceId}) {
+  void watchConversation(
+    int? conversationId, {
+    int? workspaceId,
+    int seedAfterId = 0,
+    bool pollNow = true,
+  }) {
     _pollGeneration++;
+    _pollChatInFlight = false;
     _watchingConversationId = conversationId;
+    _watchingWorkspaceId = conversationId == null ? null : workspaceId;
     _deliveredMessageIds.clear();
     _emittedStatusKeys.clear();
-    _lastMaxMessageId = 0;
+    _lastMaxMessageId = seedAfterId > 0 ? seedAfterId : 0;
     _chatTimer?.cancel();
+    _chatTimer = null;
     if (conversationId == null || conversationId <= 0) {
-      _listController.add(null);
+      if (!_stopped && !paused && !_listController.isClosed) {
+        _listController.add(null);
+      }
       return;
     }
     _chatTimer = Timer.periodic(
-      const Duration(milliseconds: 3500),
+      const Duration(milliseconds: 1200),
       (_) {
-        if (!paused) _pollChat();
+        if (!_stopped && !paused && !_disposed) {
+          unawaited(_pollChat());
+        }
       },
     );
-    if (!paused) {
-      _pollChat();
+    if (!_stopped && !paused && pollNow) {
+      unawaited(_pollChat());
     }
   }
 
@@ -167,14 +196,21 @@ class PollingRealtimeService implements RealtimeService {
 
   @override
   void triggerPoll() {
-    _pollChat();
-    _listController.add(null);
+    if (_disposed) return;
+    if (_watchingConversationId != null) {
+      unawaited(_pollChat());
+    }
+    if (!_listController.isClosed) {
+      _listController.add(null);
+    }
   }
 
   Future<void> _pollChat({bool emitListOnNew = true}) async {
+    if (_pollChatInFlight || _disposed) return;
     final generation = _pollGeneration;
     final id = _watchingConversationId;
     if (id == null) return;
+    _pollChatInFlight = true;
     try {
       var pagesFetched = 0;
       var anyNew = false;
@@ -184,9 +220,11 @@ class PollingRealtimeService implements RealtimeService {
         final page = await _repo.messages(
           id,
           afterId: after,
-          workspaceId: _workspaceIdOf?.call(),
+          workspaceId: _watchingWorkspaceId ?? _workspaceIdOf?.call(),
         );
-        if (generation != _pollGeneration || _watchingConversationId != id) {
+        if (_disposed ||
+            generation != _pollGeneration ||
+            _watchingConversationId != id) {
           return;
         }
         final statusUpdates = _repo.takePolledStatusUpdates(id);
@@ -222,11 +260,13 @@ class PollingRealtimeService implements RealtimeService {
         }
       } while (true);
 
-      if (anyNew && emitListOnNew) {
+      if (anyNew && emitListOnNew && !_listController.isClosed) {
         _listController.add(null);
       }
     } catch (_) {
       // ignore transient poll errors
+    } finally {
+      _pollChatInFlight = false;
     }
   }
 

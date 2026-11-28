@@ -115,6 +115,30 @@ final class AiContextRenderer
             );
         }
 
+        if ($context->locationContext !== []) {
+            $sections[] = new PromptSection(
+                PromptLayer::Context,
+                'context.delivery_location',
+                $this->json([
+                    'delivery_location' => $context->locationContext,
+                    'instruction' => 'If status is confirmed, you already have the customer delivery address and do NOT ask for the location again; pass formatted_address to create_customer_order/update_customer_order. If status is not_captured when completing a delivery order, call request_location_capture and send the exact returned capture_url cleanly (plus invite direct location sharing when supports_native_location is true). Never invent coordinates or URLs.',
+                ]),
+            );
+        }
+
+        $isBookingEnabled = ($context->bookingContext['enabled'] ?? false) === true;
+        $isBookingIntent = str_starts_with((string) ($context->intent->canonical ?? ''), 'booking_');
+        if ($isBookingEnabled || $isBookingIntent) {
+            $sections[] = new PromptSection(
+                PromptLayer::Context,
+                'context.booking',
+                $this->json([
+                    'booking' => $context->bookingContext,
+                    'instruction' => 'You manage universal bookings using database tools ONLY. Call get_booking_options and check_booking_availability before stating any available slot, working hour, or price; never invent or confirm unverified slots. If a requested slot is busy/closed, present the returned nearest_alternatives. Collect only needed details for this business (name, phone when needed, service/type, date, time, party_size if allow_party_size, branch/staff if configured, plus custom_fields_schema). Before calling update_booking, reschedule_booking, or cancel_booking, summarize the change and ask for explicit customer confirmation first (only set customer_confirmed=true after the customer agrees).',
+                ]),
+            );
+        }
+
         $hasRecent = count($context->recentMessages) > 0;
         $sections[] = new PromptSection(
             PromptLayer::Context,

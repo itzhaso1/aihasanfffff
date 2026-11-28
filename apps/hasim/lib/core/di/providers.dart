@@ -217,6 +217,8 @@ final realtimeServiceProvider = Provider<RealtimeService>((ref) {
     workspaceIdOf: getWorkspaceId,
     repository: repo,
     onLocalInboxChange: () => bumpInboxLocalRevision(ref),
+    foregroundPushStream:
+        ref.watch(nativeMessagingGatewayProvider).foregroundMessages,
   );
   ref.listen<int?>(activeWorkspaceIdProvider, (_, next) {
     service.updateWorkspace(next);

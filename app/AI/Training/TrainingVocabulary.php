@@ -20,6 +20,7 @@ final class TrainingVocabulary
             'product_search', 'product_details', 'purchase_intent', 'discount_request', 'objection',
             'shipping_question', 'return_policy', 'payment_question', 'order_status', 'store_info',
             'product_comparison', 'recommendation_request',
+            'booking_request', 'booking_inquiry', 'booking_reschedule', 'booking_cancel',
             'human_request', 'complaint', 'confusion', 'off_topic',
         ],
         'roles' => [

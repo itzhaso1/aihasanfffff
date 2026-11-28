@@ -46,7 +46,8 @@ class CustomerAggregateService
 
         $ordersQuery = Order::withoutGlobalScopes()
             ->where('workspace_id', $workspaceId)
-            ->where('customer_id', $customerId);
+            ->where('customer_id', $customerId)
+            ->where('status', '!=', 'cancelled');
 
         $customer->update([
             'orders_count' => (int) (clone $ordersQuery)->count(),

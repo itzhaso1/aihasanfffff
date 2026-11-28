@@ -40,6 +40,26 @@ final class SkillRegistry
         'get_store_information',
     ];
 
+    private const BOOKING_TOOLS = [
+        'get_booking_options',
+        'check_booking_availability',
+        'get_customer_bookings',
+        'create_booking',
+        'reschedule_booking',
+        'update_booking',
+        'cancel_booking',
+    ];
+
+    private const BOOKING_INTENTS = [
+        'booking_request',
+        'booking_inquiry',
+        'booking_reschedule',
+        'booking_cancel',
+        'follow_up',
+        'short_message',
+        'greeting',
+    ];
+
     private const CATALOG_RECOMMEND_TOOLS = [
         'search_products',
         'get_product_details',
@@ -52,7 +72,10 @@ final class SkillRegistry
         'evaluate_product_suitability',
         'save_customer_commerce_context',
         'create_customer_order',
+        'update_customer_order',
+        'cancel_customer_order',
         'send_product_image',
+        'request_location_capture',
     ];
 
     private static ?self $default = null;
@@ -272,6 +295,16 @@ final class SkillRegistry
     {
         return [
             new SkillDefinition(
+                key: 'booking_agent',
+                name: 'Booking & Appointments',
+                description: 'Manage universal bookings, availability checks, reschedules, and cancellations from live workspace settings.',
+                category: 'booking',
+                supportedIntents: self::BOOKING_INTENTS,
+                supportedDomains: self::ALL_DOMAINS,
+                allowedTools: [...self::BOOKING_TOOLS, ...self::STORE_INFO_TOOLS, 'transfer_to_human_agent'],
+                settingsValidation: self::freeformSettings(),
+            ),
+            new SkillDefinition(
                 key: 'complaint_handling',
                 name: 'Complaint Handling',
                 description: 'Handle complaints, calm escalations, and keep expectations truthful.',
@@ -286,9 +319,9 @@ final class SkillRegistry
                 name: 'Customer Support',
                 description: 'Answer service, policy, and after-sales questions clearly and safely.',
                 category: 'support',
-                supportedIntents: self::SUPPORT_INTENTS,
+                supportedIntents: array_values(array_unique([...self::SUPPORT_INTENTS, ...self::BOOKING_INTENTS])),
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: array_values(array_unique([...self::CATALOG_READ_TOOLS, ...self::STORE_INFO_TOOLS, 'create_customer_order', 'get_order_status', 'transfer_to_human_agent'])),
+                allowedTools: array_values(array_unique([...self::CATALOG_READ_TOOLS, ...self::STORE_INFO_TOOLS, ...self::BOOKING_TOOLS, 'create_customer_order', 'update_customer_order', 'cancel_customer_order', 'get_order_status', 'transfer_to_human_agent', 'request_location_capture'])),
                 settingsValidation: self::freeformSettings(),
             ),
             new SkillDefinition(
@@ -318,7 +351,7 @@ final class SkillRegistry
                 category: 'workflow',
                 supportedIntents: ['follow_up', 'purchase_intent'],
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: ['create_customer_order', 'get_order_status'],
+                allowedTools: ['create_customer_order', 'update_customer_order', 'cancel_customer_order', 'get_order_status', 'request_location_capture'],
                 settingsValidation: self::freeformSettings(),
             ),
             new SkillDefinition(
@@ -346,9 +379,9 @@ final class SkillRegistry
                 name: 'Sales',
                 description: 'Drive product-focused sales conversations without inventing offers or facts.',
                 category: 'sales',
-                supportedIntents: self::SALES_INTENTS,
+                supportedIntents: array_values(array_unique([...self::SALES_INTENTS, ...self::BOOKING_INTENTS])),
                 supportedDomains: self::ALL_DOMAINS,
-                allowedTools: array_values(array_unique([...self::CATALOG_RECOMMEND_TOOLS, ...self::STORE_INFO_TOOLS, 'get_order_status', 'transfer_to_human_agent'])),
+                allowedTools: array_values(array_unique([...self::CATALOG_RECOMMEND_TOOLS, ...self::STORE_INFO_TOOLS, ...self::BOOKING_TOOLS, 'get_order_status', 'transfer_to_human_agent', 'request_location_capture'])),
                 settingsValidation: [
                     'type' => 'object',
                     'properties' => [

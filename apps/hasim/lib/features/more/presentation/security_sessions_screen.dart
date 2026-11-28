@@ -8,6 +8,7 @@ import 'package:hasim/core/theme/hasim_layout.dart';
 import 'package:hasim/core/theme/hasim_tokens.dart';
 import 'package:hasim/core/widgets/mobile/hasim_mobile_scaffold.dart';
 import 'package:hasim/core/widgets/hasim_buttons.dart';
+import 'package:hasim/core/widgets/hasim_card.dart';
 import 'package:hasim/core/widgets/hasim_settings_body.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
 
@@ -101,51 +102,85 @@ class _SecuritySessionsScreenState
     final body = HasimSettingsBody(
       mobileLayout: compact && !widget.embedded,
       children: [
-        AppSettingsTile(
-          icon: Icons.notifications_active_outlined,
-          title: 'الإشعارات الفورية',
-          subtitle: '${push.statusLabel}\nاستقبال الإشعارات الفورية على جهازك',
-          trailing: const AppSwitch(value: false, onChanged: null),
+        HasimCard(
+          child: HasimSettingsSectionHeader(
+            icon: Icons.notifications_active_outlined,
+            title: 'الإشعارات الفورية',
+            subtitle: 'استقبال تنبيهات الرسائل الفورية على جهازك',
+            trailing: HasimBadge(label: push.statusLabel),
+          ),
         ),
-        const SizedBox(height: 12),
-        const AppSectionHeader(
-          title: 'الأجهزة المتصلة',
-          subtitle: 'إدارة الأجهزة التي سجلت الدخول إلى حسابك',
-        ),
-        for (final session in _sessions)
-          _DeviceRow(
-            session: session,
-            icon: _deviceIcon(session.deviceType),
-            onRevoke: session.isCurrent
-                ? null
-                : () async {
-                    await ref
-                        .read(sessionRepositoryProvider)
-                        .revoke(session.id);
+        const SizedBox(height: HasimTokens.spaceMd),
+        HasimCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              HasimSettingsSectionHeader(
+                icon: Icons.devices_outlined,
+                title: 'الأجهزة المتصلة',
+                subtitle: 'إدارة الأجهزة التي سجلت الدخول إلى حسابك',
+                trailing: HasimBadge(label: '${_sessions.length}'),
+              ),
+              const SizedBox(height: 12),
+              if (_sessions.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Text(
+                    'لا توجد جلسات نشطة مسجلة حالياً.',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.secondary(
+                      color: HasimTokens.mutedColor(context),
+                    ),
+                  ),
+                )
+              else
+                for (var i = 0; i < _sessions.length; i++) ...[
+                  if (i > 0)
+                    Divider(height: 1, color: HasimTokens.lineColor(context)),
+                  _DeviceRow(
+                    session: _sessions[i],
+                    icon: _deviceIcon(_sessions[i].deviceType),
+                    onRevoke: _sessions[i].isCurrent
+                        ? null
+                        : () async {
+                            await ref
+                                .read(sessionRepositoryProvider)
+                                .revoke(_sessions[i].id);
+                            await _load();
+                          },
+                  ),
+                ],
+              const SizedBox(height: 4),
+              Divider(height: 1, color: HasimTokens.lineColor(context)),
+              const SizedBox(height: 8),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: HasimTextLinkButton(
+                  label: 'إنهاء الجلسات الأخرى',
+                  icon: Icons.devices_other_outlined,
+                  onPressed: () async {
+                    await ref.read(sessionRepositoryProvider).revokeOthers();
                     await _load();
                   },
-          ),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: HasimTextLinkButton(
-            label: 'إنهاء الجلسات الأخرى',
-            icon: Icons.devices_other_outlined,
-            onPressed: () async {
-              await ref.read(sessionRepositoryProvider).revokeOthers();
-              await _load();
-            },
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 18),
-        AppSettingsTile(
-          icon: Icons.logout_rounded,
-          title: 'تسجيل الخروج',
-          subtitle: 'تسجيل الخروج من حسابك على هذا الجهاز',
-          danger: true,
-          onTap: () async {
-            await ref.read(authControllerProvider.notifier).logout();
-            if (context.mounted) context.go('/login');
-          },
+        const SizedBox(height: HasimTokens.spaceMd),
+        HasimCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          borderColor: HasimTokens.danger.withValues(alpha: 0.22),
+          child: AppSettingsTile(
+            icon: Icons.logout_rounded,
+            title: 'تسجيل الخروج',
+            subtitle: 'تسجيل الخروج من حسابك على هذا الجهاز',
+            danger: true,
+            onTap: () async {
+              await ref.read(authControllerProvider.notifier).logout();
+              if (context.mounted) context.go('/login');
+            },
+          ),
         ),
       ],
     );

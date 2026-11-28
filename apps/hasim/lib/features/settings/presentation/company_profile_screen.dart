@@ -181,14 +181,29 @@ class _CompanyProfileScreenState extends ConsumerState<CompanyProfileScreen> {
     if (state.loading && state.profile == null && state.error == null) {
       body = const Center(child: CircularProgressIndicator(strokeWidth: 2));
     } else if (state.forbidden) {
-      body = Center(
-        child: Padding(
-          padding: const EdgeInsets.all(HasimTokens.spaceLg),
-          child: Text(
-            state.error ?? 'لا تملك صلاحية تعديل نبذة الشركة.',
-            textAlign: TextAlign.center,
+      body = HasimSettingsBody(
+        mobileLayout: HasimLayout.isCompact(context) && !widget.embedded,
+        children: [
+          HasimCard(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.lock_person_outlined,
+                  size: 36,
+                  color: HasimTokens.mutedColor(context),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  state.error ?? 'لا تملك صلاحية تعديل نبذة الشركة.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: HasimTokens.inkColor(context),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       );
     } else if (state.error != null && state.profile == null) {
       body = Center(
@@ -209,19 +224,44 @@ class _CompanyProfileScreenState extends ConsumerState<CompanyProfileScreen> {
         mobileLayout: HasimLayout.isCompact(context) && !widget.embedded,
         children: [
           HasimCard(
+            backgroundColor: HasimTokens.mintFill(context),
+            borderColor: HasimTokens.primary.withValues(alpha: 0.25),
+            showShadow: false,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.info_outline_rounded,
+                  size: 20,
+                  color: HasimTokens.primary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'تساعد هذه المعلومات المساعد على فهم نشاط الشركة عند الرد التلقائي واقتراح الردود. الأسعار والمخزون تُؤخذ من المنتجات، وليست من هذه النبذة.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: HasimTokens.inkColor(context),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: HasimTokens.spaceMd),
+          HasimCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'تساعد هذه المعلومات المساعد على فهم نشاط الشركة عند الرد التلقائي واقتراح الردود. الأسعار والمخزون تُؤخذ من المنتجات، وليست من هذه النبذة.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: HasimTokens.mutedColor(context),
-                  ),
+                const HasimSettingsSectionHeader(
+                  icon: Icons.business_outlined,
+                  title: 'بيانات النشاط',
+                  subtitle: 'الاسم والوصف الأساسي للشركة ومنتجاتها',
                 ),
                 const SizedBox(height: HasimTokens.spaceMd),
                 HasimFormField(
                   controller: _name,
                   label: 'اسم الشركة',
+                  icon: Icons.storefront_outlined,
                   errorText: _nameError,
                 ),
                 const SizedBox(height: HasimTokens.spaceMd),
@@ -237,6 +277,19 @@ class _CompanyProfileScreenState extends ConsumerState<CompanyProfileScreen> {
                   label: 'ماذا نبيع؟',
                   maxLines: 3,
                   errorText: _offeringsError,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: HasimTokens.spaceMd),
+          HasimCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const HasimSettingsSectionHeader(
+                  icon: Icons.tune_outlined,
+                  title: 'الخدمات والجمهور وتعليمات الرد',
+                  subtitle: 'تخصيص سياق الجمهور وتوجيهات الأسلوب',
                 ),
                 const SizedBox(height: HasimTokens.spaceMd),
                 HasimFormField(
@@ -292,8 +345,12 @@ class _CompanyProfileScreenState extends ConsumerState<CompanyProfileScreen> {
     }
 
     return Scaffold(
-      backgroundColor: HasimTokens.pageBg(context),
-      appBar: AppBar(title: const Text('نبذة عن الشركة')),
+      backgroundColor: HasimTokens.settingsCanvasBg(context),
+      appBar: AppBar(
+        title: const Text('نبذة عن الشركة'),
+        backgroundColor: HasimTokens.settingsCanvasBg(context),
+        surfaceTintColor: Colors.transparent,
+      ),
       body: body,
     );
   }

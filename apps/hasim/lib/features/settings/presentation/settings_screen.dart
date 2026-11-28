@@ -10,9 +10,12 @@ import 'package:hasim/core/theme/theme_mode_controller.dart';
 import 'package:hasim/core/widgets/empty_state.dart';
 import 'package:hasim/core/widgets/hasim_adaptive_scaffold.dart';
 import 'package:hasim/core/widgets/hasim_bottom_nav.dart';
+import 'package:hasim/core/widgets/hasim_buttons.dart';
+import 'package:hasim/core/widgets/hasim_card.dart';
 import 'package:hasim/router/hasim_nav.dart';
 import 'package:hasim/core/widgets/hasim_page_header.dart';
 import 'package:hasim/core/widgets/hasim_search_bar.dart';
+import 'package:hasim/core/widgets/hasim_settings_body.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
 import 'package:hasim/features/conversations/providers/conversations_controller.dart';
 import 'package:hasim/features/home/providers/home_controller.dart';
@@ -98,28 +101,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return [
         _SettingsItem(
           id: _SettingsId.profile,
-          icon: Icons.person_outline,
+          icon: Icons.person_outline_rounded,
           title: 'ملفي الشخصي',
           subtitle: profileSubtitle,
           route: workerAccountLocation,
+          category: _SettingsCategory.account,
         ),
         const _SettingsItem(
           id: _SettingsId.workerAccount,
-          icon: Icons.person_outline,
+          icon: Icons.badge_outlined,
           title: 'المعلومات والتوثيق',
           route: workerAccountLocation,
+          group: 'الحساب والأمان',
+          category: _SettingsCategory.account,
         ),
         const _SettingsItem(
           id: _SettingsId.security,
           icon: Icons.shield_outlined,
           title: 'الأمان والجلسات',
           route: '/more/security',
+          group: 'الحساب والأمان',
+          category: _SettingsCategory.security,
         ),
         const _SettingsItem(
           id: _SettingsId.privacyLock,
-          icon: Icons.lock_outline,
+          icon: Icons.lock_outline_rounded,
           title: 'القفل والخصوصية',
           subtitle: 'رمز PIN والبصمة والدردشات المقفلة',
+          group: 'الحساب والأمان',
+          category: _SettingsCategory.privacy,
         ),
         _SettingsItem(
           id: _SettingsId.appearance,
@@ -127,6 +137,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           title: 'المظهر والسمات',
           subtitle: '${_themeLabel(themeMode)} · خلفية المحادثة',
           route: '/chat-themes',
+          group: 'الحساب والأمان',
+          category: _SettingsCategory.appearance,
         ),
         const _SettingsItem(
           id: _SettingsId.workerSalesReference,
@@ -135,65 +147,83 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           subtitle: 'منتجات وخدمات الشركة الحالية',
           route: workerSalesReferenceLocation,
           sectionStart: true,
+          group: 'العمل والمبيعات',
+          category: _SettingsCategory.worker,
         ),
-        _SettingsItem(
+        const _SettingsItem(
           id: _SettingsId.workerOffers,
           icon: Icons.local_offer_outlined,
           title: 'العروض',
           route: workerOffersLocation,
+          group: 'العمل والمبيعات',
+          category: _SettingsCategory.worker,
         ),
         const _SettingsItem(
           id: _SettingsId.workerEngagements,
-          icon: Icons.work_outline,
+          icon: Icons.work_outline_rounded,
           title: 'الأعمال',
           route: workerEngagementsLocation,
+          group: 'العمل والمبيعات',
+          category: _SettingsCategory.worker,
         ),
         const _SettingsItem(
           id: _SettingsId.logout,
-          icon: Icons.logout,
+          icon: Icons.logout_rounded,
           title: 'تسجيل الخروج',
           danger: true,
+          category: _SettingsCategory.danger,
         ),
       ];
     }
     return [
       _SettingsItem(
         id: _SettingsId.profile,
-        icon: Icons.person_outline,
+        icon: Icons.person_outline_rounded,
         title: 'حسابي',
         subtitle: profileSubtitle,
         route: '/profile',
+        category: _SettingsCategory.account,
       ),
       const _SettingsItem(
         id: _SettingsId.security,
         icon: Icons.shield_outlined,
         title: 'الأمان والجلسات',
         route: '/more/security',
+        group: 'الأمان والإشعارات',
+        category: _SettingsCategory.security,
       ),
       const _SettingsItem(
         id: _SettingsId.privacyLock,
-        icon: Icons.lock_outline,
+        icon: Icons.lock_outline_rounded,
         title: 'القفل والخصوصية',
         subtitle: 'رمز PIN والبصمة',
-      ),
-      const _SettingsItem(
-        id: _SettingsId.channels,
-        icon: Icons.hub_outlined,
-        title: 'القنوات',
-        route: '/channels',
+        group: 'الأمان والإشعارات',
+        category: _SettingsCategory.privacy,
       ),
       const _SettingsItem(
         id: _SettingsId.notifications,
         icon: Icons.notifications_outlined,
         title: 'تفضيلات الإشعارات',
         route: '/notification-preferences',
+        group: 'الأمان والإشعارات',
+        category: _SettingsCategory.notifications,
+      ),
+      const _SettingsItem(
+        id: _SettingsId.channels,
+        icon: Icons.hub_outlined,
+        title: 'القنوات',
+        route: '/channels',
+        group: 'العمل والذكاء',
+        category: _SettingsCategory.channels,
       ),
       const _SettingsItem(
         id: _SettingsId.customers,
-        icon: Icons.people_outline,
+        icon: Icons.people_outline_rounded,
         title: 'العملاء',
         subtitle: 'إدارة بيانات العملاء، الملاحظات، وسجل التواصل',
         route: '/customers',
+        group: 'العمل والذكاء',
+        category: _SettingsCategory.commerce,
       ),
       const _SettingsItem(
         id: _SettingsId.orders,
@@ -201,6 +231,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         title: 'الطلبات والمبيعات',
         subtitle: 'إدارة الطلبات، الحالات، والفواتير',
         route: '/orders',
+        group: 'العمل والذكاء',
+        category: _SettingsCategory.commerce,
       ),
       const _SettingsItem(
         id: _SettingsId.products,
@@ -208,12 +240,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         title: 'المنتجات والمخزون',
         subtitle: 'عرض المنتجات والتصنيفات والكميات كمرجع للذكاء الاصطناعي',
         route: '/catalog',
+        group: 'العمل والذكاء',
+        category: _SettingsCategory.commerce,
       ),
       const _SettingsItem(
         id: _SettingsId.ai,
         icon: Icons.smart_toy_outlined,
         title: 'إعدادات الذكاء الاصطناعي',
         route: '/ai-settings',
+        group: 'العمل والذكاء',
+        category: _SettingsCategory.ai,
       ),
       const _SettingsItem(
         id: _SettingsId.companyProfile,
@@ -221,6 +257,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         title: 'نبذة عن الشركة',
         subtitle: 'نشاط الشركة وما تبيعه والتعليمات للرد',
         route: '/ai-settings/company-profile',
+        group: 'العمل والذكاء',
+        category: _SettingsCategory.company,
       ),
       _SettingsItem(
         id: _SettingsId.appearance,
@@ -228,12 +266,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         title: 'المظهر والسمات',
         subtitle: '${_themeLabel(themeMode)} · خلفية المحادثة',
         route: '/chat-themes',
+        group: 'التفضيلات',
+        category: _SettingsCategory.appearance,
       ),
       const _SettingsItem(
         id: _SettingsId.logout,
-        icon: Icons.logout,
+        icon: Icons.logout_rounded,
         title: 'تسجيل الخروج',
         danger: true,
+        category: _SettingsCategory.danger,
       ),
     ];
   }
@@ -402,17 +443,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ? _phoneCompanySelector()
         : null;
 
+    final workspaceName = !independentWorker ? auth.workspace?.name : null;
+
     if (compact) {
       return Scaffold(
         backgroundColor: HasimTokens.isDark(context)
             ? HasimTokens.darkPage
-            : const Color(0xFFFFFFFF),
+            : const Color(0xFFF6F9F9),
         body: SafeArea(
           child: _MobileSettingsList(
             search: _search,
             items: items,
             userName: user?.name,
             avatarUrl: user?.avatarUrl,
+            workspaceName: workspaceName,
             header: companySelector,
             onQueryChanged: (value) => setState(() => _query = value),
             onQueryCleared: () => setState(() => _query = ''),
@@ -448,6 +492,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               items: items,
               userName: user?.name,
               avatarUrl: user?.avatarUrl,
+              workspaceName: workspaceName,
               onSelect: (item) => _onSelect(
                 item,
                 split: false,
@@ -484,6 +529,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 selected: selected,
                 userName: user?.name,
                 avatarUrl: user?.avatarUrl,
+                workspaceName: workspaceName,
                 onQueryChanged: (v) => setState(() => _query = v),
                 onQueryCleared: () => setState(() => _query = ''),
                 onSelect: (item) => _onSelect(
@@ -496,7 +542,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           Expanded(
             child: ColoredBox(
-              color: HasimTokens.pageBg(context),
+              color: HasimTokens.settingsCanvasBg(context),
               child: KeyedSubtree(
                 key: const Key('hasim-settings-detail'),
                 child: _SettingsDetailPane(
@@ -522,6 +568,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 }
 
+enum _SettingsCategory {
+  account,
+  security,
+  privacy,
+  notifications,
+  channels,
+  commerce,
+  ai,
+  company,
+  appearance,
+  worker,
+  danger,
+}
+
+Color _categoryAccent(BuildContext context, _SettingsCategory category) {
+  final scheme = Theme.of(context).colorScheme;
+  final dark = HasimTokens.isDark(context);
+  return switch (category) {
+    _SettingsCategory.account => HasimTokens.primary,
+    _SettingsCategory.security =>
+      dark ? HasimTokens.primary : HasimTokens.accentDark,
+    _SettingsCategory.privacy => HasimTokens.chatGreen,
+    _SettingsCategory.notifications => HasimTokens.warning,
+    _SettingsCategory.channels => HasimTokens.primary,
+    _SettingsCategory.commerce => scheme.secondary,
+    _SettingsCategory.ai => scheme.tertiary,
+    _SettingsCategory.company => HasimTokens.mutedColor(context),
+    _SettingsCategory.appearance => scheme.primary,
+    _SettingsCategory.worker =>
+      dark ? HasimTokens.primary : HasimTokens.accentDark,
+    _SettingsCategory.danger => HasimTokens.danger,
+  };
+}
+
 class _SettingsItem {
   const _SettingsItem({
     required this.id,
@@ -531,6 +611,8 @@ class _SettingsItem {
     this.route,
     this.danger = false,
     this.sectionStart = false,
+    this.group,
+    this.category = _SettingsCategory.account,
   });
 
   final _SettingsId id;
@@ -540,6 +622,40 @@ class _SettingsItem {
   final String? route;
   final bool danger;
   final bool sectionStart;
+  final String? group;
+  final _SettingsCategory category;
+}
+
+class _SettingsBucket {
+  const _SettingsBucket({this.title, required this.items});
+
+  final String? title;
+  final List<_SettingsItem> items;
+}
+
+List<_SettingsBucket> _groupSettingsItems(List<_SettingsItem> items) {
+  final buckets = <_SettingsBucket>[];
+  String? currentGroup;
+  var current = <_SettingsItem>[];
+
+  void flush() {
+    if (current.isEmpty) return;
+    buckets.add(_SettingsBucket(title: currentGroup, items: current));
+    current = <_SettingsItem>[];
+  }
+
+  for (final item in items) {
+    if (item.id == _SettingsId.profile || item.id == _SettingsId.logout) {
+      continue;
+    }
+    if (item.group != currentGroup) {
+      flush();
+      currentGroup = item.group;
+    }
+    current.add(item);
+  }
+  flush();
+  return buckets;
 }
 
 class _MobileSettingsList extends StatefulWidget {
@@ -551,6 +667,7 @@ class _MobileSettingsList extends StatefulWidget {
     required this.onSelect,
     this.userName,
     this.avatarUrl,
+    this.workspaceName,
     this.header,
   });
 
@@ -558,6 +675,7 @@ class _MobileSettingsList extends StatefulWidget {
   final List<_SettingsItem> items;
   final String? userName;
   final String? avatarUrl;
+  final String? workspaceName;
   final Widget? header;
   final ValueChanged<String> onQueryChanged;
   final VoidCallback onQueryCleared;
@@ -593,15 +711,29 @@ class _MobileSettingsListState extends State<_MobileSettingsList> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    _SettingsItem? profileItem;
+    _SettingsItem? logoutItem;
+    for (final item in widget.items) {
+      if (item.id == _SettingsId.profile) profileItem = item;
+      if (item.id == _SettingsId.logout) logoutItem = item;
+    }
+    final buckets = _groupSettingsItems(widget.items);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
+        Container(
+          decoration: BoxDecoration(
+            color: HasimTokens.cardBg(context),
+            border: Border(
+              bottom: BorderSide(color: HasimTokens.lineColor(context)),
+            ),
+          ),
           padding: EdgeInsetsDirectional.fromSTEB(
             _searchOpen ? 16 : 4,
-            6,
+            4,
             _searchOpen ? 16 : 8,
-            0,
+            4,
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -638,7 +770,7 @@ class _MobileSettingsListState extends State<_MobileSettingsList> {
                           'الإعدادات',
                           textAlign: TextAlign.start,
                           style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                             fontSize: 20,
                             height: 1.2,
                             color: HasimTokens.inkColor(context),
@@ -653,7 +785,7 @@ class _MobileSettingsListState extends State<_MobileSettingsList> {
                   onPressed: _toggleSearch,
                   icon: Icon(
                     Icons.search_rounded,
-                    size: 26,
+                    size: 24,
                     color: HasimTokens.inkColor(context),
                   ),
                 ),
@@ -662,34 +794,92 @@ class _MobileSettingsListState extends State<_MobileSettingsList> {
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(8, 14, 8, 36),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
             children: [
               if (widget.header != null)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                  padding: const EdgeInsets.only(bottom: 10),
                   child: widget.header!,
                 ),
-              for (final item in widget.items) ...[
-                if (item.sectionStart)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Divider(height: 1),
+              if (widget.items.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: EmptyState(
+                    icon: Icons.search_off_rounded,
+                    title: 'لا توجد نتائج',
+                    subtitle: 'جرّب كلمة أخرى للبحث في الإعدادات.',
                   ),
-                if (item.id == _SettingsId.logout) const SizedBox(height: 18),
-                if (item.id == _SettingsId.profile)
-                  _PhoneProfileRow(
-                    title: item.title,
-                    email: item.subtitle,
+                ),
+              if (profileItem != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _PhoneProfileRow(
+                    title: profileItem.title,
+                    email: profileItem.subtitle,
                     name: widget.userName,
                     avatarUrl: widget.avatarUrl,
-                    onTap: () => widget.onSelect(item),
-                  )
-                else
-                  _PhoneSettingsRow(
-                    item: item,
-                    onTap: () => widget.onSelect(item),
+                    workspaceName: widget.workspaceName,
+                    onTap: () => widget.onSelect(profileItem!),
                   ),
+                ),
+              for (final bucket in buckets) ...[
+                if (bucket.title != null)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                      6,
+                      4,
+                      6,
+                      4,
+                    ),
+                    child: Text(
+                      bucket.title!,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: HasimTokens.mutedColor(context),
+                      ),
+                    ),
+                  ),
+                HasimCard(
+                  padding: EdgeInsets.zero,
+                  radius: 14,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < bucket.items.length; i++) ...[
+                          if (i > 0)
+                            Divider(
+                              height: 1,
+                              indent: 60,
+                              color: HasimTokens.lineColor(context),
+                            ),
+                          _PhoneSettingsRow(
+                            item: bucket.items[i],
+                            onTap: () => widget.onSelect(bucket.items[i]),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
               ],
+              if (logoutItem != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: HasimCard(
+                    padding: EdgeInsets.zero,
+                    radius: 14,
+                    borderColor: HasimTokens.danger.withValues(alpha: 0.22),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(13),
+                      child: _PhoneSettingsRow(
+                        item: logoutItem,
+                        onTap: () => widget.onSelect(logoutItem!),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -769,12 +959,14 @@ class _PhoneProfileRow extends StatelessWidget {
     this.email,
     this.name,
     this.avatarUrl,
+    this.workspaceName,
   });
 
   final String title;
   final String? email;
   final String? name;
   final String? avatarUrl;
+  final String? workspaceName;
   final VoidCallback onTap;
 
   @override
@@ -783,37 +975,94 @@ class _PhoneProfileRow extends StatelessWidget {
     final initial = (name != null && name!.trim().isNotEmpty)
         ? name!.trim()[0]
         : 'ح';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+    final displayName = (name != null && name!.trim().isNotEmpty)
+        ? name!.trim()
+        : null;
+    final dark = HasimTokens.isDark(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: dark
+            ? null
+            : const LinearGradient(
+                begin: AlignmentDirectional.topStart,
+                end: AlignmentDirectional.bottomEnd,
+                colors: [Color(0xFFEAF9F7), Colors.white],
+              ),
+        color: dark ? HasimTokens.darkCard : null,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: HasimTokens.primary.withValues(alpha: dark ? 0.35 : 0.25),
+        ),
+        boxShadow: HasimTokens.softShadow(context),
+      ),
       child: Material(
-        color: HasimTokens.mintFill(context),
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(14, 16, 16, 16),
+            padding: const EdgeInsetsDirectional.fromSTEB(12, 11, 14, 11),
             child: Row(
               children: [
-                _ProfileAvatar(name: name ?? initial, avatarUrl: avatarUrl),
-                const SizedBox(width: 12),
+                Container(
+                  width: 44,
+                  height: 44,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: HasimTokens.primary.withValues(alpha: 0.45),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: _ProfileAvatar(
+                    name: name ?? initial,
+                    avatarUrl: avatarUrl,
+                    radius: 19,
+                  ),
+                ),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          height: 1.3,
-                          color: HasimTokens.inkColor(context),
-                        ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                              height: 1.3,
+                              color: HasimTokens.inkColor(context),
+                            ),
+                          ),
+                          if (workspaceName != null &&
+                              workspaceName!.trim().isNotEmpty)
+                            HasimBadge(label: workspaceName!.trim()),
+                        ],
                       ),
+                      if (displayName != null && displayName != title) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: HasimTokens.inkColor(context),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                      ],
                       if (email != null && email!.isNotEmpty) ...[
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
                           email!,
                           maxLines: 1,
@@ -823,17 +1072,17 @@ class _PhoneProfileRow extends StatelessWidget {
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: HasimTokens.mutedColor(context),
                             fontWeight: FontWeight.w500,
-                            fontSize: 13,
+                            fontSize: 12.5,
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Container(
                   width: 3,
-                  height: 28,
+                  height: 30,
                   decoration: BoxDecoration(
                     color: HasimTokens.primary,
                     borderRadius: BorderRadius.circular(4),
@@ -859,33 +1108,33 @@ class _PhoneSettingsRow extends StatelessWidget {
     final theme = Theme.of(context);
     final danger = item.danger;
     final ink = danger ? HasimTokens.danger : HasimTokens.inkColor(context);
+    final accent = _categoryAccent(context, item.category);
+    final dark = HasimTokens.isDark(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(18, 15, 20, 15),
+          padding: const EdgeInsetsDirectional.fromSTEB(12, 9, 12, 9),
           child: Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 34,
+                height: 34,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: danger
                       ? HasimTokens.dangerSoftColor(context)
-                      : HasimTokens.mutedColor(context).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
+                      : accent.withValues(alpha: dark ? 0.16 : 0.10),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   item.icon,
-                  size: 21,
-                  color: danger
-                      ? HasimTokens.danger
-                      : HasimTokens.mutedColor(context),
+                  size: 18,
+                  color: danger ? HasimTokens.danger : accent,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -894,19 +1143,21 @@ class _PhoneSettingsRow extends StatelessWidget {
                       item.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
                         color: ink,
                       ),
                     ),
                     if (item.subtitle != null) ...[
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
                       Text(
                         item.subtitle!,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: HasimTokens.mutedColor(context),
+                          fontSize: 12.5,
                         ),
                       ),
                     ],
@@ -928,39 +1179,37 @@ class _RailFlatSettingsList extends StatelessWidget {
     required this.onSelect,
     this.userName,
     this.avatarUrl,
+    this.workspaceName,
   });
 
   final List<_SettingsItem> items;
   final ValueChanged<_SettingsItem> onSelect;
   final String? userName;
   final String? avatarUrl;
+  final String? workspaceName;
 
   @override
   Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const Center(
+        child: EmptyState(
+          icon: Icons.search_off_rounded,
+          title: 'لا توجد نتائج',
+          subtitle: 'جرّب كلمة بحث أخرى.',
+        ),
+      );
+    }
     return ListView(
-      padding: const EdgeInsets.fromLTRB(10, 4, 10, 16),
-      children: [
-        for (final item in items) ...[
-          if (item.sectionStart)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-              child: Divider(height: 1, color: HasimTokens.lineColor(context)),
-            ),
-          if (item.id == _SettingsId.logout)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-              child: Divider(height: 1, color: HasimTokens.lineColor(context)),
-            ),
-          _SettingsPanelRow(
-            item: item,
-            selected: false,
-            leading: item.id == _SettingsId.profile
-                ? _ProfileAvatar(name: userName, avatarUrl: avatarUrl)
-                : null,
-            onTap: () => onSelect(item),
-          ),
-        ],
-      ],
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
+      children: _buildPanelChildren(
+        context,
+        items: items,
+        selected: null,
+        userName: userName,
+        avatarUrl: avatarUrl,
+        workspaceName: workspaceName,
+        onSelect: onSelect,
+      ),
     );
   }
 }
@@ -975,6 +1224,7 @@ class _SettingsPanel extends StatelessWidget {
     required this.onSelect,
     this.userName,
     this.avatarUrl,
+    this.workspaceName,
   });
 
   final TextEditingController search;
@@ -982,6 +1232,7 @@ class _SettingsPanel extends StatelessWidget {
   final _SettingsId? selected;
   final String? userName;
   final String? avatarUrl;
+  final String? workspaceName;
   final ValueChanged<String> onQueryChanged;
   final VoidCallback onQueryCleared;
   final ValueChanged<_SettingsItem> onSelect;
@@ -992,11 +1243,11 @@ class _SettingsPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: EdgeInsets.fromLTRB(14, 8, 14, 0),
           child: HasimPageHeader(title: 'الإعدادات'),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
           child: HasimSearchBar(
             controller: search,
             hintText: 'ابحث في الإعدادات',
@@ -1004,42 +1255,89 @@ class _SettingsPanel extends StatelessWidget {
             onClear: onQueryCleared,
           ),
         ),
+        Divider(height: 1, color: HasimTokens.lineColor(context)),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(10, 4, 10, 16),
-            children: [
-              for (final item in items) ...[
-                if (item.sectionStart)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-                    child: Divider(
-                      height: 1,
-                      color: HasimTokens.lineColor(context),
-                    ),
+          child: items.isEmpty
+              ? const Center(
+                  child: EmptyState(
+                    icon: Icons.search_off_rounded,
+                    title: 'لا توجد نتائج',
+                    subtitle: 'جرّب كلمة بحث أخرى.',
                   ),
-                if (item.id == _SettingsId.logout)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-                    child: Divider(
-                      height: 1,
-                      color: HasimTokens.lineColor(context),
-                    ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(10, 4, 10, 16),
+                  children: _buildPanelChildren(
+                    context,
+                    items: items,
+                    selected: selected,
+                    userName: userName,
+                    avatarUrl: avatarUrl,
+                    workspaceName: workspaceName,
+                    onSelect: onSelect,
                   ),
-                _SettingsPanelRow(
-                  item: item,
-                  selected: selected == item.id,
-                  leading: item.id == _SettingsId.profile
-                      ? _ProfileAvatar(name: userName, avatarUrl: avatarUrl)
-                      : null,
-                  onTap: () => onSelect(item),
                 ),
-              ],
-            ],
-          ),
         ),
       ],
     );
   }
+}
+
+List<Widget> _buildPanelChildren(
+  BuildContext context, {
+  required List<_SettingsItem> items,
+  required _SettingsId? selected,
+  required String? userName,
+  required String? avatarUrl,
+  required String? workspaceName,
+  required ValueChanged<_SettingsItem> onSelect,
+}) {
+  final children = <Widget>[];
+  String? lastGroup;
+  for (final item in items) {
+    if (item.id == _SettingsId.logout) {
+      children.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(6, 10, 6, 8),
+          child: Divider(height: 1, color: HasimTokens.lineColor(context)),
+        ),
+      );
+    } else if (item.group != null && item.group != lastGroup) {
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(height: 5));
+      }
+      children.add(
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(10, 2, 10, 2),
+          child: Text(
+            item.group!,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: HasimTokens.mutedColor(context),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+      lastGroup = item.group;
+    }
+    children.add(
+      _SettingsPanelRow(
+        item: item,
+        selected: selected == item.id,
+        leading: item.id == _SettingsId.profile
+            ? _ProfileAvatar(name: userName, avatarUrl: avatarUrl)
+            : null,
+        trailingBadge:
+            item.id == _SettingsId.profile &&
+                workspaceName != null &&
+                workspaceName.trim().isNotEmpty
+            ? workspaceName.trim()
+            : null,
+        onTap: () => onSelect(item),
+      ),
+    );
+  }
+  return children;
 }
 
 class _SettingsPanelRow extends StatelessWidget {
@@ -1048,96 +1346,134 @@ class _SettingsPanelRow extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.leading,
+    this.trailingBadge,
   });
 
   final _SettingsItem item;
   final bool selected;
   final VoidCallback onTap;
   final Widget? leading;
+  final String? trailingBadge;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final danger = item.danger;
     final ink = danger
-        ? theme.colorScheme.error
-        : HasimTokens.inkColor(context);
+        ? HasimTokens.danger
+        : (selected
+              ? (HasimTokens.isDark(context)
+                    ? Colors.white
+                    : HasimTokens.ink)
+              : HasimTokens.inkColor(context));
     final muted = HasimTokens.mutedColor(context);
+    final accent = _categoryAccent(context, item.category);
+    final dark = HasimTokens.isDark(context);
+    final rowBg = selected
+        ? HasimTokens.mintFill(context)
+        : Colors.transparent;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Material(
-        color: Colors.transparent,
-        elevation: 0,
-        shadowColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: InkWell(
-          onTap: onTap,
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        decoration: BoxDecoration(
+          color: rowBg,
           borderRadius: BorderRadius.circular(12),
-          hoverColor: Colors.transparent,
-          splashColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-          child: Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(10, 10, 12, 10),
-            child: Row(
-              children: [
-                if (selected)
-                  Container(
-                    width: 3,
-                    height: 28,
-                    margin: const EdgeInsetsDirectional.only(end: 8),
+          border: Border.all(
+            color: selected
+                ? HasimTokens.primary.withValues(alpha: dark ? 0.35 : 0.25)
+                : Colors.transparent,
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            hoverColor: danger
+                ? HasimTokens.danger.withValues(alpha: 0.06)
+                : HasimTokens.primary.withValues(alpha: 0.06),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 10, 6),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: selected ? 3 : 0,
+                    height: selected ? 22 : 0,
+                    margin: EdgeInsetsDirectional.only(end: selected ? 8 : 0),
                     decoration: BoxDecoration(
                       color: AppTheme.brand,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
-                leading ??
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: danger
-                            ? theme.colorScheme.error.withValues(alpha: 0.10)
-                            : muted.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        item.icon,
-                        size: 16,
-                        color: danger ? theme.colorScheme.error : muted,
-                      ),
-                    ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w600,
-                          color: ink,
+                  leading ??
+                      Container(
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: danger
+                              ? HasimTokens.dangerSoftColor(context)
+                              : (selected
+                                    ? accent.withValues(
+                                        alpha: dark ? 0.22 : 0.14,
+                                      )
+                                    : accent.withValues(
+                                        alpha: dark ? 0.14 : 0.09,
+                                      )),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Icon(
+                          item.icon,
+                          size: 16,
+                          color: danger ? HasimTokens.danger : accent,
                         ),
                       ),
-                      if (item.subtitle != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          item.subtitle!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: muted,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
+                                  color: ink,
+                                ),
+                              ),
+                            ),
+                            if (trailingBadge != null) ...[
+                              const SizedBox(width: 6),
+                              HasimBadge(label: trailingBadge!),
+                            ],
+                          ],
+                        ),
+                        if (item.subtitle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            item.subtitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: muted,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1147,21 +1483,23 @@ class _SettingsPanelRow extends StatelessWidget {
 }
 
 class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({this.name, this.avatarUrl});
+  const _ProfileAvatar({this.name, this.avatarUrl, this.radius = 20});
 
   final String? name;
   final String? avatarUrl;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
+    final size = radius * 2;
     final fallback = CircleAvatar(
-      radius: 20,
+      radius: radius,
       backgroundColor: AppTheme.brand.withValues(alpha: 0.14),
       child: Text(
         (name != null && name!.isNotEmpty) ? name![0] : 'ح',
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
+        style: TextStyle(
+          fontSize: radius * 0.8,
+          fontWeight: FontWeight.w800,
           color: AppTheme.brand,
         ),
       ),
@@ -1173,8 +1511,8 @@ class _ProfileAvatar extends StatelessWidget {
     return ClipOval(
       child: CachedNetworkImage(
         imageUrl: url,
-        width: 40,
-        height: 40,
+        width: size,
+        height: size,
         fit: BoxFit.cover,
         errorWidget: (_, _, _) => fallback,
       ),
@@ -1207,72 +1545,108 @@ class _SettingsDetailPane extends StatelessWidget {
       return _workerLocationDetail(workerLocation!);
     }
 
-    return switch (selected) {
+    final Widget content = switch (selected) {
       _SettingsId.profile => const _EmbeddedDetail(
+        key: ValueKey('detail-profile'),
         title: 'حسابي',
-        subtitle: 'إدارة معلومات حسابك الشخصي',
+        subtitle: 'إدارة معلومات حسابك الشخصي وكلمة المرور',
+        icon: Icons.person_outline_rounded,
         child: ProfileScreen(embedded: true),
       ),
       _SettingsId.security => const _EmbeddedDetail(
+        key: ValueKey('detail-security'),
         title: 'الأمان والجلسات',
         subtitle: 'إدارة أمان حسابك ومتابعة الأجهزة النشطة',
+        icon: Icons.shield_outlined,
         child: SecuritySessionsScreen(embedded: true),
       ),
       _SettingsId.privacyLock => _EmbeddedDetail(
+        key: const ValueKey('detail-privacy'),
         title: 'القفل والخصوصية',
         subtitle: isCompanyUser
             ? 'رمز PIN والبصمة'
             : 'رمز PIN والبصمة والدردشات المقفلة',
-        icon: Icons.lock_outline,
-        child: const PrivacyLockSettings(),
+        icon: Icons.lock_outline_rounded,
+        child: const PrivacyLockSettings(embedded: true),
       ),
       _SettingsId.channels => const _EmbeddedDetail(
+        key: ValueKey('detail-channels'),
         title: 'القنوات',
         subtitle: 'اربط قنوات التواصل لإدارة رسائلك من مكان واحد',
+        icon: Icons.hub_outlined,
         child: ChannelsScreen(embedded: true),
       ),
       _SettingsId.notifications => const _EmbeddedDetail(
+        key: ValueKey('detail-notifications'),
         title: 'تفضيلات الإشعارات',
+        subtitle: 'تحكم في تنبيهات الرسائل والبريد والعروض',
+        icon: Icons.notifications_outlined,
         child: NotificationPreferencesScreen(embedded: true),
       ),
       _SettingsId.customers => const _EmbeddedDetail(
+        key: ValueKey('detail-customers'),
         title: 'العملاء',
         subtitle: 'إدارة بيانات العملاء، الملاحظات، وسجل التواصل',
+        icon: Icons.people_outline_rounded,
+        constrainHeader: false,
         child: CustomersListScreen(),
       ),
       _SettingsId.orders => const _EmbeddedDetail(
+        key: ValueKey('detail-orders'),
         title: 'الطلبات والمبيعات',
         subtitle: 'إدارة الطلبات، الحالات، والفواتير',
+        icon: Icons.shopping_bag_outlined,
+        constrainHeader: false,
         child: OrdersListScreen(),
       ),
       _SettingsId.products => const _EmbeddedDetail(
+        key: ValueKey('detail-products'),
         title: 'المنتجات والمخزون',
         subtitle: 'عرض المنتجات والتصنيفات والكميات كمرجع للذكاء الاصطناعي',
+        icon: Icons.inventory_2_outlined,
+        constrainHeader: false,
         child: CatalogListScreen(embedded: true),
       ),
       _SettingsId.ai => const _EmbeddedDetail(
+        key: ValueKey('detail-ai'),
         title: 'إعدادات الذكاء الاصطناعي',
+        subtitle: 'ضبط موظفي الذكاء الاصطناعي وأسلوب الرد والتعاقد',
+        icon: Icons.smart_toy_outlined,
         child: AiSettingsScreen(embedded: true),
       ),
       _SettingsId.companyProfile => const _EmbeddedDetail(
+        key: ValueKey('detail-company'),
         title: 'نبذة عن الشركة',
         subtitle: 'نشاط الشركة وما تبيعه والتعليمات للرد',
+        icon: Icons.business_outlined,
         child: CompanyProfileScreen(embedded: true),
       ),
       _SettingsId.workerSalesReference ||
       _SettingsId.workerOffers ||
       _SettingsId.workerEngagements ||
-      _SettingsId.workerAccount => _workerDetail(selected),
+      _SettingsId.workerAccount => KeyedSubtree(
+        key: ValueKey('detail-$selected'),
+        child: _workerDetail(selected),
+      ),
       _SettingsId.appearance => _AppearanceDetail(
+        key: const ValueKey('detail-appearance'),
         themeMode: themeMode,
         onThemeChanged: onThemeChanged,
       ),
       _SettingsId.logout || null => const EmptyState(
+        key: ValueKey('detail-empty'),
         icon: Icons.settings_outlined,
         title: 'الإعدادات',
         subtitle: 'اختر أحد الإعدادات من القائمة لعرض التفاصيل هنا.',
       ),
     };
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 160),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: content,
+    );
   }
 
   Widget _workerDetail(_SettingsId? selected) {
@@ -1341,30 +1715,55 @@ class _SettingsDetailPane extends StatelessWidget {
 
 class _EmbeddedDetail extends StatelessWidget {
   const _EmbeddedDetail({
+    super.key,
     required this.title,
     required this.child,
     this.subtitle,
     this.icon,
+    this.constrainHeader = true,
   });
 
   final String title;
   final String? subtitle;
   final IconData? icon;
+  final bool constrainHeader;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
+    final detailBg = HasimTokens.settingsCanvasBg(context);
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 10),
+      child: HasimPageHeader(
+        title: title,
+        subtitle: subtitle,
+        icon: icon,
+      ),
+    );
     return ColoredBox(
-      color: HasimTokens.pageBg(context),
+      color: detailBg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-            child: HasimPageHeader(
-              title: title,
-              subtitle: subtitle,
-              icon: icon,
+          ColoredBox(
+            color: HasimTokens.cardBg(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (constrainHeader)
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: HasimTokens.settingsContentMaxWidth,
+                      ),
+                      child: header,
+                    ),
+                  )
+                else
+                  header,
+                Divider(height: 1, color: HasimTokens.lineColor(context)),
+              ],
             ),
           ),
           Expanded(child: child),
@@ -1376,6 +1775,7 @@ class _EmbeddedDetail extends StatelessWidget {
 
 class _AppearanceDetail extends StatelessWidget {
   const _AppearanceDetail({
+    super.key,
     required this.themeMode,
     required this.onThemeChanged,
   });
@@ -1385,28 +1785,17 @@ class _AppearanceDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: HasimTokens.pageBg(context),
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: HasimTokens.settingsContentMaxWidth,
+    return _EmbeddedDetail(
+      title: 'المظهر والسمات',
+      subtitle: 'وضع التطبيق وخلفية شاشة المحادثة',
+      icon: Icons.palette_outlined,
+      child: HasimSettingsBody(
+        children: [
+          DisplayAppearanceSettings(
+            themeMode: themeMode,
+            onThemeChanged: onThemeChanged,
           ),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-            children: [
-              const HasimPageHeader(
-                title: 'المظهر والسمات',
-                subtitle: 'وضع التطبيق وخلفية شاشة المحادثة',
-              ),
-              DisplayAppearanceSettings(
-                themeMode: themeMode,
-                onThemeChanged: onThemeChanged,
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }

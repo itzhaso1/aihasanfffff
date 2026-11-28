@@ -16,7 +16,7 @@ class SkillRegistryTest extends TestCase
         $keys = SkillRegistry::keys();
 
         $this->assertSame(
-            ['complaint_handling', 'customer_support', 'faq', 'human_handoff', 'order_handling', 'product_recommendation', 'product_search', 'sales'],
+            ['booking_agent', 'complaint_handling', 'customer_support', 'faq', 'human_handoff', 'order_handling', 'product_recommendation', 'product_search', 'sales'],
             $keys,
         );
         $this->assertSame($keys, SkillRegistry::enabledKeys());
