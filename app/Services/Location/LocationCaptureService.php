@@ -822,9 +822,25 @@ final class LocationCaptureService
         if ($location->formatted_address) {
             $metadata['shipping_address'] = $location->formatted_address;
         }
+        $metadata['address_updated_at'] = now()->toIso8601String();
+        $metadata['last_modified_at'] = $metadata['address_updated_at'];
+
+        $notesLines = preg_split("/\r\n|\n|\r/", (string) ($order->notes ?? '')) ?: [];
+        $cleanNotesLines = [];
+        foreach ($notesLines as $line) {
+            $t = trim($line);
+            if ($t === '' || preg_match('/^العنوان\s*:/u', $t) === 1) {
+                continue;
+            }
+            $cleanNotesLines[] = $t;
+        }
+        if ($location->formatted_address) {
+            $cleanNotesLines[] = 'العنوان: '.$location->formatted_address;
+        }
 
         $updates = [
             'delivery_location_id' => $location->id,
+            'notes' => $cleanNotesLines !== [] ? implode("\n", $cleanNotesLines) : null,
             'metadata' => $metadata,
         ];
 
@@ -840,7 +856,7 @@ final class LocationCaptureService
 
         $order->forceFill($updates)->save();
 
-        if ($location->order_id === null) {
+        if ($location->order_id === null || (int) $location->order_id !== (int) $order->id) {
             $location->forceFill(['order_id' => $order->id])->save();
         }
 
@@ -850,6 +866,8 @@ final class LocationCaptureService
             actorType: 'system',
             orderId: (int) $order->id,
         );
+
+        app(InboxRealtimePublisher::class)->publishOrderUpdated($order->fresh() ?? $order, null, 'address_updated');
     }
 
     /**

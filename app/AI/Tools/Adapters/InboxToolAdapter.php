@@ -12,6 +12,7 @@ use App\AI\Tools\RuntimeToolResult;
 use App\AI\Tools\ToolDefinition;
 use App\AI\Tools\ToolDenial;
 use App\Services\AI\Inbox\Tools\Contracts\InboxAgentTool;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 final class InboxToolAdapter implements RuntimeTool
@@ -56,14 +57,31 @@ final class InboxToolAdapter implements RuntimeTool
 
         try {
             $result = $this->inner->execute($context, $arguments);
-        } catch (Throwable) {
-            return RuntimeToolResult::fail(ToolDenial::EXECUTION_ERROR, 'Tool execution failed.');
+        } catch (Throwable $exception) {
+            Log::warning('ai.tool.executed', [
+                'workspace_id' => $request->workspaceId,
+                'conversation_id' => $request->conversationId,
+                'tool_name' => $this->definition->name,
+                'success' => false,
+                'error_code' => ToolDenial::EXECUTION_ERROR,
+                'exception_type' => $exception::class,
+            ]);
+
+            return RuntimeToolResult::fail(ToolDenial::EXECUTION_ERROR, 'تعذر تنفيذ العملية حالياً، يرجى المحاولة لاحقاً.');
         }
+
+        Log::info('ai.tool.executed', [
+            'workspace_id' => $request->workspaceId,
+            'conversation_id' => $request->conversationId,
+            'tool_name' => $this->definition->name,
+            'success' => $result->success,
+            'error_code' => $result->errorCode,
+        ]);
 
         if (! $result->success) {
             return RuntimeToolResult::fail(
                 $result->errorCode ?? ToolDenial::EXECUTION_ERROR,
-                (string) ($result->payload['message'] ?? 'Tool failed.'),
+                (string) ($result->payload['message'] ?? 'تعذر إتمام الطلب في الوقت الحالي.'),
                 $result->payload,
             );
         }

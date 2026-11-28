@@ -153,6 +153,52 @@ final class SearchProductsTool implements InboxAgentSecuredTool
                 }
             }
 
+            $alternatives = $rows === []
+                ? $this->catalogRetrieval->availableAlternativesForAi($context->workspace, limit: 4)
+                : [];
+
+            Log::info('catalog.products.searched', [
+                'workspace_id' => $context->workspace->id,
+                'conversation_id' => $context->conversation->id,
+                'tool' => 'search_products',
+                'query' => mb_substr($query, 0, 120),
+                'returned_count' => count($rows),
+                'alternatives_count' => count($alternatives),
+            ]);
+
+            $serializeRow = static fn (array $row): array => [
+                'catalog_item_id' => $row['catalog_item_id'] ?? null,
+                'name' => $row['name'] ?? null,
+                'description' => $row['description'] ?? null,
+                'sku' => $row['sku'] ?? null,
+                'brand' => $row['brand'] ?? null,
+                'price' => $row['price'] ?? null,
+                'base_price' => $row['base_price'] ?? null,
+                'sale_price' => $row['sale_price'] ?? null,
+                'compare_at_price' => $row['compare_at_price'] ?? null,
+                'has_active_offer' => $row['has_active_offer'] ?? false,
+                'discount_percent' => $row['discount_percent'] ?? null,
+                'display_price' => $row['display_price'] ?? null,
+                'price_display' => $row['price_display'] ?? null,
+                'currency' => $row['currency'] ?? null,
+                'tax_presentation' => $row['tax_presentation'] ?? null,
+                'stock' => $row['stock'] ?? null,
+                'availability' => $row['availability'] ?? null,
+                'availability_message' => $row['availability_message'] ?? null,
+                'variant_match_status' => $row['variant_match_status'] ?? null,
+                'matched_variant_ids' => $row['matched_variant_ids'] ?? [],
+                'category' => $row['category'] ?? null,
+                'seller_display_name' => $row['seller_display_name'] ?? null,
+                'attributes' => $row['attributes'] ?? [],
+                'specifications' => $row['specifications'] ?? [],
+                'highlights' => $row['highlights'] ?? [],
+                'warnings' => $row['warnings'] ?? null,
+                'terms' => $row['terms'] ?? null,
+                'variants' => $row['variants'] ?? [],
+                'policies' => $row['policies'] ?? [],
+                'ai_safe_profile' => $row['ai_safe_profile'] ?? [],
+            ];
+
             return InboxAgentToolExecutionResult::success(
                 $this->name(),
                 'search_products',
@@ -162,38 +208,8 @@ final class SearchProductsTool implements InboxAgentSecuredTool
                     'catalog_untrusted_context' => InboxAgentVoiceResolver::withoutVoiceSettings(
                         $this->catalogRetrieval->untrustedCommunicationContext($context->workspace),
                     ),
-                    'products' => array_map(static fn (array $row): array => [
-                        'catalog_item_id' => $row['catalog_item_id'] ?? null,
-                        'name' => $row['name'] ?? null,
-                        'description' => $row['description'] ?? null,
-                        'sku' => $row['sku'] ?? null,
-                        'brand' => $row['brand'] ?? null,
-                        'price' => $row['price'] ?? null,
-                        'base_price' => $row['base_price'] ?? null,
-                        'sale_price' => $row['sale_price'] ?? null,
-                        'compare_at_price' => $row['compare_at_price'] ?? null,
-                        'has_active_offer' => $row['has_active_offer'] ?? false,
-                        'discount_percent' => $row['discount_percent'] ?? null,
-                        'display_price' => $row['display_price'] ?? null,
-                        'price_display' => $row['price_display'] ?? null,
-                        'currency' => $row['currency'] ?? null,
-                        'tax_presentation' => $row['tax_presentation'] ?? null,
-                        'stock' => $row['stock'] ?? null,
-                        'availability' => $row['availability'] ?? null,
-                        'availability_message' => $row['availability_message'] ?? null,
-                        'variant_match_status' => $row['variant_match_status'] ?? null,
-                        'matched_variant_ids' => $row['matched_variant_ids'] ?? [],
-                        'category' => $row['category'] ?? null,
-                        'seller_display_name' => $row['seller_display_name'] ?? null,
-                        'attributes' => $row['attributes'] ?? [],
-                        'specifications' => $row['specifications'] ?? [],
-                        'highlights' => $row['highlights'] ?? [],
-                        'warnings' => $row['warnings'] ?? null,
-                        'terms' => $row['terms'] ?? null,
-                        'variants' => $row['variants'] ?? [],
-                        'policies' => $row['policies'] ?? [],
-                        'ai_safe_profile' => $row['ai_safe_profile'] ?? [],
-                    ], $rows),
+                    'products' => array_map($serializeRow, $rows),
+                    'available_alternatives' => array_map($serializeRow, $alternatives),
                 ],
             );
         } catch (Throwable $exception) {

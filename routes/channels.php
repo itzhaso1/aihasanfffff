@@ -33,6 +33,18 @@ Broadcast::channel('workspace.{workspaceId}.conversations', function (User $user
     );
 }, ['guards' => ['web', 'sanctum']]);
 
+Broadcast::channel('workspace.{workspaceId}.orders', function (User $user, int $workspaceId): bool {
+    $workspace = Workspace::withoutGlobalScopes()->find($workspaceId);
+    if (! $workspace) {
+        return false;
+    }
+
+    return $workspace->users()
+        ->where('users.id', $user->id)
+        ->where('workspace_users.status', 'active')
+        ->exists();
+}, ['guards' => ['web', 'sanctum']]);
+
 Broadcast::channel('workspace.{workspaceId}.conversation.{conversationId}', function (
     User $user,
     int $workspaceId,

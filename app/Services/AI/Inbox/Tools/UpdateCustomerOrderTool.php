@@ -9,7 +9,10 @@ use App\Enums\InboxAgentToolRiskLevel;
 use App\Services\AI\Inbox\InboxAgentContext;
 use App\Services\AI\Inbox\Tools\Contracts\InboxAgentSecuredTool;
 use App\Services\Customer\CustomerOrderCaptureService;
+use App\Services\Customer\Exceptions\AmbiguousOrderSelectionException;
+use App\Services\Customer\Exceptions\OrderFeeConfirmationRequiredException;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -91,6 +94,31 @@ final class UpdateCustomerOrderTool implements InboxAgentSecuredTool
                 'required' => false,
                 'description' => 'Updated or additional delivery notes.',
             ],
+            'latitude' => [
+                'type' => 'number',
+                'required' => false,
+                'description' => 'Optional GPS latitude when updating delivery location.',
+            ],
+            'longitude' => [
+                'type' => 'number',
+                'required' => false,
+                'description' => 'Optional GPS longitude when updating delivery location.',
+            ],
+            'delivery_location_id' => [
+                'type' => 'integer',
+                'required' => false,
+                'description' => 'Optional confirmed CustomerLocation ID from this conversation.',
+            ],
+            'order_hint' => [
+                'type' => 'string',
+                'required' => false,
+                'description' => 'Optional distinguishing clue if order_number was omitted.',
+            ],
+            'confirm_fee_change' => [
+                'type' => 'boolean',
+                'required' => false,
+                'description' => 'Set true only after confirming changed delivery fee with customer.',
+            ],
         ];
     }
 
@@ -115,6 +143,13 @@ final class UpdateCustomerOrderTool implements InboxAgentSecuredTool
         $notes = isset($arguments['notes']) && is_string($arguments['notes'])
             ? trim($arguments['notes'])
             : null;
+        $latitude = isset($arguments['latitude']) && is_numeric($arguments['latitude']) ? (float) $arguments['latitude'] : null;
+        $longitude = isset($arguments['longitude']) && is_numeric($arguments['longitude']) ? (float) $arguments['longitude'] : null;
+        $deliveryLocationId = isset($arguments['delivery_location_id']) && is_numeric($arguments['delivery_location_id'])
+            ? (int) $arguments['delivery_location_id']
+            : null;
+        $orderHint = isset($arguments['order_hint']) && is_string($arguments['order_hint']) ? trim($arguments['order_hint']) : null;
+        $confirmFeeChange = (bool) ($arguments['confirm_fee_change'] ?? false);
 
         try {
             $order = $this->captureService->modifyOrder(
@@ -127,6 +162,11 @@ final class UpdateCustomerOrderTool implements InboxAgentSecuredTool
                 phone: $phone !== '' ? $phone : null,
                 address: $address !== '' ? $address : null,
                 notes: $notes !== '' ? $notes : null,
+                latitude: $latitude,
+                longitude: $longitude,
+                deliveryLocationId: $deliveryLocationId,
+                orderHint: $orderHint !== '' ? $orderHint : null,
+                confirmFeeChange: $confirmFeeChange,
             );
 
             return InboxAgentToolExecutionResult::success(
@@ -137,9 +177,11 @@ final class UpdateCustomerOrderTool implements InboxAgentSecuredTool
                     'updated' => true,
                     'order_number' => $order->order_number,
                     'status' => $order->status,
+                    'shipping_amount' => (string) ($order->shipping_amount ?? '0.00'),
                     'order_total' => (string) $order->total_amount,
                     'currency' => $order->currency,
                     'shipping_address' => $order->metadata['shipping_address'] ?? null,
+                    'delivery_location_id' => $order->delivery_location_id ? (int) $order->delivery_location_id : null,
                     'recipient_name' => $order->metadata['recipient_name'] ?? null,
                     'recipient_phone' => $order->metadata['recipient_phone'] ?? null,
                     'items' => $order->items->map(static fn ($item): array => [
@@ -152,6 +194,43 @@ final class UpdateCustomerOrderTool implements InboxAgentSecuredTool
                     ])->values()->all(),
                 ],
             );
+        } catch (AmbiguousOrderSelectionException $ambiguous) {
+            return InboxAgentToolExecutionResult::success(
+                $this->name(),
+                'update_customer_order',
+                [
+                    'success' => false,
+                    'updated' => false,
+                    'ambiguous_order_selection' => true,
+                    'candidate_orders' => $ambiguous->candidates,
+                    'message' => $ambiguous->getMessage(),
+                ],
+            );
+        } catch (OrderFeeConfirmationRequiredException $feeException) {
+            return InboxAgentToolExecutionResult::success(
+                $this->name(),
+                'update_customer_order',
+                [
+                    'success' => false,
+                    'updated' => false,
+                    'requires_fee_confirmation' => ! $feeException->outOfZone,
+                    'out_of_delivery_zone' => $feeException->outOfZone,
+                    'order_number' => $feeException->orderNumber,
+                    'proposed_address' => $feeException->proposedAddress,
+                    'old_shipping_amount' => $feeException->oldShippingAmount,
+                    'new_shipping_amount' => $feeException->newShippingAmount,
+                    'new_total_amount' => $feeException->newTotalAmount,
+                    'currency' => $feeException->currency,
+                    'message' => $feeException->getMessage(),
+                ],
+            );
+        } catch (InvalidArgumentException $validationException) {
+            return InboxAgentToolExecutionResult::failure(
+                $this->name(),
+                'update_customer_order',
+                'validation_failed',
+                $validationException->getMessage(),
+            );
         } catch (Throwable $exception) {
             Log::warning('inbox.agent.tool.update_customer_order_failed', [
                 'workspace_id' => $context->workspace->id,
@@ -163,7 +242,7 @@ final class UpdateCustomerOrderTool implements InboxAgentSecuredTool
                 $this->name(),
                 'update_customer_order',
                 'execution_failed',
-                $exception->getMessage(),
+                'تعذر تحديث الطلب في الوقت الحالي، يرجى المحاولة أو التحويل للدعم.',
             );
         }
     }

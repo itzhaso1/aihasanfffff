@@ -133,6 +133,7 @@ class ConversationUpdated implements ShouldBroadcastNow
                     ? $this->conversation->handoff_status->value
                     : (string) ($this->conversation->handoff_status ?? 'none'),
                 'handoff_version' => (int) ($this->conversation->handoff_version ?? 1),
+                'orders_updated_at' => data_get($this->conversation->metadata, 'orders_updated_at'),
                 'updated_at' => optional($this->conversation->updated_at)?->toIso8601String(),
                 'assigned_user_id' => $this->conversation->assigned_user_id,
                 'assigned_user_name' => $this->conversation->assignedUser?->name,

@@ -9,7 +9,9 @@ use App\Enums\InboxAgentToolRiskLevel;
 use App\Services\AI\Inbox\InboxAgentContext;
 use App\Services\AI\Inbox\Tools\Contracts\InboxAgentSecuredTool;
 use App\Services\Customer\CustomerOrderCaptureService;
+use App\Services\Customer\Exceptions\AmbiguousOrderSelectionException;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -47,12 +49,22 @@ final class CancelCustomerOrderTool implements InboxAgentSecuredTool
             'order_number' => [
                 'type' => 'string',
                 'required' => false,
-                'description' => 'Order number to cancel (e.g. ORD-00000001). Defaults to the latest active order if only one active order exists.',
+                'description' => 'Order number to cancel (e.g. ORD-00000001). Mandatory when customer has more than one active order.',
+            ],
+            'order_hint' => [
+                'type' => 'string',
+                'required' => false,
+                'description' => 'Optional clue when order_number is not yet known.',
             ],
             'reason' => [
                 'type' => 'string',
                 'required' => false,
                 'description' => 'Customer reason for cancellation.',
+            ],
+            'customer_confirmed' => [
+                'type' => 'boolean',
+                'required' => false,
+                'description' => 'Set false to inspect target order and request confirmation before cancelling.',
             ],
         ];
     }
@@ -62,16 +74,53 @@ final class CancelCustomerOrderTool implements InboxAgentSecuredTool
         $orderNumber = isset($arguments['order_number']) && is_string($arguments['order_number'])
             ? trim($arguments['order_number'])
             : null;
+        $orderHint = isset($arguments['order_hint']) && is_string($arguments['order_hint'])
+            ? trim($arguments['order_hint'])
+            : null;
         $reason = isset($arguments['reason']) && is_string($arguments['reason'])
             ? trim($arguments['reason'])
             : null;
+        $hasConfirmArg = array_key_exists('customer_confirmed', $arguments);
+        $confirmed = $hasConfirmArg ? (bool) $arguments['customer_confirmed'] : true;
 
         try {
+            if (! $confirmed) {
+                $target = $this->captureService->getOwnedOrderDetails(
+                    workspace: $context->workspace,
+                    conversation: $context->conversation,
+                    orderNumber: $orderNumber !== '' ? $orderNumber : null,
+                    orderHint: $orderHint !== '' ? $orderHint : null,
+                );
+
+                if ($target === null) {
+                    return InboxAgentToolExecutionResult::failure(
+                        $this->name(),
+                        'cancel_customer_order',
+                        'order_not_found',
+                        'لم يتم العثور على طلب قابل للإلغاء ضمن طلباتك في هذه المحادثة.',
+                    );
+                }
+
+                return InboxAgentToolExecutionResult::success(
+                    $this->name(),
+                    'cancel_customer_order',
+                    [
+                        'success' => false,
+                        'cancelled' => false,
+                        'confirmation_required' => true,
+                        'order_number' => $target['order_number'],
+                        'target_order' => $target,
+                        'message' => 'يرجى تأكيد العميل على إلغاء الطلب رقم '.$target['order_number'].' أولاً.',
+                    ],
+                );
+            }
+
             $order = $this->captureService->cancelOrder(
                 workspace: $context->workspace,
                 conversation: $context->conversation,
                 orderNumber: $orderNumber !== '' ? $orderNumber : null,
                 reason: $reason !== '' ? $reason : null,
+                orderHint: $orderHint !== '' ? $orderHint : null,
             );
 
             return InboxAgentToolExecutionResult::success(
@@ -85,6 +134,25 @@ final class CancelCustomerOrderTool implements InboxAgentSecuredTool
                     'cancelled_at' => $order->cancelled_at?->toIso8601String(),
                 ],
             );
+        } catch (AmbiguousOrderSelectionException $ambiguous) {
+            return InboxAgentToolExecutionResult::success(
+                $this->name(),
+                'cancel_customer_order',
+                [
+                    'success' => false,
+                    'cancelled' => false,
+                    'ambiguous_order_selection' => true,
+                    'candidate_orders' => $ambiguous->candidates,
+                    'message' => $ambiguous->getMessage(),
+                ],
+            );
+        } catch (InvalidArgumentException $validationException) {
+            return InboxAgentToolExecutionResult::failure(
+                $this->name(),
+                'cancel_customer_order',
+                'validation_failed',
+                $validationException->getMessage(),
+            );
         } catch (Throwable $exception) {
             Log::warning('inbox.agent.tool.cancel_customer_order_failed', [
                 'workspace_id' => $context->workspace->id,
@@ -96,7 +164,7 @@ final class CancelCustomerOrderTool implements InboxAgentSecuredTool
                 $this->name(),
                 'cancel_customer_order',
                 'execution_failed',
-                $exception->getMessage(),
+                'تعذر إلغاء الطلب في الوقت الحالي، يرجى التحويل لفريق الدعم.',
             );
         }
     }

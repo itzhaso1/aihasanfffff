@@ -116,8 +116,8 @@ return new class extends Migration
                 $table->foreignId('branch_id')->nullable()->constrained('booking_branches')->nullOnDelete();
                 $table->foreignId('provider_id')->nullable()->constrained('booking_providers')->nullOnDelete();
                 $table->foreignId('service_id')->nullable()->constrained('booking_services')->nullOnDelete();
-                $table->timestamp('starts_at');
-                $table->timestamp('ends_at');
+                $table->dateTime('starts_at');
+                $table->dateTime('ends_at');
                 $table->string('reason')->nullable();
                 $table->foreignId('created_by_user_id')->nullable()->constrained('users')->nullOnDelete();
                 $table->timestamps();
@@ -144,8 +144,8 @@ return new class extends Migration
                 $table->date('booking_date');
                 $table->string('start_time', 8);
                 $table->string('end_time', 8);
-                $table->timestamp('starts_at');
-                $table->timestamp('ends_at');
+                $table->dateTime('starts_at');
+                $table->dateTime('ends_at');
                 $table->unsignedInteger('duration_minutes');
                 $table->unsignedInteger('party_size')->nullable();
                 $table->string('status', 24)->default('pending');
@@ -158,7 +158,7 @@ return new class extends Migration
                 $table->string('idempotency_key', 128)->nullable();
                 $table->unsignedBigInteger('rescheduled_from_booking_id')->nullable();
                 $table->unsignedInteger('reschedule_count')->default(0);
-                $table->timestamp('previous_starts_at')->nullable();
+                $table->dateTime('previous_starts_at')->nullable();
                 $table->timestamp('confirmed_at')->nullable();
                 $table->timestamp('rescheduled_at')->nullable();
                 $table->timestamp('cancelled_at')->nullable();
@@ -191,8 +191,8 @@ return new class extends Migration
                 $table->unsignedBigInteger('actor_id')->nullable();
                 $table->string('previous_status', 24)->nullable();
                 $table->string('new_status', 24)->nullable();
-                $table->timestamp('previous_starts_at')->nullable();
-                $table->timestamp('new_starts_at')->nullable();
+                $table->dateTime('previous_starts_at')->nullable();
+                $table->dateTime('new_starts_at')->nullable();
                 $table->json('payload')->nullable();
                 $table->timestamp('created_at')->useCurrent();
 
@@ -207,7 +207,7 @@ return new class extends Migration
                 $table->foreignId('booking_id')->constrained('bookings')->cascadeOnDelete();
                 $table->string('reminder_type', 32);
                 $table->string('channel', 32)->nullable();
-                $table->timestamp('scheduled_for');
+                $table->dateTime('scheduled_for');
                 $table->timestamp('sent_at')->nullable();
                 $table->string('status', 24)->default('pending');
                 $table->unsignedBigInteger('message_id')->nullable();

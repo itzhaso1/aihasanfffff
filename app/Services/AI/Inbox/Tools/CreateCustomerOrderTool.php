@@ -10,6 +10,7 @@ use App\Services\AI\Inbox\InboxAgentContext;
 use App\Services\AI\Inbox\Tools\Contracts\InboxAgentSecuredTool;
 use App\Services\Customer\CustomerOrderCaptureService;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -149,9 +150,11 @@ final class CreateCustomerOrderTool implements InboxAgentSecuredTool
                     'customer_name' => $result['customer']->name,
                     'customer_status' => $result['customer']->status->value,
                     'order_number' => $result['order']->order_number,
+                    'shipping_amount' => (string) ($result['order']->shipping_amount ?? '0.00'),
                     'order_total' => (string) $result['order']->total_amount,
                     'currency' => $result['order']->currency,
                     'shipping_address' => $result['order']->metadata['shipping_address'] ?? null,
+                    'delivery_location_id' => $result['order']->delivery_location_id ? (int) $result['order']->delivery_location_id : null,
                     'recipient_phone' => $result['order']->metadata['recipient_phone'] ?? null,
                     'is_additional_order' => (bool) ($result['order']->metadata['is_additional_order'] ?? false),
                     'items' => $result['order']->items->map(static fn ($item): array => [
@@ -165,6 +168,13 @@ final class CreateCustomerOrderTool implements InboxAgentSecuredTool
                     'is_review_required' => $result['is_review_required'],
                 ],
             );
+        } catch (InvalidArgumentException $validationException) {
+            return InboxAgentToolExecutionResult::failure(
+                $this->name(),
+                'create_customer_order',
+                'validation_failed',
+                $validationException->getMessage(),
+            );
         } catch (Throwable $exception) {
             Log::warning('inbox.agent.tool.create_customer_order_failed', [
                 'workspace_id' => $context->workspace->id,
@@ -176,7 +186,7 @@ final class CreateCustomerOrderTool implements InboxAgentSecuredTool
                 $this->name(),
                 'create_customer_order',
                 'execution_failed',
-                'Failed to record customer order: '.$exception->getMessage(),
+                'تعذر تسجيل الطلب حالياً، يرجى التأكد من البيانات أو المحاولة مرة أخرى.',
             );
         }
     }

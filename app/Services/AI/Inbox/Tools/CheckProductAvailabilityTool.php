@@ -84,12 +84,22 @@ final class CheckProductAvailabilityTool implements InboxAgentSecuredTool
 
         $row = $this->catalogRetrieval->findItemForAi($context->workspace, $itemId, $productName);
         if ($row === null) {
+            $alternatives = $this->catalogRetrieval->availableAlternativesForAi($context->workspace, limit: 4);
+
             return InboxAgentToolExecutionResult::success(
                 $this->name(),
                 'check_product_availability',
                 [
                     'found' => false,
                     'availability' => 'out_of_stock',
+                    'available_for_sale' => false,
+                    'available_alternatives' => array_map(static fn (array $alt): array => [
+                        'catalog_item_id' => $alt['catalog_item_id'] ?? null,
+                        'name' => $alt['name'] ?? null,
+                        'price' => $alt['price'] ?? null,
+                        'currency' => $alt['currency'] ?? 'SAR',
+                    ], $alternatives),
+                    'message' => 'المنتج غير موجود أو غير متاح حالياً في قائمة المنتجات.',
                 ],
             );
         }
@@ -125,6 +135,15 @@ final class CheckProductAvailabilityTool implements InboxAgentSecuredTool
         $canFulfill = $token === 'in_stock'
             && ($stock === null || $policy === 'backorder' || $policy === 'unlimited' || $policy === 'not_tracked' || $stock >= $quantity);
 
+        $alternatives = ! $canFulfill
+            ? array_map(static fn (array $alt): array => [
+                'catalog_item_id' => $alt['catalog_item_id'] ?? null,
+                'name' => $alt['name'] ?? null,
+                'price' => $alt['price'] ?? null,
+                'currency' => $alt['currency'] ?? 'SAR',
+            ], $this->catalogRetrieval->availableAlternativesForAi($context->workspace, limit: 4))
+            : null;
+
         return InboxAgentToolExecutionResult::success(
             $this->name(),
             'check_product_availability',
@@ -135,11 +154,13 @@ final class CheckProductAvailabilityTool implements InboxAgentSecuredTool
                 'variant_id' => $selectedVariant['id'] ?? null,
                 'variant_name' => $selectedVariant['name'] ?? null,
                 'availability' => $token,
+                'available_for_sale' => $canFulfill,
                 'stock' => $stock,
                 'policy' => $policy,
                 'requested_quantity' => $quantity,
                 'can_fulfill_quantity' => $canFulfill,
                 'availability_message' => $row['availability_message'] ?? null,
+                'available_alternatives' => $alternatives !== [] ? $alternatives : null,
             ], static fn (mixed $v): bool => $v !== null),
         );
     }

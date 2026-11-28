@@ -49,8 +49,37 @@ class ChatCatalogRetrievalService
     {
         return app(WorkspaceContext::class)->runFor(
             $workspace,
-            fn (): array => $this->searchForPromptInWorkspace($workspace, $query, $limit, 'chat', forAi: true),
+            function () use ($workspace, $query, $limit): array {
+                $rows = $this->searchForPromptInWorkspace($workspace, $query, $limit, 'chat', forAi: true);
+
+                Log::info('catalog.products.searched', [
+                    'workspace_id' => $workspace->id,
+                    'query' => mb_substr(trim($query), 0, 120),
+                    'returned_count' => count($rows),
+                    'returned_ids' => array_values(array_filter(array_map(
+                        static fn (array $r): ?int => isset($r['catalog_item_id']) ? (int) $r['catalog_item_id'] : null,
+                        $rows,
+                    ))),
+                ]);
+
+                return $rows;
+            },
         );
+    }
+
+    /**
+     * Return active, in-stock catalog alternatives verified from the database.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function availableAlternativesForAi(Workspace $workspace, int $limit = 4): array
+    {
+        return app(WorkspaceContext::class)->runFor($workspace, function () use ($workspace, $limit): array {
+            $catalog = $this->catalogRoot->forWorkspace($workspace);
+            $rows = $this->listDiscoverableForPrompt($workspace, $catalog, max(12, $limit * 3), 'chat', null, true);
+
+            return array_slice($this->applyStructuredFilters($rows, ['in_stock_only' => true]), 0, max(1, min(10, $limit)));
+        });
     }
 
     /**
@@ -1113,6 +1142,10 @@ class ChatCatalogRetrievalService
             ->where('workspace_id', $workspace->id)
             ->where('is_active', true)
             ->where('is_visible', true)
+            ->where(function ($statusQuery): void {
+                $statusQuery->whereNull('status')
+                    ->orWhereNotIn('status', ['inactive', 'disabled', 'archived', 'draft']);
+            })
             ->where(function ($query) use ($forAi): void {
                 $query->whereNull('chat_catalog_category_id')
                     ->orWhereHas('category', fn ($category) => $category

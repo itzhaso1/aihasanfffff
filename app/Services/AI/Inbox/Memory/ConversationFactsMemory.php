@@ -205,6 +205,41 @@ final class ConversationFactsMemory
     }
 
     /**
+     * Synchronize verified order/address mutations immediately in both cache and DB metadata.
+     *
+     * @param  array<string, mixed>  $extraFacts
+     * @return array<string, mixed>
+     */
+    public function syncOrderState(
+        int $workspaceId,
+        int $conversationId,
+        ?string $orderNumber = null,
+        ?string $address = null,
+        array $extraFacts = [],
+    ): array {
+        $lock = Cache::lock(self::lockKey($workspaceId, $conversationId), 10);
+
+        return $lock->get(function () use ($workspaceId, $conversationId, $orderNumber, $address, $extraFacts): array {
+            $facts = $this->get($workspaceId, $conversationId);
+            if ($orderNumber !== null && trim($orderNumber) !== '') {
+                $facts['order_number'] = trim($orderNumber);
+            }
+            if ($address !== null) {
+                $clean = trim($address);
+                $facts['address'] = $clean !== '' ? $clean : null;
+            }
+            foreach ($extraFacts as $key => $val) {
+                if (is_string($key) && $key !== '') {
+                    $facts[$key] = $val;
+                }
+            }
+            $facts['last_updated_at'] = now()->toIso8601String();
+
+            return $this->persistFacts($workspaceId, $conversationId, $facts);
+        }) ?? $this->get($workspaceId, $conversationId);
+    }
+
+    /**
      * Extract structured facts from text using Arabic/Gulf patterns.
      *
      * @param  array<string, mixed>  $existingFacts

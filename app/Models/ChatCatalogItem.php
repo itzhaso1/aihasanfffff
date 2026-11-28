@@ -129,6 +129,11 @@ class ChatCatalogItem extends WorkspaceScopedModel
             return false;
         }
 
+        $rawStatus = strtolower(trim((string) ($this->status ?? '')));
+        if ($rawStatus !== '' && in_array($rawStatus, ['inactive', 'disabled', 'archived', 'draft'], true)) {
+            return false;
+        }
+
         if ($this->is_searchable === false) {
             return false;
         }

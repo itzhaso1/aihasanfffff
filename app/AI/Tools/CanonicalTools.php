@@ -12,6 +12,8 @@ final class CanonicalTools
 {
     public const SEARCH_PRODUCTS = 'search_products';
 
+    public const GET_PRODUCTS = 'get_products';
+
     public const GET_PRODUCT_INTELLIGENCE = 'get_product_intelligence';
 
     public const EVALUATE_PRODUCT_SUITABILITY = 'evaluate_product_suitability';

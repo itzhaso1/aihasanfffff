@@ -5,8 +5,10 @@ namespace App\Services\Inbox;
 use App\Events\Realtime\ConversationUpdated;
 use App\Events\Realtime\MessageCreated;
 use App\Events\Realtime\MessageStatusUpdated;
+use App\Events\Realtime\OrderUpdated;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\Order;
 use App\Services\Observability\OpsMetricsRecorder;
 use App\Support\Observability\CorrelationContext;
 use App\Support\Observability\OpsLogger;
@@ -194,6 +196,59 @@ final class InboxRealtimePublisher
             Log::warning('inbox.realtime.conversation_update_failed', array_merge(CorrelationContext::logContext(), [
                 'workspace_id' => $conversation->workspace_id,
                 'conversation_id' => $conversation->id,
+                'error' => $exception->getMessage(),
+                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+            ]));
+        }
+    }
+
+    public function publishOrderUpdated(Order $order, ?Conversation $conversation = null, string $action = 'updated'): void
+    {
+        $started = microtime(true);
+
+        try {
+            $freshOrder = $order->fresh(['deliveryLocation', 'items']) ?? $order;
+            event(new OrderUpdated($freshOrder, $action));
+
+            $targetConv = $conversation;
+            if (! $targetConv instanceof Conversation && $freshOrder->conversation_id !== null) {
+                $targetConv = Conversation::withoutGlobalScopes()
+                    ->where('workspace_id', $freshOrder->workspace_id)
+                    ->find($freshOrder->conversation_id);
+            }
+
+            if ($targetConv instanceof Conversation) {
+                $convMeta = is_array($targetConv->metadata) ? $targetConv->metadata : [];
+                $convMeta['orders_updated_at'] = now()->toIso8601String();
+                $convMeta['last_order_event'] = [
+                    'order_number' => $freshOrder->order_number,
+                    'status' => $freshOrder->status,
+                    'action' => $action,
+                    'shipping_address' => data_get($freshOrder->metadata, 'shipping_address'),
+                    'updated_at' => $convMeta['orders_updated_at'],
+                ];
+                Conversation::withoutGlobalScopes()
+                    ->where('workspace_id', $targetConv->workspace_id)
+                    ->whereKey($targetConv->id)
+                    ->update(['metadata' => $convMeta]);
+                $targetConv->metadata = $convMeta;
+
+                $this->publishConversationUpdate($targetConv, alreadyFresh: true);
+            }
+
+            Log::info('inbox.realtime.order_updated', array_merge(CorrelationContext::logContext(), [
+                'workspace_id' => $freshOrder->workspace_id,
+                'conversation_id' => $freshOrder->conversation_id,
+                'order_id' => $freshOrder->id,
+                'order_number' => $freshOrder->order_number,
+                'action' => $action,
+                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+            ]));
+        } catch (Throwable $exception) {
+            Log::warning('inbox.realtime.order_update_failed', array_merge(CorrelationContext::logContext(), [
+                'workspace_id' => $order->workspace_id,
+                'order_id' => $order->id,
+                'action' => $action,
                 'error' => $exception->getMessage(),
                 'duration_ms' => (int) round((microtime(true) - $started) * 1000),
             ]));
